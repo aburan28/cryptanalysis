@@ -1379,7 +1379,32 @@ struct SparseComb13 {
     full_rows: Box<[[Jacobian; 81]]>,
     top_points: Box<[Jacobian]>,
     top_slots: [u8; 81],
-    top_repair: [Option<(WidthSixDigit, WidthSixDigit)>; 729],
+    top_repair: [(u16, u16); 81],
+}
+
+const NO_TOP_REPAIR: (u16, u16) = (u16::MAX, u16::MAX);
+
+fn pack_width_six_digit(digit: WidthSixDigit) -> u16 {
+    assert!(digit.orbit < 81 && digit.unit.omega_power < 3);
+    u16::try_from(digit.orbit * 6 + digit.unit.omega_power * 2
+        + usize::from(digit.unit.sign < 0)).unwrap()
+}
+
+fn unpack_width_six_digit(code: u16) -> WidthSixDigit {
+    assert!(code < 486);
+    WidthSixDigit {
+        orbit: usize::from(code / 6),
+        unit: Unit { sign: if code % 2 == 0 { 1 } else { -1 },
+                     omega_power: usize::from((code % 6) / 2) },
+    }
+}
+
+fn apply_width_six_unit(digit: WidthSixDigit, unit: Unit) -> WidthSixDigit {
+    WidthSixDigit {
+        orbit: digit.orbit,
+        unit: Unit { sign: digit.unit.sign * unit.sign,
+                     omega_power: (digit.unit.omega_power + unit.omega_power) % 3 },
+    }
 }
 
 static WIDTH_SIX_COMB13_POINTS: LazyLock<SparseComb13> = LazyLock::new(|| {
@@ -1406,7 +1431,7 @@ static WIDTH_SIX_COMB13_POINTS: LazyLock<SparseComb13> = LazyLock::new(|| {
             })
         })
         .collect();
-    let mut top_repair: [Option<(WidthSixDigit, WidthSixDigit)>; 729] = [None; 729];
+    let mut repair_pairs: [Option<(WidthSixDigit, WidthSixDigit)>; 81] = [None; 81];
     for (index, &left) in selected_images.iter().enumerate() {
         for &right in &selected_images[index..] {
             let (la, lb) = left.coefficients();
@@ -1419,7 +1444,9 @@ static WIDTH_SIX_COMB13_POINTS: LazyLock<SparseComb13> = LazyLock::new(|| {
             let slot = usize::from(sum_a.rem_euclid(27) as u8) * 27
                 + usize::from(sum_b.rem_euclid(27) as u8);
             let Some(target) = WIDTH_SIX_DIGITS[slot] else { continue };
-            if target.coefficients() != (sum_a8, sum_b8) || top_slots[target.orbit] != u8::MAX {
+            if target.coefficients() != (sum_a8, sum_b8)
+                || target.unit.sign != 1 || target.unit.omega_power != 0
+                || top_slots[target.orbit] != u8::MAX {
                 continue;
             }
             let proposal = (left, right);
@@ -1429,22 +1456,32 @@ static WIDTH_SIX_COMB13_POINTS: LazyLock<SparseComb13> = LazyLock::new(|| {
                  pair.0.unit.omega_power, pair.1.unit.omega_power,
                  pair.0.unit.sign, pair.1.unit.sign)
             };
-            if top_repair[slot].is_none_or(|old| rank(proposal) < rank(old)) {
-                top_repair[slot] = Some(proposal);
+            if repair_pairs[target.orbit].is_none_or(|old| rank(proposal) < rank(old)) {
+                repair_pairs[target.orbit] = Some(proposal);
             }
         }
     }
     let mut covered = 0;
     for digit in WIDTH_SIX_DIGITS.iter().flatten() {
         if top_slots[digit.orbit] == u8::MAX {
+            let (left, right) = repair_pairs[digit.orbit].expect("uncovered top digit orbit");
+            let left = apply_width_six_unit(left, digit.unit);
+            let right = apply_width_six_unit(right, digit.unit);
+            let (la, lb) = left.coefficients();
+            let (ra, rb) = right.coefficients();
             let (a, b) = digit.coefficients();
-            let slot = usize::from(a.rem_euclid(27) as u8) * 27
-                + usize::from(b.rem_euclid(27) as u8);
-            assert!(top_repair[slot].is_some(), "uncovered top digit orbit");
+            assert_eq!((i16::from(la) + i16::from(ra),
+                        i16::from(lb) + i16::from(rb)),
+                       (i16::from(a), i16::from(b)));
             covered += 1;
         }
     }
     assert_eq!(covered, 174);
+    let top_repair = std::array::from_fn(|orbit| {
+        repair_pairs[orbit].map_or(NO_TOP_REPAIR, |(left, right)| {
+            (pack_width_six_digit(left), pack_width_six_digit(right))
+        })
+    });
     SparseComb13 {
         full_rows,
         top_points: top_points.into_boxed_slice(),
@@ -2308,10 +2345,10 @@ fn evaluate_width_six_comb13_sparse(
             if let Some(Some(digit)) = digits.get(row * 13 + column) {
                 if row == 12 && table.top_slots[digit.orbit] == u8::MAX {
                     assert!(repair_top);
-                    let (a, b) = digit.coefficients();
-                    let slot = usize::from(a.rem_euclid(27) as u8) * 27
-                        + usize::from(b.rem_euclid(27) as u8);
-                    let (left, right) = table.top_repair[slot].expect("proved two-sum repair");
+                    let (left_code, right_code) = table.top_repair[digit.orbit];
+                    assert_ne!((left_code, right_code), NO_TOP_REPAIR);
+                    let left = apply_width_six_unit(unpack_width_six_digit(left_code), digit.unit);
+                    let right = apply_width_six_unit(unpack_width_six_digit(right_code), digit.unit);
                     for part in [left, right] {
                         let seed = table.top_points[usize::from(table.top_slots[part.orbit])];
                         add_comb13_digit(&mut point, &mut started, &mut orbit_counts, part, seed);
@@ -3374,15 +3411,17 @@ mod eisenstein_tau_tests {
     fn additive_top_cover_reconstructs_every_missing_orbit() {
         let table = &*WIDTH_SIX_COMB13_POINTS;
         assert_eq!(table.full_rows.len() * 81 + table.top_points.len(), 1024);
+        assert_eq!(std::mem::size_of_val(&table.top_repair), 324);
         let mut repaired_digits = 0;
         for digit in WIDTH_SIX_DIGITS.iter().flatten() {
             if table.top_slots[digit.orbit] != u8::MAX {
                 continue;
             }
+            let (left_code, right_code) = table.top_repair[digit.orbit];
+            assert_ne!((left_code, right_code), NO_TOP_REPAIR);
+            let left = apply_width_six_unit(unpack_width_six_digit(left_code), digit.unit);
+            let right = apply_width_six_unit(unpack_width_six_digit(right_code), digit.unit);
             let (a, b) = digit.coefficients();
-            let slot = usize::from(a.rem_euclid(27) as u8) * 27
-                + usize::from(b.rem_euclid(27) as u8);
-            let (left, right) = table.top_repair[slot].expect("complete two-sum atlas");
             assert!(table.top_slots[left.orbit] != u8::MAX);
             assert!(table.top_slots[right.orbit] != u8::MAX);
             let (la, lb) = left.coefficients();

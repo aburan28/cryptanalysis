@@ -21,6 +21,10 @@ the native implementation enumerates exact coefficient sums of retained
 unit images. It verifies that every one of those 174 images has a two-sum
 expression, then stores the chosen pair as small metadata. Both summands use
 the already retained row-12 affine points.
+The retained lookup is one packed pair per orbit: `81 * 4 = 324` bytes.
+The six unit images of each pair are derived at lookup, and table setup
+checks all 174 exact digit identities. The builder's temporary pair list is
+released after initialization.
 
 The 162-position proof places at most one nonzero digit in positions
 156–161, which form row 12 of the 13-column comb. Consequently, any scalar
@@ -74,8 +78,8 @@ PYTHONDONTWRITEBYTECODE=1 python3 tau6_comb13_cover_screen.py \
 ```
 
 The frozen result SHA-256 is
-`18300278da10eed8a2c1decf5df8dfb8b4abe59d5c8e4e01d1913f4b6589d3d4`.
+`09b7530687fc5625247febbda3d985dc3a91d679c253f841824191e5cb0bcdbd`.
 The native source SHA-256 is
-`be7afa95d94b3a63af2d992c0fab2e973d25033a18992de561d1615ae8823b34`;
+`e03624991a5f6e6cf6db2d5cfa526bca6736f359dfd87015bdaa23d6e4440d73`;
 the release binary SHA-256 is
-`1c8838c8e138a2e036b3abfd9b7b5944b61f203ee64e81a2cad9c2417292952e`.
+`a9754d153b68580d993ebe99d03ceb6fc939e7790a7a41e59ff50c5847917071`.
