@@ -32,6 +32,12 @@ GROEBNER_F4_REFERENCE_ROOT=/absolute/source-matched/reference \
   python3 experiments/groebner-perf-20260924/round116/panel.py \
   --reference-report /absolute/audited/round112/panel/report.json \
   --output /absolute/new/batched-panel
+python3 experiments/groebner-perf-20260924/round113/build.py \
+  --reference-root /absolute/source-matched/reference
+python3 experiments/groebner-perf-20260924/round116/profile.py \
+  --reference-root /absolute/source-matched/reference \
+  --reference-report /absolute/audited/round112/panel/report.json \
+  --output /absolute/new/paired-profile --reps 5
 ```
 
 Any local timing is a diagnostic. A controlled CPU gain needs matched
