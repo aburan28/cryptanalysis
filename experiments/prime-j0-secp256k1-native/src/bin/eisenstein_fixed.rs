@@ -1379,6 +1379,7 @@ struct SparseComb13 {
     full_rows: Box<[[Jacobian; 81]]>,
     top_points: Box<[Jacobian]>,
     top_slots: [u8; 81],
+    top_repair: [Option<(WidthSixDigit, WidthSixDigit)>; 729],
 }
 
 static WIDTH_SIX_COMB13_POINTS: LazyLock<SparseComb13> = LazyLock::new(|| {
@@ -1394,10 +1395,61 @@ static WIDTH_SIX_COMB13_POINTS: LazyLock<SparseComb13> = LazyLock::new(|| {
         top_points.push(top_row[orbit]);
     }
     assert_eq!(full_rows.len() * 81 + top_points.len(), 1024);
+    let selected_images: Vec<_> = WIDTH_SIX_COMB13_TOP_ORBITS
+        .into_iter()
+        .flat_map(|orbit| {
+            (0..3).flat_map(move |omega_power| {
+                [1, -1].map(move |sign| WidthSixDigit {
+                    orbit,
+                    unit: Unit { sign, omega_power },
+                })
+            })
+        })
+        .collect();
+    let mut top_repair: [Option<(WidthSixDigit, WidthSixDigit)>; 729] = [None; 729];
+    for (index, &left) in selected_images.iter().enumerate() {
+        for &right in &selected_images[index..] {
+            let (la, lb) = left.coefficients();
+            let (ra, rb) = right.coefficients();
+            let (sum_a, sum_b) = (i16::from(la) + i16::from(ra),
+                                  i16::from(lb) + i16::from(rb));
+            let (Ok(sum_a8), Ok(sum_b8)) = (i8::try_from(sum_a), i8::try_from(sum_b)) else {
+                continue;
+            };
+            let slot = usize::from(sum_a.rem_euclid(27) as u8) * 27
+                + usize::from(sum_b.rem_euclid(27) as u8);
+            let Some(target) = WIDTH_SIX_DIGITS[slot] else { continue };
+            if target.coefficients() != (sum_a8, sum_b8) || top_slots[target.orbit] != u8::MAX {
+                continue;
+            }
+            let proposal = (left, right);
+            let rank = |pair: (WidthSixDigit, WidthSixDigit)| {
+                (pair.0.unit.omega_power + pair.1.unit.omega_power,
+                 pair.0.orbit, pair.1.orbit,
+                 pair.0.unit.omega_power, pair.1.unit.omega_power,
+                 pair.0.unit.sign, pair.1.unit.sign)
+            };
+            if top_repair[slot].is_none_or(|old| rank(proposal) < rank(old)) {
+                top_repair[slot] = Some(proposal);
+            }
+        }
+    }
+    let mut covered = 0;
+    for digit in WIDTH_SIX_DIGITS.iter().flatten() {
+        if top_slots[digit.orbit] == u8::MAX {
+            let (a, b) = digit.coefficients();
+            let slot = usize::from(a.rem_euclid(27) as u8) * 27
+                + usize::from(b.rem_euclid(27) as u8);
+            assert!(top_repair[slot].is_some(), "uncovered top digit orbit");
+            covered += 1;
+        }
+    }
+    assert_eq!(covered, 174);
     SparseComb13 {
         full_rows,
         top_points: top_points.into_boxed_slice(),
         top_slots,
+        top_repair,
     }
 });
 
@@ -2207,16 +2259,34 @@ fn width_six_comb13_sparse_score(digits: &[Option<WidthSixDigit>], table: &Spars
     Some(5 * tau_steps + 11 * nonzero.saturating_sub(1))
 }
 
+fn add_comb13_digit(
+    point: &mut Jacobian,
+    started: &mut bool,
+    orbit_counts: &mut [usize; 81],
+    digit: WidthSixDigit,
+    seed: Jacobian,
+) {
+    let addend = width_six_unit_image(seed, digit);
+    if *started {
+        *point = point.add_mixed(addend);
+        orbit_counts[digit.orbit] += 1;
+    } else {
+        *point = addend;
+        *started = true;
+    }
+}
+
 fn evaluate_width_six_comb13_sparse(
     a: BigInt,
     b: BigInt,
     digits: Vec<Option<WidthSixDigit>>,
+    repair_top: bool,
 ) -> (Jacobian, BigInt, BigInt, usize, [usize; 81], bool) {
     let table = &*WIDTH_SIX_COMB13_POINTS;
     assert!(digits.len() <= 162, "comb digit span exceeded");
     let top_digits: Vec<_> = digits.iter().skip(156).flatten().collect();
     assert!(top_digits.len() <= 1, "top row must contain at most one terminal digit");
-    if top_digits
+    if !repair_top && top_digits
         .iter()
         .any(|digit| table.top_slots[digit.orbit] == u8::MAX)
     {
@@ -2228,6 +2298,7 @@ fn evaluate_width_six_comb13_sparse(
     let mut started = false;
     let mut tau_steps = 0;
     let mut orbit_counts = [0usize; 81];
+    let mut repaired = false;
     for column in (0..13).rev() {
         if started {
             point = point.tau();
@@ -2235,23 +2306,29 @@ fn evaluate_width_six_comb13_sparse(
         }
         for row in 0..13 {
             if let Some(Some(digit)) = digits.get(row * 13 + column) {
-                let seed = if row == 12 {
-                    table.top_points[usize::from(table.top_slots[digit.orbit])]
+                if row == 12 && table.top_slots[digit.orbit] == u8::MAX {
+                    assert!(repair_top);
+                    let (a, b) = digit.coefficients();
+                    let slot = usize::from(a.rem_euclid(27) as u8) * 27
+                        + usize::from(b.rem_euclid(27) as u8);
+                    let (left, right) = table.top_repair[slot].expect("proved two-sum repair");
+                    for part in [left, right] {
+                        let seed = table.top_points[usize::from(table.top_slots[part.orbit])];
+                        add_comb13_digit(&mut point, &mut started, &mut orbit_counts, part, seed);
+                    }
+                    repaired = true;
                 } else {
-                    table.full_rows[row][digit.orbit]
-                };
-                let addend = width_six_unit_image(seed, *digit);
-                if started {
-                    point = point.add_mixed(addend);
-                    orbit_counts[digit.orbit] += 1;
-                } else {
-                    point = addend;
-                    started = true;
+                    let seed = if row == 12 {
+                        table.top_points[usize::from(table.top_slots[digit.orbit])]
+                    } else {
+                        table.full_rows[row][digit.orbit]
+                    };
+                    add_comb13_digit(&mut point, &mut started, &mut orbit_counts, *digit, seed);
                 }
             }
         }
     }
-    (point, a, b, tau_steps, orbit_counts, false)
+    (point, a, b, tau_steps, orbit_counts, repaired)
 }
 
 fn scalar_multiply_width_six_comb13_sparse(
@@ -2264,7 +2341,20 @@ fn scalar_multiply_width_six_comb13_sparse(
     if let Some(digit) = terminal {
         digits.push(Some(digit));
     }
-    evaluate_width_six_comb13_sparse(a, b, digits)
+    evaluate_width_six_comb13_sparse(a, b, digits, false)
+}
+
+fn scalar_multiply_width_six_comb13_cover(
+    scalar: &BigInt,
+) -> (Jacobian, BigInt, BigInt, usize, [usize; 81], bool) {
+    let lattice = &*SCALAR_LATTICE;
+    let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
+    let (a, b) = short_representative(&residue);
+    let (mut digits, terminal) = recode_tau_width_six(a.clone(), b.clone());
+    if let Some(digit) = terminal {
+        digits.push(Some(digit));
+    }
+    evaluate_width_six_comb13_sparse(a, b, digits, true)
 }
 
 fn scalar_multiply_width_six_comb13_coset3(
@@ -2289,7 +2379,7 @@ fn scalar_multiply_width_six_comb13_coset3(
     }
     let (_, rank, a, b, digits) = best.expect("nearest lattice representative is valid");
     let (point, a, b, tau_steps, orbit_counts, fallback) =
-        evaluate_width_six_comb13_sparse(a, b, digits);
+        evaluate_width_six_comb13_sparse(a, b, digits, false);
     (point, a, b, tau_steps, orbit_counts, fallback, rank, valid)
 }
 
@@ -2371,6 +2461,7 @@ fn check_generator_case(
     comb_rows: usize,
     glv_rows: usize,
     coset_three: bool,
+    cover_top: bool,
 ) {
     let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("read fixture"))
         .expect("parse fixture");
@@ -2417,7 +2508,9 @@ fn check_generator_case(
     }
     let scalar = scalar_from_hex(scalar_hex);
     let start = Instant::now();
-    let point = if coset_three {
+    let point = if cover_top {
+        scalar_multiply_width_six_comb13_cover(&scalar).0
+    } else if coset_three {
         scalar_multiply_width_six_comb13_coset3(&scalar).0
     } else if glv_rows != 0 {
         scalar_multiply_glv_comb(&scalar, glv_rows).0
@@ -2437,7 +2530,9 @@ fn check_generator_case(
     let actual = point.affine_hex();
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if coset_three {
+    let mode = if cover_top {
+        "eisenstein_w6_comb13_cover_fixed"
+    } else if coset_three {
         "eisenstein_w6_comb13_coset3_fixed"
     } else if glv_rows == 8 {
         "glv_comb8_fixed"
@@ -2496,6 +2591,8 @@ fn main() {
             || args[0] == "--check-scalar-w6-comb13-sparse-fixed-case"
             || args[0] == "--benchmark-scalar-w6-comb13-coset3-fixed-case"
             || args[0] == "--check-scalar-w6-comb13-coset3-fixed-case"
+            || args[0] == "--benchmark-scalar-w6-comb13-cover-fixed-case"
+            || args[0] == "--check-scalar-w6-comb13-cover-fixed-case"
             || args[0] == "--benchmark-scalar-glv-comb8-fixed-case"
             || args[0] == "--check-scalar-glv-comb8-fixed-case"
             || args[0] == "--benchmark-scalar-glv-comb10-fixed-case"
@@ -2530,6 +2627,7 @@ fn main() {
                 0
             },
             args[0].contains("w6-comb13-coset3"),
+            args[0].contains("w6-comb13-cover"),
         );
         return;
     }
@@ -2548,9 +2646,10 @@ fn main() {
             || args == ["--scalar-w6-comb12-fixed"]
             || args == ["--scalar-w6-comb13-sparse-fixed"]
             || args == ["--scalar-w6-comb13-coset3-fixed"]
+            || args == ["--scalar-w6-comb13-cover-fixed"]
             || args == ["--scalar-glv-comb8-fixed"]
             || args == ["--scalar-glv-comb10-fixed"],
-        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2|--scalar-w3|--scalar-w3-fixed|--scalar-w4-redundant|--scalar-w4-coalescent|--scalar-w6-fixed|--scalar-w6-comb4-fixed|--scalar-w6-comb8-fixed|--scalar-w6-comb12-fixed|--scalar-w6-comb13-sparse-fixed|--scalar-w6-comb13-coset3-fixed|--scalar-glv-comb8-fixed|--scalar-glv-comb10-fixed]"
+        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2|--scalar-w3|--scalar-w3-fixed|--scalar-w4-redundant|--scalar-w4-coalescent|--scalar-w6-fixed|--scalar-w6-comb4-fixed|--scalar-w6-comb8-fixed|--scalar-w6-comb12-fixed|--scalar-w6-comb13-sparse-fixed|--scalar-w6-comb13-coset3-fixed|--scalar-w6-comb13-cover-fixed|--scalar-glv-comb8-fixed|--scalar-glv-comb10-fixed]"
     );
     let tau_mode = args == ["--tau"];
     let scalar_mode = args == ["--scalar"]
@@ -2565,6 +2664,7 @@ fn main() {
         || args == ["--scalar-w6-comb12-fixed"]
         || args == ["--scalar-w6-comb13-sparse-fixed"]
         || args == ["--scalar-w6-comb13-coset3-fixed"]
+        || args == ["--scalar-w6-comb13-cover-fixed"]
         || args == ["--scalar-glv-comb8-fixed"]
         || args == ["--scalar-glv-comb10-fixed"];
     let width_two = args == ["--scalar-w2"];
@@ -2579,7 +2679,7 @@ fn main() {
         8
     } else if args == ["--scalar-w6-comb12-fixed"] {
         12
-    } else if args == ["--scalar-w6-comb13-sparse-fixed"] || args == ["--scalar-w6-comb13-coset3-fixed"] {
+    } else if args == ["--scalar-w6-comb13-sparse-fixed"] || args == ["--scalar-w6-comb13-coset3-fixed"] || args == ["--scalar-w6-comb13-cover-fixed"] {
         13
     } else {
         0
@@ -2626,7 +2726,20 @@ fn main() {
                 orbit_counts,
                 alternate_uses,
                 recoding_work,
-            ) = if args == ["--scalar-w6-comb13-coset3-fixed"] {
+            ) = if args == ["--scalar-w6-comb13-cover-fixed"] {
+                let (point, a, b, tau_steps, orbit_counts, repaired) =
+                    scalar_multiply_width_six_comb13_cover(&scalar);
+                (
+                    point,
+                    a,
+                    b,
+                    tau_steps,
+                    orbit_counts.iter().sum(),
+                    Some(json!(orbit_counts.to_vec())),
+                    None,
+                    Some(json!({"top_repaired": repaired})),
+                )
+            } else if args == ["--scalar-w6-comb13-coset3-fixed"] {
                 let (point, a, b, tau_steps, orbit_counts, fallback, rank, valid) =
                     scalar_multiply_width_six_comb13_coset3(&scalar);
                 (
@@ -2727,7 +2840,7 @@ fn main() {
                     "orbit_counts": orbit_counts,
                     "alternate_uses": alternate_uses,
                     "recoding_work": recoding_work,
-                    "radix": if args == ["--scalar-w6-comb13-coset3-fixed"] { "orbit-w6-comb13-coset3-fixed" } else if comb_rows == 4 { "orbit-w6-comb4-fixed" } else if comb_rows == 8 { "orbit-w6-comb8-fixed" } else if comb_rows == 12 { "orbit-w6-comb12-fixed" } else if comb_rows == 13 { "orbit-w6-comb13-sparse-fixed" } else if width_six { "orbit-w6-fixed" } else if coalescent_four { "orbit-w4-coalescent" } else if redundant_four { "orbit-w4-redundant" } else if affine_fixed { "orbit-w3-fixed" } else if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
+                    "radix": if args == ["--scalar-w6-comb13-cover-fixed"] { "orbit-w6-comb13-cover-fixed" } else if args == ["--scalar-w6-comb13-coset3-fixed"] { "orbit-w6-comb13-coset3-fixed" } else if comb_rows == 4 { "orbit-w6-comb4-fixed" } else if comb_rows == 8 { "orbit-w6-comb8-fixed" } else if comb_rows == 12 { "orbit-w6-comb12-fixed" } else if comb_rows == 13 { "orbit-w6-comb13-sparse-fixed" } else if width_six { "orbit-w6-fixed" } else if coalescent_four { "orbit-w4-coalescent" } else if redundant_four { "orbit-w4-redundant" } else if affine_fixed { "orbit-w3-fixed" } else if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
                 })
             );
             continue;
@@ -3255,6 +3368,41 @@ mod eisenstein_tau_tests {
         let fallback = scalar_multiply_width_six_comb13_sparse(&scalar);
         assert!(fallback.5);
         assert!(same_point(fallback.0, scalar_multiply(&scalar).0));
+    }
+
+    #[test]
+    fn additive_top_cover_reconstructs_every_missing_orbit() {
+        let table = &*WIDTH_SIX_COMB13_POINTS;
+        assert_eq!(table.full_rows.len() * 81 + table.top_points.len(), 1024);
+        let mut repaired_digits = 0;
+        for digit in WIDTH_SIX_DIGITS.iter().flatten() {
+            if table.top_slots[digit.orbit] != u8::MAX {
+                continue;
+            }
+            let (a, b) = digit.coefficients();
+            let slot = usize::from(a.rem_euclid(27) as u8) * 27
+                + usize::from(b.rem_euclid(27) as u8);
+            let (left, right) = table.top_repair[slot].expect("complete two-sum atlas");
+            assert!(table.top_slots[left.orbit] != u8::MAX);
+            assert!(table.top_slots[right.orbit] != u8::MAX);
+            let (la, lb) = left.coefficients();
+            let (ra, rb) = right.coefficients();
+            assert_eq!((i16::from(la) + i16::from(ra),
+                        i16::from(lb) + i16::from(rb)),
+                       (i16::from(a), i16::from(b)));
+            repaired_digits += 1;
+        }
+        assert_eq!(repaired_digits, 174);
+        let scalar = BigInt::parse_bytes(
+            b"291a4b1cec292deb928a94385017b681693459cc424b1a9be19f9511ff968bc7",
+            16,
+        ).unwrap();
+        let original = scalar_multiply_width_six_comb13_sparse(&scalar);
+        let covered = scalar_multiply_width_six_comb13_cover(&scalar);
+        assert!(original.5 && covered.5);
+        assert!(same_point(original.0, covered.0));
+        assert!(same_point(covered.0, scalar_multiply(&scalar).0));
+        assert!(covered.3 <= 12);
     }
 
     #[test]
