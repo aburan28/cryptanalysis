@@ -15,10 +15,12 @@ Let `omega^2 + omega + 1 = 0`, `R = 2^128`, and
 
 ```
 beta = 0x7ae96a2b657c07106e64479eac3434e99cf0497512f58995c1396c28719501ee
-pi   = -367917413016453100223835821029139468249
-       -64502973549206556628585045361533709078 * omega
+pi   = 64502973549206556628585045361533709078
+       -303414439467246543595250775667605759171 * omega
 ```
 
+This `pi` is the omega associate of the Euclidean-gcd generator; multiplying
+by a unit preserves the ideal and puts both coefficients below `R`.
 Direct integer checks give `N(pi) = p`, `pi(beta) = 0 (mod p)`, and
 `beta^2 + beta + 1 = 0 (mod p)`. Hence `Z[omega]/(pi)` maps to `Fp` by
 `a + b*omega -> a + b*beta (mod p)`. The reference keeps the Montgomery
@@ -61,10 +63,10 @@ The fixed seed is `20261008`. The reference checked 144 edge pairs and
 subtraction, threefold omega action, the tau constant, and every Montgomery
 cancellation. All checks passed. The largest balanced coefficient occupied
 128 bits; the largest post-reduction coefficient before balancing occupied
-129 bits. The observed balance corrections were `(0,0):3349`,
-`(0,1):1657`, `(1,0):1665`, and `(1,1):3473`. The reference source SHA-256
+129 bits. The observed balance corrections were `(0,0):3408`,
+`(0,1):1637`, `(1,0):1770`, and `(1,1):3329`. The reference source SHA-256
 for this check was
-`bddf4dbe8a5490fad1a6a78aaa569dbd00715aabde895e92b6ec170a1c7a0041`.
+`ce48d817449b683832cc77cb6f0e8c6bf9851d36a5d7cdad904ba7f575bb72f1`.
 
 The next experiment is a fixed-width portable C or Rust kernel with exact
 replay against this reference, followed by complete Jacobian tau/rho and

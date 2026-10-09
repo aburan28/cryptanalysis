@@ -15,8 +15,10 @@ from pathlib import Path
 
 P = 2**256 - 2**32 - 977
 BETA = int("7ae96a2b657c07106e64479eac3434e99cf0497512f58995c1396c28719501ee", 16)
-PI = (-367917413016453100223835821029139468249,
-      -64502973549206556628585045361533709078)
+# Multiply the Euclidean-gcd generator by omega: the ideal is unchanged,
+# while both modulus coefficients now fit in 128 bits.
+PI = (64502973549206556628585045361533709078,
+      -303414439467246543595250775667605759171)
 R = 1 << 128
 R_INVERSE_P = pow(R, -1, P)
 
@@ -55,6 +57,7 @@ def norm(x):
 assert norm(PI) == P
 assert (PI[0] + PI[1] * BETA) % P == 0
 assert (BETA * BETA + BETA + 1) % P == 0
+assert max(abs(x).bit_length() for x in PI) <= 128
 
 PI_INVERSE_R = times_small(pow(P, -1, R), conjugate(PI))
 PI_INVERSE_R = tuple(x % R for x in PI_INVERSE_R)
