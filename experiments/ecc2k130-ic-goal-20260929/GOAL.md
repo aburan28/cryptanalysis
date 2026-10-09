@@ -1,5 +1,16 @@
 # ECC2K-130 single-target index-calculus goal
 
+**N131 pair-domain structural gate (2026-10-09 21:42 UTC):** an
+[exact affine-span certificate](n131_d13_pair_output_linear_span_20261009/RESULT.md)
+uses 132 independently replayed same-rotation d13 pair outputs to prove
+that no nonzero affine equation in the 131 pair-output phi bits holds for
+the full valid-pair domain. Independent Sage elliptic-curve arithmetic and
+GF(2) rank both pass. Frobenius transports the conclusion to all six
+planned rotations. A target-coupled solver must therefore retain seed-sum
+information, use nonlinear pair-domain constraints, or derive restrictions
+from the public target across blocks; output-only XOR filters cannot be the
+missing universal pruning rule for this policy.
+
 **Exact N131 pair-inverse gate (2026-10-09 21:27 UTC):** the
 [same-rotation d13 proposal](n131_d13_same_rotation_pairs_20261009/RESULT.md)
 orders twelve leaves as six pairs at Frobenius rotations
@@ -17,9 +28,16 @@ checked signed group outputs at all six rotations. Index construction took
 1.076 seconds after 6.145 seconds of selector/pair geometry, with 45.3 MB
 peak process RSS on an exploratory host. This is an exact pair primitive;
 the next method gate is to generate compatible pair-sum and pair-output
-inputs from the public target in a six-pair solver. Test an ordinary
-same-rotation N41 relation first, then freeze and run the N131 public-Q
-query under 600 seconds and 4 GiB, including independent point replay.
+inputs from the public target in a six-pair solver. Existing
+[N41 same-rotation rows](N41_SAME_ROTATION_RESULT.md) and the
+[four-pair control](N41_W6_S8_FOUR_PAIRS_RESULT.md) establish ordinary
+positive inputs; their indexed joins do not scale to N131, and their
+tested SAT handoffs were censored. The next N41 gate is a **new unpinned
+target-coupled method** that finds an ordinary row without a quadratic
+pair-sum index and records how many partial states the target eliminates
+while at least two pair domains remain unchosen. Require a source-bound
+work/memory projection before a frozen N131 public-Q query under 600
+seconds and 4 GiB, including independent point replay.
 
 **Current method gate (2026-10-09 21:17 UTC):** an [exact target-coupled
 group join](n41_phi_target_coupled_pair_join_20261009/RESULT.md) found and
