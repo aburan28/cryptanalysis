@@ -1,0 +1,62 @@
+name: Groebner F6 compact boundary exactness
+on:
+  push:
+    paths:
+      - '.github/workflows/groebner-f6-compact.yml'
+      - 'experiments/groebner-f6-boundary-compact-20261009/**'
+      - 'experiments/groebner-f6-message-20261009/**'
+      - 'experiments/groebner-f6-prepared-20261009/**'
+      - 'experiments/groebner-f6-packed-20261009/**'
+      - 'experiments/groebner-f6-20261008/**'
+      - 'experiments/pdp-scaling/gf2n.py'
+  pull_request:
+    paths:
+      - '.github/workflows/groebner-f6-compact.yml'
+      - 'experiments/groebner-f6-boundary-compact-20261009/**'
+      - 'experiments/groebner-f6-message-20261009/**'
+      - 'experiments/groebner-f6-prepared-20261009/**'
+      - 'experiments/groebner-f6-packed-20261009/**'
+      - 'experiments/groebner-f6-20261008/**'
+      - 'experiments/pdp-scaling/gf2n.py'
+permissions:
+  contents: read
+jobs:
+  exact:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      CXX: clang++
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Build frozen packed, prepared, message, and compact engines
+        run: |
+          python experiments/groebner-f6-packed-20261009/build.py
+          python experiments/groebner-f6-prepared-20261009/build.py
+          python experiments/groebner-f6-message-20261009/build.py
+          python experiments/groebner-f6-boundary-compact-20261009/build.py
+      - name: Exhaustive, UBSan, and 512-target exactness
+        run: |
+          mkdir -p f6-compact-evidence
+          python experiments/groebner-f6-boundary-compact-20261009/test_compact.py | tee f6-compact-evidence/tests.log
+          python experiments/groebner-f6-boundary-compact-20261009/semantic_replay.py --output f6-compact-evidence/semantic.json
+      - name: Paired complete Boolean-query panel
+        run: python experiments/groebner-f6-boundary-compact-20261009/profile.py --output f6-compact-evidence/profile --reps 5
+      - name: Retain exact outputs and build receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: groebner-f6-compact-${{ matrix.os }}
+          path: |
+            f6-compact-evidence
+            experiments/groebner-f6-packed-20261009/build/receipt.json
+            experiments/groebner-f6-prepared-20261009/build/receipt.json
+            experiments/groebner-f6-message-20261009/build/receipt.json
+            experiments/groebner-f6-boundary-compact-20261009/build/receipt.json
+          if-no-files-found: warn
