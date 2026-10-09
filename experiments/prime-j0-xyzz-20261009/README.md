@@ -44,5 +44,17 @@ The paired CPU panel should use the same release binary for U14 Jacobian and
 U14 XYZZ, identical fixture points, alternating order, and a strict
 host-isolation receipt from `scripts/isolated_bench.py`. The existing RunPod
 CPU Pod fails that host preflight; its local wall times are not used for a
-speedup result. The next implementation experiment is to fuse deferred
-balancing into the XYZZ operations, preserving this exact-output checker.
+speedup result.
+
+## Deferred balancing candidate
+
+`DEFERRED_PROTOCOL.md` bounds every raw coefficient in a generic XYZZ mixed
+addition and schedules balances only at `H`, `R`, and the four output
+coordinates. This cuts balance invocations within that addition from 17 to
+six while keeping the same ten field products and the same recoded addends.
+The [result](DEFERRED_RESULT.md) records exact agreement among Jacobian,
+balanced XYZZ, and deferred XYZZ for the 129 known-point fixtures, four
+boundary scalars, and 512 frozen additional scalars. The same binary exposes
+`--scalar-unit-orbit-u14-xyzz-deferred-fixed` and
+`--benchmark-scalar-unit-orbit-u14-xyzz-deferred-fixed-case` for the eventual
+strictly isolated paired panel.
