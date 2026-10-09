@@ -78,3 +78,50 @@ The final G1, G2, G4, A1, A2, and N1 receipts all hash the same current
 solver inputs remain in `results/`; use the linked final receipts for the
 findings above. The one-target IC online and paired rho metrics remain
 unknown for every idea.
+
+## Follow-up implementation and results (2026-10-08)
+
+The follow-up code adds [target-independent Macaulay layout replay, a cyclic
+barrel row test, a mixed-field rationality gate, multiplier rank algebra,
+cyclotomic selector enumeration, and a CRT lift](followup_probes.py), plus an
+[actual N41 matrix-free operator](followup_g3.py), [N23 multiplier geometry
+control](a1_geometry_followup.py), and [N53 600-column closure](a1_n53_k600_followup.py).
+The [validator](validate_followup.py) checks final-source hashes and the
+cross-receipt invariants. The [checked Sage runtime receipt](results/sage_runtime_info_followup.json)
+was saved before the runs. These remain stage experiments with `candidate_id:
+null`; no complete pipeline, one-target online time, or paired rho speedup was
+measured. All local CPU timings are exploratory because the host was not
+isolated.
+
+| Lead | Final follow-up evidence | Decision at this stage |
+| --- | --- | --- |
+| G1 | [Layout replay](results/g1_template_followup_final.json) reproduces all fresh Macaulay rows on 16 N31 planted targets for each of m=2 and m=3. The 31-row matrices have 22 and 466 columns. First-target pivot schedules match only 1/16 and 2/16 targets. | Target-independent row and column layout is reusable, as the existing Macaulay cache already allows. This captured elimination schedule does not transfer; a genuine F4 symbolic trace and 10–100× gain remain untested. |
+| G2 | [Cyclic barrel rows](results/g2_barrel_followup_final.json) at N19 and N23 rotate exactly in normal-basis coordinates, with 7,943 and 13,755 active monomials. Binary row ranks 19 and 23 equal the numbers of nonzero DFT characters. One-hot target constraints are cyclic. | The row-module symmetry is real. No degree-expanded Macaulay block reduction, F4 basis, or blockwise speedup has been demonstrated. |
+| G3 | [Complete N41 S6 degree-four census](results/g3_full_rows_followup.json): 2,017,933 rows, 100,315,659 ambient squarefree columns, 247,444,987 nonzeros, median and p95 five nonzeros/row, maximum 22,299. Eight-byte sparse column indices alone require at least 1.98 GB if materialized. A [72-row operator control](results/g3_operator_followup.json) passes the `A`/`Aᵀ` bilinear identity on 190,408 actual nonzeros. | The sparse representation is implementable by streaming, but no block Wiedemann solve or solving-degree certificate exists. If degree five were needed, the same construction has 4,394,565,333 ambient columns and 116,332,393 rows before reduction. |
+| G4 | [Twelve N19 m=3 planted target cells](results/g4_frobenius_followup_final.json), each with all 64 leaf assignments: 48 algebraic-closure common-root hits become 40 finite-field hits. Both `z^(2^19)+z` and the quadratic trace criterion agree with direct field-root enumeration; eight false positives are removed. | A mixed-field intermediate needs a finite-field rationality gate. Its cost in a matched mixed-field F4 solve remains unknown. Planted cells are correctness controls, not natural yield. |
+| A1 | [N53 scan extension](results/a1_n53_k600_followup_final.json) uses the frozen 244-column geometry from a separate N53 artifact, extends its x-scan to 1,191, and reaches **600 seed folded columns / 63,600 usable points**. The ten norm-≤16 classes produce 6,000 folded columns / 636,000 geometric points with 6,000 representative scalar images and no folded-column collisions. The [rank transport control](results/a1_rank_followup_final.json) shows that multiplier copies add no independent equations after known log identities are imposed. In a paired [N23 one-seed-orbit toy](results/a1_geometry_n23_followup_final_v2.json), 46 to 460 usable points at one independent log column changes exact m=3 coverage from 0/16 to 13/16; Wilson 95% intervals are 0–0.19 and 0.57–0.93. | The proposed 19 independent classes and 361× linear-algebra reduction are not supported. Geometric coverage at fixed log dimension is promising; N53 natural-query PDP yield, relation rank, memory, and target recovery are unmeasured. The older 220-column retained base and this frozen 244-column geometry are different factor-base policies. |
+| A2 | [Exact N23 sparse-sum encoding](results/a2_encoding_followup_final.json) maps all 1,081 weight-two and 16,215 weight-three supports to 17,296 distinct x values without collisions; no value satisfies `x^47=1` or `x^263=1`. | Support selectors give an exact membership encoding, but it uses 47 selector bits per leaf at N23. The proposed root-power degree-four membership equation is invalid; F4/WDSat solving degree remains unknown. |
+| N1 | [CRT lift](results/n1_crt_followup_final.json) produces exact group-algebra S3 identities for all 256 planted field identities, whereas the prior polynomial section produces 0/256. The CRT idempotent has weight 24; mean total support weight of three lifts rises from 34.9 to 70.6. | The original zero-lift falsifier applies only to its declared sparse section. Exact lifting is always possible for these true identities, but this construction is dense and does not give an additive-combinatoric decomposition method. |
+
+The A1 N53 extension changes the factor base and therefore cannot inherit the
+candidate ID or measured costs of the frozen source. The closure point count
+is geometric; its 6,000 orbit columns are tied by known multiplier log
+identities to 600 seed log variables. Uniformly multiplying a relation then
+scales its coefficient row after those identities are substituted, so it does
+not by itself raise relation-matrix rank. A larger base can still improve PDP
+coverage, as the N23 paired target control shows. The N53 K=600 natural
+relation probe and rank gate in the original proposal remain open.
+
+To replay the final checks from the repository root, use the checked launcher
+for every Sage command:
+
+```sh
+./sage --runtime-info > /tmp/ic_ideas_sage_runtime_replay.json
+./sage -python -m unittest discover -s experiments/ic-ideas-20261007 -p 'test_*.py'
+python3 experiments/ic-ideas-20261007/validate_followup.py
+```
+
+The final receipts were written with explicit `--output` paths by the runners,
+which refuse to overwrite them. Earlier `*followup.json` and
+`a1_geometry_n23_followup_final.json` files are retained development receipts;
+the table links the final-source receipts used by the validator.
