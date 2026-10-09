@@ -1,5 +1,8 @@
 # Early parity compression preserves useful matrix candidates
 
+[Results and raw evidence](RESULTS.md) record the frozen query outcomes,
+independent audits, paired profile, resource caps, and archive hash.
+
 The matrix producer now tries parity proof compression before ordinary graph
 pruning. A successful rewrite avoids both ordinary reachability/remapping passes.
 This lets three additional frozen 12-variable point-decomposition queries retain
