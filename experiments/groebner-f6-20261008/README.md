@@ -49,7 +49,10 @@ offers no useful separator for those inputs.
 
 `chain_profile.py` expands each S3 auxiliary-coordinate link into exact GF(2)
 equations, checks them on a curve-point decomposition, and computes induced
-support width without allocating exponential factor tables. With field degree
+support width without allocating exponential factor tables. Frobenius
+squaring is linear in Boolean coordinates, so each local S3 equation has
+Boolean degree at most three even though eliminating intermediates can raise
+the degree of a global representation. With field degree
 `n=9`, subspace dimension `ell=3`, curve `b=1`, modulus `515`, and seed `1`:
 
 | Summands | Boolean variables | Maximum equation support | Greedy induced width | Joined-state upper bound |
@@ -66,3 +69,22 @@ truth-table or local proof-carrying F4 kernel is the next experiment at that
 boundary. These seeded decompositions verify the equation encoding; they do
 not estimate ordinary-query relation yield. Certificate growth and signature
 transport across links remain the proof obligations for the hybrid proposal.
+
+For `m>=4`, the S3-chain equation-support hypergraph has an elimination order
+whose largest bag contains at most `max(n+2*ell, 2*n+ell)` Boolean variables.
+The first link touches two `ell`-bit summands and one `n`-bit intermediate.
+Eliminate its two summand blocks, leaving only that intermediate on the
+boundary. Every middle link then touches the incoming `n`-bit intermediate,
+one `ell`-bit summand, and the outgoing `n`-bit intermediate. Eliminate the
+incoming intermediate and its summand, again leaving just the outgoing
+intermediate. The final link touches the last intermediate and summand.
+Unary constraints on any one block, such as membership or point-lift tests,
+do not enlarge these bags. This proves the claimed bound by induction.
+Because `ell<=n`, the bound is `2*n+ell`; the measured width 21 attains it
+for `n=9, ell=3`. For fixed `n` and `ell`, exact Boolean satisfiability of
+this chained representation therefore has a factor-table upper bound linear
+in `m` and exponential in `2*n+ell`, including each equation's table build.
+The existing [chordal elimination work](https://arxiv.org/abs/1411.1745)
+provides the prior structural framework. The prospective F6 contribution is
+to replace the largest tables with locally certified F4/F5 reductions and
+compose their certificates across these exact boundaries.

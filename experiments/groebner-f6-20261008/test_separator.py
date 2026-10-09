@@ -56,6 +56,8 @@ class SeparatorTests(unittest.TestCase):
         self.assertEqual((first['nvars'], first['induced_width']), (18, 15))
         self.assertEqual((second['nvars'], second['induced_width']), (30, 21))
         self.assertEqual(second['max_equation_support'], 21)
+        self.assertEqual(first['left_to_right_width'], first['theorem_bound'])
+        self.assertEqual(second['left_to_right_width'], second['theorem_bound'])
 
 
 if __name__ == '__main__':

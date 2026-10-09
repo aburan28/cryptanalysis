@@ -21,6 +21,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--engine', choices=('f4', 'f5'), default='f4')
     parser.add_argument('--cell', action='append', default=[])
     parser.add_argument('--reps', type=int, default=3)
     parser.add_argument('--timeout', type=int, default=180)
@@ -36,7 +37,7 @@ def main():
         assert len(values) == 5 and all(value.isdecimal() for value in values)
     args.output.mkdir(parents=True, exist_ok=False)
     binary = args.binary.resolve()
-    report = dict(status='RUNNING', binary=str(binary), binary_sha256=sha(binary),
+    report = dict(status='RUNNING', engine=args.engine, binary=str(binary), binary_sha256=sha(binary),
         host=dict(architecture=platform.machine(), platform=platform.platform(),
                   cpu=platform.processor()), cells=cells, reps=args.reps,
         timeout_seconds=args.timeout, min_words=args.min_words,
@@ -47,9 +48,10 @@ def main():
         for cell in cells:
             a, n, m, x, d = cell.split(':')
             for side in sides:
-                tag = f'k{a}n{n}m{m}x{x}d{d}-{side}-{rep+1}'
+                tag = f'{args.engine}-k{a}n{n}m{m}x{x}d{d}-{side}-{rep+1}'
                 target = args.output/(tag+'.json')
-                command = [str(binary), '--cell', ':'.join((a,n,m,x)), '--degree', d,
+                command = [str(binary), '--engine', args.engine,
+                           '--cell', ':'.join((a,n,m,x)), '--degree', d,
                            '--out', str(target)]
                 env = os.environ.copy()
                 env.update(F4_F2_ECHELON=side, F4_F2_ECHELON_MIN_WORDS=str(args.min_words),

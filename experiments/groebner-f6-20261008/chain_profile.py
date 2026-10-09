@@ -57,9 +57,12 @@ def equations(field, poly):
     return result
 
 
-def induced_width(scopes, nvars):
+def induced_width(scopes, nvars, order=None):
     active = [set(scope) for scope in scopes]
     remaining = set(range(nvars))
+    if order is not None:
+        assert len(order) == nvars and set(order) == remaining
+        order = iter(order)
     width, states = 0, 0
     while remaining:
         def score(variable):
@@ -68,7 +71,7 @@ def induced_width(scopes, nvars):
                 if variable in scope:
                     bag.update(scope)
             return len(bag), variable
-        variable = min(remaining, key=score)
+        variable = min(remaining, key=score) if order is None else next(order)
         bag = {variable}
         kept = []
         for scope in active:
@@ -114,6 +117,15 @@ def profile(n, m, ell, seed):
                for group in all_equations for eq in group)
     scopes = [scope_of(eq) for group in all_equations for eq in group]
     width, state_upper_bound = induced_width(scopes, m*ell+(m-2)*n)
+    summand_order = [list(range(i*ell, (i+1)*ell)) for i in range(m)]
+    auxiliary_order = [list(range(m*ell+i*n, m*ell+(i+1)*n)) for i in range(m-2)]
+    left_to_right = summand_order[0]+summand_order[1]
+    for i in range(m-3):
+        left_to_right += auxiliary_order[i]+summand_order[i+2]
+    left_to_right += auxiliary_order[-1]+summand_order[-1]
+    left_width, left_states = induced_width(scopes, m*ell+(m-2)*n, left_to_right)
+    theorem_bound = n+2*ell if m == 3 else max(n+2*ell, 2*n+ell)
+    assert left_width <= theorem_bound
     return dict(status='PLANTED_CHAIN_EQUATIONS_VERIFIED', n=n, m=m, ell=ell,
                 seed=seed, fixture_attempt=fixture_attempt, mod=field.mod,
                 curve_b=b, target_x=target_x,
@@ -121,6 +133,9 @@ def profile(n, m, ell, seed):
                 monomial_terms=sum(len(eq) for group in all_equations for eq in group),
                 max_equation_support=max(map(len, scopes)), induced_width=width,
                 enumerated_state_upper_bound=state_upper_bound,
+                left_to_right_width=left_width,
+                left_to_right_state_upper_bound=left_states,
+                theorem_bound=theorem_bound,
                 factor_support_maxima=[max(map(len, map(scope_of, group)))
                                        for group in all_equations])
 

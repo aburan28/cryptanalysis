@@ -51,10 +51,13 @@ jobs:
           python-version: '3.13'
       - name: Build complete-query F4 benchmark
         run: cargo build --manifest-path suite/Cargo.toml --release --locked --example f4_query_bench
-      - name: Verify the three completed host queries
-        run: python experiments/f4-gpu-query-20261008/query_ab.py --binary suite/target/release/examples/f4_query_bench --output groebner-gpu-query-host-evidence --sides host --reps 1
+      - name: Verify the three completed F4 and F5 host queries
+        run: |
+          mkdir -p groebner-gpu-query-host-evidence
+          python experiments/f4-gpu-query-20261008/query_ab.py --binary suite/target/release/examples/f4_query_bench --engine f4 --output groebner-gpu-query-host-evidence/f4 --sides host --reps 1
+          python experiments/f4-gpu-query-20261008/query_ab.py --binary suite/target/release/examples/f4_query_bench --engine f5 --output groebner-gpu-query-host-evidence/f5 --sides host --reps 1
       - name: Check query completion and independent replay
-        run: python -c "import json; from pathlib import Path; p=Path('groebner-gpu-query-host-evidence'); r=json.loads((p/'report.json').read_text()); assert r['status']=='PASS' and len(r['rows'])==3; assert all(row['status']=='verified-decomposition' for row in r['rows']); assert all(json.loads((p/row['result']).read_text())['result']['independent_equation_checks']>0 for row in r['rows'])"
+        run: python -c "import json; from pathlib import Path; root=Path('groebner-gpu-query-host-evidence'); reports=[(root/m,json.loads((root/m/'report.json').read_text())) for m in ('f4','f5')]; assert all(r['status']=='PASS' and len(r['rows'])==3 and all(row['status']=='verified-decomposition' for row in r['rows']) and all(json.loads((p/row['result']).read_text())['result']['independent_equation_checks']>0 for row in r['rows']) for p,r in reports)"
       - name: Retain successes and failures
         if: always()
         uses: actions/upload-artifact@v4

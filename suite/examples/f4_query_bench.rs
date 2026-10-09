@@ -49,6 +49,12 @@ fn main() {
     assert_eq!(cell.len(), 4, "--cell a:n:m:x");
     let (a, n, m, raw) = (cell[0] as u8, cell[1] as u32, cell[2] as usize, cell[3]);
     let degree: u32 = arg(&args, "--degree").map_or(5, |s| s.parse().unwrap());
+    let engine_name = arg(&args, "--engine").unwrap_or("f4");
+    let engine = match engine_name {
+        "f4" => SolverEngine::MatrixF4 { max_degree: degree },
+        "f5" => SolverEngine::MatrixF5 { max_degree: degree },
+        _ => panic!("--engine must be f4 or f5"),
+    };
     let node_budget: usize = arg(&args, "--node-budget").map_or(4096, |s| s.parse().unwrap());
     let max_solutions: usize = arg(&args, "--max-solutions").map_or(256, |s| s.parse().unwrap());
 
@@ -57,7 +63,7 @@ fn main() {
     let fb = build_frobenius_factor_base(&kc, 0).expect("factor-base construction failed");
     let st = FieldStructure::new(kc.n, &kc.curve.irreducible);
     let opts = SolveOptions {
-        engine: SolverEngine::MatrixF4 { max_degree: degree },
+        engine,
         max_solutions,
         node_budget,
         split_rule: SplitRule::LowestFree,
@@ -122,7 +128,7 @@ fn main() {
         "harness": "f4_query_bench", "status": status,
         "input": {"curve_a": a, "field_degree": n, "summands": m,
             "target_x": raw, "max_degree": degree, "node_budget": node_budget,
-            "max_solutions": max_solutions},
+            "max_solutions": max_solutions, "engine": engine_name},
         "system": {"variables": sys.n_vars, "equations": sys.equations.len()},
         "result": {"accepted_assignment": accepted, "roots_recorded": roots.len(),
             "independent_equation_checks": independent_checks, "curve_lifts": curve_lifts,

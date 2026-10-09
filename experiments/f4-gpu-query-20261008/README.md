@@ -1,7 +1,8 @@
-# Complete F4 query CPU/CUDA crossover panel
+# Complete F4/F5 query CPU/CUDA crossover panel
 
 `suite/examples/f4_query_bench.rs` times one target-dependent point-decomposition
-query: target conversion, Boolean system construction, algebraic splitting/F4,
+query with either matrix F4 or signature-filtered matrix F5: target conversion,
+Boolean system construction, algebraic splitting and matrix reduction,
 independent evaluation of every returned root against the original equations,
 and lifting summand abscissae to curve points whose sum matches the target.
 The solver's CUDA offload runs inside that interval, including matrix upload,
@@ -13,7 +14,7 @@ The four exclusive `phase_ns` fields sum exactly to `online_ns`: target
 conversion, system construction, solve including independent callbacks, and
 offload bookkeeping. Callback time is also reported as a subset of solve time.
 
-The panel uses the same compiled binary and input law for host and CUDA arms,
+The panel uses the same compiled binary, engine, and input law for host and CUDA arms,
 alternates AB/BA order, retains failures and timeouts, requires identical
 accepted assignments and curve checks, and confirms CUDA actually ran before
 reporting an exploratory pair. `F4_F2_ECHELON_MIN_WORDS=1` forces eligible
@@ -26,7 +27,8 @@ three verified-positive points in a deterministic scan from `0` to `40`.
 This selection makes the GPU path exercise completed decompositions; it is a
 correctness control rather than a relation-yield sample.
 
-On a CUDA host:
+On a CUDA host, `pod_query_ab.sh` runs both engines in separate `f4` and `f5`
+subdirectories:
 
 ```sh
 cloud/runpod_pod.py run f4-query \
