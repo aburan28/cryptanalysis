@@ -24,9 +24,11 @@ mod utils {
 use ct_bignum::{Uint, U256};
 use num_bigint::{BigInt, Sign};
 use num_traits::{Signed as NumSigned, ToPrimitive, Zero};
-use serde_json::json;
+use serde_json::{json, Value};
+use std::fs;
 use std::io::{self, BufRead};
 use std::sync::LazyLock;
+use std::time::Instant;
 
 type U512 = Uint<8>;
 
@@ -47,6 +49,24 @@ const P_SIGNED: Signed = Signed {
         0,
     ]),
 };
+const GENERATOR_X_HEX: &str = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+const GENERATOR_Y_HEX: &str = "483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8";
+static DECODE_CONSTANTS: LazyLock<(BigInt, BigInt, BigInt)> = LazyLock::new(|| {
+    let p = BigInt::from(P_SIGNED.magnitude.to_biguint());
+    let beta = BigInt::parse_bytes(
+        b"7ae96a2b657c07106e64479eac3434e99cf0497512f58995c1396c28719501ee",
+        16,
+    )
+    .unwrap();
+    let r_inverse = BigInt::parse_bytes(
+        b"bcb223fedc24a059d838091dd2253530ffffffffffffffffffffffff434dd931",
+        16,
+    )
+    .unwrap();
+    let radix: BigInt = BigInt::from(1u8) << 128usize;
+    assert_eq!((&radix * &r_inverse) % &p, BigInt::from(1u8));
+    (p, beta, r_inverse)
+});
 
 #[derive(Clone, Copy, Debug)]
 struct Signed {
@@ -557,6 +577,39 @@ impl Pair {
         self.product_balanced(rhs).montgomery_reduce()
     }
 
+    fn invert_chain(self) -> Self {
+        assert!(!self.is_zero(), "cannot invert zero field element");
+        fn squares(mut value: Pair, count: usize) -> Pair {
+            for _ in 0..count {
+                value = value.mul(value);
+            }
+            value
+        }
+        // The fixed chain evaluates p-2 with 257 squares and 14 products.
+        let t2 = self.mul(self).mul(self);
+        let t3 = t2.mul(t2).mul(self);
+        let t4 = squares(t2, 2).mul(t2);
+        let t8 = squares(t4, 4).mul(t4);
+        let t11 = squares(t8, 3).mul(t3);
+        let t22 = squares(t11, 11).mul(t11);
+        let t44 = squares(t22, 22).mul(t22);
+        let t88 = squares(t44, 44).mul(t44);
+        let t176 = squares(t88, 88).mul(t88);
+        let t220 = squares(t176, 44).mul(t44);
+        let t223 = squares(t220, 3).mul(t3);
+        let x45 = t4.mul(t4).mul(t4);
+        let head = squares(t223, 23).mul(t22);
+        squares(head, 10).mul(x45)
+    }
+
+    fn canonical_hex(self) -> String {
+        let (p, beta, r_inverse) = &*DECODE_CONSTANTS;
+        let a = BigInt::parse_bytes(self.a.decimal().as_bytes(), 10).unwrap();
+        let b = BigInt::parse_bytes(self.b.decimal().as_bytes(), 10).unwrap();
+        let value = (((a + b * beta) * r_inverse) % p + p) % p;
+        format!("{:0>64}", value.to_str_radix(16))
+    }
+
     fn mul_raw_balanced(self, rhs: Self) -> Self {
         self.product_balanced(rhs).montgomery_reduce_raw()
     }
@@ -740,6 +793,18 @@ impl Jacobian {
 
     fn strings(self) -> [[String; 2]; 3] {
         [self.x.strings(), self.y.strings(), self.z.strings()]
+    }
+
+    fn affine_hex(self) -> String {
+        if self.is_identity() {
+            return "identity".to_owned();
+        }
+        let inverse = self.z.invert_chain();
+        let square = inverse.mul(inverse);
+        let cube = square.mul(inverse);
+        let x = self.x.mul(square).canonical_hex();
+        let y = self.y.mul(cube).canonical_hex();
+        format!("{x}:{y}")
     }
 }
 
@@ -1034,8 +1099,49 @@ fn scalar_multiply_width_two(scalar: &BigInt) -> (Jacobian, BigInt, BigInt, usiz
     (point, a, b, digits.len(), nonzero_digits)
 }
 
+fn check_generator_case(fixture_path: &str, index: usize, timed: bool) {
+    let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("read fixture"))
+        .expect("parse fixture");
+    assert_eq!(fixture["schema"].as_u64(), Some(1));
+    let case = &fixture["cases"].as_array().expect("cases")[index];
+    let base_x = case["base_x_hex"].as_str().expect("base x");
+    let base_y = case["base_y_hex"].as_str().expect("base y");
+    assert_eq!(base_x, GENERATOR_X_HEX);
+    assert_eq!(base_y, GENERATOR_Y_HEX);
+    let scalar_hex = case["scalar_hex"].as_str().expect("scalar");
+    let expected = if case["expected_identity"].as_bool() == Some(true) {
+        "identity".to_owned()
+    } else {
+        format!(
+            "{}:{}",
+            case["expected_x_hex"].as_str().expect("expected x"),
+            case["expected_y_hex"].as_str().expect("expected y")
+        )
+    };
+    LazyLock::force(&SCALAR_LATTICE);
+    LazyLock::force(&DECODE_CONSTANTS);
+    let start = Instant::now();
+    let scalar = scalar_from_hex(scalar_hex);
+    let (point, _, _, _, _) = scalar_multiply_width_two(&scalar);
+    let actual = point.affine_hex();
+    assert_eq!(actual, expected, "benchmark output mismatch");
+    let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+    if timed {
+        println!("online_ms={elapsed_ms:.6} verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode=eisenstein_w2");
+    } else {
+        println!("verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode=eisenstein_w2");
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.len() == 3
+        && (args[0] == "--benchmark-scalar-w2-case" || args[0] == "--check-scalar-w2-case")
+    {
+        let index = args[2].parse::<usize>().expect("case index");
+        check_generator_case(&args[1], index, args[0] == "--benchmark-scalar-w2-case");
+        return;
+    }
     assert!(
         args.is_empty() || args == ["--tau"] || args == ["--scalar"] || args == ["--scalar-w2"],
         "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2]"
@@ -1118,6 +1224,21 @@ mod eisenstein_tau_tests {
     use super::*;
     use num_bigint::BigUint;
     use num_integer::Integer;
+
+    #[test]
+    fn inversion_chain_and_affine_output_match_generator() {
+        let generator = Jacobian::generator();
+        assert_eq!(
+            generator.affine_hex(),
+            format!("{GENERATOR_X_HEX}:{GENERATOR_Y_HEX}")
+        );
+        for value in [generator.x, generator.y, generator.z] {
+            assert_eq!(
+                value.mul(value.invert_chain()).strings(),
+                Pair::one().strings()
+            );
+        }
+    }
 
     #[test]
     fn rectangular_limb_products_match_big_integers_at_boundaries() {
