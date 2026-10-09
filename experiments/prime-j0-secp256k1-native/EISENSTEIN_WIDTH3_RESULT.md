@@ -81,3 +81,22 @@ The complete-operation commands are
 Their `--check-` counterparts emit the same verified affine point
 without a timing field. A controlled CPU ratio requires the
 [isolated host receipt](../../docs/ISOLATED_BENCHMARKS.md).
+
+Build the binary on that Linux host and generate the paired manifest
+there, substituting its verified CPU partition and NUMA node:
+
+```sh
+python3 make_eisenstein_width3_manifest.py \
+  --repo-root /workspace/cryptanalysis \
+  --binary /workspace/cryptanalysis/experiments/prime-j0-secp256k1-native/target/release/eisenstein_fixed \
+  --cgroup /sys/fs/cgroup/benchmark-isolated \
+  --cpus 4-5 --execution-cpu 4 --mem-node 0 \
+  --output /workspace/isolated-bench/eisenstein-width3.json
+python3 /workspace/cryptanalysis/scripts/isolated_bench.py probe /workspace/isolated-bench/eisenstein-width3.json
+python3 /workspace/cryptanalysis/scripts/isolated_bench.py --queue-root /workspace/isolated-bench submit /workspace/isolated-bench/eisenstein-width3.json
+```
+
+The manifest hashes the exact executable and source artifacts, pairs
+both arms on every frozen scalar and point, and requests five serial
+repetitions per case. The CPU IDs in the command are examples; the
+runner rejects a host that lacks their exclusive isolation evidence.
