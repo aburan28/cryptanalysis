@@ -3159,6 +3159,7 @@ fn check_generator_case(
     hex_nine_radius2: bool,
     hex_nine_graph33: bool,
     hex_nine_graphaware33: bool,
+    unit_orbit_format: u8,
 ) {
     let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("read fixture"))
         .expect("parse fixture");
@@ -3178,8 +3179,14 @@ fn check_generator_case(
             case["expected_y_hex"].as_str().expect("expected y")
         )
     };
+    let preparation_start = Instant::now();
     LazyLock::force(&SCALAR_LATTICE);
     LazyLock::force(&DECODE_CONSTANTS);
+    let retained_bytes = if unit_orbit_format != 0 {
+        unit_orbit_windows::warm_format(unit_orbit_format)
+    } else {
+        0
+    };
     if redundant_four || coalescent_four {
         LazyLock::force(&WIDTH_FOUR_DIGITS);
         LazyLock::force(&WIDTH_FOUR_POINTS);
@@ -3218,8 +3225,11 @@ fn check_generator_case(
         LazyLock::force(&GLV_COMB10_POINTS);
     }
     let scalar = scalar_from_hex(scalar_hex);
+    let preparation_ms = preparation_start.elapsed().as_secs_f64() * 1000.0;
     let start = Instant::now();
-    let point = if hex_nine_graphaware33 {
+    let point = if unit_orbit_format != 0 {
+        unit_orbit_windows::multiply_format(&scalar, unit_orbit_format).0
+    } else if hex_nine_graphaware33 {
         scalar_multiply_width_six_comb13_hex9_graphaware33(&scalar).0
     } else if hex_nine_graph33 {
         scalar_multiply_width_six_comb13_hex9_graph33(&scalar).0
@@ -3257,7 +3267,13 @@ fn check_generator_case(
     let actual = point.affine_hex();
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if hex_nine_graphaware33 {
+    let mode = if unit_orbit_format == 14 {
+        "unit_orbit_windows14_fixed"
+    } else if unit_orbit_format == 15 {
+        "unit_orbit_windows15_fixed"
+    } else if unit_orbit_format == 16 {
+        "unit_orbit_windows16_fixed"
+    } else if hex_nine_graphaware33 {
         "eisenstein_w6_comb13_hex9_graphaware33_fixed"
     } else if hex_nine_graph33 {
         "eisenstein_w6_comb13_hex9_graph33_fixed"
@@ -3302,15 +3318,47 @@ fn check_generator_case(
     } else {
         "eisenstein_w2"
     };
-    if timed {
+    if timed && unit_orbit_format != 0 {
+        println!("online_ms={elapsed_ms:.6} preparation_ms={preparation_ms:.6} retained_bytes={retained_bytes} verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode={mode}");
+    } else if timed {
         println!("online_ms={elapsed_ms:.6} verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode={mode}");
     } else {
         println!("verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode={mode}");
     }
 }
 
+fn check_all_unit_orbit_fixture_cases(fixture_path: &str, format: u8, timed: bool) {
+    let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("read fixture"))
+        .expect("parse fixture");
+    let count = fixture["cases"].as_array().expect("cases").len();
+    unit_orbit_windows::warm_format(format);
+    for index in 0..count {
+        check_generator_case(
+            fixture_path, index, timed, false, false, false, false, false, 0, 0, false,
+            false, false, false, false, false, false, false, false, false, format,
+        );
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.len() == 2
+        && (args[0].starts_with("--check-scalar-unit-orbit-windows")
+            || args[0].starts_with("--benchmark-scalar-unit-orbit-windows"))
+        && args[0].ends_with("-fixed-fixture")
+    {
+        let format = if args[0].contains("unit-orbit-windows14-fixed-fixture") {
+            14
+        } else if args[0].contains("unit-orbit-windows15-fixed-fixture") {
+            15
+        } else if args[0].contains("unit-orbit-windows16-fixed-fixture") {
+            16
+        } else {
+            panic!("unsupported unit-orbit fixture mode")
+        };
+        check_all_unit_orbit_fixture_cases(&args[1], format, args[0].starts_with("--benchmark-"));
+        return;
+    }
     if args == ["--prepare-w6-comb13-hex9-paired"] {
         let start = Instant::now();
         let pairs = &*PAIR_COMB13_POINTS;
@@ -3401,7 +3449,13 @@ fn main() {
             || args[0] == "--benchmark-scalar-glv-comb8-fixed-case"
             || args[0] == "--check-scalar-glv-comb8-fixed-case"
             || args[0] == "--benchmark-scalar-glv-comb10-fixed-case"
-            || args[0] == "--check-scalar-glv-comb10-fixed-case")
+            || args[0] == "--check-scalar-glv-comb10-fixed-case"
+            || args[0] == "--benchmark-scalar-unit-orbit-windows14-fixed-case"
+            || args[0] == "--check-scalar-unit-orbit-windows14-fixed-case"
+            || args[0] == "--benchmark-scalar-unit-orbit-windows15-fixed-case"
+            || args[0] == "--check-scalar-unit-orbit-windows15-fixed-case"
+            || args[0] == "--benchmark-scalar-unit-orbit-windows16-fixed-case"
+            || args[0] == "--check-scalar-unit-orbit-windows16-fixed-case")
     {
         let index = args[2].parse::<usize>().expect("case index");
         check_generator_case(
@@ -3441,6 +3495,15 @@ fn main() {
             args[0].contains("w6-comb13-hex9-radius2"),
             args[0].contains("w6-comb13-hex9-graph33"),
             args[0].contains("w6-comb13-hex9-graphaware33"),
+            if args[0].contains("unit-orbit-windows14") {
+                14
+            } else if args[0].contains("unit-orbit-windows15") {
+                15
+            } else if args[0].contains("unit-orbit-windows16") {
+                16
+            } else {
+                0
+            },
         );
         return;
     }
