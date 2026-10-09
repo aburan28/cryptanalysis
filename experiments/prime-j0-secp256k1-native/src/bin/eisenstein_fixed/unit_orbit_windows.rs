@@ -70,6 +70,45 @@ impl Signed192 {
             limbs,
         }
     }
+
+    fn div_rem_radix13(self) -> (Self, i32, usize) {
+        // A 32-bit chunk leaves the trial dividend below 943*2^32,
+        // so each step uses constant 64-bit division instead of u128 division.
+        let mut rem = 0u64;
+        let mut limbs = [0u64; 3];
+        for index in (0..3).rev() {
+            let high = self.limbs[index] >> 32;
+            let value_high = (rem << 32) | high;
+            let quotient_high = value_high / RADIX13 as u64;
+            rem = value_high % RADIX13 as u64;
+            let low = self.limbs[index] & u64::from(u32::MAX);
+            let value_low = (rem << 32) | low;
+            let quotient_low = value_low / RADIX13 as u64;
+            rem = value_low % RADIX13 as u64;
+            limbs[index] = (quotient_high << 32) | quotient_low;
+        }
+        let signed_rem = if self.negative { -(rem as i32) } else { rem as i32 };
+        let quotient = Self { negative: self.negative && limbs != [0; 3], limbs };
+        (quotient, signed_rem, signed_rem.rem_euclid(RADIX13 as i32) as usize)
+    }
+
+    #[cfg(test)]
+    fn rem_euclid_radix13(self) -> usize {
+        self.div_rem_radix13().2
+    }
+
+    #[cfg(test)]
+    fn div_exact_radix13(self) -> Self {
+        let (quotient, signed_rem, _) = self.div_rem_radix13();
+        assert_eq!(signed_rem, 0, "radix-943 word quotient is not integral");
+        quotient
+    }
+
+    fn adjust_radix13_quotient(self, signed_rem: i32, digit: i32) -> Self {
+        let adjustment = signed_rem - digit;
+        assert_eq!(adjustment % RADIX13 as i32, 0);
+        self.add(Self::from_i32(adjustment / RADIX13 as i32))
+    }
 }
 
 fn nearest_digit((a, b): (i32, i32), base: i32) -> (i16, i16) {
@@ -163,6 +202,12 @@ impl OrbitAtlas {
         let ra = a.rem_euclid_power_of_two(self.width);
         let rb = b.rem_euclid_power_of_two(self.width);
         self.digit_residue(ra, rb)
+    }
+
+    #[cfg(test)]
+    fn digit_word_radix13(&self, a: Signed192, b: Signed192) -> ((i32, i32), usize, usize) {
+        assert_eq!(self.base(), RADIX13);
+        self.digit_residue(a.rem_euclid_radix13(), b.rem_euclid_radix13())
     }
 
     fn digit_residue(&self, ra: usize, rb: usize) -> ((i32, i32), usize, usize) {
@@ -386,6 +431,40 @@ fn multiply_radix13(
     (result, start_a, start_b, nonidentity.saturating_sub(1), tables.retained_bytes)
 }
 
+fn multiply_word_radix13(
+    scalar: &BigInt,
+) -> (Jacobian, BigInt, BigInt, usize, usize) {
+    let lattice = &*SCALAR_LATTICE;
+    let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
+    let (start_a, start_b) = hexagonal_four_corner_choices(&residue).remove(0);
+    let mut a = Signed192::from_bigint(&start_a);
+    let mut b = Signed192::from_bigint(&start_b);
+    let tables = &*RADIX13_TABLES;
+    let mut result = Jacobian::identity();
+    let mut nonidentity = 0usize;
+    for row in &tables.windows {
+        let (quotient_a, signed_rem_a, residue_a) = a.div_rem_radix13();
+        let (quotient_b, signed_rem_b, residue_b) = b.div_rem_radix13();
+        let (digit, orbit_id, unit_code) = tables.atlas.digit_residue(residue_a, residue_b);
+        a = quotient_a.adjust_radix13_quotient(signed_rem_a, digit.0);
+        b = quotient_b.adjust_radix13_quotient(signed_rem_b, digit.1);
+        if orbit_id == 0 {
+            continue;
+        }
+        let mut addend = row[orbit_id].into_affine();
+        for _ in 0..(unit_code / 2) {
+            addend = addend.omega();
+        }
+        if unit_code & 1 != 0 {
+            addend = addend.neg();
+        }
+        result = result.add_mixed(addend);
+        nonidentity += 1;
+    }
+    assert!(a.is_zero() && b.is_zero(), "word radix-943 recoding did not terminate");
+    (result, start_a, start_b, nonidentity.saturating_sub(1), tables.retained_bytes)
+}
+
 fn selected(format: u8) -> &'static Tables {
     match format {
         14 => &TABLES,
@@ -396,7 +475,7 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
-    if format == 13 {
+    if format == 13 || format == 113 {
         return RADIX13_TABLES.retained_bytes;
     }
     selected(format).retained_bytes
@@ -452,6 +531,9 @@ pub(super) fn multiply_word_format(
     scalar: &BigInt,
     format: u8,
 ) -> (Jacobian, BigInt, BigInt, usize, usize) {
+    if format == 13 {
+        return multiply_word_radix13(scalar);
+    }
     let lattice = &*SCALAR_LATTICE;
     let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
     let (start_a, start_b) = hexagonal_four_corner_choices(&residue).remove(0);
@@ -485,6 +567,119 @@ pub(super) fn multiply_word_format(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn word_as_bigint(word: Signed192) -> BigInt {
+        BigInt::from_biguint(
+            if word.negative { num_bigint::Sign::Minus } else { num_bigint::Sign::Plus },
+            num_bigint::BigUint::from_bytes_le(&word.limbs.iter()
+                .flat_map(|limb| limb.to_le_bytes()).collect::<Vec<_>>()),
+        )
+    }
+
+    fn assert_word_radix13_matches(scalar: &BigInt, label: &str) -> Jacobian {
+        let reference = multiply_radix13(scalar);
+        let candidate = multiply_word_radix13(scalar);
+        assert_eq!((&reference.1, &reference.2, reference.3, reference.4),
+                   (&candidate.1, &candidate.2, candidate.3, candidate.4), "{label}");
+        assert_eq!(reference.0.affine_hex(), candidate.0.affine_hex(), "{label}");
+        let tables = &*RADIX13_TABLES;
+        let base = BigInt::from(RADIX13);
+        let (mut old_a, mut old_b) = (reference.1.clone(), reference.2.clone());
+        let (mut word_a, mut word_b) =
+            (Signed192::from_bigint(&old_a), Signed192::from_bigint(&old_b));
+        for window in 0..RADIX13_WINDOWS {
+            let digit = tables.atlas.digit(&old_a, &old_b);
+            let (quotient_a, signed_rem_a, residue_a) = word_a.div_rem_radix13();
+            let (quotient_b, signed_rem_b, residue_b) = word_b.div_rem_radix13();
+            assert_eq!(tables.atlas.digit_residue(residue_a, residue_b), digit,
+                       "{label}, fused window {window}");
+            assert_eq!(tables.atlas.digit_word_radix13(word_a, word_b), digit,
+                       "{label}, window {window}");
+            old_a = (old_a - digit.0.0) / &base;
+            old_b = (old_b - digit.0.1) / &base;
+            word_a = quotient_a.adjust_radix13_quotient(signed_rem_a, digit.0.0);
+            word_b = quotient_b.adjust_radix13_quotient(signed_rem_b, digit.0.1);
+            assert_eq!(word_a, Signed192::from_bigint(&old_a), "{label}, window {window} a");
+            assert_eq!(word_b, Signed192::from_bigint(&old_b), "{label}, window {window} b");
+        }
+        assert!(word_a.is_zero() && word_b.is_zero(), "{label}");
+        candidate.0
+    }
+
+    fn independent_binary_point(scalar: &BigInt) -> Jacobian {
+        let (_, bytes) = scalar.to_bytes_be();
+        let generator = Jacobian::generator().into_affine();
+        let mut point = Jacobian::identity();
+        for byte in bytes {
+            for bit in (0..8).rev() {
+                point = point.double();
+                if (byte >> bit) & 1 != 0 {
+                    point = point.add_mixed(generator);
+                }
+            }
+        }
+        point
+    }
+
+    #[test]
+    fn word_radix943_division_matches_bigint_at_limb_and_sign_boundaries() {
+        let high = BigInt::from(1) << 191;
+        let mid = BigInt::from(1) << 128;
+        let low = BigInt::from(1) << 64;
+        let base = BigInt::from(RADIX13);
+        for value in [
+            -&high - 1, -&high, -&mid - 1, -&mid, -&low - 1, -&low,
+            -&base - 1, -&base, BigInt::from(-1), BigInt::ZERO,
+            BigInt::from(1), &base - 1, base.clone(), &low - 1, low,
+            &mid - 1, mid, &high - 1, high,
+        ] {
+            let word = Signed192::from_bigint(&value);
+            let remainder = ((&value % &base + &base) % &base).to_usize().unwrap();
+            assert_eq!(word.rem_euclid_radix13(), remainder);
+            for digit in [remainder as i32, remainder as i32 - RADIX13 as i32] {
+                let quotient = word.sub(Signed192::from_i32(digit)).div_exact_radix13();
+                assert_eq!(word_as_bigint(quotient), (&value - digit) / &base);
+                let (truncated, signed_rem, _) = word.div_rem_radix13();
+                let fused = truncated.adjust_radix13_quotient(signed_rem, digit);
+                assert_eq!(word_as_bigint(fused), (&value - digit) / &base);
+            }
+        }
+    }
+
+    #[test]
+    fn word_radix943_replays_fixture_and_fresh_points() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tau6-comb13-bench-fixture.json"
+        )).unwrap();
+        let cases = fixture["cases"].as_array().unwrap();
+        assert_eq!(cases.len(), 129);
+        for (index, case) in cases.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(case["scalar_hex"].as_str().unwrap().as_bytes(), 16)
+                .unwrap();
+            let point = assert_word_radix13_matches(&scalar, &format!("fixture {index}"));
+            let expected = if case["expected_identity"].as_bool() == Some(true) {
+                "identity".to_owned()
+            } else {
+                format!("{}:{}", case["expected_x_hex"].as_str().unwrap(),
+                        case["expected_y_hex"].as_str().unwrap())
+            };
+            assert_eq!(point.affine_hex(), expected, "fixture {index}");
+        }
+        let input: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-radix943-word-20261009/inputs.json"
+        )).unwrap();
+        let scalars = input["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 519);
+        for (index, hex) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(hex.as_str().unwrap().as_bytes(), 16).unwrap();
+            let point = assert_word_radix13_matches(&scalar, &format!("fresh {index}"));
+            if (7..135).contains(&index) {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(point.affine_hex(), independent_binary_point(&reduced).affine_hex(),
+                           "independent fresh {index}");
+            }
+        }
+    }
 
     #[test]
     fn radix943_atlas_covers_all_residues_and_fixture_points() {
