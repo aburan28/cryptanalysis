@@ -7187,6 +7187,63 @@ mod reference_equivalence_tests {
         }
     }
 
+    /// The cells the perfbench `pdp/build_system_*` and `pdp/instantiate_*`
+    /// kernels time (`n = 23, m = 2` and `n = 15, m = 3`), at the widths
+    /// where bitset rows span several words: the old build and the old
+    /// chain of adds, on the extreme targets (none, one and all bits set)
+    /// and a spread between, through a clone and through the algebra
+    /// cache's in-process hit.
+    #[test]
+    fn templates_match_the_old_build_at_the_benchmark_cells() {
+        use crate::cryptanalysis::algebra_cache::{AlgebraCache, Layer};
+        let mut next = rng(0x7e3b_0000_0000_00c3);
+        let mut cache = AlgebraCache::local(64 << 20);
+        for (a, n, m) in [(1u8, 23u32, 2usize), (0, 15, 3)] {
+            let kc = KoblitzCurve::new(a, n).unwrap();
+            let fb = build_frobenius_factor_base(&kc, 0).unwrap();
+            let st = FieldStructure::new(kc.n, &kc.curve.irreducible);
+            let built = DecompositionTemplate::build(&fb.subspace_basis, &kc.curve.b, m, &st);
+            let t = built.unwrap();
+            let (prefix, constant, coefficients) =
+                old_build(&fb.subspace_basis, &kc.curve.b, m, &st);
+            assert_eq!(t.prefix, prefix, "K_{a}/2^{n} m={m}");
+            assert_eq!(t.constant, constant);
+            assert_eq!(t.coefficients, coefficients);
+            let key = [a, n as u8, m as u8];
+            let miss = cache.memoize(Layer::Preprocessing, &key, || Some(t.clone()));
+            let hit = cache.memoize(
+                Layer::Preprocessing,
+                &key,
+                || -> Option<DecompositionTemplate> { panic!("the second lookup must hit") },
+            );
+            let (miss, hit) = (miss.unwrap(), hit.unwrap());
+            let all = (1u64 << n) - 1;
+            let mut targets = vec![0, all, all >> 1, 1 << (n - 1)];
+            targets.extend((0..n).map(|k| 1u64 << k));
+            targets.extend((0..60).map(|_| next() & all));
+            for r in targets {
+                let x_r = F2mElement::from_biguint(&num_bigint::BigUint::from(r), n);
+                let mut last = constant.clone();
+                for k in 0..n as usize {
+                    if r & (1u64 << k) != 0 {
+                        for (p, c) in last.iter_mut().zip(&coefficients[k]) {
+                            *p = old_add(p, c);
+                        }
+                    }
+                }
+                let mut expected = prefix.clone();
+                expected.extend(last);
+                for tpl in [&t, &miss, &hit] {
+                    assert_eq!(
+                        tpl.instantiate(&x_r).equations,
+                        expected,
+                        "K_{a}/2^{n} m={m} r={r:#x}"
+                    );
+                }
+            }
+        }
+    }
+
     /// Built templates against the old build and the old chain of adds,
     /// field for field and target for target.
     #[test]
