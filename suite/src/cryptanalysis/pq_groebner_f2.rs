@@ -184,20 +184,32 @@ pub fn mono_key(m: F2BoolMono) -> u128 {
     (u128::from(m.degree()) << 64) | u128::from(!m.mask)
 }
 
+/// The low [`PACKED_KEY_VARS`] bits of a mask.
+const PACKED_KEY_LOW: u64 = (1 << PACKED_KEY_VARS) - 1;
+
+/// [`mono_key`] in one `u64`, for a mask within the low
+/// [`PACKED_KEY_VARS`] variables; [`packed_mask`] inverts it.
+#[inline]
+fn packed_key(u: u64) -> u64 {
+    (u64::from(u.count_ones()) << PACKED_KEY_VARS) | (!u & PACKED_KEY_LOW)
+}
+
+/// The mask a [`packed_key`] was made from.
+#[inline]
+fn packed_mask(key: u64) -> u64 {
+    !key & PACKED_KEY_LOW
+}
+
 /// Sort monomial masks into canonical order, highest first (the order of
 /// `Reverse(mono_key)`), keying each mask once rather than once per
 /// comparison.  Duplicates stay adjacent.
 pub(crate) fn sort_masks_descending(masks: &mut [u64]) {
     let span = masks.iter().fold(0u64, |acc, &m| acc | m);
     if span >> PACKED_KEY_VARS == 0 {
-        let low = (1u64 << PACKED_KEY_VARS) - 1;
-        let mut keys: Vec<u64> = masks
-            .iter()
-            .map(|&u| (u64::from(u.count_ones()) << PACKED_KEY_VARS) | (!u & low))
-            .collect();
+        let mut keys: Vec<u64> = masks.iter().map(|&u| packed_key(u)).collect();
         keys.sort_unstable_by(|a, b| b.cmp(a));
         for (m, k) in masks.iter_mut().zip(keys) {
-            *m = !k & low;
+            *m = packed_mask(k);
         }
     } else {
         let mut keys: Vec<u128> = masks
@@ -208,6 +220,51 @@ pub(crate) fn sort_masks_descending(masks: &mut [u64]) {
         for (m, k) in masks.iter_mut().zip(keys) {
             *m = !(k as u64);
         }
+    }
+}
+
+/// Collect a sum of monomials with coefficients: sort `(mask,
+/// coefficient)` pairs into canonical order, highest first, and add the
+/// coefficients of each monomial.  The coefficients are vectors over
+/// `F_2` (bitmasks, added by XOR), so an odd number of equal ones keeps
+/// one copy and an even number cancels; monomials whose coefficients
+/// cancel to zero are dropped.  Each mask is keyed once, as by
+/// [`sort_masks_descending`].
+pub(crate) fn sum_by_monomial(terms: &mut Vec<(u64, u64)>) {
+    /// Merge the runs of equal keys of a sorted list, in place.
+    fn add_equal_keys<K: Copy + Eq>(sorted: &mut Vec<(K, u64)>) {
+        let mut len = 0;
+        for i in 0..sorted.len() {
+            let (key, c) = sorted[i];
+            if len > 0 && sorted[len - 1].0 == key {
+                sorted[len - 1].1 ^= c;
+            } else {
+                sorted[len] = (key, c);
+                len += 1;
+            }
+        }
+        sorted.truncate(len);
+        sorted.retain(|&(_, c)| c != 0);
+    }
+    let span = terms.iter().fold(0u64, |acc, &(m, _)| acc | m);
+    if span >> PACKED_KEY_VARS == 0 {
+        for t in terms.iter_mut() {
+            t.0 = packed_key(t.0);
+        }
+        terms.sort_unstable_by_key(|a| std::cmp::Reverse(a.0));
+        add_equal_keys(terms);
+        for t in terms.iter_mut() {
+            t.0 = packed_mask(t.0);
+        }
+    } else {
+        let mut keyed: Vec<(u128, u64)> = terms
+            .iter()
+            .map(|&(u, c)| (mono_key(F2BoolMono::from_mask(u)), c))
+            .collect();
+        keyed.sort_unstable_by_key(|a| std::cmp::Reverse(a.0));
+        add_equal_keys(&mut keyed);
+        terms.clear();
+        terms.extend(keyed.into_iter().map(|(k, c)| (!(k as u64), c)));
     }
 }
 
@@ -417,30 +474,71 @@ impl F2BoolPoly {
     }
 
     /// `p + q` = XOR of monomial sets.  Merge two sorted lists.
+    ///
+    /// Each cursor keys its current term once, when it arrives there,
+    /// where [`cmp_mono`] recomputed both degrees at every comparison;
+    /// [`mono_key`] orders exactly as `cmp_mono` does, so the merge takes
+    /// the same branch at every step, on any input.  As in
+    /// [`F2BoolPoly::substitute`] the keys are popcounts, so the body is
+    /// compiled with the instruction where the CPU has it.
     pub fn add(&self, other: &Self) -> Self {
         debug_assert_eq!(self.n_vars, other.n_vars);
-        let mut i = 0;
-        let mut j = 0;
-        let mut out: Vec<F2BoolMono> = Vec::with_capacity(self.terms.len() + other.terms.len());
-        while i < self.terms.len() && j < other.terms.len() {
-            match cmp_mono(self.terms[i], other.terms[j]) {
-                Ordering::Greater => {
-                    out.push(self.terms[i]);
-                    i += 1;
-                }
-                Ordering::Less => {
-                    out.push(other.terms[j]);
-                    j += 1;
-                }
-                Ordering::Equal => {
-                    // Cancel.
-                    i += 1;
-                    j += 1;
+        #[cfg(target_arch = "x86_64")]
+        {
+            if std::arch::is_x86_feature_detected!("popcnt") {
+                // SAFETY: the feature was just detected on this CPU.
+                return unsafe { self.add_popcnt(other) };
+            }
+        }
+        self.add_body(other)
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    #[target_feature(enable = "popcnt")]
+    unsafe fn add_popcnt(&self, other: &Self) -> Self {
+        self.add_body(other)
+    }
+
+    #[inline(always)]
+    fn add_body(&self, other: &Self) -> Self {
+        let (a, b) = (&self.terms, &other.terms);
+        let mut out: Vec<F2BoolMono> = Vec::with_capacity(a.len() + b.len());
+        let (mut i, mut j) = (0, 0);
+        if !a.is_empty() && !b.is_empty() {
+            let (mut ka, mut kb) = (mono_key(a[0]), mono_key(b[0]));
+            loop {
+                match ka.cmp(&kb) {
+                    Ordering::Greater => {
+                        out.push(a[i]);
+                        i += 1;
+                        if i == a.len() {
+                            break;
+                        }
+                        ka = mono_key(a[i]);
+                    }
+                    Ordering::Less => {
+                        out.push(b[j]);
+                        j += 1;
+                        if j == b.len() {
+                            break;
+                        }
+                        kb = mono_key(b[j]);
+                    }
+                    Ordering::Equal => {
+                        // Cancel.
+                        i += 1;
+                        j += 1;
+                        if i == a.len() || j == b.len() {
+                            break;
+                        }
+                        ka = mono_key(a[i]);
+                        kb = mono_key(b[j]);
+                    }
                 }
             }
         }
-        out.extend(self.terms[i..].iter().copied());
-        out.extend(other.terms[j..].iter().copied());
+        out.extend_from_slice(&a[i..]);
+        out.extend_from_slice(&b[j..]);
         F2BoolPoly {
             terms: out,
             n_vars: self.n_vars,
@@ -482,6 +580,89 @@ impl F2BoolPoly {
         }
         sum
     }
+}
+
+// ── Sums over a fixed set of monomials ─────────────────────────────
+
+/// A set of distinct monomials in canonical order, so that a polynomial
+/// supported on it is a bitset over their positions (its *columns*).
+///
+/// A sum of many polynomials that share most of their monomials is, by
+/// [`F2BoolPoly::add`], a chain of merges that re-reads and re-allocates
+/// the whole running sum to fold in each addend.  Over a column set an
+/// addend is a few word XORs, and the set bits read back in column order
+/// are the canonical term list, with no sort.  XOR is addition over `F_2`
+/// at any multiplicity, so an odd number of copies of a monomial keeps one
+/// and an even number cancels, as the chain of `add`s does; for canonical
+/// addends the two give the same polynomial, term for term.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct MonoColumns {
+    /// Strictly decreasing under [`cmp_mono`].
+    masks: Vec<u64>,
+    /// [`mono_key`] of each, so that a lookup compares integers instead
+    /// of recounting degrees.
+    keys: Vec<u128>,
+}
+
+impl MonoColumns {
+    /// The distinct monomials among `masks`.
+    pub(crate) fn new(mut masks: Vec<u64>) -> Self {
+        sort_masks_descending(&mut masks);
+        masks.dedup();
+        let keys = masks
+            .iter()
+            .map(|&u| mono_key(F2BoolMono::from_mask(u)))
+            .collect();
+        MonoColumns { masks, keys }
+    }
+
+    /// The monomials' masks, in column order.
+    pub(crate) fn masks(&self) -> &[u64] {
+        &self.masks
+    }
+
+    /// `u64` words in a row over these columns.
+    pub(crate) fn words(&self) -> usize {
+        self.masks.len().div_ceil(64)
+    }
+
+    /// The column holding `mask`, if the set has it.
+    #[inline]
+    pub(crate) fn column(&self, mask: u64) -> Option<usize> {
+        let key = mono_key(F2BoolMono::from_mask(mask));
+        // Keys decrease along the list, so a probe with a larger key
+        // lies before the one sought.
+        self.keys.binary_search_by(|k| key.cmp(k)).ok()
+    }
+
+    /// Flip in `row` the column of every term of `p`: add `p` to the
+    /// polynomial `row` holds.  `None` if a term is not in the set.
+    pub(crate) fn toggle(&self, row: &mut [u64], p: &F2BoolPoly) -> Option<()> {
+        for t in &p.terms {
+            let c = self.column(t.mask)?;
+            row[c / 64] ^= 1u64 << (c % 64);
+        }
+        Some(())
+    }
+}
+
+/// The polynomial a row over a [`MonoColumns`] holds: its set columns'
+/// monomials, in order.  It takes the columns' masks alone, since reading
+/// back looks nothing up, so that a caller keeping rows for good can drop
+/// the keys, two thirds of a column set's memory.
+pub(crate) fn read_columns(masks: &[u64], row: &[u64], n_vars: usize) -> F2BoolPoly {
+    let count = row.iter().map(|w| w.count_ones() as usize).sum();
+    let mut terms = Vec::with_capacity(count);
+    for (w, &word) in row.iter().enumerate() {
+        let mut bits = word;
+        while bits != 0 {
+            terms.push(F2BoolMono::from_mask(
+                masks[w * 64 + bits.trailing_zeros() as usize],
+            ));
+            bits &= bits - 1;
+        }
+    }
+    F2BoolPoly { terms, n_vars }
 }
 
 // ── S-polynomial and reduction ─────────────────────────────────────
@@ -1263,6 +1444,160 @@ mod tests {
         let v1 = F2BoolMono::var(1);
         // The DegRevLex convention: lower-indexed variables sort larger.
         assert_eq!(cmp_mono(v0, v1), Ordering::Greater);
+    }
+
+    /// `add` against the comparator merge it replaced, on canonical lists
+    /// and on raw ones (the field is public), where the merge's output is
+    /// whatever its branches make of them and must still be the same.
+    #[test]
+    fn add_matches_the_comparator_merge() {
+        fn merge_by_cmp_mono(p: &F2BoolPoly, q: &F2BoolPoly) -> Vec<F2BoolMono> {
+            let (mut i, mut j) = (0, 0);
+            let mut out = Vec::new();
+            while i < p.terms.len() && j < q.terms.len() {
+                match cmp_mono(p.terms[i], q.terms[j]) {
+                    Ordering::Greater => {
+                        out.push(p.terms[i]);
+                        i += 1;
+                    }
+                    Ordering::Less => {
+                        out.push(q.terms[j]);
+                        j += 1;
+                    }
+                    Ordering::Equal => {
+                        i += 1;
+                        j += 1;
+                    }
+                }
+            }
+            out.extend(&p.terms[i..]);
+            out.extend(&q.terms[j..]);
+            out
+        }
+        let mut x = 0x5eed_0add_c0de_0001u64;
+        let mut next = move || {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            x
+        };
+        for trial in 0..3_000 {
+            // every fourth trial reaches the top variables
+            let n: usize = if trial % 4 == 3 { 64 } else { 1 + trial % 12 };
+            let span = if n == 64 { u64::MAX } else { (1u64 << n) - 1 };
+            let mut list = || -> Vec<F2BoolMono> {
+                (0..(next() % 40))
+                    .map(|_| F2BoolMono::from_mask(next() & next() & span))
+                    .collect()
+            };
+            let (s, t) = (list(), list());
+            let canonical = (
+                F2BoolPoly::from_monos(s.clone(), n),
+                F2BoolPoly::from_monos(t.clone(), n),
+            );
+            let raw = (
+                F2BoolPoly {
+                    terms: s,
+                    n_vars: n,
+                },
+                F2BoolPoly {
+                    terms: t,
+                    n_vars: n,
+                },
+            );
+            for (p, q) in [canonical, raw] {
+                assert_eq!(p.add(&q).terms, merge_by_cmp_mono(&p, &q), "{p:?} + {q:?}");
+                assert_eq!(p.add_body(&q), p.add(&q), "portable body");
+            }
+        }
+    }
+
+    /// A sum over columns is the chain of `add`s, term for term, with
+    /// addends repeated (odd copies keep a monomial, even ones cancel).
+    #[test]
+    fn column_sums_match_chains_of_adds() {
+        let mut x = 0xc01d_5eed_0000_0003u64;
+        let mut next = move || {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            x
+        };
+        for trial in 0..500 {
+            let n: usize = if trial % 4 == 3 { 64 } else { 1 + trial % 16 };
+            let span = if n == 64 { u64::MAX } else { (1u64 << n) - 1 };
+            let polys: Vec<F2BoolPoly> = (0..1 + next() % 8)
+                .map(|_| {
+                    let terms = (0..next() % 50)
+                        .map(|_| F2BoolMono::from_mask(next() & next() & span))
+                        .collect();
+                    F2BoolPoly::from_monos(terms, n)
+                })
+                .collect();
+            let columns = MonoColumns::new(
+                polys
+                    .iter()
+                    .flat_map(|p| p.terms.iter().map(|t| t.mask))
+                    .collect(),
+            );
+            let mut row = vec![0u64; columns.words()];
+            let mut chain = F2BoolPoly::zero(n);
+            for _ in 0..next() % 12 {
+                let p = &polys[(next() % polys.len() as u64) as usize];
+                columns
+                    .toggle(&mut row, p)
+                    .expect("a term outside the columns");
+                chain = chain.add(p);
+            }
+            assert_eq!(read_columns(columns.masks(), &row, n), chain);
+            for (c, &m) in columns.masks().iter().enumerate() {
+                assert_eq!(columns.column(m), Some(c));
+            }
+        }
+        let columns = MonoColumns::new(vec![0b11, 0b1]);
+        assert_eq!(columns.column(0b10), None);
+        let outside = F2BoolPoly::from_monos(vec![F2BoolMono::from_mask(0b10)], 2);
+        assert_eq!(columns.toggle(&mut [0], &outside), None);
+    }
+
+    /// Sums by monomial against a map keyed by `mono_key`, below and
+    /// above the packed-key span, with monomials repeated so that
+    /// coefficients cancel in part and in whole.
+    #[test]
+    fn sums_by_monomial_match_a_keyed_map() {
+        use std::collections::BTreeMap;
+        let mut x = 0x5ab5_bb0a_1c0e_0005u64;
+        let mut next = move || {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            x
+        };
+        for trial in 0..2_000 {
+            let n: u32 = [4, 12, 57, 58, 64][trial % 5];
+            let span = if n == 64 { u64::MAX } else { (1u64 << n) - 1 };
+            let pool: Vec<u64> = (0..1 + next() % 40)
+                .map(|_| next() & next() & span)
+                .collect();
+            let mut terms: Vec<(u64, u64)> = (0..next() % 120)
+                .map(|_| {
+                    let m = pool[(next() % pool.len() as u64) as usize];
+                    (m, next() & [0x1, 0xf, u64::MAX][trial % 3])
+                })
+                .collect();
+            let mut map = BTreeMap::new();
+            for &(m, c) in &terms {
+                *map.entry(std::cmp::Reverse(mono_key(F2BoolMono::from_mask(m))))
+                    .or_insert(0u64) ^= c;
+            }
+            let expected: Vec<(u64, u64)> = map
+                .into_iter()
+                .filter(|&(_, c)| c != 0)
+                .map(|(k, c)| (!(k.0 as u64), c))
+                .collect();
+            sum_by_monomial(&mut terms);
+            assert_eq!(terms, expected, "trial {trial}");
+        }
     }
 
     /// Polynomial addition cancels duplicates.
