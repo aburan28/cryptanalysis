@@ -1,5 +1,22 @@
 # ECC2K-130 single-target index-calculus goal
 
+**Measured N131 public-target gate (2026-10-09 22:22 UTC):** the frozen
+d13/m12 proposal `Q20261006081500` completed its first accepted-seed
+ordinary query on the published target. The [v4 run](n131_phi_torsion_frobenius_domains_20261005/d13_m12_probe/public_q_runs/d13_m12_20261009T221148Z/result.json)
+reached `timeout` after 599.749 seconds of charged target-dependent wall
+time: 4.373 seconds in target-query construction/overhead and 595.376
+seconds in the one-worker CryptoMiniSat attempt. Its conservative combined
+peak was 1,808,089,088 bytes under the 4-GiB cap. The
+[independent audit](n131_phi_torsion_frobenius_domains_20261005/d13_m12_probe/public_q_runs/d13_m12_20261009T221148Z/independent_sage_replay.json)
+passed identity and resource checks and recorded zero models and zero
+relations. This measures the search bottleneck for the exact d13 formula.
+The next method gate is a **target-coupled six-pair solver**: on the frozen
+ordinary N41 control, count how many partial pair states the public target
+eliminates while at least two pair domains remain free, recover and replay
+an ordinary relation, and avoid a quadratic pair-output table. Only a
+source-bound work/memory projection fitting 600 seconds and 4 GiB advances
+that method to the published N131 point.
+
 **N131 pair-domain structural gate (2026-10-09 21:42 UTC):** an
 [exact affine-span certificate](n131_d13_pair_output_linear_span_20261009/RESULT.md)
 uses 132 independently replayed same-rotation d13 pair outputs to prove
@@ -67,22 +84,15 @@ query, then obtain and independently replay an ordinary relation on the
 exact d13 public target. Useful rank, factor logs, fresh-target DLP, and
 matched same-point rho timing follow from that gate.
 
-**Live exact-field gate (2026-10-09 21:17 UTC):** the frozen N131 d10/m15
-candidate `IC1N131Ckb1fb139384PDP15satRCdirectLAgaussTDdirectISO0h91f3d222e01b`
-is executing its first target-independent precomputation query under the
-checked-Sage parent and 4-GiB combined-RSS guard. The
-[v3 run progress](n131_phi_torsion_frobenius_domains_20261005/m15_d10_static/single_target_runs/IC1N131Ckb1fb139384PDP15satRCdirectLAgaussTDdirectISO0h91f3d222e01bW3c1992b7c92fR1/precompute_progress.json)
-is `RUNNING`, rank 0/532, with zero completed attempts; the exact solver PID
-60681 and creation time 1791568857.490002 were rechecked with 3,889.791
-seconds of accumulated CPU, confirming that this process is still live. The
-[correctness-fix record](n131_phi_torsion_frobenius_domains_20261005/m15_d10_static/ROOT_COUNT_AND_RSS_FIX_20261009.md)
-explains the preserved v1 formula-root count failure and v2 RSS-monitor
-class-name failure. V3 passed exact root-count regression, a real
-solver/RSS-monitor control, and its frozen single-target preflight. This
-precomputation query has a seven-day cap; its eventual result must remain
-separate from the 600-second ordinary-target relation milestone and from
-the online DLP timing boundary. Poll the exact live process or execution
-handle before classifying it or starting a successor.
+**D10 predecessor process gate (2026-10-09 22:04 UTC):** the
+[exact-handle audit](n131_d10_v3_external_interruption_20261009/result.json)
+found the recorded d10/m15 v3 solver PID 60681 absent, with its creation
+time checked and 1,517,745 bytes of raw output retained. The output contains
+zero SAT status and model lines. Surviving progress remains rank 0/532 with
+zero completed attempts; the run has no terminal result receipt, and its
+exact stop cause is unknown. The distinct d10 v1 continuation result is
+`PRODUCER_FAILURE`; it satisfied the d13 runner's frozen predecessor gate.
+Keep the v3 process-loss audit separate from that v1 terminal result.
 
 **Current algorithmic result (2026-10-09):** exact fill-limited elimination
 of CNF-private XOR variables reduces the frozen N131 public-Q d13/m12 formula
@@ -108,28 +118,21 @@ same-point Pollard-rho solve under matched, isolated resources. The repository's
 `AGENTS.md` defines the candidate IDs, measurement phases, and claim gates.
 Status: active.
 
-**Immediate measurable goal (2026-10-09):** obtain at least one unpinned,
+**Immediate measurable goal (2026-10-09):** obtain an unpinned,
 independently checked ordinary factor-base decomposition of the frozen
 published N131 target Q (workload `3c1992b7c92f`) within a one-worker,
-600-second, 4-GiB combined-RSS query envelope. The current high-density
-probe is [Q20261006081500](n131_phi_torsion_frobenius_domains_20261005/d13_m12_probe/RESULT.md):
-12 summands from the exact d13 Frobenius domains, 1,083,108 usable base
-points, and 4,134 folded columns. Its saved XCNF, planted controls, complete
-base audit, and independent model auditor are ready; no ordinary relation has
-yet been measured. Count a relation only after the saved XCNF assignment and
-installed-Sage point sum, subgroup, and factor-base checks pass. Preserve
-timeouts, OOMs, rejected models, zero-yield attempts, and their charged stage
-costs. A planted row or a uniform-sum prediction does not pass this gate.
-
-Keep the frozen one-target run order: the terminal W2/m15 R3 query, the
-currently running d10/m15 v3 candidate after R3's process drain, then the
-original d13/m12 public-Q relation probe after d10 reaches a terminal
-receipt. The complete d13/m12 candidate
+600-second, 4-GiB combined-RSS query envelope. The measured high-density
+[d13/m12 probe](n131_phi_torsion_frobenius_domains_20261005/d13_m12_probe/RESULT.md)
+uses 12 summands from exact d13 Frobenius domains, 1,083,108 usable base
+points, and 4,134 folded columns. Its accepted-seed v4 attempt is the
+zero-yield baseline. For a successor method, freeze the target-coupled
+search rule, verify its ordinary N41 control, and record pruning, work,
+memory, failures, and exact N131 input hashes before promotion. Count a
+relation only after saved-formula assignment and independent installed-Sage
+point-sum, subgroup, and factor-base checks. The complete d13/m12 candidate
 `IC1N131Ckb1fb1083108PDP12satRCdirectLAgaussTDdirectISO0h36143c49e85d`
-is queued behind those probes. A verified predecessor DLP stops later
-relation probes and advances directly to its same-point rho comparison. The
-R3 seven-day per-query cap is a distinct resource envelope; do not compare
-its wall time with a 600-second probe as a speedup.
+remains downstream of this ordinary-relation gate; a successful predecessor
+scalar would instead advance to its same-point rho comparison.
 
 **Exact projected public-Q screen (2026-10-09):** the separate
 [Q20261009171800 proposal](n131_d13_projected_public_q_20261009/projected_public_q_protocol.json)
