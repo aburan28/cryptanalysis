@@ -33,6 +33,10 @@ jobs:
           python experiments/groebner-perf-20260924/round119/panel.py --reference-report f4-bitset-evidence/reference/panel/report.json --output f4-bitset-evidence/bitset
           python experiments/groebner-perf-20260924/round119/test_large.py --output f4-bitset-evidence/large-proof.json
           python experiments/groebner-perf-20260924/round119/profile.py --reference-root "$GITHUB_WORKSPACE" --reference-report f4-bitset-evidence/reference/panel/report.json --output f4-bitset-evidence/paired --reps 3
+      - name: Freeze and smoke the isolated complete-query manifest
+        run: |
+          python experiments/groebner-perf-20260924/round120/make_isolated_manifest.py --reference-root "$GITHUB_WORKSPACE" --validation-root f4-bitset-evidence/reference --scratch-panel f4-bitset-evidence/scratch --bitset-panel f4-bitset-evidence/bitset --python "$(python -c 'import sys; print(sys.executable)')" --cgroup /sys/fs/cgroup/benchmark-isolated --cpus 4-5 --execution-cpu 4 --mem-nodes 0 --output "$GITHUB_WORKSPACE/f4-bitset-evidence/isolated-manifest.json"
+          python experiments/groebner-perf-20260924/round120/test_manifest.py --manifest "$GITHUB_WORKSPACE/f4-bitset-evidence/isolated-manifest.json" --output "$GITHUB_WORKSPACE/f4-bitset-evidence/isolated-worker-smoke.json"
       - name: Retain exact results and failed attempts
         if: always()
         uses: actions/upload-artifact@v4

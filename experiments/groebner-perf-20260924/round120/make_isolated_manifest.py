@@ -87,6 +87,7 @@ def main():
                          '--expected-check-work', str(result['check_work'])])
         cases.append(dict(id=name, reference=argv[0], candidate=argv[1]))
     artifacts = [str(HERE / 'isolated_worker.py'), str(HERE / 'make_isolated_manifest.py'),
+                 str(HERE / 'test_manifest.py'),
                  str(validation / 'validation.json'), str(validation / 'audit.json'),
                  str(validation / 'panel/report.json'), str(scratch_report), str(bitset_report)]
     for round_number in (108, 110, 112, 116, 118, 119):

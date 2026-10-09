@@ -26,6 +26,9 @@ python3 experiments/groebner-perf-20260924/round120/make_isolated_manifest.py \
   --cpus 4-5 --execution-cpu 4 --mem-nodes 0 \
   --output /absolute/bitset-isolated-manifest.json
 python3 scripts/isolated_bench.py probe /absolute/bitset-isolated-manifest.json
+python3 experiments/groebner-perf-20260924/round120/test_manifest.py \
+  --manifest /absolute/bitset-isolated-manifest.json \
+  --output /absolute/bitset-worker-smoke.json
 ```
 
 CPU IDs, cgroup, Python path, and NUMA node above are examples; select them
