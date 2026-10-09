@@ -159,15 +159,19 @@ impl Signed {
     }
 
     fn mul(self, rhs: Self) -> Self {
-        // The balanced field inputs and one-step tau width bound keep every
-        // multiplicand below 2^192. A fixed 3x3 schoolbook product uses nine
-        // u64 multiplications rather than U256::mul_wide's sixteen.
-        assert!(self.magnitude.0[3..].iter().all(|&x| x == 0));
-        assert!(rhs.magnitude.0[3..].iter().all(|&x| x == 0));
+        self.mul_rect::<3, 3>(rhs)
+    }
+
+    fn mul_rect<const LEFT: usize, const RIGHT: usize>(self, rhs: Self) -> Self {
+        // Widths are public properties of each formula stage. Assert them
+        // before multiplying so a new schedule cannot silently truncate.
+        assert!((1..=3).contains(&LEFT) && (1..=3).contains(&RIGHT));
+        assert!(self.magnitude.0[LEFT..].iter().all(|&x| x == 0));
+        assert!(rhs.magnitude.0[RIGHT..].iter().all(|&x| x == 0));
         let mut words = [0u64; 8];
-        for i in 0..3 {
+        for i in 0..RIGHT {
             let mut carry = 0u64;
-            for j in 0..3 {
+            for j in 0..LEFT {
                 let index = i + j;
                 let sum = (self.magnitude.0[j] as u128) * (rhs.magnitude.0[i] as u128)
                     + (words[index] as u128)
@@ -176,12 +180,12 @@ impl Signed {
                 carry = (sum >> 64) as u64;
             }
             let mut overflow = carry;
-            for word in words.iter_mut().skip(i + 3) {
+            for word in words.iter_mut().skip(i + LEFT) {
                 let sum = (*word as u128) + (overflow as u128);
                 *word = sum as u64;
                 overflow = (sum >> 64) as u64;
             }
-            assert_eq!(overflow, 0, "three-limb product overflow");
+            assert_eq!(overflow, 0, "rectangular product overflow");
         }
         Self {
             negative: self.negative ^ rhs.negative,
@@ -297,6 +301,28 @@ impl Pair {
         let ac = self.a.mul(rhs.a);
         let bd = self.b.mul(rhs.b);
         let cross = self.a.add(self.b).mul(rhs.a.add(rhs.b));
+        Self::from_ring_products(ac, bd, cross)
+    }
+
+    fn product_balanced(self, rhs: Self) -> Self {
+        // Individual balanced coefficients fit two limbs; their sums can
+        // need a third limb. 4+4+9 replaces three 3x3 products (27).
+        let ac = self.a.mul_rect::<2, 2>(rhs.a);
+        let bd = self.b.mul_rect::<2, 2>(rhs.b);
+        let cross = self.a.add(self.b).mul_rect::<3, 3>(rhs.a.add(rhs.b));
+        Self::from_ring_products(ac, bd, cross)
+    }
+
+    fn product_wide_balanced(self, rhs: Self) -> Self {
+        // The deferred tau schedule keeps the left pair under three limbs
+        // and the right pair balanced under two limbs.
+        let ac = self.a.mul_rect::<3, 2>(rhs.a);
+        let bd = self.b.mul_rect::<3, 2>(rhs.b);
+        let cross = self.a.add(self.b).mul_rect::<3, 3>(rhs.a.add(rhs.b));
+        Self::from_ring_products(ac, bd, cross)
+    }
+
+    fn from_ring_products(ac: Signed, bd: Signed, cross: Signed) -> Self {
         Self {
             a: ac.sub(bd),
             b: cross.sub(ac).sub(bd.add(bd)),
@@ -411,7 +437,7 @@ impl Pair {
             a: Signed::from_u128(qa),
             b: Signed::from_u128(qb),
         };
-        let numerator = self.add(q.product(Self::pi()));
+        let numerator = self.add(q.product_balanced(Self::pi()));
         Self {
             a: numerator.a.exact_shr_128(),
             b: numerator.b.exact_shr_128(),
@@ -423,19 +449,23 @@ impl Pair {
     }
 
     fn mul(self, rhs: Self) -> Self {
-        self.product(rhs).montgomery_reduce()
+        self.product_balanced(rhs).montgomery_reduce()
     }
 
-    fn mul_raw(self, rhs: Self) -> Self {
-        self.product(rhs).montgomery_reduce_raw()
+    fn mul_raw_balanced(self, rhs: Self) -> Self {
+        self.product_balanced(rhs).montgomery_reduce_raw()
+    }
+
+    fn mul_raw_wide(self, rhs: Self) -> Self {
+        self.product_wide_balanced(rhs).montgomery_reduce_raw()
     }
 
     fn tau_step(x: Self, y: Self, z: Self) -> [Self; 3] {
-        let x3 = x.mul_raw(x).mul_raw(x);
-        let rx = y.mul_raw(y).times_i32(4).sub(x3.times_i32(3));
+        let x3 = x.mul_raw_balanced(x).mul_raw_wide(x);
+        let rx = y.mul_raw_balanced(y).times_i32(4).sub(x3.times_i32(3));
         let inner = x3.times_i32(3).sub(rx.times_i32(2));
-        let ry = y.mul_raw(inner);
-        let rz = x.sub(x.omega()).mul_raw(z);
+        let ry = inner.mul_raw_wide(y);
+        let rz = x.sub(x.omega()).mul_raw_wide(z);
         [
             rx.balance_tau_output(),
             ry.balance_tau_output(),
@@ -971,7 +1001,52 @@ fn main() {
 #[cfg(test)]
 mod eisenstein_tau_tests {
     use super::*;
+    use num_bigint::BigUint;
     use num_integer::Integer;
+
+    #[test]
+    fn rectangular_limb_products_match_big_integers_at_boundaries() {
+        fn signed(value: &BigUint, negative: bool) -> Signed {
+            Signed {
+                negative,
+                magnitude: U512::from_biguint(value),
+            }
+            .normalized()
+        }
+        let two_limbs = [
+            BigUint::from(0u8),
+            BigUint::from(1u8),
+            (BigUint::from(1u8) << 64) - 1u8,
+            (BigUint::from(1u8) << 128) - 1u8,
+        ];
+        let three_limbs = [
+            BigUint::from(0u8),
+            BigUint::from(1u8) << 128,
+            (BigUint::from(1u8) << 133) - 1u8,
+            (BigUint::from(1u8) << 192) - 1u8,
+        ];
+        for left in two_limbs.iter().chain(three_limbs.iter()) {
+            for right in &two_limbs {
+                for left_negative in [false, true] {
+                    for right_negative in [false, true] {
+                        let got = signed(left, left_negative)
+                            .mul_rect::<3, 2>(signed(right, right_negative));
+                        let mut expected = BigInt::from_biguint(Sign::Plus, left * right);
+                        if left_negative ^ right_negative {
+                            expected = -expected;
+                        }
+                        assert_eq!(got.decimal(), expected.to_string());
+                    }
+                }
+            }
+        }
+        for left in &two_limbs {
+            for right in &two_limbs {
+                let got = signed(left, false).mul_rect::<2, 2>(signed(right, false));
+                assert_eq!(got.decimal(), (left * right).to_string());
+            }
+        }
+    }
 
     #[test]
     fn radix_floor_one_correction_matches_prime_division_at_boundaries() {
