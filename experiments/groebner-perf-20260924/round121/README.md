@@ -27,3 +27,13 @@ The paired profile compares complete target-dependent queries with the
 producer work, equations, and curve replay, and retains every worker and
 failure. The local CPU ratios are diagnostics until a qualifying isolated
 host replays the complete-query manifest.
+
+The frozen panel and results are in [RESULTS.md](RESULTS.md). To reproduce the
+optimized/UBSan correctness checks, paired complete-query profile, and
+byte-verified evidence archive, build the round108/110/112 prerequisites and
+then run `build.py`, `test_guard.py`, `panel.py`, `profile.py`, and `archive.py`
+in that order. The scripts with arguments document their inputs with `--help`;
+`test_guard.py` takes none. The
+reference report must be the independently audited round112 panel. The
+archive retains the raw panel/profile workers and build receipts, not just
+the aggregate table.
