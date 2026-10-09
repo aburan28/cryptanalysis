@@ -99,9 +99,9 @@ fn main() {
             // Re-evaluate each original Boolean equation without the solver's
             // polynomial-evaluation method or its reduced matrix rows.
             let verified = sys.equations.iter().all(|eq| {
-                eq.terms.iter().fold(false, |parity, term| {
+                !eq.terms.iter().fold(false, |parity, term| {
                     parity ^ ((point & term.mask) == term.mask)
-                }) == false
+                })
             });
             assert!(verified, "solver returned a non-root");
             let xs: Vec<_> = (0..m)
