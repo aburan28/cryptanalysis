@@ -28,6 +28,7 @@ def save(path, row):
 
 
 def compare(row, baseline):
+    assert row["fixture"] == baseline["fixture"]
     actual, expected = row["result"], baseline["result"]
     for key in ("status", "verified", "complete", "basis", "assignment",
                 "curve_replay", "reference_equations_and_curve_replay"):
@@ -65,11 +66,11 @@ def worker(args):
         result["proof_artifact"] = dict(path=path.name, sha256=sha(path),
                                          bytes=path.stat().st_size,
                                          nodes=owned.nodes, outputs=owned.outputs)
-    baseline = json.loads(args.reference.read_text())
-    row["reference_match"] = compare(row, baseline)
     row.update(name=args.case, sanitized=args.sanitized,
                fixture=context.cases[args.case], timing_eligible=False,
                qualified_speedup=None)
+    baseline = json.loads(args.reference.read_text())
+    row["reference_match"] = compare(row, baseline)
     save(args.output, row)
 
 
