@@ -72,46 +72,95 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
 // ── Sparse mat-vec primitives ──────────────────────────────────────
+//
+// Every sum of products below is accumulated unreduced and reduced
+// once, at the end: the canonical residue of a sum does not depend on
+// where the partial sums were reduced, and one BigUint division per
+// output (instead of one per product) is most of the saving.  A sum
+// with no terms stays zero without a division, as before.
 
 /// Compute `M · v mod n` where `M` is sparse-row-indexed and `v` is
 /// dense.  Result length = `n_rows`.
 fn mat_vec(m: &[SparseRow], v: &[BigUint], n: &BigUint) -> Vec<BigUint> {
-    m.iter()
-        .map(|row| {
-            let mut acc = BigUint::zero();
-            for (col, val) in row.entries.iter() {
-                acc = (&acc + &(val * &v[*col])) % n;
-            }
-            acc
-        })
-        .collect()
+    let mut out = Vec::with_capacity(m.len());
+    mat_vec_into(m, v, n, &mut out);
+    out
+}
+
+/// [`mat_vec`] into `out` (cleared first), reusing its storage and one
+/// accumulator across rows.
+fn mat_vec_into(m: &[SparseRow], v: &[BigUint], n: &BigUint, out: &mut Vec<BigUint>) {
+    out.clear();
+    let mut acc = BigUint::zero();
+    for row in m {
+        if row.entries.is_empty() {
+            out.push(BigUint::zero());
+            continue;
+        }
+        acc.set_zero();
+        for (col, val) in row.entries.iter() {
+            acc += val * &v[*col];
+        }
+        out.push(&acc % n);
+    }
 }
 
 /// Compute `M^T · v mod n`.  Result length = `n_cols`.
 fn mat_t_vec(m: &[SparseRow], v: &[BigUint], n_cols: usize, n: &BigUint) -> Vec<BigUint> {
-    let mut out = vec![BigUint::zero(); n_cols];
+    let mut out = Vec::with_capacity(n_cols);
+    mat_t_vec_into(m, v, n_cols, n, &mut out);
+    out
+}
+
+/// [`mat_t_vec`] into `out` (overwritten).  Only the columns some row
+/// touched can be nonzero, and zero needs no reduction.
+fn mat_t_vec_into(
+    m: &[SparseRow],
+    v: &[BigUint],
+    n_cols: usize,
+    n: &BigUint,
+    out: &mut Vec<BigUint>,
+) {
+    out.clear();
+    out.resize(n_cols, BigUint::zero());
     for (i, row) in m.iter().enumerate() {
         for (col, val) in row.entries.iter() {
-            out[*col] = (&out[*col] + &(val * &v[i])) % n;
+            out[*col] += val * &v[i];
         }
     }
-    out
+    for o in out.iter_mut() {
+        if !o.is_zero() {
+            *o %= n;
+        }
+    }
 }
 
 /// Inner product `⟨a, b⟩ mod n`.
 fn dot(a: &[BigUint], b: &[BigUint], n: &BigUint) -> BigUint {
     let mut acc = BigUint::zero();
     for (x, y) in a.iter().zip(b) {
-        acc = (&acc + &(x * y)) % n;
+        acc += x * y;
     }
-    acc
+    if a.is_empty() || b.is_empty() {
+        acc
+    } else {
+        acc % n
+    }
 }
 
-/// Compute `M^T M · v mod n`.  Avoids materialising the (potentially
-/// dense) Gram matrix `M^T M`.
-fn ata_vec(m: &[SparseRow], v: &[BigUint], n_cols: usize, n: &BigUint) -> Vec<BigUint> {
-    let mv = mat_vec(m, v, n);
-    mat_t_vec(m, &mv, n_cols, n)
+/// Compute `M^T M · v mod n` into `out`, with `mv` as scratch for
+/// `M · v`.  Avoids materialising the (potentially dense) Gram matrix
+/// `M^T M`.
+fn ata_vec_into(
+    m: &[SparseRow],
+    v: &[BigUint],
+    n_cols: usize,
+    n: &BigUint,
+    mv: &mut Vec<BigUint>,
+    out: &mut Vec<BigUint>,
+) {
+    mat_vec_into(m, v, n, mv);
+    mat_t_vec_into(m, mv, n_cols, n, out);
 }
 
 // ── Berlekamp-Massey ────────────────────────────────────────────────
@@ -136,42 +185,73 @@ pub fn berlekamp_massey(seq: &[BigUint], n: &BigUint) -> Option<Vec<BigUint>> {
     let mut l: usize = 0;
     let mut shift: usize = 1;
     let mut delta_b: BigUint = BigUint::from(1u32);
+    // `delta_b^{-1}`, computed at its first use and kept until `delta_b`
+    // changes (a failed inverse still returns `None` at that use).
+    let mut delta_b_inv: Option<BigUint> = None;
     for (i, s_i) in seq.iter().enumerate() {
-        // Discrepancy: delta = s_i + sum_{j=1..l} c_j · s_{i-j}.
+        // Discrepancy: delta = s_i + sum_{j=1..l} c_j · s_{i-j},
+        // summed unreduced and reduced once if there was any term
+        // (a lone `s_i` is taken as given, as it always was).
         let mut delta = s_i.clone();
-        for j in 1..=l {
-            if j < c.len() && j <= i {
-                delta = (&delta + &(&c[j] * &seq[i - j])) % n;
-            }
+        let terms = l.min(c.len().saturating_sub(1)).min(i);
+        for j in 1..=terms {
+            delta += &c[j] * &seq[i - j];
+        }
+        if terms > 0 {
+            delta %= n;
         }
         if delta.is_zero() {
             shift += 1;
             continue;
         }
         // coef = delta * delta_b^{-1} mod n.
-        let delta_b_inv = mod_inverse(&delta_b, n)?;
-        let coef = (&delta * &delta_b_inv) % n;
-        // New c = old c − coef · x^shift · b.
+        if delta_b_inv.is_none() {
+            delta_b_inv = Some(mod_inverse(&delta_b, n)?);
+        }
+        let coef = (&delta * delta_b_inv.as_ref().expect("just computed")) % n;
+        // New c = old c − coef · x^shift · b, as c_j + (n − coef) · b_j
+        // (the same residue, `coef < n`).  The entries of `c` are left
+        // unreduced and reduced only when `c` is about to become `b` and
+        // at the end: then every `b_j < n`, an entry gains less than n²
+        // per step, and the discrepancy above reduces its own sum.
+        // `c_0 = 1` is never updated and is returned as it is.
         let needed_len = b.len() + shift;
         if c.len() < needed_len {
             c.resize(needed_len, BigUint::zero());
         }
-        let t = c.clone();
-        for j in 0..b.len() {
-            let target = j + shift;
-            let term = (&coef * &b[j]) % n;
-            c[target] = (&c[target] + n - &term) % n;
+        // The old `c` is only kept when it becomes the new `b`.
+        let lengthen = 2 * l <= i;
+        let t = if lengthen {
+            reduce_tail(&mut c, n);
+            Some(c.clone())
+        } else {
+            None
+        };
+        let neg_coef = n - &coef;
+        for (j, b_j) in b.iter().enumerate() {
+            c[j + shift] += &neg_coef * b_j;
         }
-        if 2 * l <= i {
+        if let Some(t) = t {
             l = i + 1 - l;
             b = t;
             delta_b = delta;
+            delta_b_inv = None;
             shift = 1;
         } else {
             shift += 1;
         }
     }
+    reduce_tail(&mut c, n);
     Some(c)
+}
+
+/// Reduce `c_1, c_2, …` mod `n` in place, leaving `c_0` as it is.
+fn reduce_tail(c: &mut [BigUint], n: &BigUint) {
+    for v in c.iter_mut().skip(1) {
+        if *v >= *n {
+            *v %= n;
+        }
+    }
 }
 
 // ── Wiedemann solve ────────────────────────────────────────────────
@@ -214,17 +294,22 @@ pub fn wiedemann_solve(
     // when they pad / oversample to exactly square (or block-square).
     let square = n_rows == n_cols;
 
-    // Working "vector" v_0 and matrix-vector op A.
-    let (v0, apply_a, target_dim) = if square {
+    // Working "vector" v_0 and matrix-vector op A, which writes `A v`
+    // into its second argument so the Krylov loop reuses two buffers
+    // (plus `M v` scratch for the normal equations).
+    let mut mv_scratch: Vec<BigUint> = Vec::new();
+    let (v0, mut apply_a, target_dim) = if square {
         // A = M, v_0 = b.
-        let apply: Box<dyn Fn(&[BigUint]) -> Vec<BigUint>> =
-            Box::new(|v: &[BigUint]| mat_vec(m, v, n));
+        let apply: Box<dyn FnMut(&[BigUint], &mut Vec<BigUint>)> =
+            Box::new(|v: &[BigUint], out: &mut Vec<BigUint>| mat_vec_into(m, v, n, out));
         (b.to_vec(), apply, n_cols)
     } else {
         // A = M^T M, v_0 = M^T b.
         let c = mat_t_vec(m, b, n_cols, n);
-        let apply: Box<dyn Fn(&[BigUint]) -> Vec<BigUint>> =
-            Box::new(|v: &[BigUint]| ata_vec(m, v, n_cols, n));
+        let apply: Box<dyn FnMut(&[BigUint], &mut Vec<BigUint>)> =
+            Box::new(|v: &[BigUint], out: &mut Vec<BigUint>| {
+                ata_vec_into(m, v, n_cols, n, &mut mv_scratch, out)
+            });
         (c, apply, n_cols)
     };
 
@@ -243,9 +328,14 @@ pub fn wiedemann_solve(
     let seq_len = 2 * n_cols + 2;
     let mut seq = Vec::with_capacity(seq_len);
     let mut current = v0.clone();
-    for _ in 0..seq_len {
+    let mut next: Vec<BigUint> = Vec::with_capacity(current.len());
+    for step in 0..seq_len {
         seq.push(dot(&u, &current, n));
-        current = apply_a(&current);
+        // `A^{seq_len} v_0` would never be read.
+        if step + 1 < seq_len {
+            apply_a(&current, &mut next);
+            std::mem::swap(&mut current, &mut next);
+        }
     }
 
     // BM recovery.  The BM connection polynomial Λ(D) is the
@@ -271,14 +361,19 @@ pub fn wiedemann_solve(
     // p(A) v_0 = 0:  Σ_{j=0..L} p_j A^j v_0 = 0.
     // ⇒  p_0 v_0 = -A · Σ_{j=1..L} p_j A^{j-1} v_0
     // ⇒  x = -p_0^{-1} · Σ_{j=1..L} p_j A^{j-1} v_0  satisfies A x = v_0.
+    //
+    // Each x_j is summed unreduced over all `L` terms and reduced once,
+    // together with the scaling by −p_0^{-1}: the canonical residue is
+    // the same as reducing after every term and again before scaling.
     let mut x = vec![BigUint::zero(); target_dim];
-    let mut a_pow_v = v0.clone();
+    let mut a_pow_v = v0;
     for i in 1..p_poly.len() {
         for (xj, vj) in x.iter_mut().zip(a_pow_v.iter()) {
-            *xj = (&*xj + &(&p_poly[i] * vj)) % n;
+            *xj += &p_poly[i] * vj;
         }
         if i < p_poly.len() - 1 {
-            a_pow_v = apply_a(&a_pow_v);
+            apply_a(&a_pow_v, &mut next);
+            std::mem::swap(&mut a_pow_v, &mut next);
         }
     }
     let p0_inv = mod_inverse(&p_poly[0], n)?;
@@ -505,5 +600,454 @@ mod tests {
         let wied_x = wied_x.expect("Wiedemann should succeed on at least one seed");
         assert_eq!(wied_x, dense_x);
         assert_eq!(wied_x, true_sol);
+    }
+
+    /// The solver as it was before the delayed reduction: a `% n` after
+    /// every product in the mat-vecs, the inner products, the BM
+    /// discrepancy and update and the solution sum, and a fresh vector
+    /// per Krylov step.  Kept verbatim so the tests below can pin the
+    /// current code to it.
+    mod reference {
+        use crate::cryptanalysis::pq_sparse_la::SparseRow;
+        use crate::utils::mod_inverse;
+        use num_bigint::BigUint;
+        use num_traits::Zero;
+        use rand::rngs::StdRng;
+        use rand::{Rng, SeedableRng};
+
+        pub fn mat_vec(m: &[SparseRow], v: &[BigUint], n: &BigUint) -> Vec<BigUint> {
+            m.iter()
+                .map(|row| {
+                    let mut acc = BigUint::zero();
+                    for (col, val) in row.entries.iter() {
+                        acc = (&acc + &(val * &v[*col])) % n;
+                    }
+                    acc
+                })
+                .collect()
+        }
+
+        pub fn mat_t_vec(
+            m: &[SparseRow],
+            v: &[BigUint],
+            n_cols: usize,
+            n: &BigUint,
+        ) -> Vec<BigUint> {
+            let mut out = vec![BigUint::zero(); n_cols];
+            for (i, row) in m.iter().enumerate() {
+                for (col, val) in row.entries.iter() {
+                    out[*col] = (&out[*col] + &(val * &v[i])) % n;
+                }
+            }
+            out
+        }
+
+        pub fn dot(a: &[BigUint], b: &[BigUint], n: &BigUint) -> BigUint {
+            let mut acc = BigUint::zero();
+            for (x, y) in a.iter().zip(b) {
+                acc = (&acc + &(x * y)) % n;
+            }
+            acc
+        }
+
+        fn ata_vec(m: &[SparseRow], v: &[BigUint], n_cols: usize, n: &BigUint) -> Vec<BigUint> {
+            let mv = mat_vec(m, v, n);
+            mat_t_vec(m, &mv, n_cols, n)
+        }
+
+        pub fn berlekamp_massey(seq: &[BigUint], n: &BigUint) -> Option<Vec<BigUint>> {
+            let mut c: Vec<BigUint> = vec![BigUint::from(1u32)];
+            let mut b: Vec<BigUint> = vec![BigUint::from(1u32)];
+            let mut l: usize = 0;
+            let mut shift: usize = 1;
+            let mut delta_b: BigUint = BigUint::from(1u32);
+            for (i, s_i) in seq.iter().enumerate() {
+                let mut delta = s_i.clone();
+                for j in 1..=l {
+                    if j < c.len() && j <= i {
+                        delta = (&delta + &(&c[j] * &seq[i - j])) % n;
+                    }
+                }
+                if delta.is_zero() {
+                    shift += 1;
+                    continue;
+                }
+                let delta_b_inv = mod_inverse(&delta_b, n)?;
+                let coef = (&delta * &delta_b_inv) % n;
+                let needed_len = b.len() + shift;
+                if c.len() < needed_len {
+                    c.resize(needed_len, BigUint::zero());
+                }
+                let t = c.clone();
+                for j in 0..b.len() {
+                    let target = j + shift;
+                    let term = (&coef * &b[j]) % n;
+                    c[target] = (&c[target] + n - &term) % n;
+                }
+                if 2 * l <= i {
+                    l = i + 1 - l;
+                    b = t;
+                    delta_b = delta;
+                    shift = 1;
+                } else {
+                    shift += 1;
+                }
+            }
+            Some(c)
+        }
+
+        pub fn wiedemann_solve(
+            m: &[SparseRow],
+            b: &[BigUint],
+            n_cols: usize,
+            n: &BigUint,
+            seed: u64,
+        ) -> Option<Vec<BigUint>> {
+            assert_eq!(m.len(), b.len(), "M and b must have matching row counts");
+            let n_rows = m.len();
+            let mut rng = StdRng::seed_from_u64(seed);
+            let square = n_rows == n_cols;
+            let (v0, apply_a, target_dim) = if square {
+                let apply: Box<dyn Fn(&[BigUint]) -> Vec<BigUint>> =
+                    Box::new(|v: &[BigUint]| mat_vec(m, v, n));
+                (b.to_vec(), apply, n_cols)
+            } else {
+                let c = mat_t_vec(m, b, n_cols, n);
+                let apply: Box<dyn Fn(&[BigUint]) -> Vec<BigUint>> =
+                    Box::new(|v: &[BigUint]| ata_vec(m, v, n_cols, n));
+                (c, apply, n_cols)
+            };
+            let mut u = vec![BigUint::zero(); target_dim];
+            for slot in u.iter_mut() {
+                let mut buf = [0u8; 32];
+                rng.fill(&mut buf);
+                *slot = BigUint::from_bytes_le(&buf) % n;
+            }
+            let seq_len = 2 * n_cols + 2;
+            let mut seq = Vec::with_capacity(seq_len);
+            let mut current = v0.clone();
+            for _ in 0..seq_len {
+                seq.push(dot(&u, &current, n));
+                current = apply_a(&current);
+            }
+            let lambda = berlekamp_massey(&seq, n)?;
+            if lambda.is_empty() {
+                return None;
+            }
+            let mut lambda = lambda;
+            while lambda.len() > 1 && lambda.last().map(|c| c.is_zero()).unwrap_or(false) {
+                lambda.pop();
+            }
+            let p_poly: Vec<BigUint> = lambda.iter().rev().cloned().collect();
+            if p_poly.is_empty() || p_poly[0].is_zero() {
+                return None;
+            }
+            let mut x = vec![BigUint::zero(); target_dim];
+            let mut a_pow_v = v0.clone();
+            for i in 1..p_poly.len() {
+                for (xj, vj) in x.iter_mut().zip(a_pow_v.iter()) {
+                    *xj = (&*xj + &(&p_poly[i] * vj)) % n;
+                }
+                if i < p_poly.len() - 1 {
+                    a_pow_v = apply_a(&a_pow_v);
+                }
+            }
+            let p0_inv = mod_inverse(&p_poly[0], n)?;
+            let neg_p0_inv = (n - (&p0_inv % n)) % n;
+            for v in x.iter_mut() {
+                *v = (&*v * &neg_p0_inv) % n;
+            }
+            let mx = mat_vec(m, &x, n);
+            if mx == b {
+                Some(x)
+            } else {
+                None
+            }
+        }
+    }
+
+    fn test_moduli() -> Vec<BigUint> {
+        vec![
+            BigUint::from(13u32),
+            BigUint::from(15u32),
+            BigUint::from(1u32 << 12),
+            BigUint::from(1_000_003u32),
+            BigUint::from(6u64 * ((1u64 << 61) - 1)),
+            (BigUint::one() << 127u32) - 1u32,
+        ]
+    }
+
+    /// Mostly reduced, sometimes up to `3n` (unreduced), sometimes tiny.
+    fn random_value(rng: &mut rand::rngs::StdRng, n: &BigUint) -> BigUint {
+        let v = BigUint::from(rng.gen::<u128>());
+        match rng.gen_range(0..8) {
+            0 => v % (n * 3u32),
+            1 => BigUint::from(rng.gen_range(0u32..8)),
+            _ => v % n,
+        }
+    }
+
+    /// A random sparse system with rows of weight 0–4 (empty rows and
+    /// repeated columns included).
+    fn random_system(
+        rng: &mut rand::rngs::StdRng,
+        n_rows: usize,
+        n_cols: usize,
+        n: &BigUint,
+    ) -> Vec<SparseRow> {
+        (0..n_rows)
+            .map(|_| {
+                let weight = rng.gen_range(0..=4usize);
+                let entries = (0..weight)
+                    .map(|_| (rng.gen_range(0..n_cols), random_value(rng, n)))
+                    .collect();
+                SparseRow::from_entries(entries, BigUint::zero())
+            })
+            .collect()
+    }
+
+    /// The delayed-reduction mat-vecs and inner product return exactly
+    /// the reference's residues, on unreduced inputs too.
+    #[test]
+    fn primitives_agree_with_reference() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(0x5eed_3a7c);
+        for (k, n) in test_moduli().iter().enumerate().cycle().take(300) {
+            let n_rows = rng.gen_range(0..=12usize);
+            let n_cols = rng.gen_range(1..=12usize);
+            let m = random_system(&mut rng, n_rows, n_cols, n);
+            let v: Vec<BigUint> = (0..n_cols).map(|_| random_value(&mut rng, n)).collect();
+            let w: Vec<BigUint> = (0..n_rows).map(|_| random_value(&mut rng, n)).collect();
+            assert_eq!(mat_vec(&m, &v, n), reference::mat_vec(&m, &v, n), "n #{k}");
+            assert_eq!(
+                mat_t_vec(&m, &w, n_cols, n),
+                reference::mat_t_vec(&m, &w, n_cols, n),
+                "n #{k}"
+            );
+            // Reused buffers hold stale values from a larger call.
+            let mut out = vec![BigUint::from(99u32); n_rows + n_cols + 3];
+            mat_vec_into(&m, &v, n, &mut out);
+            assert_eq!(out, reference::mat_vec(&m, &v, n));
+            let mut out = vec![BigUint::from(99u32); n_cols + 5];
+            mat_t_vec_into(&m, &w, n_cols, n, &mut out);
+            assert_eq!(out, reference::mat_t_vec(&m, &w, n_cols, n));
+            let len = rng.gen_range(0..=n_cols);
+            assert_eq!(dot(&v[..len], &v, n), reference::dot(&v[..len], &v, n));
+        }
+    }
+
+    /// Berlekamp–Massey returns exactly the reference's polynomial (or
+    /// `None`), on LFSR-like sequences (many zero discrepancies, the
+    /// cached inverse reused) and on random sequences with unreduced
+    /// terms, over prime and composite moduli (non-invertible `delta_b`).
+    #[test]
+    fn berlekamp_massey_agrees_with_reference() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(0x5eed_b3a1);
+        let mut none = 0usize;
+        for (k, n) in test_moduli().iter().enumerate().cycle().take(600) {
+            let len = rng.gen_range(0..=24usize);
+            let seq: Vec<BigUint> = if k % 2 == 0 {
+                // A random recurrence of order ≤ 4, so BM terminates early.
+                let order = rng.gen_range(1..=4usize);
+                let coefs: Vec<BigUint> = (0..order).map(|_| random_value(&mut rng, n)).collect();
+                let mut s: Vec<BigUint> = (0..order).map(|_| random_value(&mut rng, n)).collect();
+                while s.len() < len {
+                    let i = s.len();
+                    let next = coefs
+                        .iter()
+                        .enumerate()
+                        .fold(BigUint::zero(), |acc, (j, c)| acc + c * &s[i - 1 - j]);
+                    s.push(next % n);
+                }
+                s.truncate(len);
+                s
+            } else {
+                (0..len).map(|_| random_value(&mut rng, n)).collect()
+            };
+            let got = berlekamp_massey(&seq, n);
+            assert_eq!(
+                got,
+                reference::berlekamp_massey(&seq, n),
+                "n #{k}, seq {seq:?}"
+            );
+            none += usize::from(got.is_none());
+        }
+        // Composite moduli must exercise the non-invertible return.
+        assert!(none > 0);
+    }
+
+    /// Whole solves agree exactly with the reference: square systems
+    /// (direct Wiedemann) and rectangular ones (normal equations),
+    /// planted-consistent and random right-hand sides, several seeds,
+    /// prime and composite moduli.  Outcomes include successes, BM
+    /// failures, singular minimal polynomials and failed verification.
+    #[test]
+    fn wiedemann_solve_agrees_with_reference() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(0x5eed_91ed);
+        let mut solved = 0usize;
+        let mut failed = 0usize;
+        for (k, n) in test_moduli().iter().enumerate().cycle().take(240) {
+            let n_cols = rng.gen_range(1..=10usize);
+            let n_rows = if k % 3 == 0 {
+                rng.gen_range(1..=n_cols + 3)
+            } else {
+                n_cols
+            };
+            let m = random_system(&mut rng, n_rows, n_cols, n);
+            let b: Vec<BigUint> = if k % 2 == 0 {
+                let x: Vec<BigUint> = (0..n_cols).map(|_| random_value(&mut rng, n)).collect();
+                reference::mat_vec(&m, &x, n)
+            } else {
+                (0..n_rows).map(|_| random_value(&mut rng, n)).collect()
+            };
+            let seed = rng.gen::<u64>();
+            let got = wiedemann_solve(&m, &b, n_cols, n, seed);
+            assert_eq!(
+                got,
+                reference::wiedemann_solve(&m, &b, n_cols, n, seed),
+                "n #{k}"
+            );
+            solved += usize::from(got.is_some());
+            failed += usize::from(got.is_none());
+        }
+        assert!(
+            solved > 20 && failed > 20,
+            "solved {solved}, failed {failed}"
+        );
+    }
+
+    /// A 40-column planted system mod 2^127 − 1 of the perfbench shape
+    /// (weight 3): the solve succeeds and matches the reference.
+    #[test]
+    fn wiedemann_solve_agrees_with_reference_at_scale() {
+        let n = (BigUint::one() << 127u32) - 1u32;
+        let mut rng = rand::rngs::StdRng::seed_from_u64(0x5eed_0040);
+        let cols = 40;
+        let x: Vec<BigUint> = (0..cols)
+            .map(|_| BigUint::from(rng.gen::<u128>()) % &n)
+            .collect();
+        let m: Vec<SparseRow> = (0..cols)
+            .map(|_| {
+                let mut entries: Vec<(usize, BigUint)> = Vec::new();
+                while entries.len() < 3 {
+                    let c = rng.gen_range(0..cols);
+                    if entries.iter().all(|(d, _)| *d != c) {
+                        entries.push((c, BigUint::from(rng.gen::<u128>()) % &n));
+                    }
+                }
+                SparseRow::from_entries(entries, BigUint::zero())
+            })
+            .collect();
+        let b = reference::mat_vec(&m, &x, &n);
+        for seed in 0..3u64 {
+            let got = wiedemann_solve(&m, &b, cols, &n, seed);
+            assert_eq!(got, reference::wiedemann_solve(&m, &b, cols, &n, seed));
+            assert_eq!(reference::mat_vec(&m, got.as_ref().expect("solved"), &n), b);
+        }
+    }
+
+    /// Inputs the random tests above reach rarely, pinned to the
+    /// reference: the moduli 1 and 2; sequence terms that are nonzero
+    /// multiples of `n` (a discrepancy with no terms is taken as given,
+    /// so it is nonzero yet ≡ 0 and `coef` is 0) or far above `n²`;
+    /// long sequences, where `c` goes longest between reductions; and
+    /// matrices with explicit zero entries.
+    #[test]
+    fn edge_inputs_agree_with_reference() {
+        use std::collections::BTreeMap;
+        let mut rng = rand::rngs::StdRng::seed_from_u64(0x5eed_ed9e);
+        let mut moduli = test_moduli();
+        moduli.extend([1u32, 2].map(BigUint::from));
+        for (k, n) in moduli.iter().enumerate().cycle().take(400) {
+            let value = |rng: &mut rand::rngs::StdRng| match rng.gen_range(0..6) {
+                0 => BigUint::zero(),
+                1 => n * rng.gen_range(1u32..4),
+                2 => n * n * BigUint::from(rng.gen::<u128>()) + 1u32,
+                _ => random_value(rng, n),
+            };
+            let len = if k % 5 == 0 {
+                rng.gen_range(60..=160usize)
+            } else {
+                rng.gen_range(0..=12usize)
+            };
+            let seq: Vec<BigUint> = (0..len).map(|_| value(&mut rng)).collect();
+            assert_eq!(
+                berlekamp_massey(&seq, n),
+                reference::berlekamp_massey(&seq, n),
+                "n #{k}, seq {seq:?}"
+            );
+
+            let n_cols = rng.gen_range(1..=8usize);
+            let n_rows = if k % 2 == 0 {
+                n_cols
+            } else {
+                rng.gen_range(1..=n_cols + 2)
+            };
+            let m: Vec<SparseRow> = (0..n_rows)
+                .map(|_| {
+                    let mut entries = BTreeMap::new();
+                    for _ in 0..rng.gen_range(0..=3) {
+                        entries.insert(rng.gen_range(0..n_cols), value(&mut rng));
+                    }
+                    SparseRow {
+                        entries,
+                        rhs: BigUint::zero(),
+                    }
+                })
+                .collect();
+            let v: Vec<BigUint> = (0..n_cols).map(|_| value(&mut rng)).collect();
+            let w: Vec<BigUint> = (0..n_rows).map(|_| value(&mut rng)).collect();
+            assert_eq!(mat_vec(&m, &v, n), reference::mat_vec(&m, &v, n));
+            assert_eq!(
+                mat_t_vec(&m, &w, n_cols, n),
+                reference::mat_t_vec(&m, &w, n_cols, n)
+            );
+            assert_eq!(dot(&v, &v, n), reference::dot(&v, &v, n));
+            let seed = rng.gen::<u64>();
+            assert_eq!(
+                wiedemann_solve(&m, &w, n_cols, n, seed),
+                reference::wiedemann_solve(&m, &w, n_cols, n, seed),
+                "n #{k}"
+            );
+        }
+    }
+
+    /// Planted weight-3 systems of a few dozen columns, square and
+    /// rectangular: the normal-equations path reuses its `M v` scratch
+    /// and both Krylov buffers across some 60 steps and the solution
+    /// sum, and BM runs on sequences of that length from a real matrix
+    /// rather than random terms.  Every outcome, success or `None`,
+    /// matches the reference, over prime and composite moduli.
+    #[test]
+    fn wiedemann_solve_agrees_with_reference_on_larger_rectangular_systems() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(0x5eed_4ec7);
+        let mut solved = 0usize;
+        for (k, n) in test_moduli().iter().enumerate().cycle().take(24) {
+            let n_cols = rng.gen_range(12..=32usize);
+            let n_rows = match k % 3 {
+                0 => n_cols,
+                1 => n_cols + rng.gen_range(1..=8usize),
+                _ => n_cols - rng.gen_range(1..=6usize),
+            };
+            let m: Vec<SparseRow> = (0..n_rows)
+                .map(|_| {
+                    let entries = (0..3)
+                        .map(|_| (rng.gen_range(0..n_cols), random_value(&mut rng, n)))
+                        .collect();
+                    SparseRow::from_entries(entries, BigUint::zero())
+                })
+                .collect();
+            let x: Vec<BigUint> = (0..n_cols).map(|_| random_value(&mut rng, n)).collect();
+            let b = reference::mat_vec(&m, &x, n);
+            for seed in 0..2u64 {
+                let got = wiedemann_solve(&m, &b, n_cols, n, seed);
+                assert_eq!(
+                    got,
+                    reference::wiedemann_solve(&m, &b, n_cols, n, seed),
+                    "n #{k}, {n_rows} x {n_cols}, seed {seed}"
+                );
+                solved += usize::from(got.is_some());
+            }
+        }
+        assert!(solved > 4, "only {solved} solves succeeded");
     }
 }
