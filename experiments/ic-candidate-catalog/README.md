@@ -69,6 +69,14 @@ measured relation yields. The gate leaves both proposals unactivated and
 identifies actual `B`, orbit columns and held-out natural PDP/rank cost as
 the next measurements.
 
+The [degree-263 order and two-summand screen](../ecc2k130-263-endo-degree-20261008/RESULT.md)
+proves the descendant's smallest nonscalar endomorphism degree is 121,046
+and gives an exact 1% uniform-target two-sum threshold of
+3,689,348,814,741,910,323 usable points. Even a fully closed 262-point
+orbit policy needs at least 14,081,484,025,732,483 columns at that
+threshold. This focuses the four-policy experiment on the higher-arity
+PDP and priced transported action, using the frozen actual-base inputs.
+
 The [exact paired W24 census](../ecc2k130-263-w24-exact-base-20261005/RESULT.md)
 now supplies actual `B` and sign-folded columns for one explicit trace-zero
 base on both source and first degree-263 descendant. Both pass the W24/m6
