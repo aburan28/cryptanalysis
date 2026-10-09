@@ -2289,6 +2289,32 @@ impl PackedTauSixStream {
         }
         (top_count <= 1).then_some(5 * max_column + 11 * (nonzero.saturating_sub(1) + repairs))
     }
+
+    fn graph33_score(self, table: &SparseComb13) -> Option<usize> {
+        let mut nonzero = 0usize;
+        let mut max_column = 0usize;
+        let mut top_count = 0usize;
+        let mut repairs = 0usize;
+        let mut masks = [0usize; 13];
+        for (index, &code) in self.codes[..self.len].iter().enumerate() {
+            if code == u16::MAX { continue; }
+            nonzero += 1;
+            let column = index % 13;
+            max_column = max_column.max(column);
+            if index >= 156 {
+                top_count += 1;
+                repairs += usize::from(table.top_slots[unpack_width_six_digit(code).orbit] == u8::MAX);
+            } else {
+                masks[column] |= 1 << (index / 13);
+            }
+        }
+        if top_count > 1 { return None; }
+        let fusions: usize = masks.iter()
+            .map(|&mask| usize::from(GRAPH33_MATCHINGS[mask].count)).sum();
+        let additions = nonzero.saturating_sub(1) + repairs;
+        assert!(fusions <= additions);
+        Some(5 * max_column + 11 * (additions - fusions))
+    }
 }
 
 fn recode_tau_width_six_packed(a: &BigInt, b: &BigInt) -> Option<PackedTauSixStream> {
@@ -2943,7 +2969,9 @@ fn scalar_multiply_width_six_comb13_hex9(
 fn scalar_multiply_width_six_comb13_hex9_matched(
     scalar: &BigInt,
     matching_radius: u8,
+    graph_aware: bool,
 ) -> (Jacobian, BigInt, BigInt, usize, [usize; 81], bool, usize, usize, usize) {
+    assert!(!graph_aware || matching_radius == 3);
     let lattice = &*SCALAR_LATTICE;
     let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
     let table = &*WIDTH_SIX_COMB13_POINTS;
@@ -2951,7 +2979,8 @@ fn scalar_multiply_width_six_comb13_hex9_matched(
     let mut valid = 0;
     for (rank, (a, b)) in hexagonal_representative_choices(&residue).into_iter().enumerate() {
         let Some(stream) = recode_tau_width_six_packed(&a, &b) else { continue; };
-        let Some(cost) = stream.cover_score(table) else { continue; };
+        let Some(cost) = (if graph_aware { stream.graph33_score(table) }
+                          else { stream.cover_score(table) }) else { continue; };
         valid += 1;
         if best.as_ref().is_none_or(|entry| cost < entry.0) {
             best = Some((cost, rank, a, b, stream));
@@ -2966,25 +2995,31 @@ fn scalar_multiply_width_six_comb13_hex9_matched(
 fn scalar_multiply_width_six_comb13_hex9_paired(
     scalar: &BigInt,
 ) -> (Jacobian, BigInt, BigInt, usize, [usize; 81], bool, usize, usize, usize) {
-    scalar_multiply_width_six_comb13_hex9_matched(scalar, 0)
+    scalar_multiply_width_six_comb13_hex9_matched(scalar, 0, false)
 }
 
 fn scalar_multiply_width_six_comb13_hex9_path(
     scalar: &BigInt,
 ) -> (Jacobian, BigInt, BigInt, usize, [usize; 81], bool, usize, usize, usize) {
-    scalar_multiply_width_six_comb13_hex9_matched(scalar, 1)
+    scalar_multiply_width_six_comb13_hex9_matched(scalar, 1, false)
 }
 
 fn scalar_multiply_width_six_comb13_hex9_radius2(
     scalar: &BigInt,
 ) -> (Jacobian, BigInt, BigInt, usize, [usize; 81], bool, usize, usize, usize) {
-    scalar_multiply_width_six_comb13_hex9_matched(scalar, 2)
+    scalar_multiply_width_six_comb13_hex9_matched(scalar, 2, false)
 }
 
 fn scalar_multiply_width_six_comb13_hex9_graph33(
     scalar: &BigInt,
 ) -> (Jacobian, BigInt, BigInt, usize, [usize; 81], bool, usize, usize, usize) {
-    scalar_multiply_width_six_comb13_hex9_matched(scalar, 3)
+    scalar_multiply_width_six_comb13_hex9_matched(scalar, 3, false)
+}
+
+fn scalar_multiply_width_six_comb13_hex9_graphaware33(
+    scalar: &BigInt,
+) -> (Jacobian, BigInt, BigInt, usize, [usize; 81], bool, usize, usize, usize) {
+    scalar_multiply_width_six_comb13_hex9_matched(scalar, 3, true)
 }
 
 fn scalar_multiply_width_six_comb13_hex4(
@@ -3121,6 +3156,7 @@ fn check_generator_case(
     hex_nine_path: bool,
     hex_nine_radius2: bool,
     hex_nine_graph33: bool,
+    hex_nine_graphaware33: bool,
 ) {
     let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("read fixture"))
         .expect("parse fixture");
@@ -3170,7 +3206,7 @@ fn check_generator_case(
         LazyLock::force(&DISTANCE_TWO_PAIR_COMB13_POINTS);
         LazyLock::force(&RADIUS2_MATCHINGS);
     }
-    if hex_nine_graph33 {
+    if hex_nine_graph33 || hex_nine_graphaware33 {
         LazyLock::force(&GRAPH33_PAIR_COMB13_POINTS);
         LazyLock::force(&GRAPH33_MATCHINGS);
     }
@@ -3181,7 +3217,9 @@ fn check_generator_case(
     }
     let scalar = scalar_from_hex(scalar_hex);
     let start = Instant::now();
-    let point = if hex_nine_graph33 {
+    let point = if hex_nine_graphaware33 {
+        scalar_multiply_width_six_comb13_hex9_graphaware33(&scalar).0
+    } else if hex_nine_graph33 {
         scalar_multiply_width_six_comb13_hex9_graph33(&scalar).0
     } else if hex_nine_radius2 {
         scalar_multiply_width_six_comb13_hex9_radius2(&scalar).0
@@ -3217,7 +3255,9 @@ fn check_generator_case(
     let actual = point.affine_hex();
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if hex_nine_graph33 {
+    let mode = if hex_nine_graphaware33 {
+        "eisenstein_w6_comb13_hex9_graphaware33_fixed"
+    } else if hex_nine_graph33 {
         "eisenstein_w6_comb13_hex9_graph33_fixed"
     } else if hex_nine_radius2 {
         "eisenstein_w6_comb13_hex9_radius2_fixed"
@@ -3352,6 +3392,8 @@ fn main() {
             || args[0] == "--check-scalar-w6-comb13-hex9-radius2-fixed-case"
             || args[0] == "--benchmark-scalar-w6-comb13-hex9-graph33-fixed-case"
             || args[0] == "--check-scalar-w6-comb13-hex9-graph33-fixed-case"
+            || args[0] == "--benchmark-scalar-w6-comb13-hex9-graphaware33-fixed-case"
+            || args[0] == "--check-scalar-w6-comb13-hex9-graphaware33-fixed-case"
             || args[0] == "--benchmark-scalar-w6-comb13-hex4-fixed-case"
             || args[0] == "--check-scalar-w6-comb13-hex4-fixed-case"
             || args[0] == "--benchmark-scalar-glv-comb8-fixed-case"
@@ -3396,6 +3438,7 @@ fn main() {
             args[0].contains("w6-comb13-hex9-path"),
             args[0].contains("w6-comb13-hex9-radius2"),
             args[0].contains("w6-comb13-hex9-graph33"),
+            args[0].contains("w6-comb13-hex9-graphaware33"),
         );
         return;
     }
@@ -3421,6 +3464,7 @@ fn main() {
             || args == ["--scalar-w6-comb13-hex9-path-fixed"]
             || args == ["--scalar-w6-comb13-hex9-radius2-fixed"]
             || args == ["--scalar-w6-comb13-hex9-graph33-fixed"]
+            || args == ["--scalar-w6-comb13-hex9-graphaware33-fixed"]
             || args == ["--scalar-w6-comb13-hex4-fixed"]
             || args == ["--scalar-glv-comb8-fixed"]
             || args == ["--scalar-glv-comb10-fixed"],
@@ -3446,6 +3490,7 @@ fn main() {
         || args == ["--scalar-w6-comb13-hex9-path-fixed"]
         || args == ["--scalar-w6-comb13-hex9-radius2-fixed"]
         || args == ["--scalar-w6-comb13-hex9-graph33-fixed"]
+        || args == ["--scalar-w6-comb13-hex9-graphaware33-fixed"]
         || args == ["--scalar-w6-comb13-hex4-fixed"]
         || args == ["--scalar-glv-comb8-fixed"]
         || args == ["--scalar-glv-comb10-fixed"];
@@ -3461,7 +3506,7 @@ fn main() {
         8
     } else if args == ["--scalar-w6-comb12-fixed"] {
         12
-    } else if args == ["--scalar-w6-comb13-sparse-fixed"] || args == ["--scalar-w6-comb13-coset3-fixed"] || args == ["--scalar-w6-comb13-cover-fixed"] || args == ["--scalar-w6-comb13-cover25-fixed"] || args == ["--scalar-w6-comb13-hex9-fixed"] || args == ["--scalar-w6-comb13-hex9-paired-fixed"] || args == ["--scalar-w6-comb13-hex9-path-fixed"] || args == ["--scalar-w6-comb13-hex9-radius2-fixed"] || args == ["--scalar-w6-comb13-hex9-graph33-fixed"] || args == ["--scalar-w6-comb13-hex4-fixed"] {
+    } else if args == ["--scalar-w6-comb13-sparse-fixed"] || args == ["--scalar-w6-comb13-coset3-fixed"] || args == ["--scalar-w6-comb13-cover-fixed"] || args == ["--scalar-w6-comb13-cover25-fixed"] || args == ["--scalar-w6-comb13-hex9-fixed"] || args == ["--scalar-w6-comb13-hex9-paired-fixed"] || args == ["--scalar-w6-comb13-hex9-path-fixed"] || args == ["--scalar-w6-comb13-hex9-radius2-fixed"] || args == ["--scalar-w6-comb13-hex9-graph33-fixed"] || args == ["--scalar-w6-comb13-hex9-graphaware33-fixed"] || args == ["--scalar-w6-comb13-hex4-fixed"] {
         13
     } else {
         0
@@ -3508,13 +3553,14 @@ fn main() {
                 orbit_counts,
                 alternate_uses,
                 recoding_work,
-            ) = if args == ["--scalar-w6-comb13-hex9-graph33-fixed"] || args == ["--scalar-w6-comb13-hex9-radius2-fixed"] || args == ["--scalar-w6-comb13-hex9-path-fixed"] || args == ["--scalar-w6-comb13-hex9-paired-fixed"] {
+            ) = if args == ["--scalar-w6-comb13-hex9-graphaware33-fixed"] || args == ["--scalar-w6-comb13-hex9-graph33-fixed"] || args == ["--scalar-w6-comb13-hex9-radius2-fixed"] || args == ["--scalar-w6-comb13-hex9-path-fixed"] || args == ["--scalar-w6-comb13-hex9-paired-fixed"] {
                 let (point, a, b, tau_steps, orbit_counts, repaired, rank, valid, fusions) =
                     scalar_multiply_width_six_comb13_hex9_matched(
-                        &scalar, if args == ["--scalar-w6-comb13-hex9-graph33-fixed"] { 3 }
+                        &scalar, if args == ["--scalar-w6-comb13-hex9-graphaware33-fixed"] || args == ["--scalar-w6-comb13-hex9-graph33-fixed"] { 3 }
                                  else if args == ["--scalar-w6-comb13-hex9-radius2-fixed"] { 2 }
                                  else if args == ["--scalar-w6-comb13-hex9-path-fixed"] { 1 }
-                                 else { 0 });
+                                 else { 0 },
+                        args == ["--scalar-w6-comb13-hex9-graphaware33-fixed"]);
                 (point, a, b, tau_steps, orbit_counts.iter().sum(),
                  Some(json!(orbit_counts.to_vec())), None,
                  Some(json!({"top_repaired": repaired, "coset_rank": rank,
@@ -3655,7 +3701,7 @@ fn main() {
                     "orbit_counts": orbit_counts,
                     "alternate_uses": alternate_uses,
                     "recoding_work": recoding_work,
-                    "radix": if args == ["--scalar-w6-comb13-hex9-graph33-fixed"] { "orbit-w6-comb13-hex9-graph33-fixed" } else if args == ["--scalar-w6-comb13-hex9-radius2-fixed"] { "orbit-w6-comb13-hex9-radius2-fixed" } else if args == ["--scalar-w6-comb13-hex9-path-fixed"] { "orbit-w6-comb13-hex9-path-fixed" } else if args == ["--scalar-w6-comb13-hex9-paired-fixed"] { "orbit-w6-comb13-hex9-paired-fixed" } else if args == ["--scalar-w6-comb13-hex4-fixed"] { "orbit-w6-comb13-hex4-fixed" } else if args == ["--scalar-w6-comb13-hex9-fixed"] { "orbit-w6-comb13-hex9-fixed" } else if args == ["--scalar-w6-comb13-cover25-fixed"] { "orbit-w6-comb13-cover25-fixed" } else if args == ["--scalar-w6-comb13-cover-fixed"] { "orbit-w6-comb13-cover-fixed" } else if args == ["--scalar-w6-comb13-coset3-fixed"] { "orbit-w6-comb13-coset3-fixed" } else if comb_rows == 4 { "orbit-w6-comb4-fixed" } else if comb_rows == 8 { "orbit-w6-comb8-fixed" } else if comb_rows == 12 { "orbit-w6-comb12-fixed" } else if comb_rows == 13 { "orbit-w6-comb13-sparse-fixed" } else if width_six { "orbit-w6-fixed" } else if coalescent_four { "orbit-w4-coalescent" } else if redundant_four { "orbit-w4-redundant" } else if affine_fixed { "orbit-w3-fixed" } else if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
+                    "radix": if args == ["--scalar-w6-comb13-hex9-graphaware33-fixed"] { "orbit-w6-comb13-hex9-graphaware33-fixed" } else if args == ["--scalar-w6-comb13-hex9-graph33-fixed"] { "orbit-w6-comb13-hex9-graph33-fixed" } else if args == ["--scalar-w6-comb13-hex9-radius2-fixed"] { "orbit-w6-comb13-hex9-radius2-fixed" } else if args == ["--scalar-w6-comb13-hex9-path-fixed"] { "orbit-w6-comb13-hex9-path-fixed" } else if args == ["--scalar-w6-comb13-hex9-paired-fixed"] { "orbit-w6-comb13-hex9-paired-fixed" } else if args == ["--scalar-w6-comb13-hex4-fixed"] { "orbit-w6-comb13-hex4-fixed" } else if args == ["--scalar-w6-comb13-hex9-fixed"] { "orbit-w6-comb13-hex9-fixed" } else if args == ["--scalar-w6-comb13-cover25-fixed"] { "orbit-w6-comb13-cover25-fixed" } else if args == ["--scalar-w6-comb13-cover-fixed"] { "orbit-w6-comb13-cover-fixed" } else if args == ["--scalar-w6-comb13-coset3-fixed"] { "orbit-w6-comb13-coset3-fixed" } else if comb_rows == 4 { "orbit-w6-comb4-fixed" } else if comb_rows == 8 { "orbit-w6-comb8-fixed" } else if comb_rows == 12 { "orbit-w6-comb12-fixed" } else if comb_rows == 13 { "orbit-w6-comb13-sparse-fixed" } else if width_six { "orbit-w6-fixed" } else if coalescent_four { "orbit-w4-coalescent" } else if redundant_four { "orbit-w4-redundant" } else if affine_fixed { "orbit-w3-fixed" } else if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
                 })
             );
             continue;
@@ -4555,6 +4601,28 @@ mod eisenstein_tau_tests {
             assert!(new.8 >= old.8);
             assert_eq!(old.4.iter().sum::<usize>() + old.8,
                        new.4.iter().sum::<usize>() + new.8);
+        }
+    }
+
+    #[test]
+    fn graph_aware_cover_preserves_points_and_selects_lower_matched_cost() {
+        let n = SCALAR_LATTICE.n.clone();
+        let holdout_case = BigInt::parse_bytes(
+            b"c6fa5e337622dd0351b2e9870c3a2bcd375735e36465923be167bd17be625c9e", 16)
+            .unwrap();
+        for scalar in [BigInt::ZERO, BigInt::from(1), &n - 1, n + 1, holdout_case] {
+            let baseline = scalar_multiply_width_six_comb13_hex9_graph33(&scalar);
+            let candidate = scalar_multiply_width_six_comb13_hex9_graphaware33(&scalar);
+            assert_eq!(baseline.0.affine_hex(), candidate.0.affine_hex());
+            assert_eq!(baseline.7, candidate.7);
+            let baseline_proxy = 5 * baseline.3 + 11 * baseline.4.iter().sum::<usize>();
+            let candidate_proxy = 5 * candidate.3 + 11 * candidate.4.iter().sum::<usize>();
+            assert!(candidate_proxy <= baseline_proxy);
+            if scalar == BigInt::parse_bytes(
+                b"c6fa5e337622dd0351b2e9870c3a2bcd375735e36465923be167bd17be625c9e", 16)
+                .unwrap() {
+                assert_eq!((baseline_proxy, candidate_proxy), (242, 236));
+            }
         }
     }
 
