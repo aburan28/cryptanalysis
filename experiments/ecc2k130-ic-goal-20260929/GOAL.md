@@ -1,17 +1,37 @@
 # ECC2K-130 single-target index-calculus goal
 
-**Current method gate (2026-10-09 20:08 UTC):** checked-Sage curve addition
-produced the two complete first-link S3 roots for a valid pair of d13 leaf
-codes on the frozen public target. Both [exact-root branches](n131_d13_first_link_branches_20261009/RESULT.md)
-were encoded by 131 verified unit clauses and independently audited. Each
-ended `CENSORED_TIME` at its 290-second cap, with zero model lines; their
-combined solver-stage cost is 580.152 seconds for one target. The next
-algorithmic gate is to enumerate the valid third-leaf codes against a fixed
-first-link root and encode their exact second-link output relation. Prove the
-encoding and measure an ordinary-query smaller-field control before an N131
-one-target run under 600 seconds and 4 GiB. The [terminal audit](n131_d13_first_link_branches_20261009/audit.json)
-and frozen raw inputs preserve the present boundary; complete online cost
-and ordinary-query yield across targets remain to be measured.
+**Current method gate (2026-10-09 20:58 UTC):** the [N131 exact second-link
+table](n131_d13_second_link_lookup_20261009/RESULT.md) enumerates both finite
+S3 roots for every one of the 4,134 valid third-leaf codes on each frozen
+first-link branch. Independent checked-Sage arithmetic and XCNF audits pass;
+each branch's 8,268 output masks are distinct. The [paired N41 ordinary
+control](n41_phi_second_link_control_20261009/RESULT.md) qualified the same
+lookup construction on a public target, but both source and lookup queries
+ended `CENSORED_TIME` at 120 seconds with zero models. A corrected
+[target-conditioned two-leaf suffix](n41_phi_suffix2_corrected_20261009/RESULT.md)
+passed its planted semantic control and full public-target encoding audit;
+its ordinary query ended `CENSORED_TIME` at 240 seconds. These are exact
+propagation and target-support results, with ordinary-query yield still to
+measure.
+
+The next method gate is an **exact target-coupled group join** with a
+reusable adjacent two-leaf sum index. First obtain and independently replay
+an unpinned relation on the same frozen N41 public point, charging the full
+target-dependent index query and failed attempts. Before promoting an N131
+query, show that the reusable index fits 4 GiB combined RSS and the full
+target-dependent join fits one worker and 600 seconds on the frozen d13
+base. A nonadaptive prefix followed by one final-pair lookup is an
+unpromising search rule: on this base, at most
+`C(1,083,108,2) = 586,560,928,278` subgroup points can be two distinct
+leaves' sum. For uniformly sampled targets and prefixes chosen independently
+of the target, even 600 billion final-pair probes (one nanosecond each for
+600 seconds) have a union-bound success probability at most `5.18e-16`.
+This screen does not bound the fixed public
+point or an adaptive join; the prior [exact W2 pair-domain
+analysis](N131_W2_MACRO_PAIR_RESIDUAL_BOUND_RESULT.md) gives a sharper
+instance of the same test. The N131
+ordinary relation, useful-rank, factor-log, fresh-target DLP, and matched
+same-point rho measurements remain the subsequent gates.
 
 **Live exact-field gate (2026-10-09 18:06 UTC):** the frozen N131 d10/m15
 candidate `IC1N131Ckb1fb139384PDP15satRCdirectLAgaussTDdirectISO0h91f3d222e01b`
