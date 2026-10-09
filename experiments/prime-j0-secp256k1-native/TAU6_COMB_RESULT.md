@@ -9,7 +9,7 @@ match an independent secp256k1 reference in all three native modes.
 ## Construction and bound
 
 For the width-six expansion `z = sum_i d_i tau^i`, choose `r` rows and column
-width `L = ceil(164/r)`. Write `i = c + jL`. Precompute the 81 signed unit
+width `L = ceil(162/r)`. Write `i = c + jL`. Precompute the 81 signed unit
 digit orbits on each shifted base `tau^(jL) G`, for `0 <= j < r`. Horner
 evaluation over columns computes
 
@@ -25,34 +25,42 @@ point negation. The 4-, 8-, and 12-row setups require 123, 147, and 154
 shifted-base tau maps; 320, 640, and 960 seed-graph addition calls; and
 two batch inversions each.
 
-The 164-position span covers every scalar reduced by the frozen
-`short_representative` lattice rule. Center rounding places a candidate in
-the closed half-basis square. Convexity of
-`N(a,b)=a^2+3ab+3b^2` bounds its norm by
-`202636156165303341991249223765203838742465737488381082669559035497656782615090`.
+The 162-position span covers every scalar reduced by the frozen
+`short_representative` lattice rule. For `N(a,b)=a^2+3ab+3b^2`, the
+lattice basis `U,V` has determinant equal to the subgroup order `n`.
+The vectors `V` and `U-V` both have norm `n`, as does their difference
+`U-2V`. They generate an equilateral triangular lattice with side
+length `sqrt(n)`. Every point lies in a triangle whose closest vertex
+has norm distance at most `n/3`. In `U,V` coordinates, a triangle vertex
+lies within the frozen `5x5` search around the separately rounded center:
+if its `V,U-V` coefficients are neighboring floor/ceiling integers `x,y`,
+its `U,V` coefficients are `y,x-y`, at offsets at most one and two from
+the respective rounded real coordinates.
+The minimum-norm representative therefore has integer norm at most
+`floor(n/3) = 38597363079105398474523661669562635950945854759691634794201721047172720498112`.
 Let `psi(N)=sqrt(N)-sqrt(217)/26`. A zero step contracts `psi` by at least
 `sqrt(3)`, and a nonzero six-step block contracts it by at least 27.
 Every nondivisible state of norm below 196 is already one of the atlas
 digits: `tau6_comb_screen.py` checks all 462 such states in the finite box
 `|a|<=27, |b|<=16`, which contains every state with norm below 196.
-The exact integer inequality `B*26^2 < 349^2*3^158` excludes a nonzero
-nonterminal state from step 158 onward, where `B` is the norm bound above.
+The exact integer inequality `B*26^2 < 349^2*3^156` excludes a nonzero
+nonterminal state from step 156 onward, where `B=floor(n/3)`.
 Since every nonterminal state has norm at least three, the inequality
-`B*78^2 < 85^2*3^162` excludes any nonterminal state from step 162 onward.
-A final six-step block can finish at step 163, so its terminal digit fits
-at position 163.
+`B*78^2 < 85^2*3^161` excludes any nonterminal state from step 161 onward.
+A final six-step block can finish at step 161, so its terminal digit fits
+at position 161.
 
 ## Frozen operation counts
 
 | Rows | Width | Seed orbits | Holdout tau steps | Holdout mixed additions | Holdout proxy | Saving from one row |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 164 | 81 | 20,243 | 3,107 | 135,392 | baseline |
-| 2 | 82 | 162 | 10,060 | 3,107 | 84,477 | 37.6% |
-| 3 | 55 | 243 | 6,699 | 3,107 | 67,672 | 50.0% |
+| 1 | 162 | 81 | 20,243 | 3,107 | 135,392 | baseline |
+| 2 | 81 | 162 | 10,012 | 3,107 | 84,237 | 37.8% |
+| 3 | 54 | 243 | 6,645 | 3,107 | 67,402 | 50.2% |
 | 4 | 41 | 324 | 5,009 | 3,107 | 59,222 | 56.3% |
-| 6 | 28 | 486 | 3,390 | 3,107 | 51,127 | 62.2% |
+| 6 | 27 | 486 | 3,264 | 3,107 | 50,497 | 62.7% |
 | 8 | 21 | 648 | 2,512 | 3,107 | 46,737 | 65.5% |
-| 9 | 19 | 729 | 2,221 | 3,107 | 45,282 | 66.6% |
+| 9 | 18 | 729 | 2,117 | 3,107 | 44,762 | 66.9% |
 | 10 | 17 | 810 | 2,023 | 3,107 | 44,292 | 67.3% |
 | 11 | 15 | 891 | 1,764 | 3,107 | 42,997 | 68.2% |
 | 12 | 14 | 972 | 1,648 | 3,107 | 42,417 | 68.7% |
@@ -90,7 +98,7 @@ the subgroup scalar congruence. The native replay checks all three modes on all
 The 41 release tests, including shifted-table and GLV subset point checks,
 and all three fixture entrypoints pass. The result JSON
 SHA-256 is
-`ea4493ae381dff300716830de691182c4d201c80bcc971bb5ae7fd14378b95f9`;
+`1abf7a67b09e655b68886124155360886665e7a0f2a88a7e7c34bd1501d01401`;
 the native binary SHA-256 is
 `b0d1e7245baa68b1856c7799c88501f8721207ff8d2c48b8a38cfaf7c77ab4d9`.
 

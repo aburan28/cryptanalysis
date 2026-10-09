@@ -27,10 +27,17 @@ def sha(path):
 
 
 def universal_span(table):
-    # Center rounding puts one candidate in the closed half-basis square.
-    # The Eisenstein norm is convex, so a vertex maximizes it there.
-    bound = (max(ring.norm((U[0] + V[0], U[1] + V[1])),
-                 ring.norm((U[0] - V[0], U[1] - V[1]))) + 3) // 4
+    # V and U-V form an equilateral triangular lattice of side sqrt(n).
+    # Its covering radius is sqrt(n/3). A nearest triangle vertex has
+    # U,V coefficients within 2 of the separately rounded center, so
+    # the frozen 5x5 short_representative search includes it.
+    n = curve.ORDER
+    assert abs(U[0] * V[1] - U[1] * V[0]) == n
+    assert ring.norm(V) == n
+    assert ring.norm((U[0] - V[0], U[1] - V[1])) == n
+    assert ring.norm((U[0] - 2 * V[0], U[1] - 2 * V[1])) == n
+    assert ring.norm(U) == 3 * n
+    bound = n // 3
 
     # N >= a^2/4 and N >= 3b^2/4. These bounds enclose every
     # nondivisible state with N < 196 in the enumerated rectangle.
@@ -45,12 +52,12 @@ def universal_span(table):
     # Let psi(N)=sqrt(N)-sqrt(217)/26. A zero tau step scales psi by
     # at most 1/sqrt(3); a nonzero six-step block by at most 1/27.
     # Since sqrt(217)/26 < 15/26, the exact integer inequalities below
-    # exclude a nonzero nonterminal state at step 158 and any
-    # nonterminal state at step 162. A last six-step block can finish
-    # at step 163, so the terminal digit fits in position 163.
-    assert bound * 26**2 < 349**2 * 3**158
-    assert bound * 78**2 < 85**2 * 3**162
-    return 164, bound, checked
+    # exclude a nonzero nonterminal state at step 156 and any
+    # nonterminal state at step 161. A last six-step block can finish
+    # at step 161, so the terminal digit fits in position 161.
+    assert bound * 26**2 < 349**2 * 3**156
+    assert bound * 78**2 < 85**2 * 3**161
+    return 162, bound, checked
 
 
 def digit_stream(start, table, span):
@@ -155,7 +162,7 @@ def main():
     table, seeds, max_norm = atlas.build_width_six_table()
     assert len(seeds) == 81 and max_norm == 217
     span, norm_bound, checked_small_states = universal_span(table)
-    assert span == 164
+    assert span == 162
     panels = ("frozen_edges", "frozen_random", "holdout_random")
     totals = {panel: {str(rows): {"tau_steps": 0, "mixed_additions": 0,
                                 "field_product_proxy": 0} for rows in ROWS}
