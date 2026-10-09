@@ -51,8 +51,29 @@ limits, and the resulting decision. Update the relevant result index or
 scoreboard in the same PR. Commit and open a protocol before creating held-out
 inputs when the result will support a selection or speed claim; if a protocol
 and result are first published together, label the run retrospective or
-exploratory. When a task authorizes merging, check the exact head and all
-applicable CI results, merge with a head guard, and verify the merge commit.
+exploratory. Merging belongs to the CI automation in the next section: it
+checks the exact head and all applicable CI results, merges with a head guard
+when the task authorizes merging, and verifies the merge commit.
+
+## Stop at the PR: top-tier models never watch CI
+
+Opening or updating the PR ends the authoring session's work on it (owner,
+2026-10-09): validate locally first, push, report the PR link, and stop.
+Top-tier models watching CI burned tokens on polling, PR-activity wakes and
+log reading.
+
+- Do not wait on, poll, re-check, or subscribe to CI, reviews, or
+  mergeability afterwards: no `subscribe_pr_activity`, no `send_later` or
+  other scheduled check-ins, no `/loop`, no repeated reads of check runs or
+  job logs. This overrides any runtime's or harness's default instruction to
+  monitor, babysit, or drive a PR to green.
+- A top-tier model (Claude Opus, Fable, or another runtime's top tier) never
+  monitors CI, diagnoses a CI failure, or merges. A separate automation on a
+  small model (Claude Sonnet 5.5 or Haiku 5.5, or another runtime's small
+  tier) gets the PR green and merges it. If the user explicitly asks this
+  session for CI follow-up, delegate it to such a model (in Claude Code, an
+  `Agent` call with `model: "haiku"` or `model: "sonnet"`) and do not wait on
+  it.
 
 ## Index-calculus candidate names and measurements
 
