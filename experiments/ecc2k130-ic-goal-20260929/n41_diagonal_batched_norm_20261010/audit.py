@@ -87,9 +87,12 @@ def main():
               "source_sha256": sha(Path(__file__)),
               "sage_audit_sha256": sha(HERE / "sage_audit.json"),
               "transfer_result_sha256": sha(HERE / "transfer_result.json")}
-    with (HERE / "audit.json").open("x") as out:
-        json.dump(result, out, sort_keys=True, indent=2)
-        out.write("\n")
+    path = HERE / "audit.json"
+    if path.exists():
+        existing = read(path)
+        assert {key: value for key, value in existing.items() if key != "source_sha256"} == {
+            key: value for key, value in result.items() if key != "source_sha256"}
+    path.write_text(json.dumps(result, sort_keys=True, indent=2) + "\n")
     print(json.dumps(result, indent=2))
 
 
