@@ -1,5 +1,22 @@
 # ECC2K-130 single-target index-calculus goal
 
+**Two-seed W15 source and exact-formula solver gate (2026-10-10):**
+[fixing two independent pair seeds](n131_w15_two_fixed_seeds_public_20261010/RESULT.md)
+leaves 34,098.768 signed source tuples per uniform subgroup target before
+intermediate filtering and removes another 2,059 AND gates, reaching 72,903
+in the constructed control. Independent combinatorial counts, 16,516
+exhaustively checked rotated mask-pair identities, a complete XCNF witness,
+and exact group lift passed. The published-point query reached
+`CENSORED_TIME` at 592.112 seconds under one worker and 4 GiB. On its
+[byte-identical public formula](n131_w15_two_fixed_gauss_public_20261010/RESULT.md),
+an expanded Gaussian policy admitted seven initial native-XOR matrices
+instead of one, but later initialization passes used zero matrices and its
+published-point query also reached `CENSORED_TIME` at 592.103 seconds.
+The next method gate moves the target into a multi-block seed-bucket S3
+norm and four-atom product-space inverse before mask expansion, first on
+an unpinned N41 relation and then through a bounded N131 work/RSS
+projection.
+
 **W15 six-pair public gates (2026-10-10):** the
 [unrestricted source census](n131_w15_unrestricted_sixpair_public_20261010/RESULT.md)
 counts exactly 24,863,471,058,848,457,991,060,203,338,856,652,134,570,456,632,524,800
