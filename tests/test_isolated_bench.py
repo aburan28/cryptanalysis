@@ -1,5 +1,6 @@
 """Contract tests for the host-independent parts of the benchmark runner."""
 
+import contextlib
 import importlib.util
 import copy
 import fcntl
@@ -141,14 +142,24 @@ class IsolatedBenchTests(unittest.TestCase):
             db.execute("INSERT INTO jobs(id,status,created_ns,manifest) VALUES(?,?,?,?)",
                        ("a", "queued", 1, "{}"))
             db.close()
+            entered = threading.Event()
             started = threading.Event()
-            original_execute, original_host_lock = bench.execute, bench.HOST_LOCK_PATH
+            original_execute = bench.execute
+            original_host_lock = bench.HOST_LOCK_PATH
+            original_job_slot = bench.job_slot
 
             def fake_execute(_manifest, _output):
                 started.set()
                 return {"status": "rejected"}
 
+            @contextlib.contextmanager
+            def observed_job_slot(path):
+                entered.set()
+                with original_job_slot(path):
+                    yield
+
             bench.execute = fake_execute
+            bench.job_slot = observed_job_slot
             bench.HOST_LOCK_PATH = root / "host.lock"
             worker = threading.Thread(target=bench.serve,
                                       args=(root,),
@@ -157,6 +168,7 @@ class IsolatedBenchTests(unittest.TestCase):
                 with lock_path.open("a+") as other_launcher:
                     fcntl.flock(other_launcher, fcntl.LOCK_EX)
                     worker.start()
+                    self.assertTrue(entered.wait(2))
                     worker.join(0.2)
                     self.assertTrue(worker.is_alive())
                     self.assertFalse(started.is_set())
@@ -172,8 +184,11 @@ class IsolatedBenchTests(unittest.TestCase):
                                  .fetchone()[0], "rejected")
                 check.close()
             finally:
-                worker.join(2) if worker.ident is not None else None
-                bench.execute, bench.HOST_LOCK_PATH = original_execute, original_host_lock
+                if worker.ident is not None:
+                    worker.join(2)
+                bench.execute = original_execute
+                bench.HOST_LOCK_PATH = original_host_lock
+                bench.job_slot = original_job_slot
 
     def test_shared_wrong_target_or_answer_cannot_produce_speedup(self):
         with tempfile.TemporaryDirectory() as dirname:
