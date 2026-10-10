@@ -219,6 +219,18 @@ Their process CPU exposure was 19.077 and 10.084 seconds within roughly 120
 wall seconds on the contended host, so the statuses are solver-stage evidence
 and do not rank Kissat against the archived native-XOR CryptoMiniSat cells.
 The equal-B held-out yield and rank gate remains open.
+The [fixed-witness x-coordinate ladder](../ecc2k130-263-x-freedom-ladder-20261010/RESULT.md)
+then froze 32 `wz_only` native-XOR cells at both early and late S3 leaves on
+the source and degree-263 descendant. Independent full-XCNF and signed-group
+replay verified all 16 SAT models at 1/4/8/16 released x bits. All 16
+width-32/64/96/131 cells ended `BOUNDED_UNKNOWN`: 15 reached the frozen
+20,000-conflict limit and one hit the external wall cap on the contended
+host. This places a budgeted propagation frontier between 16 and 32 free x
+bits even with selectors, z words, other leaves, and S3 states fixed. The
+next algorithmic gate is conditional field-linear elimination of x/z after
+a selector mask is fixed, followed by charged ordinary-query relation and
+rank tests. This witness panel does not change Q1420's `candidate_id: null`
+or the equal-B held-out gate.
 The [functional W24/m6 solver gate](../ecc2k130-w24-functional-s3-20261006/RESULT.md)
 removed free inverse and S3-intermediate witnesses but enlarged the planted
 XCNF 20.448-fold; CryptoMiniSat timed out at 30 seconds while an independent
