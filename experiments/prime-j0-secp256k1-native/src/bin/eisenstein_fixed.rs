@@ -3577,10 +3577,10 @@ fn check_generator_case(
     let preparation_start = Instant::now();
     LazyLock::force(&SCALAR_LATTICE);
     LazyLock::force(&DECODE_CONSTANTS);
-    if (123..=148).contains(&unit_orbit_format) {
+    if (123..=150).contains(&unit_orbit_format) {
         LazyLock::force(&HYBRID_FIELD);
     }
-    if (124..=148).contains(&unit_orbit_format) {
+    if (124..=150).contains(&unit_orbit_format) {
         LazyLock::force(&BINARY_INVERSE_R3);
     }
     let retained_bytes = if unit_orbit_format != 0 {
@@ -3626,11 +3626,19 @@ fn check_generator_case(
         LazyLock::force(&GLV_COMB10_POINTS);
     }
     let scalar = scalar_from_hex(scalar_hex);
-    let scalar_words = (125..=148).contains(&unit_orbit_format)
+    let scalar_words = (125..=150).contains(&unit_orbit_format)
         .then(|| scalar_words_256(&scalar)).flatten();
     let preparation_ms = preparation_start.elapsed().as_secs_f64() * 1000.0;
     let start = Instant::now();
-    let actual = if unit_orbit_format == 148 {
+    let actual = if unit_orbit_format == 150 {
+        unit_orbit_windows::multiply_u256_tau_frontier17_bucket_two_x_direct(
+            scalar_words.expect("tau frontier17 direct bucket merge requires unsigned 256-bit scalar")
+        ).0
+    } else if unit_orbit_format == 149 {
+        unit_orbit_windows::multiply_u256_tau_frontier18_bucket_two_x_direct(
+            scalar_words.expect("tau frontier18 direct bucket merge requires unsigned 256-bit scalar")
+        ).0
+    } else if unit_orbit_format == 148 {
         unit_orbit_windows::multiply_u256_tau_frontier17_bucket_two_x(
             scalar_words.expect("tau frontier17 bucket two-X requires unsigned 256-bit scalar")
         ).0
@@ -3774,7 +3782,11 @@ fn check_generator_case(
     };
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if unit_orbit_format == 148 {
+    let mode = if unit_orbit_format == 150 {
+        "unit_orbit_u256_tau_frontier17_bucket_two_x_direct_fixed"
+    } else if unit_orbit_format == 149 {
+        "unit_orbit_u256_tau_frontier18_bucket_two_x_direct_fixed"
+    } else if unit_orbit_format == 148 {
         "unit_orbit_u256_tau_frontier17_bucket_two_x_fixed"
     } else if unit_orbit_format == 147 {
         "unit_orbit_u256_tau_frontier18_bucket_two_x_fixed"
@@ -3954,6 +3966,10 @@ fn main() {
             || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-formula")
             || args[0].starts_with("--check-scalar-unit-orbit-u256-sector")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-sector")
+            || args[0].starts_with("--check-scalar-unit-orbit-u256-tau-frontier17-bucket-two-x-direct")
+            || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-tau-frontier17-bucket-two-x-direct")
+            || args[0].starts_with("--check-scalar-unit-orbit-u256-tau-frontier18-bucket-two-x-direct")
+            || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-tau-frontier18-bucket-two-x-direct")
             || args[0].starts_with("--check-scalar-unit-orbit-u256-tau-frontier17-bucket-two-x")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-tau-frontier17-bucket-two-x")
             || args[0].starts_with("--check-scalar-unit-orbit-u256-tau-frontier18-bucket-two-x")
@@ -3986,7 +4002,11 @@ fn main() {
             || args[0].starts_with("--benchmark-scalar-unit-orbit-radix943"))
         && args[0].ends_with("-fixed-fixture")
     {
-        let format = if args[0].contains("unit-orbit-u256-tau-frontier17-bucket-two-x-fixed-fixture") {
+        let format = if args[0].contains("unit-orbit-u256-tau-frontier17-bucket-two-x-direct-fixed-fixture") {
+            150
+        } else if args[0].contains("unit-orbit-u256-tau-frontier18-bucket-two-x-direct-fixed-fixture") {
+            149
+        } else if args[0].contains("unit-orbit-u256-tau-frontier17-bucket-two-x-fixed-fixture") {
             148
         } else if args[0].contains("unit-orbit-u256-tau-frontier18-bucket-two-x-fixed-fixture") {
             147
@@ -4207,6 +4227,10 @@ fn main() {
             || args[0] == "--check-scalar-unit-orbit-u256-sector15-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-u256-sector16-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-u256-sector16-fixed-case"
+            || args[0] == "--benchmark-scalar-unit-orbit-u256-tau-frontier17-bucket-two-x-direct-fixed-case"
+            || args[0] == "--check-scalar-unit-orbit-u256-tau-frontier17-bucket-two-x-direct-fixed-case"
+            || args[0] == "--benchmark-scalar-unit-orbit-u256-tau-frontier18-bucket-two-x-direct-fixed-case"
+            || args[0] == "--check-scalar-unit-orbit-u256-tau-frontier18-bucket-two-x-direct-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-u256-tau-frontier17-bucket-two-x-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-u256-tau-frontier17-bucket-two-x-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-u256-tau-frontier18-bucket-two-x-fixed-case"
@@ -4278,7 +4302,11 @@ fn main() {
             args[0].contains("w6-comb13-hex9-radius2"),
             args[0].contains("w6-comb13-hex9-graph33"),
             args[0].contains("w6-comb13-hex9-graphaware33"),
-            if args[0].contains("unit-orbit-u256-tau-frontier17-bucket-two-x") {
+            if args[0].contains("unit-orbit-u256-tau-frontier17-bucket-two-x-direct") {
+                150
+            } else if args[0].contains("unit-orbit-u256-tau-frontier18-bucket-two-x-direct") {
+                149
+            } else if args[0].contains("unit-orbit-u256-tau-frontier17-bucket-two-x") {
                 148
             } else if args[0].contains("unit-orbit-u256-tau-frontier18-bucket-two-x") {
                 147
