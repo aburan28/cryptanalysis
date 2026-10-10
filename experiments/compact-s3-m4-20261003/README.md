@@ -2305,6 +2305,36 @@ The new one-bit target constraint does not measure successful decomposition
 work, N83 natural yield, or a complete N131 `2^x`; the challenge gate stays
 closed.
 
+### Q1477 one-target N53 online accounting comparator
+
+[Q1477](q1477_n53_online_target/README.md) uses Q1473's independently
+replayed factor-base logs and a Q1468-style complete N53 pair table to
+recover one previously unseen public target. Its 11 target-dependent
+attempts include ten complete absences and one independently verified
+four-point relation. The contiguous native online interval is 45.688
+seconds, with 184,937,528 field multiplications, 37,478,830 squarings,
+and 9,731 inversions; five exclusive phase clocks sum exactly to the
+query-through-replay interval. The table build is reported separately as
+reusable preparation. A target subgroup check occurred before the clock
+and lacks a separate timing, so this is not yet a fully charged primary
+online interval. These unisolated host timings are exploratory, with no
+paired same-point rho speedup claim. This experiment measures target descent
+and scalar replay for the explicit N53 pair-table comparator, not for the
+compact S3 solver. The N83 unpinned relation gate and complete N131
+`2^x` remain open.
+
+### Q1478 paired N53 Pollard-rho reference
+
+[Q1478](q1478_n53_rho_reference/README.md) runs one distinguished-point
+rho walk on Q1477's exact public point, with no cross-target table or
+amortization. A checked Sage audit independently replays the collision
+certificate and recovered scalar. The run solves after 10,732,337 walk
+steps and 10,281 walks. Its contiguous target-dependent online interval,
+including target validation and scalar replay, is 38.424 seconds on an
+unisolated host. Q1477's IC comparator has a 45.688-second narrower
+query-through-replay interval but omitted a separately timed pre-clock
+subgroup check. Consequently the strict paired online speedup is unknown.
+The N83 compact solver and complete N131 work projection remain open.
 ### Q1479 target-conditioned partial midpoint domains
 
 [Q1479](q1479_target_mid_domain/README.md) adds a guarded necessary domain
