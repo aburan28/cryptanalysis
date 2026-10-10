@@ -66,6 +66,7 @@ def progress(output: str) -> dict:
         "selected_matrix_counts": [[int(a), int(b)] for a, b in selected],
         "rejected_large_matrix_rows": [int(value) for value in rejected],
         "restart_rows": len(restarts),
+        "restart_rows_sha256": digest("\n".join(restarts).encode() + (b"\n" if restarts else b"")),
         "last_restart_row": restarts[-1] if restarts else None,
         "final_conflicts": int(conflicts[-1]) if conflicts else None,
         "printed_elimination_rows": eliminations,
