@@ -228,6 +228,15 @@ the formula, yet CryptoMiniSat recovered no unknown witness at either
 closed; prioritize a structurally different, bounded implicit PDP screen
 over further expansion of this exact SAT encoding.
 
+The [Q1421 normal-weight-four source-base protocol](../ecc2k130-normal-weight4-base-20261009/PROTOCOL.md)
+uses the already verified 131-coordinate normal basis to define a distinct,
+Frobenius-stable six-summand factor-base policy on the exact polynomial-basis
+ECC2K-130 source curve. Its 11,716,640 raw weight-four field parameters form
+89,440 cyclic orbits; exact rational, reciprocal, subgroup-point, and
+matrix-column counts are pending the preregistered census and independent
+Sage replay. It is a proposal with `candidate_id: null`, separate from the
+sampled type-II normal-basis weight-six four-summand policy and from Q1420.
+
 The [preregistered cold full-rank one-target control](../ecc2k130-cold-fullrank-20261006/RESULT.md)
 assigns canonical `IC1`/workload/run IDs to independently replayed n37 and n41
 four-summand exact-support recoveries; its n53 cell is a preserved 180-second
