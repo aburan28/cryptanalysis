@@ -328,6 +328,16 @@ separately frozen gate is a longer single-Q0 normal4/two run with a complete
 five-matrix control. The held-out 16/256-query screen remains gated on a
 verified ordinary relation or an independently justified solver-policy change.
 
+The [80,000-conflict normal4 follow-up](../ecc2k130-equalb-normal4-long-20261010/RESULT.md)
+resolved that activity observation: the two-matrix cell printed `108K`
+elimination calls on an 8,262-by-13,084 component. The five-matrix control
+printed the same calls on that component and `2039` on one additional
+component. Both ended naturally at the conflict budget with
+`BOUNDED_UNKNOWN`, and their 282 printed restart rows were identical. Peak
+sampled RSS was 774.641 versus 1,267.250 MiB (two/five ratio 0.611277).
+These single-query stage results motivate a component-aware Gaussian
+selection test; the held-out relation-yield and rank gate remains closed.
+
 The [preregistered cold full-rank one-target control](../ecc2k130-cold-fullrank-20261006/RESULT.md)
 assigns canonical `IC1`/workload/run IDs to independently replayed n37 and n41
 four-summand exact-support recoveries; its n53 cell is a preserved 180-second
