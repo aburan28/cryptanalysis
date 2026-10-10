@@ -11,6 +11,7 @@ use std::sync::LazyLock;
 const WIDTHS: [u8; 14] = [10, 10, 10, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9];
 const WIDTHS15: [u8; 15] = [8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9];
 const WIDTHS16: [u8; 16] = [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9];
+const FRONTIER16_WIDTHS: [u8; 16] = [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9];
 const FRONTIER17_WIDTHS: [u8; 17] = [7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7];
 const FRONTIER18_WIDTHS: [u8; 18] = [7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 7];
 const FRONTIER19_WIDTHS: [u8; 19] = [6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 6];
@@ -31,6 +32,9 @@ const FRONTIER7_FINAL_ATLAS: &[u8] = include_bytes!(
 );
 const FRONTIER8_FULL_ATLAS: &[u8] = include_bytes!(
     "../../../../prime-j0-tau-frontier-20261010/w8-d256/atlas-w8.bin"
+);
+const FRONTIER9_FINAL_ATLAS: &[u8] = include_bytes!(
+    "../../../../prime-j0-tau-power16-20261010/atlas-w9.bin"
 );
 const FRONTIER6_FULL_ATLAS: &[u8] = include_bytes!(
     "../../../../prime-j0-tau-frontier-20261010/w6-d64/atlas-w6.bin"
@@ -1880,6 +1884,46 @@ impl Frontier17BucketTwoXTables {
 static FRONTIER17_BUCKET_TWO_X_TABLES: LazyLock<Frontier17BucketTwoXTables> =
     LazyLock::new(Frontier17BucketTwoXTables::new);
 
+struct Frontier16BucketTwoXTables {
+    full8: FrontierAtlas,
+    final9: FrontierAtlas,
+    windows: Vec<Box<[U256TwoXAffine]>>,
+    retained_bytes: usize,
+}
+
+impl Frontier16BucketTwoXTables {
+    fn new() -> Self {
+        let full8 = FrontierAtlas::from_bytes(FRONTIER8_FULL_ATLAS, 8, 256, 5_463);
+        let final9 = FrontierAtlas::from_bytes(FRONTIER9_FINAL_ATLAS, 9, 363, 25_869);
+        let mut windows = Vec::with_capacity(FRONTIER16_WIDTHS.len());
+        let mut base = Jacobian::generator();
+        for (index, &width) in FRONTIER16_WIDTHS.iter().enumerate() {
+            let atlas = if index + 1 == FRONTIER16_WIDTHS.len() { &final9 } else { &full8 };
+            let seeds = atlas.seed_digits();
+            let plain = build_u256_window(&seeds, base);
+            windows.push(plain.iter().copied().map(U256TwoXAffine::from_affine)
+                .collect::<Vec<_>>().into_boxed_slice());
+            for _ in 0..width { base = base.double(); }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        assert_eq!(entries, 107_814);
+        assert_eq!(size_of::<U256TwoXAffine>(), 96);
+        let retained_bytes = entries * size_of::<U256TwoXAffine>()
+            + FRONTIER8_FULL_ATLAS.len() + FRONTIER9_FINAL_ATLAS.len()
+            + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[U256TwoXAffine]>>();
+        assert_eq!(retained_bytes, 11_786_576);
+        Self { full8, final9, windows, retained_bytes }
+    }
+
+    fn atlas(&self, index: usize) -> &FrontierAtlas {
+        if index + 1 == FRONTIER16_WIDTHS.len() { &self.final9 } else { &self.full8 }
+    }
+}
+
+static FRONTIER16_BUCKET_TWO_X_TABLES: LazyLock<Frontier16BucketTwoXTables> =
+    LazyLock::new(Frontier16BucketTwoXTables::new);
+
 struct TauBucketAtlas {
     codes: &'static [u8],
     digits: &'static [u8],
@@ -2127,6 +2171,12 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 53 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return FRONTIER16_BUCKET_TWO_X_TABLES.retained_bytes;
+    }
     if format == 52 || format == 51 {
         return warm_format(format - 4);
     }
@@ -3270,6 +3320,14 @@ pub(super) fn multiply_u256_tau_frontier17_bucket_two_x_xyzz_tau(
 ) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
     let tables: &'static Frontier17BucketTwoXTables = &*FRONTIER17_BUCKET_TWO_X_TABLES;
     multiply_u256_tau_bucket_two_x_with(scalar_words, &FRONTIER17_WIDTHS,
+        |index| tables.atlas(index), &tables.windows, tables.retained_bytes, true, true)
+}
+
+pub(super) fn multiply_u256_tau_frontier16_bucket_two_x_xyzz_tau(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let tables: &'static Frontier16BucketTwoXTables = &*FRONTIER16_BUCKET_TWO_X_TABLES;
+    multiply_u256_tau_bucket_two_x_with(scalar_words, &FRONTIER16_WIDTHS,
         |index| tables.atlas(index), &tables.windows, tables.retained_bytes, true, true)
 }
 
@@ -4862,6 +4920,90 @@ mod tests {
                        multiply_u256_tau_frontier18_bucket_two_x_direct(words).0,
                        "frontier18 scalar {index}");
         }
+    }
+
+    #[test]
+    fn frontier16_bucket_two_x_matches_prior_panel_and_binary_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-tau-bucket-two-x-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let tables = &*FRONTIER16_BUCKET_TWO_X_TABLES;
+        assert_eq!(tables.retained_bytes, 11_786_576);
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let candidate = multiply_u256_tau_frontier16_bucket_two_x_xyzz_tau(words);
+            let sector16 = multiply_u256_sector16(words);
+            let tau384 = multiply_u256_tau384_matching(words);
+            assert_eq!(candidate.0, sector16.0, "sector16 point {index}");
+            assert_eq!(candidate.0, tau384.0, "tau384 point {index}");
+            assert_eq!(candidate.1, sector16.1, "representative {index}");
+            assert_eq!((candidate.4, candidate.5), (sector16.4, sector16.5),
+                       "selector {index}");
+            assert!(candidate.2 <= 15 && candidate.6 == 0);
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "binary point {index}");
+            }
+        }
+    }
+
+    #[test]
+    fn frontier16_bucket_all_points_match_independent_group_sums() {
+        fn multiply_small(base: Jacobian, multiplier: i32) -> Jacobian {
+            let mut result = Jacobian::identity();
+            let addend = base.into_affine();
+            let magnitude = multiplier.unsigned_abs();
+            for bit in (0..(32 - magnitude.leading_zeros())).rev() {
+                result = result.double();
+                if (magnitude >> bit) & 1 != 0 {
+                    result = result.add_mixed(addend);
+                }
+            }
+            if multiplier < 0 { result.neg() } else { result }
+        }
+        let tables = &*FRONTIER16_BUCKET_TWO_X_TABLES;
+        let mut base = Jacobian::generator();
+        let mut checked = 0usize;
+        for (window, row) in tables.windows.iter().enumerate() {
+            let seeds = tables.atlas(window).seed_digits();
+            assert_eq!(row.len(), seeds.len());
+            let tau_base = base.tau();
+            let max_a = seeds.iter().map(|d| d.0.unsigned_abs()).max().unwrap() as usize;
+            let max_b = seeds.iter().map(|d| d.1.unsigned_abs()).max().unwrap() as usize;
+            let a_multiples: Vec<_> = (0..=max_a)
+                .map(|k| multiply_small(base, k as i32).into_affine()).collect();
+            let b_multiples: Vec<_> = (0..=max_b)
+                .map(|k| multiply_small(tau_base, k as i32).into_affine()).collect();
+            let mut expected = Vec::with_capacity(row.len() - 1);
+            for &(a, b) in seeds.iter().skip(1) {
+                let left = if a < 0 { a_multiples[a.unsigned_abs() as usize].neg() }
+                           else { a_multiples[a as usize] };
+                let right = if b < 0 { b_multiples[b.unsigned_abs() as usize].neg() }
+                            else { b_multiples[b as usize] };
+                let sum = if left.is_identity() { right }
+                    else if right.is_identity() { left }
+                    else { left.add_mixed(right) };
+                assert!(!sum.is_identity());
+                expected.push(sum);
+            }
+            let affine = batch_to_affine(&expected);
+            for (index, point) in affine.iter().enumerate() {
+                let actual = row[index + 1].unit(0);
+                assert_eq!(actual.x.0, super::super::hybrid_pair_mont(point.x).0,
+                           "window {window} slot {} x", index + 1);
+                assert_eq!(actual.y.0, super::super::hybrid_pair_mont(point.y).0,
+                           "window {window} slot {} y", index + 1);
+                checked += 1;
+            }
+            for _ in 0..FRONTIER16_WIDTHS[window] { base = base.double(); }
+        }
+        assert_eq!(checked, 107_814 - 16);
+        println!("frontier16_independent_nonzero_points={checked} retained_bytes={}",
+                 tables.retained_bytes);
     }
 
     #[test]
