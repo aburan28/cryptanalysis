@@ -77,6 +77,13 @@ orbit policy needs at least 14,081,484,025,732,483 columns at that
 threshold. This focuses the four-policy experiment on the higher-arity
 PDP and priced transported action, using the frozen actual-base inputs.
 
+The [exact degree-263 exceptional-input audit](../ecc2k130-263-exceptional-audit-20261010/RESULT.md)
+replayed the verified first descending route and its oriented dual through
+infinity, rational order-two torsion, and all 262 nonzero points in each
+geometric kernel. A checked Sage run and independent route-manifest/hash
+audit passed, so exceptional map evaluation is available for the equal-base
+transport comparison. The route alone retains `candidate_id: null`.
+
 The [exact paired W24 census](../ecc2k130-263-w24-exact-base-20261005/RESULT.md)
 now supplies actual `B` and sign-folded columns for one explicit trace-zero
 base on both source and first degree-263 descendant. Both pass the W24/m6
@@ -403,8 +410,8 @@ in all three XCNF dimensions. Both ordinary query-zero searches reached the
 150-second external guard with `BOUNDED_UNKNOWN` and independent live-search
 audits. The counter becomes the normal4 circuit baseline, while relation
 yield and rank remain unmeasured; held-out N131 four-policy prefixes await a
-relation-producing PDP. The next independent gates are the degree-263
-exceptional-input transport proof and charged n53 compact-orbit recovery.
+relation-producing PDP. The exceptional-input transport gate is verified
+above; charged n53 compact-orbit recovery is the other independent gate.
 
 The [equal-B Gaussian-matrix gate](../ecc2k130-equalb-gauss-gate-20261010/RESULT.md)
 replayed the exact normal4-counter and W24-balanced four-lift query under
