@@ -1,0 +1,88 @@
+diff --git a/experiments/prime-j0-secp256k1-native/src/bin/eisenstein_fixed/unit_orbit_windows.rs b/experiments/prime-j0-secp256k1-native/src/bin/eisenstein_fixed/unit_orbit_windows.rs
+index 38d64654a..4c8b35814 100644
+--- a/experiments/prime-j0-secp256k1-native/src/bin/eisenstein_fixed/unit_orbit_windows.rs
++++ b/experiments/prime-j0-secp256k1-native/src/bin/eisenstein_fixed/unit_orbit_windows.rs
+@@ -732,19 +732,34 @@ impl U256XYZZ {
+     }
+ }
+ 
++#[derive(Clone, Copy, Default)]
++struct FieldOpCounts { add: u64, sub: u64, mul: u64, square: u64 }
++
++thread_local! {
++    static FIELD_OPS: std::cell::Cell<FieldOpCounts> =
++        const { std::cell::Cell::new(FieldOpCounts { add: 0, sub: 0, mul: 0, square: 0 }) };
++}
++
++fn reset_field_ops() { FIELD_OPS.with(|counter| counter.set(FieldOpCounts::default())); }
++fn field_ops() -> FieldOpCounts { FIELD_OPS.with(|counter| counter.get()) }
++
+ fn u256_add(a: super::U256, b: super::U256) -> super::U256 {
++    FIELD_OPS.with(|counter| { let mut c = counter.get(); c.add += 1; counter.set(c); });
+     a.add_mod(&b, &super::HYBRID_FIELD.0.n)
+ }
+ 
+ fn u256_sub(a: super::U256, b: super::U256) -> super::U256 {
++    FIELD_OPS.with(|counter| { let mut c = counter.get(); c.sub += 1; counter.set(c); });
+     a.sub_mod(&b, &super::HYBRID_FIELD.0.n)
+ }
+ 
+ fn u256_mul(a: super::U256, b: super::U256) -> super::U256 {
++    FIELD_OPS.with(|counter| { let mut c = counter.get(); c.mul += 1; counter.set(c); });
+     super::HYBRID_FIELD.0.mont_mul(&a, &b)
+ }
+ 
+ fn u256_square(a: super::U256) -> super::U256 {
++    FIELD_OPS.with(|counter| { let mut c = counter.get(); c.square += 1; counter.set(c); });
+     super::HYBRID_FIELD.0.mont_sqr(&a)
+ }
+ 
+@@ -4850,6 +4865,48 @@ mod tests {
+                  tables.retained_bytes);
+     }
+ 
++    #[test]
++    fn frontier18_orbit_xyzz_exact_point_kernel_operations() {
++        let panel: serde_json::Value = serde_json::from_str(include_str!(
++            "../../../../prime-j0-frontier18-orbit-xyzz-20261010/fresh-inputs.json"
++        )).unwrap();
++        assert_eq!(panel["seed"].as_i64(), Some(20261010145));
++        let scalars = panel["scalars_hex"].as_array().unwrap();
++        assert_eq!(scalars.len(), 4096);
++        std::sync::LazyLock::force(&FRONTIER19_ORBIT_TAU_TABLES);
++        std::sync::LazyLock::force(&FRONTIER18_ORBIT_TAU_TABLES);
++        std::sync::LazyLock::force(&FRONTIER17_ORBIT_TAU_TABLES);
++        let mut totals = [FieldOpCounts::default(); 3];
++        let mut gauges = [0u64; 3];
++        for (index, text) in scalars.iter().enumerate() {
++            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
++            let words = super::super::scalar_words_256(&scalar).unwrap();
++            let functions: [fn([u64; 4]) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize); 3] = [
++                multiply_u256_tau_frontier19_xyzz,
++                multiply_u256_tau_frontier18_orbit_xyzz,
++                multiply_u256_tau_frontier17_orbit_xyzz,
++            ];
++            let mut expected = None;
++            for (mode, function) in functions.iter().enumerate() {
++                reset_field_ops();
++                let result = function(words);
++                let count = field_ops();
++                if let Some(ref point) = expected { assert_eq!(&result.0, point, "point {index}"); }
++                else { expected = Some(result.0); }
++                totals[mode].add += count.add;
++                totals[mode].sub += count.sub;
++                totals[mode].mul += count.mul;
++                totals[mode].square += count.square;
++                gauges[mode] += result.6 as u64;
++            }
++        }
++        for (mode, name) in ["frontier19_xyzz", "frontier18_xyzz", "frontier17_xyzz"].iter().enumerate() {
++            let c = totals[mode];
++            println!("mode={name} cases=4096 point_kernel_add={} point_kernel_sub={} point_kernel_mul={} point_kernel_square={} gauge_rotations={}",
++                     c.add, c.sub, c.mul, c.square, gauges[mode]);
++        }
++    }
++
+     #[test]
+     fn tau384_matching_matches_fresh_panel_and_binary_points() {
+         let panel: serde_json::Value = serde_json::from_str(include_str!(
