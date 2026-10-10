@@ -21,6 +21,7 @@ on:
       - "experiments/prime-j0-xyzz-tau-20261010/**"
       - "experiments/prime-j0-frontier16-xyzz-tau-20261010/**"
       - "experiments/prime-j0-frontier16-compact-affine-20261010/**"
+      - "experiments/prime-j0-frontier16-beta-solinas-20261010/**"
   pull_request:
     paths:
       - ".github/workflows/prime-j0-cache-window.yml"
@@ -38,6 +39,7 @@ on:
       - "experiments/prime-j0-xyzz-tau-20261010/**"
       - "experiments/prime-j0-frontier16-xyzz-tau-20261010/**"
       - "experiments/prime-j0-frontier16-compact-affine-20261010/**"
+      - "experiments/prime-j0-frontier16-beta-solinas-20261010/**"
   workflow_dispatch:
 
 permissions:
@@ -84,7 +86,7 @@ jobs:
               tail -40 "$RUNNER_TEMP/native-tests.log"
               exit 1
             }
-          grep -F 'test result: ok. 127 passed; 0 failed;' "$RUNNER_TEMP/native-tests.log"
+          grep -F 'test result: ok. 129 passed; 0 failed;' "$RUNNER_TEMP/native-tests.log"
 
       - name: Build executable and replay all fixture points
         run: |
@@ -134,6 +136,7 @@ jobs:
           verify_at_commit prime-j0-xyzz-tau-20261010 verify.py verify_ops.py
           verify_at_commit prime-j0-frontier16-xyzz-tau-20261010 verify.py verify_ops.py
           verify_at_commit prime-j0-frontier16-compact-affine-20261010 verify.py verify_ops.py
+          verify_at_commit prime-j0-frontier16-beta-solinas-20261010 verify.py verify_ops.py
 
       - name: Replay three frontier modes on independent scalar panel
         run: |
