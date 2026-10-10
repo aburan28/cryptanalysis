@@ -1,5 +1,20 @@
 # ECC2K-130 single-target index-calculus goal
 
+**Exact fixed-pair output-prefix gate (2026-10-10):**
+[complete W15 pair-output enumeration](n131_w15_pair_output_prefix_gate_20261010/RESULT.md)
+certifies that the first two fixed-seed blocks admit only 7,661 and 7,828
+of 65,536 possible 16-bit prefixes. An independent bit-field audit checked
+all 16,516 quadratic roots and the excluded-prefix complement. The
+37,366 added CNF clauses preserve the complete constructed XCNF witness
+and group lift. On the same published N131 target, the frozen one-worker
+4-GiB query reached `CENSORED_TIME` after 592.074 s of construction plus
+search, with 463,192,064 B sampled combined peak RSS. Its terminal audit
+replayed the archived formula, source hashes, solver log, and cap. The
+next method gate uses target-coupled multi-block S3 elimination or a
+factored seed-bucket norm before large SAT expansion: first obtain an
+independently replayed ordinary N41 relation, then project complete
+N131 work and RSS under the 600-s/4-GiB budget.
+
 **Two-seed W15 source and exact-formula solver gate (2026-10-10):**
 [fixing two independent pair seeds](n131_w15_two_fixed_seeds_public_20261010/RESULT.md)
 leaves 34,098.768 signed source tuples per uniform subgroup target before
