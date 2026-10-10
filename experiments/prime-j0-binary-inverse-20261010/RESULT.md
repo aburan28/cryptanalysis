@@ -13,7 +13,9 @@ The correction follows from the stored value `zR'`: binary GCD returns
 `z^-1 R'`, the inverse in the field representation used by the affine
 step. The modular-half operation retains the carry from `x+p` when `x`
 is odd. This mode has input-dependent branches and stays opt-in for
-public-scalar research.
+public-scalar research. The [correctness proof](PROOF.md) gives the
+inverse invariant and a 1,020-step upper bound, below the implemented
+2,048-step guard.
 
 ## Correctness record
 
