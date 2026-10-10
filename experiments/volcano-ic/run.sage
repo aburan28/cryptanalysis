@@ -92,12 +92,15 @@ def tags(cur):
 def exactYield(cur, tg):
     """Distinct prime-subgroup targets (up to sign) reachable as +-P1 +- P2."""
     xs = cur.xs
+    # Hoist dictionary lookups out of the quadratic pair-enumeration loop.
+    points = [cur.fb[x] for x in xs]
+    point_tags = [tg[x] for x in xs]
     seen = set()
     eligible = 0
     for i in range(len(xs)):
-        P1, t1 = cur.fb[xs[i]], tg[xs[i]]
+        P1, t1 = points[i], point_tags[i]
         for j in range(i, len(xs)):
-            P2, t2 = cur.fb[xs[j]], tg[xs[j]]
+            P2, t2 = points[j], point_tags[j]
             if (t1 + t2) % 4 == 0:
                 R = P1 + P2
                 if not R.is_zero():
