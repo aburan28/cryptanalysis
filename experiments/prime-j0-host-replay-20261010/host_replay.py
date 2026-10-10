@@ -51,6 +51,15 @@ ARITHMETIC_SOURCE_PATHS = (
     ROOT / "experiments/prime-j0-arithmetic-atlas-20261010/make_inputs.py",
     ROOT / "experiments/prime-j0-arithmetic-atlas-20261010/verify_candidate.py",
 )
+FORMULA_SOURCE_PATHS = (
+    ROOT / "experiments/prime-j0-formula-atlas-20261010/PROTOCOL.md",
+    ROOT / "experiments/prime-j0-formula-atlas-20261010/PROOF.md",
+    ROOT / "experiments/prime-j0-formula-atlas-20261010/ISOLATED_PANEL.md",
+    ROOT / "experiments/prime-j0-formula-atlas-20261010/fresh-inputs.json",
+    ROOT / "experiments/prime-j0-formula-atlas-20261010/make_inputs.py",
+    ROOT / "experiments/prime-j0-formula-atlas-20261010/verify_candidate.py",
+    ROOT / "experiments/prime-j0-formula-atlas-20261010/runpod_correctness.sh",
+)
 COMPARISONS = {
     "point": {
         "modes": (
@@ -58,7 +67,7 @@ COMPARISONS = {
             ("candidate", "unit_orbit_u256_point14_fixed", "u256-point"),
         ),
         "retained_bytes": {"reference": 78_470_208, "candidate": 70_430_960},
-        "native_tests": 83,
+        "native_tests": 85,
         "algebra": ROOT / "experiments/prime-j0-u256-point-20261010/check_algebra.py",
         "comparison_kind": "single-public-scalar-u14-eisenstein-vs-four-limb-point",
         "boundary": (
@@ -74,7 +83,7 @@ COMPARISONS = {
             ("candidate", "unit_orbit_u256_gauge14_fixed", "u256-gauge"),
         ),
         "retained_bytes": {"reference": 70_430_960, "candidate": 70_430_960},
-        "native_tests": 83,
+        "native_tests": 85,
         "algebra": ROOT / "experiments/prime-j0-u14-gauge-20261010/check_algebra.py",
         "comparison_kind": "single-public-scalar-u14-grouped-unit-gauge-vs-direct-unit",
         "boundary": (
@@ -92,7 +101,7 @@ COMPARISONS = {
             ("candidate", "unit_orbit_u256_arithmetic14_fixed", "u256-arithmetic"),
         ),
         "retained_bytes": {"reference": 70_430_960, "candidate": 65_188_008},
-        "native_tests": 83,
+        "native_tests": 85,
         "algebra": ROOT / "experiments/prime-j0-u14-gauge-20261010/check_algebra.py",
         "comparison_kind": "single-public-scalar-u14-arithmetic-orbit-index-vs-stored-atlas",
         "boundary": (
@@ -101,6 +110,23 @@ COMPARISONS = {
             "reduction, certified Voronoi selection, signed-word recoding, orbit indexing, "
             "point lookup, grouped-gauge additions, final inversion, affine formatting, "
             "and expected-point verification. Stops after that verification."
+        ),
+    },
+    "formula": {
+        "modes": (
+            ("reference", "unit_orbit_u256_arithmetic14_fixed", "u256-arithmetic"),
+            ("candidate", "unit_orbit_u256_formula14_fixed", "u256-formula"),
+        ),
+        "retained_bytes": {"reference": 65_188_008, "candidate": 64_314_112},
+        "native_tests": 85,
+        "algebra": ROOT / "experiments/prime-j0-u14-gauge-20261010/check_algebra.py",
+        "comparison_kind": "single-public-scalar-u14-point-only-table-vs-digit-atlas",
+        "boundary": (
+            "Starts after fixture loading, scalar decoding, U14 point-table preparation, "
+            "field and unit constants, and binary-inverse correction setup. Includes scalar "
+            "reduction, certified Voronoi selection, signed-word recoding, orbit and digit "
+            "computation, point lookup, grouped-gauge additions, final inversion, affine "
+            "formatting, and expected-point verification. Stops after that verification."
         ),
     },
 }
@@ -122,10 +148,12 @@ def decoded(value):
 def source_paths(comparison):
     """Bind embedded Rust fixture/atlas files as well as direct sources."""
     paths = set(BASE_SOURCE_PATHS)
-    if comparison in ("gauge", "arithmetic"):
+    if comparison in ("gauge", "arithmetic", "formula"):
         paths.update(GAUGE_SOURCE_PATHS)
-    if comparison == "arithmetic":
+    if comparison in ("arithmetic", "formula"):
         paths.update(ARITHMETIC_SOURCE_PATHS)
+    if comparison == "formula":
+        paths.update(FORMULA_SOURCE_PATHS)
     pattern = re.compile(r'(?:include_(?:bytes|str)!\(\s*|#\[path\s*=\s*)"([^"]+)"')
     pending = [path for path in paths if path.suffix == ".rs"]
     while pending:
