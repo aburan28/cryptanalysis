@@ -25,7 +25,8 @@ internal / 40-second external wall caps. Ordinary Q0 uses zero extra units,
 2,000 conflicts / 120-second internal / 45-second external wall caps, the
 same four Gaussian limits as the previous Q1420 panel. All runs use one
 thread, pinned CryptoMiniSat 5.14.7, native XOR, and sampled 4-GiB RSS
-guard. Interleave base and identity per curve and input kind. Record
+guard through Darwin `libproc.proc_pidinfo`. Interleave base and identity
+per curve and input kind. Record
 construction, full-input hashes, solver wall/CPU, sampled memory, caps,
 stdout/stderr, and model verification.
 
@@ -37,3 +38,9 @@ unisolated host are exploratory. The panel is a PDP-stage diagnostic:
 relation yield, rank, matrix solving, target descent, and single-target
 IC/rho comparison remain separate gates. Q1420 retains
 `candidate_id: null` until those gates are measured.
+
+The first frozen input manifest used a `ps` RSS sampler. A sandbox denial
+stopped its first launch before any solver process began. The corrected
+`libproc` runner must be committed and the identical eight formula hashes
+refrozen before any solve; retain the first manifest and traceback as a
+prelaunch failure record.
