@@ -13,5 +13,20 @@ The paired point replay uses the 4,096 independently generated scalars and
 ten boundary cases frozen in `prime-j0-tau-bucket-two-x-20261010`. The
 `run_replay.py` output and `verify.py` receipt bind the executed native binary,
 the source freeze, both fixtures, and every independently checked point.
-These are correctness and operation-count diagnostics; CPU wall-time ratios
-require a host-level isolation receipt under `docs/ISOLATED_BENCHMARKS.md`.
+
+The temporary `ops-diagnostic.patch` counts calls to the native field-operation
+wrappers after table construction. All counts below cover the same 4,096
+scalars, including the final bucket merge. `verify_ops.py` reapplies the patch
+to the frozen source and checks the logged totals.
+
+| Format | Add | Subtract | Multiply | Square |
+| --- | ---: | ---: | ---: | ---: |
+| 17 windows, old merge | 90,110 | 486,789 | 573,424 | 147,452 |
+| 17 windows, direct merge | 90,110 | 486,789 | 569,328 | 143,356 |
+| 18 windows, old merge | 94,207 | 516,260 | 606,200 | 155,646 |
+| 18 windows, direct merge | 94,207 | 516,260 | 602,104 | 151,550 |
+
+The difference is 4,096 fewer multiplications and 4,096 fewer squarings for
+each width, or one of each per scalar. These are correctness and operation-count
+diagnostics; CPU wall-time ratios require a host-level isolation receipt under
+`docs/ISOLATED_BENCHMARKS.md`.
