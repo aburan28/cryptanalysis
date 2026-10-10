@@ -17,6 +17,9 @@ const RADIX13_WINDOWS: usize = 13;
 const RADIX13_CAP_BYTES: usize = 140 * (1 << 20);
 const RADIX384: usize = 384;
 const RADIX384_WINDOWS: usize = 15;
+const TAU384_MATCHING_ATLAS: &[u8] = include_bytes!(
+    "../../../../prime-j0-tau384-matching-20261010/atlas.bin"
+);
 const TAU_BUCKET_RADIX: usize = 1021;
 const TAU_BUCKET_CAP_BYTES: usize = 90 * (1 << 20);
 const TAU_BUCKET_ATLAS: &[u8] = include_bytes!(
@@ -706,6 +709,45 @@ impl U256Jacobian {
         Self { x: rx, y: ry, z: rz }
     }
 
+    fn add_projective(self, q: Self) -> Self {
+        if self.is_identity() { return q; }
+        if q.is_identity() { return self; }
+        let z1_squared = u256_square(self.z);
+        let z2_squared = u256_square(q.z);
+        let u1 = u256_mul(self.x, z2_squared);
+        let u2 = u256_mul(q.x, z1_squared);
+        let s1 = u256_mul(self.y, u256_mul(q.z, z2_squared));
+        let s2 = u256_mul(q.y, u256_mul(self.z, z1_squared));
+        let h = u256_sub(u2, u1);
+        let r = u256_sub(s2, s1);
+        if bool::from(h.ct_is_zero()) {
+            return if bool::from(r.ct_is_zero()) { self.double() }
+                   else { Self::identity() };
+        }
+        let hh = u256_square(h);
+        let hhh = u256_mul(h, hh);
+        let v = u256_mul(u1, hh);
+        let rx = u256_sub(u256_sub(u256_square(r), hhh), u256_add(v, v));
+        let ry = u256_sub(u256_mul(r, u256_sub(v, rx)), u256_mul(s1, hhh));
+        let rz = u256_mul(u256_mul(self.z, q.z), h);
+        Self { x: rx, y: ry, z: rz }
+    }
+
+    fn tau(self) -> Self {
+        if self.is_identity() || bool::from(self.x.ct_is_zero()) {
+            return Self::identity();
+        }
+        let x3 = u256_mul(u256_square(self.x), self.x);
+        let y2 = u256_square(self.y);
+        let three_x3 = u256_add(u256_add(x3, x3), x3);
+        let four_y2 = u256_add(u256_add(y2, y2), u256_add(y2, y2));
+        let rx = u256_sub(four_y2, three_x3);
+        let inner = u256_sub(three_x3, u256_add(rx, rx));
+        let ry = u256_mul(inner, self.y);
+        let rz = u256_mul(u256_sub(self.x, self.rotate_power(1).x), self.z);
+        Self { x: rx, y: ry, z: rz }
+    }
+
     fn affine_hex_binary_inverse(self) -> String {
         if self.is_identity() { return "identity".to_owned(); }
         let ctx = &super::HYBRID_FIELD.0;
@@ -917,6 +959,92 @@ impl Radix384Tables {
 }
 
 static RADIX384_TABLES: LazyLock<Radix384Tables> = LazyLock::new(Radix384Tables::new);
+
+struct Tau384MatchingAtlas {
+    codes: &'static [u8],
+    seeds: &'static [u8],
+}
+
+impl Tau384MatchingAtlas {
+    fn new() -> Self {
+        let bytes = TAU384_MATCHING_ATLAS;
+        assert_eq!(&bytes[..4], b"T384");
+        let seed_count = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
+        assert_eq!(seed_count, 18_074);
+        let code_bytes = RADIX384 * RADIX384 * 4;
+        assert_eq!(bytes.len(), 8 + code_bytes + 4 * seed_count);
+        let atlas = Self {
+            codes: &bytes[8..8 + code_bytes],
+            seeds: &bytes[8 + code_bytes..],
+        };
+        assert_eq!(&atlas.seeds[..4], &[0, 0, 0, 0]);
+        for ra in 0..RADIX384 {
+            for rb in 0..RADIX384 {
+                let (digit, _, _, _) = atlas.digit_residue(ra, rb);
+                assert!(norm(digit) <= 253 * 253);
+            }
+        }
+        atlas
+    }
+
+    fn seed_digits(&self) -> Vec<(i16, i16)> {
+        self.seeds.chunks_exact(4).map(|chunk| {
+            (i16::from_le_bytes(chunk[..2].try_into().unwrap()),
+             i16::from_le_bytes(chunk[2..].try_into().unwrap()))
+        }).collect()
+    }
+
+    fn digit_residue(&self, ra: usize, rb: usize) -> ((i32, i32), usize, usize, usize) {
+        let offset = 4 * (ra * RADIX384 + rb);
+        let code = u32::from_le_bytes(self.codes[offset..offset + 4].try_into().unwrap()) as usize;
+        let (seed_id, exponent, unit_code) = (code >> 4, (code >> 3) & 1, code & 7);
+        assert!(seed_id < self.seeds.len() / 4 && unit_code < 6);
+        let offset = 4 * seed_id;
+        let (a, b) = (
+            i16::from_le_bytes(self.seeds[offset..offset + 2].try_into().unwrap()),
+            i16::from_le_bytes(self.seeds[offset + 2..offset + 4].try_into().unwrap()),
+        );
+        let seed = (i32::from(a), i32::from(b));
+        let digit = if exponent == 0 { seed }
+                    else { (-3 * seed.1, seed.0 + 3 * seed.1) };
+        let digit = unit_images(digit)[unit_code];
+        assert_eq!((digit.0.rem_euclid(RADIX384 as i32) as usize,
+                    digit.1.rem_euclid(RADIX384 as i32) as usize), (ra, rb));
+        (digit, seed_id, exponent, unit_code)
+    }
+}
+
+struct Tau384MatchingTables {
+    atlas: Tau384MatchingAtlas,
+    windows: Vec<Box<[U256Affine]>>,
+    retained_bytes: usize,
+}
+
+impl Tau384MatchingTables {
+    fn new() -> Self {
+        let atlas = Tau384MatchingAtlas::new();
+        let seeds = atlas.seed_digits();
+        let mut windows = Vec::with_capacity(RADIX384_WINDOWS);
+        let mut base = Jacobian::generator();
+        for index in 0..RADIX384_WINDOWS {
+            windows.push(build_u256_window(&seeds, base));
+            if index + 1 < RADIX384_WINDOWS {
+                base = affine_multiples(base, RADIX384).pop().unwrap();
+            }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        assert_eq!(entries, RADIX384_WINDOWS * 18_074);
+        let retained_bytes = entries * size_of::<U256Affine>()
+            + TAU384_MATCHING_ATLAS.len()
+            + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[U256Affine]>>();
+        assert!(retained_bytes < 24_283_336);
+        Self { atlas, windows, retained_bytes }
+    }
+}
+
+static TAU384_MATCHING_TABLES: LazyLock<Tau384MatchingTables> =
+    LazyLock::new(Tau384MatchingTables::new);
 
 struct TauBucketAtlas {
     codes: &'static [u8],
@@ -1165,6 +1293,12 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 35 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return TAU384_MATCHING_TABLES.retained_bytes;
+    }
     if format == 33 || format == 34 {
         std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
         std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
@@ -1583,6 +1717,75 @@ pub(super) fn multiply_u256_radix384_fast(
     }
     assert!(a.is_zero() && b.is_zero(), "fast radix-384 recoding did not terminate");
     let (point, gauge_products) = evaluate_u256_gauge(&choices, &tables.windows);
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes, fallback, corner, gauge_products)
+}
+
+pub(super) fn multiply_u256_tau384_matching(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*TAU384_MATCHING_TABLES;
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize, 0usize); RADIX384_WINDOWS];
+    let mut nonidentity = 0usize;
+    for choice in &mut choices {
+        let (quotient_a, rem_a, residue_a) = a.div_rem_radix384_fast();
+        let (quotient_b, rem_b, residue_b) = b.div_rem_radix384_fast();
+        let (digit, seed_id, exponent, unit_code) =
+            tables.atlas.digit_residue(residue_a, residue_b);
+        a = quotient_a.adjust_small_radix_quotient(rem_a, digit.0, RADIX384 as i32);
+        b = quotient_b.adjust_small_radix_quotient(rem_b, digit.1, RADIX384 as i32);
+        *choice = (seed_id, exponent, unit_code);
+        nonidentity += usize::from(seed_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "tau384 matching recoding did not terminate");
+
+    let mut buckets = [U256Jacobian::identity(); 2];
+    let mut gauge = None;
+    let mut gauge_products = 0usize;
+    for power in [1usize, 2, 0] {
+        if !choices.iter().any(|&(seed, _, code)| seed != 0 && code / 2 == power) {
+            continue;
+        }
+        if let Some(previous) = gauge {
+            let delta = (previous + 3 - power) % 3;
+            if delta != 0 {
+                for bucket in &mut buckets {
+                    if !bucket.is_identity() {
+                        *bucket = bucket.rotate_power(delta);
+                        gauge_products += 1;
+                    }
+                }
+            }
+        }
+        gauge = Some(power);
+        for (index, &(seed_id, exponent, unit_code)) in choices.iter().enumerate() {
+            if seed_id == 0 || unit_code / 2 != power { continue; }
+            buckets[exponent] = buckets[exponent]
+                .add_mixed(tables.windows[index][seed_id].unit(unit_code & 1));
+        }
+    }
+    if let Some(power) = gauge {
+        if power != 0 {
+            for bucket in &mut buckets {
+                if !bucket.is_identity() {
+                    *bucket = bucket.rotate_power(power);
+                    gauge_products += 1;
+                }
+            }
+        }
+    }
+    assert!(gauge_products <= 4);
+    let point = buckets[0].add_projective(buckets[1].tau())
+        .affine_hex_binary_inverse();
     (point, representative, nonidentity.saturating_sub(1),
      tables.retained_bytes, fallback, corner, gauge_products)
 }
@@ -3075,6 +3278,81 @@ mod tests {
         assert_eq!(divisions, 122_880);
         println!("fast_radix384_fresh_panel_cases={} division_checks={divisions}",
                  scalars.len());
+    }
+
+    #[test]
+    fn tau384_projective_ops_match_independent_group_points() {
+        let encode = |point: Jacobian| {
+            let affine = point.into_affine();
+            U256Jacobian::from_affine(U256Affine {
+                x: super::super::hybrid_pair_mont(affine.x),
+                y: super::super::hybrid_pair_mont(affine.y),
+            })
+        };
+        let values = [1u32, 2, 3, 7, 19, 257];
+        for left_scalar in values {
+            let left = independent_binary_point(&BigInt::from(left_scalar));
+            let encoded = encode(left);
+            assert_eq!(encoded.tau().affine_hex_binary_inverse(),
+                       left.tau().affine_hex(), "tau scalar {left_scalar}");
+            assert!(encoded.add_projective(U256Jacobian::identity())
+                         .affine_hex_binary_inverse() == left.affine_hex());
+            let inverse = U256Jacobian {
+                y: u256_sub(super::super::U256::ZERO, encoded.y), ..encoded
+            };
+            assert!(encoded.add_projective(inverse).is_identity());
+            for right_scalar in values {
+                let right = encode(independent_binary_point(&BigInt::from(right_scalar)));
+                let expected = independent_binary_point(
+                    &BigInt::from(left_scalar + right_scalar)).affine_hex();
+                assert_eq!(encoded.add_projective(right).affine_hex_binary_inverse(),
+                           expected, "add {left_scalar}+{right_scalar}");
+            }
+        }
+    }
+
+    #[test]
+    fn tau384_matching_matches_fresh_panel_and_binary_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-tau384-matching-20261010/fresh-inputs.json"
+        )).unwrap();
+        assert_eq!(panel["seed"], 20261010136i64);
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let tables = &*TAU384_MATCHING_TABLES;
+        assert_eq!(tables.retained_bytes, 18_013_472);
+        assert_eq!(tables.atlas.seeds.len() / 4, 18_074);
+        let mut nonidentity_by_bucket = [0usize; 2];
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_radix384_fast(words);
+            let candidate = multiply_u256_tau384_matching(words);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            assert_eq!((candidate.4, candidate.5), (reference.4, reference.5),
+                       "selector {index}");
+            assert!(candidate.2 <= 14 && candidate.6 <= 4);
+            let (mut a, mut b) = candidate.1;
+            for window in 0..RADIX384_WINDOWS {
+                let (qa, ra, residue_a) = a.div_rem_radix384_fast();
+                let (qb, rb, residue_b) = b.div_rem_radix384_fast();
+                let (digit, seed, exponent, _) =
+                    tables.atlas.digit_residue(residue_a, residue_b);
+                assert!(norm(digit) <= 253 * 253, "digit {index}/{window}");
+                nonidentity_by_bucket[exponent] += usize::from(seed != 0);
+                a = qa.adjust_small_radix_quotient(ra, digit.0, RADIX384 as i32);
+                b = qb.adjust_small_radix_quotient(rb, digit.1, RADIX384 as i32);
+            }
+            assert!(a.is_zero() && b.is_zero(), "reconstruction {index}");
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "binary point {index}");
+            }
+        }
+        println!("tau384_panel_cases={} retained_bytes={} bucket_nonidentity={:?}",
+                 scalars.len(), tables.retained_bytes, nonidentity_by_bucket);
     }
 
     #[test]
