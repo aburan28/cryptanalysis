@@ -512,16 +512,9 @@ struct U256Tables {
 impl U256Tables {
     fn new() -> Self {
         assert_eq!(size_of::<U256Affine>(), 64);
-        let atlases: [Option<OrbitAtlas>; 3] = std::array::from_fn(|index| {
-            let width = 8 + index as u8;
-            WIDTHS.contains(&width).then(|| OrbitAtlas::new(width))
-        });
-        let mut windows = Vec::with_capacity(WIDTHS.len());
-        let mut base = Jacobian::generator();
-        for &width in &WIDTHS {
-            let atlas = atlases[usize::from(width - 8)].as_ref().unwrap();
-            let row = build_window(&atlas.digits, base);
-            let converted = row.iter().enumerate().map(|(index, &packed)| {
+        let source = Tables::with_widths(&WIDTHS);
+        let windows: Vec<Box<[U256Affine]>> = source.windows.into_iter().map(|row| {
+            row.iter().enumerate().map(|(index, &packed)| {
                 if index == 0 {
                     U256Affine { x: super::U256::ZERO, y: super::U256::ZERO }
                 } else {
@@ -529,24 +522,18 @@ impl U256Tables {
                     U256Affine { x: super::hybrid_pair_mont(point.x),
                                  y: super::hybrid_pair_mont(point.y) }
                 }
-            }).collect::<Vec<_>>().into_boxed_slice();
-            windows.push(converted);
-            for _ in 0..width { base = base.double(); }
-        }
+            }).collect::<Vec<_>>().into_boxed_slice()
+        }).collect();
         let entries = windows.iter().map(|row| row.len()).sum::<usize>();
-        assert_eq!(entries, WIDTHS.iter().map(|&width| {
-            let radix = 1usize << width;
-            (radix * radix + 8) / 6
-        }).sum::<usize>());
         let retained_bytes = entries * size_of::<U256Affine>()
-            + atlases.iter().flatten().map(|atlas| {
+            + source.atlases.iter().flatten().map(|atlas| {
                 atlas.codes.len() * size_of::<u32>()
                     + atlas.digits.len() * size_of::<(i16, i16)>()
             }).sum::<usize>()
             + size_of::<Self>()
             + windows.capacity() * size_of::<Box<[U256Affine]>>();
         assert!(retained_bytes < CAP_BYTES);
-        Self { atlases, windows, retained_bytes }
+        Self { atlases: source.atlases, windows, retained_bytes }
     }
 
     fn atlas(&self, width: u8) -> &OrbitAtlas {
