@@ -662,9 +662,9 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
-    if format == 20 || format == 21 || format == 22 || format == 23 || format == 24 {
+    if (20..=25).contains(&format) {
         std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
-        if format == 22 || format == 23 || format == 24 {
+        if (22..=25).contains(&format) {
             std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
         }
         return TABLES.retained_bytes;
@@ -730,40 +730,11 @@ pub(super) fn multiply_format(
     )
 }
 
-pub(super) fn multiply_word_format(
-    scalar: &BigInt,
-    format: u8,
-) -> (Jacobian, BigInt, BigInt, usize, usize) {
-    if format == 19 {
-        return multiply_word_staged14(scalar);
-    }
-    if format == 18 {
-        return multiply_tau_pair(scalar);
-    }
-    if format == 17 {
-        return multiply_tau_bucket(scalar);
-    }
-    if format == 13 {
-        return multiply_word_radix13(scalar);
-    }
-    let lattice = &*SCALAR_LATTICE;
-    let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
-    let (mut a, mut b, original) = if format == 22 || format == 23 || format == 24 {
-        let (a, b) = super::hexagonal_certified_fixed_choice(&residue).0;
-        (a, b, None)
-    } else {
-        let (start_a, start_b) = if format == 21 {
-            super::hexagonal_certified_corner_choice(&residue).0
-        } else if format == 20 {
-            super::hexagonal_four_corner_choices_reciprocal(&residue).remove(0)
-        } else {
-            hexagonal_four_corner_choices(&residue).remove(0)
-        };
-        (Signed192::from_bigint(&start_a), Signed192::from_bigint(&start_b),
-         Some((start_a, start_b)))
-    };
-    let start_fixed = (a, b);
-    let tables = selected(if (20..=24).contains(&format) { 14 } else { format });
+fn evaluate_word_representative(
+    mut a: Signed192,
+    mut b: Signed192,
+    tables: &Tables,
+) -> (Jacobian, usize) {
     let mut result = Jacobian::identity();
     let mut nonidentity: usize = 0;
     for (index, &width) in tables.widths.iter().enumerate() {
@@ -785,9 +756,63 @@ pub(super) fn multiply_word_format(
         nonidentity += 1;
     }
     assert!(a.is_zero() && b.is_zero(), "word unit-orbit recoding did not terminate");
+    (result, nonidentity.saturating_sub(1))
+}
+
+pub(super) fn multiply_word_direct(
+    scalar_words: [u64; 4],
+) -> (Jacobian, (Signed192, Signed192), usize, usize, bool, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let (point, additions) =
+        evaluate_word_representative(representative.0, representative.1, &TABLES);
+    (point, representative, additions, TABLES.retained_bytes, fallback, corner)
+}
+
+pub(super) fn multiply_word_format(
+    scalar: &BigInt,
+    format: u8,
+) -> (Jacobian, BigInt, BigInt, usize, usize) {
+    if format == 19 {
+        return multiply_word_staged14(scalar);
+    }
+    if format == 18 {
+        return multiply_tau_pair(scalar);
+    }
+    if format == 17 {
+        return multiply_tau_bucket(scalar);
+    }
+    if format == 13 {
+        return multiply_word_radix13(scalar);
+    }
+    let lattice = &*SCALAR_LATTICE;
+    let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
+    let (a, b, original) = if (22..=24).contains(&format) {
+        let (a, b) = super::hexagonal_certified_fixed_choice(&residue).0;
+        (a, b, None)
+    } else {
+        let (start_a, start_b) = if format == 21 {
+            super::hexagonal_certified_corner_choice(&residue).0
+        } else if format == 20 {
+            super::hexagonal_four_corner_choices_reciprocal(&residue).remove(0)
+        } else {
+            hexagonal_four_corner_choices(&residue).remove(0)
+        };
+        (Signed192::from_bigint(&start_a), Signed192::from_bigint(&start_b),
+         Some((start_a, start_b)))
+    };
+    let start_fixed = (a, b);
+    let tables = selected(if (20..=24).contains(&format) { 14 } else { format });
+    let (result, additions) = evaluate_word_representative(a, b, tables);
     let (start_a, start_b) = original.unwrap_or_else(||
         (start_fixed.0.to_bigint(), start_fixed.1.to_bigint()));
-    (result, start_a, start_b, nonidentity.saturating_sub(1), tables.retained_bytes)
+    (result, start_a, start_b, additions, tables.retained_bytes)
 }
 
 #[inline(always)]
@@ -1361,6 +1386,88 @@ mod tests {
             if (fresh_start..fresh_start + 128).contains(&index) {
                 let reduced = scalar % &SCALAR_LATTICE.n;
                 assert_eq!(candidate.0.affine_hex_binary_inverse(),
+                           independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+    }
+
+    #[test]
+    fn direct_limb_reduction_matches_bigint_and_preserves_fallback_contract() {
+        let n = SCALAR_LATTICE.n.to_biguint().unwrap();
+        assert_eq!(super::super::SCALAR_ORDER_WORDS.to_biguint(), n);
+        let mut values = vec![0u128.into(), 1u128.into(), &n - 1u8, n.clone(),
+                              (num_bigint::BigUint::from(1u8) << 256usize) - 1u8];
+        let mut state = 0x8d8c_2109_f1a7_33e9u64;
+        for _ in 0..512 {
+            let mut words = [0u64; 4];
+            for word in &mut words {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                *word = state;
+            }
+            values.push(super::super::Uint(words).to_biguint());
+        }
+        for (index, value) in values.iter().enumerate() {
+            let scalar = BigInt::from_biguint(num_bigint::Sign::Plus, value.clone());
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let direct = multiply_word_direct(words);
+            let residue = BigInt::from_biguint(num_bigint::Sign::Plus, value % &n);
+            let (expected, fallback, corner) =
+                super::super::hexagonal_certified_fixed_choice(&residue);
+            assert_eq!(direct.1, expected, "representative {index}");
+            assert_eq!((direct.4, direct.5), (fallback, corner),
+                       "certificate {index}");
+            let parent = multiply_word_format(&scalar, 24);
+            assert_eq!(direct.2, parent.3, "additions {index}");
+            assert_eq!(direct.3, parent.4, "table bytes {index}");
+        }
+        for scalar in [-BigInt::from(1), BigInt::from(1) << 256usize,
+                       -(BigInt::from(1) << 300usize)] {
+            assert!(super::super::scalar_words_256(&scalar).is_none());
+            let reduced = ((&scalar % &SCALAR_LATTICE.n) + &SCALAR_LATTICE.n)
+                % &SCALAR_LATTICE.n;
+            assert_eq!(multiply_word_format(&scalar, 24).0.affine_hex_binary_inverse(),
+                       independent_binary_point(&reduced).affine_hex(),
+                       "wide or signed fallback");
+        }
+    }
+
+    #[test]
+    fn direct_limb_mode_matches_complete_prior_and_fresh_points() {
+        let panels = [
+            include_str!("../../../../prime-j0-radix943-word-20261009/inputs.json"),
+            include_str!("../../../../prime-j0-exact-reciprocal-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-certified-voronoi-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-fixed-limb-voronoi-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-hybrid-finalize-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-binary-inverse-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-direct-limb-scalar-20261010/fresh-inputs.json"),
+        ];
+        let mut cases = vec![BigInt::ZERO, BigInt::from(1),
+                             &SCALAR_LATTICE.n - BigInt::from(1),
+                             SCALAR_LATTICE.n.clone(),
+                             (BigInt::from(1) << 256usize) - BigInt::from(1)];
+        for panel in panels {
+            let data: serde_json::Value = serde_json::from_str(panel).unwrap();
+            cases.extend(data["scalars_hex"].as_array().unwrap().iter().map(|value|
+                BigInt::parse_bytes(value.as_str().unwrap().as_bytes(), 16).unwrap()));
+        }
+        assert_eq!(cases.len(), 5 + 519 + 6 * 4096);
+        let fresh_start = cases.len() - 4096;
+        for (index, scalar) in cases.iter().enumerate() {
+            let parent = multiply_word_format(scalar, 24);
+            let direct = multiply_word_direct(super::super::scalar_words_256(scalar).unwrap());
+            assert_eq!((direct.1.0.to_bigint(), direct.1.1.to_bigint()),
+                       (parent.1, parent.2), "representative {index}");
+            assert_eq!((direct.2, direct.3), (parent.3, parent.4),
+                       "accounting {index}");
+            assert_eq!(direct.0.affine_hex_binary_inverse(),
+                       parent.0.affine_hex_binary_inverse(), "point {index}");
+            if (fresh_start..fresh_start + 128).contains(&index) {
+                let reduced = scalar % &SCALAR_LATTICE.n;
+                assert_eq!(direct.0.affine_hex_binary_inverse(),
                            independent_binary_point(&reduced).affine_hex(),
                            "independent point {index}");
             }
