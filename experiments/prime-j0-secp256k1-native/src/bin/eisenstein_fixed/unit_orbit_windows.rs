@@ -362,6 +362,54 @@ fn formula_digit_word(width: u8, a: Signed192, b: Signed192) -> ((i32, i32), usi
                           b.rem_euclid_power_of_two(width))
 }
 
+fn sector_canonical_digit(width: u8, a: usize, b: usize) -> (i16, i16) {
+    let base = 1usize << width;
+    let (q, r) = (base / 3, base % 3);
+    let (da, db) = if a == 0 {
+        if b <= q { (0, b as i32) } else { (-(base as i32), b as i32) }
+    } else if b <= q - a {
+        (a as i32, b as i32)
+    } else if b <= 2 * q + r - 1 - a {
+        (a as i32 - base as i32, b as i32)
+    } else {
+        (a as i32, b as i32 - base as i32)
+    };
+    (i16::try_from(da).unwrap(), i16::try_from(db).unwrap())
+}
+
+fn sector_digit_residue(width: u8, ra: usize, rb: usize) -> ((i32, i32), usize, usize) {
+    assert!((9..=10).contains(&width));
+    let base = 1i32 << width;
+    let mask = base - 1;
+    let (a, b) = (ra as i32, rb as i32);
+    let rotated = [
+        (a, b),
+        ((a + 3 * b) & mask, (-a - 2 * b) & mask),
+        ((-2 * a - 3 * b) & mask, (a + b) & mask),
+    ];
+    let mut best = ((usize::MAX, usize::MAX), usize::MAX);
+    for (power, &(x, y)) in rotated.iter().enumerate() {
+        for sign in 0..2 {
+            let image = if sign == 0 { (x, y) }
+                        else { ((-x) & mask, (-y) & mask) };
+            let inverse_code = 2 * ((3 - power) % 3) + sign;
+            best = best.min(((image.0 as usize, image.1 as usize), inverse_code));
+        }
+    }
+    let (canonical, unit_code) = best;
+    let orbit_id = ArithmeticOrbitAtlas::rank(width, canonical.0, canonical.1);
+    let canonical_digit = sector_canonical_digit(width, canonical.0, canonical.1);
+    let digit = unit_images((i32::from(canonical_digit.0),
+                             i32::from(canonical_digit.1)))[unit_code];
+    debug_assert_eq!((digit.0 & mask, digit.1 & mask), (a, b));
+    (digit, orbit_id, unit_code)
+}
+
+fn sector_digit_word(width: u8, a: Signed192, b: Signed192) -> ((i32, i32), usize, usize) {
+    sector_digit_residue(width, a.rem_euclid_power_of_two(width),
+                         b.rem_euclid_power_of_two(width))
+}
+
 fn affine_multiples(base: Jacobian, max_abs: usize) -> Vec<Jacobian> {
     let base = base.into_affine();
     let mut projective = Vec::with_capacity(max_abs);
@@ -751,6 +799,8 @@ impl FormulaU256Tables {
 
 static FORMULA_U256_TABLES: LazyLock<FormulaU256Tables> =
     LazyLock::new(FormulaU256Tables::new);
+static SECTOR_U256_TABLES: LazyLock<FormulaU256Tables> =
+    LazyLock::new(FormulaU256Tables::new);
 
 struct Radix13Tables {
     atlas: OrbitAtlas,
@@ -1031,6 +1081,12 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 30 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return SECTOR_U256_TABLES.retained_bytes;
+    }
     if format == 29 {
         std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
         std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
@@ -1241,6 +1297,23 @@ fn u256_formula_choices(
     (choices, nonidentity)
 }
 
+fn u256_sector_choices(
+    representative: (Signed192, Signed192),
+) -> ([(usize, usize); 14], usize) {
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize); 14];
+    let mut nonidentity = 0usize;
+    for (index, &width) in WIDTHS.iter().enumerate() {
+        let (digit, orbit_id, unit_code) = sector_digit_word(width, a, b);
+        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+        choices[index] = (orbit_id, unit_code);
+        nonidentity += usize::from(orbit_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "sector U14 recoding did not terminate");
+    (choices, nonidentity)
+}
+
 fn evaluate_u256_gauge(
     choices: &[(usize, usize); 14], windows: &[Box<[U256Affine]>],
 ) -> (String, usize) {
@@ -1324,6 +1397,24 @@ pub(super) fn multiply_u256_formula(
         super::hexagonal_certified_fixed_choice_words(residue.0);
     let tables = &*FORMULA_U256_TABLES;
     let (choices, nonidentity) = u256_formula_choices(representative);
+    let (point, gauge_products) = evaluate_u256_gauge(&choices, &tables.windows);
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes, fallback, corner, gauge_products)
+}
+
+pub(super) fn multiply_u256_sector(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*SECTOR_U256_TABLES;
+    let (choices, nonidentity) = u256_sector_choices(representative);
     let (point, gauge_products) = evaluate_u256_gauge(&choices, &tables.windows);
     (point, representative, nonidentity.saturating_sub(1),
      tables.retained_bytes, fallback, corner, gauge_products)
@@ -2061,6 +2152,20 @@ mod tests {
     }
 
     #[test]
+    fn canonical_sector_matches_every_u14_residue() {
+        for width in [9u8, 10] {
+            let base = 1usize << width;
+            for ra in 0..base {
+                for rb in 0..base {
+                    assert_eq!(sector_digit_residue(width, ra, rb),
+                               formula_digit_residue(width, ra, rb),
+                               "width {width} residue ({ra},{rb})");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn u256_table_points_and_unit_images_match_eisenstein_field() {
         let compact = &*TABLES;
         let converted = &*U256_TABLES;
@@ -2364,6 +2469,51 @@ mod tests {
             }
         }
         println!("formula_panel_cases={} retained_reference={} retained_candidate={} counts_hex={}",
+                 scalars.len(), old.retained_bytes, new.retained_bytes,
+                 hex::encode(per_scalar_counts));
+    }
+
+    #[test]
+    fn u256_sector_digit_matches_new_holdout_and_point_table() {
+        let old = &*FORMULA_U256_TABLES;
+        let new = &*SECTOR_U256_TABLES;
+        assert_eq!(old.retained_bytes, 64_314_112);
+        assert_eq!(new.retained_bytes, old.retained_bytes);
+        for (window, (left, right)) in old.windows.iter().zip(&new.windows).enumerate() {
+            assert_eq!(left.len(), right.len(), "window size {window}");
+            for (index, (a, b)) in left.iter().zip(right).enumerate() {
+                assert_eq!(a.x.0, b.x.0, "window {window} point {index} x");
+                assert_eq!(a.y.0, b.y.0, "window {window} point {index} y");
+            }
+        }
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-sector-digit-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let mut per_scalar_counts = Vec::with_capacity(2 * scalars.len());
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_formula(words);
+            let candidate = multiply_u256_sector(words);
+            assert_eq!(reference.0, candidate.0, "point {index}");
+            assert_eq!(reference.1, candidate.1, "representative {index}");
+            assert_eq!((reference.2, reference.3, reference.4, reference.5, reference.6),
+                       (candidate.2, candidate.3, candidate.4, candidate.5, candidate.6),
+                       "scalar accounting {index}");
+            assert_eq!(u256_formula_choices(reference.1),
+                       u256_sector_choices(candidate.1),
+                       "all fourteen choices {index}");
+            per_scalar_counts.push(reference.6 as u8);
+            per_scalar_counts.push(candidate.6 as u8);
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+        println!("sector_panel_cases={} retained_reference={} retained_candidate={} counts_hex={}",
                  scalars.len(), old.retained_bytes, new.retained_bytes,
                  hex::encode(per_scalar_counts));
     }
