@@ -228,17 +228,20 @@ the formula, yet CryptoMiniSat recovered no unknown witness at either
 closed; prioritize a structurally different, bounded implicit PDP screen
 over further expansion of this exact SAT encoding.
 
-The [Q1421 normal-weight-four source-base result](../ecc2k130-normal-weight4-base-20261009/RESULT.md)
-replays all 89,440 cyclic orbits of 11,716,640 weight-four field parameters
-on the exact polynomial-basis ECC2K-130 source curve. It finds 44,824
-rational orbits, no in-base reciprocal pairs, `B=11,743,888` actual usable
-subgroup points, and `K=44,824` potential signed-Frobenius columns. Checked
-Sage independently matches every count and digest and verifies sampled group
-and Frobenius actions. Both frozen count gates pass; the next test is a
-matched ordinary-query six-summand PDP comparison at equal `B` of Q1421
-against the four Q1420 geometries. The [protocol](../ecc2k130-normal-weight4-base-20261009/PROTOCOL.md)
-and result remain proposal `Q1421` with `candidate_id: null` until the full
-pipeline is specified and measured.
+The [Q1421 normal-weight-four source-base protocol](../ecc2k130-normal-weight4-base-20261009/PROTOCOL.md)
+defines a Frobenius-stable six-summand factor-base policy on the exact
+polynomial-basis ECC2K-130 source curve, using the independently verified
+131-coordinate normal basis. Its [completed census result](../ecc2k130-normal-weight4-base-20261009/RESULT.md)
+replays all 89,440 cyclic orbits of 11,716,640 raw weight-four parameters and
+finds 44,824 rational orbits, no in-base reciprocal pairs, `B=11,743,888`
+usable subgroup points, and `K=44,824` potential signed-Frobenius columns.
+Checked Sage independently matches every count and digest and verifies
+sampled group points and Frobenius actions. Both frozen count gates pass; the
+next test is a matched ordinary-query six-summand PDP comparison at equal
+actual `B` against the four Q1420 geometries. Q1421 remains a proposal with
+`candidate_id: null` until the full pipeline is specified and measured,
+separate from the sampled type-II normal-basis weight-six four-summand policy
+and from Q1420.
 
 The [preregistered cold full-rank one-target control](../ecc2k130-cold-fullrank-20261006/RESULT.md)
 assigns canonical `IC1`/workload/run IDs to independently replayed n37 and n41
@@ -248,8 +251,21 @@ costs were 556.629 ms (n37) and 28,308.249 ms (n41), while the n41 support
 index alone cost 25,902.961 ms. The pinned producer's published online timer
 double-counted final solving and solution validation; the archived verifier
 recomputes exclusive phase costs. These are stage diagnostics, not controlled
-speedups or evidence for n131. Next test a compact-orbit n53 support index with
-streaming setup receipts and corrected producer timers before any cold claim.
+speedups or evidence for n131. A separate merged `crypto` compact-orbit
+[n41/n53 cold panel](https://github.com/aburan28/crypto/pull/1338) and
+[base-size panel](https://github.com/aburan28/crypto/pull/1353) now supply
+independently replayed full-rank n53 controls on different source-curve bases.
+The [retrospective trace audit](../ecc2k130-n53-compact-evidence-20261010/RESULT.md)
+pins those inputs and shows that the n53 K220 collector's 22 most costly
+rank rows used 34.8261% of its 18,413,613 probes. Its six timing repeats
+share one byte-identical rank stream. The [fixed-base restart follow-up](https://github.com/aburan28/crypto/pull/1626)
+held the exact 23,320-point K220 base fixed and tested a selected 400,000-probe
+cap on a new held-out public point over six independent rank seeds. Its median
+paired probe reduction was 5.189% and median paired complete-cold cost ratio
+was 1.020, so it missed both advancement conditions. All IC and same-point
+rho cells independently verified the target scalar. The next producer test
+should target cost per support probe or the pair-root index; the
+signed-expanded n53 timeout remains a separate, censored configuration.
 
 Screen the 1,000 proposals in stages rather than launch 1,000 complete DLPs.
 First materialize and replay factor bases, then benchmark PDPs on identical
