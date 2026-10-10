@@ -109,7 +109,10 @@ Generic counting for this shape:
 - MinRank in the support-minors model (a `(2l - 1) x (l + 1)` matrix pencil, d variables, corank 1):
   degree about `d/3`, cost about `2^(0.92 omega d)`.
 
-On generic counts, nothing beats enumerating the `2^d` values of `t`. The open question is whether
+On generic counts, nothing beats enumerating the `2^d` values of `t`. These counts are for the
+homogeneous model, without field equations. Sec. 4f measures the generic Boolean degree directly:
+4-5 at `d = 5-11`. The conclusion stands, since at `d = 11` that is 146596 Macaulay columns against
+2048 candidates. The open question is whether
 **our** residual system is generic. It is built from field multiplication, the half-trace and a
 progression, so it could be easier. Sec. 4 measures this.
 
@@ -135,10 +138,14 @@ counts below are word operations times the frozen `mac_op` price (302 rps). Data
 
 What this shows:
 
-- **The residual system is far from generic.** Its solving degree is 3 up to `d = 9` and 4 at
-  `d = 12-13`, where the generic overdetermined-bilinear prediction is 7-17. This agrees with the
-  slow growth of the degree of regularity that Kosters-Yeo report for the full system at
-  `l = n/2`: 3, 3, 4, 4, 4, 4, >= 5 for `d = 4 ... 18`.
+- **The residual system is only slightly below generic.** Its solving degree is 3 up to `d = 9`
+  and 4 at `d = 12-13`. The generic overdetermined-bilinear column (7-17) uses the homogeneous
+  formula, which has no field equations. It is the wrong yardstick over F_2, so it overstated the
+  gap; this column is **superseded**. A random Boolean bilinear system of the same shape, with field
+  equations, refutes at degree 4 (`d = 5, 8`) and 5 (`d = 11`) (Sec. 4f, variant A4). So the
+  structure saves 1-2 degrees, not 4-13. The slow growth agrees with the degree of regularity
+  that Kosters-Yeo report for the full system at `l = n/2`: 3, 3, 4, 4, 4, 4, >= 5 for
+  `d = 4 ... 18`.
 - **Low degree does not make it cheaper than enumeration.** The ratio of MXL cost to enumeration
   grows with d: 0.12, 0.38, 0.63 at n = 23, and 0.70, 1.6, 2.0 at n = 41. At the step to degree 4
   the Macaulay matrices jump by three orders of magnitude.
@@ -148,8 +155,9 @@ What this shows:
   Macaulay costs about `C(N, d/6)^omega`, exponentially worse than `2^d`. Sec. 4b measures beyond
   the 26-variable limit and finds slower growth, so that extrapolation is **superseded**.
 
-**Verdict (at the sizes measured):** not cheaper than `2^d` in any cell. The non-generic low degree is a real structural fact
-about the residual system, and the measurement is new as far as we know. It does not give a
+**Verdict (at the sizes measured):** not cheaper than `2^d` in any cell. The low degree is a real
+structural fact about the residual system, and the measurement is new as far as we know. Most of
+it is generic for Boolean bilinear systems; Sec. 4f isolates the part that is not. It does not give a
 solver below `2^d` in any measured cell, and the trend points the wrong way.
 
 ### 4b. The degree beyond 26 variables (`smxl.c`)
@@ -402,12 +410,90 @@ understate the gap by about 28x.
 rho with the Python implementation (3.5 us per step) against a C oracle, and assumed 2 us for the
 projection. That inflated IC's margin over rho by about 4x in most rows, and 88x at `l = 13`.
 
+## 4f. Why the MXL degree is low: structure ablations (`ablation.py`)
+
+**Setting.** Take the prefix base `V = {deg < l}` in the polynomial basis, with `2l - 1 <= n`.
+No product in the residual system reduces mod the field polynomial. So the system is an exact
+identity in `F_2[T]`:
+
+    E(T) = A^2 + A D(t) + P(t) = 0,   deg A < l,   D(t) = u0 + sum_k t_k f_k,   P affine in t.
+
+That gives `2l - 1` coefficient equations in the l bits of A and the d bits of t. Each variant
+replaces one ingredient with random data of the same shape. `smxl.c` then measures the MXL
+refutation degree on targets where the real system is refuted.
+
+| variant | what is kept | what is random |
+|---|---|---|
+| S | everything (the real system) | — |
+| A1 | convolution `A D`, Frobenius term `A^2`, the real `u0, f_k` | P |
+| A2 | convolution and `A^2` | `u0, f_k` (degree < l), P |
+| A3 | convolution | as A2, and `A^2` replaced by a random F_2-linear map `M(A)` |
+| A4 | nothing (generic Boolean bilinear) | every `x_i`, `t_k`, `x_i t_k` coefficient |
+| A5 | as A3, but `M = square` on `span{u0, f_k}` | M elsewhere |
+| A6 (control for A5) | as A3, but `M = square` on a random subspace of dimension `d + 1` | M elsewhere |
+
+**The symmetry.** The real system is invariant under swapping the two summands,
+`A -> A + D` (`X <-> Y`), because `(A + D)^2 + (A + D) D = A^2 + A D` in characteristic 2. With a
+linear `M` in place of the square, this holds exactly when `M(D) = D^2` for every D in the family,
+which is what A5 imposes. A6 imposes the same number of squaring constraints on a subspace
+unrelated to D. `test_ablation.py` checks that S and A5 are swap-invariant, and that A3 and A6
+are not.
+
+**Measurements** at n = 41, eps = 0. "4 / 4" means degree 4 on all 4 targets. The column
+counts are at the refuting degree. Data: `results/ablation-n41*.jsonl`.
+
+| l | d | S | A1 | A2 | A3 | A4 (generic) | A5 (swap kept) | A6 (control) |
+|---|---|---|---|---|---|---|---|---|
+| 16 | 5 | 3 (4/4) | 3 (4/4) | 3 (4/4) | 3 (4/4) | 4 (4/4) | — | — |
+| 17 | 8 | 3 (4/4) | 3 (4/4) | 3 (4/4) | 3 (4/4) | 4 (4/4) | — | — |
+| 18 | 11 | 3 (3/3, 4090 columns) | 3 (1/1) | 3 (1/1) | 4 (3/3, 27841) | 5 (1/1, 146596) | **3** (3/3, 4090) | **4** (3/3, 27841) |
+| 19 | 14 | 4 (1/1, 46938) | — | 4 (1/1) | 4 (1/1, 46938) | >= 5 (1/1: degree 4 does not refute; the degree-5 run was stopped, see below) | 4 (1/1) | — |
+
+**Reading.**
+
+- **The generic part.** A random Boolean bilinear system of this shape (A4), with field
+  equations, already refutes at degree 4-5. Most of the low degree is generic for Boolean
+  overdetermined bilinear systems; the homogeneous formula in Sec. 3 was the wrong yardstick.
+- **The convolution saves one degree** at every d measured (A3 against A4). This is the
+  `F_2[T]`-module structure of `A D`.
+- **The specific target, half-trace and progression do not matter.** P (A1) and `u0, f_k` (A2)
+  can be random without changing the degree.
+- **The swap symmetry saves one more degree at `d = 11`.** That is the gap between S and A3. The
+  degree goes back to 3 when the symmetry is restored (A5), and stays at 4 when the same amount of
+  squaring is placed off the D family (A6). At `d = 14`, S, A3 and A5 all need degree 4. So the
+  symmetry delays the step from 3 to 4 by about three dimensions: S steps between `d = 11` and 14,
+  and A3 between 8 and 11. It gains nothing after the step. A heuristic reading, not proved: the swap-invariant
+  equations depend only on `(e1, e2) = (D, A (A + D))`, so the closure works on the quotient by the
+  involution.
+- **The degree falls are not the mechanism.** Squaring is F_2-linear, so the polynomial multiples
+  `A E` and `D E` drop to degree 2 in every variant. They add 103 independent quadratics to the 35
+  equations for S at `d = 11`, and 104 for A3, A5 and A6. They are present whether or not the
+  degree is low (`ablation.fall_relations`).
+- **What this means for the goal.** The structure saves a bounded number of degrees against the
+  generic system: 1 at `d = 5, 8`, 2 at `d = 11`, and at least 1 at `d = 14`. Neither saving changes
+  the slope: each is a constant number of degrees, and the degree still steps up about every 9
+  dimensions (Sec. 4c). So the mechanism explains the low degree without giving a sub-`2^d`
+  solver.
+
+**A run that did not finish.** The generic A4 system at `d = 14` was not refuted at degree 4. Its
+degree-5 closure has 284274 columns and stores dense rows. It was stopped by hand after 50
+CPU-minutes at 5.0 GB, because near full rank it would need about 10 GB, more than the host had
+free. Its row is kept in `results/ablation-n41-d14.jsonl`, with status `stopped`.
+
+**Novelty.** Symmetry-adapted Gröbner bases for summation polynomials are published: the
+symmetric-function variables `e_i` of Faugère-Gaudry-Huot-Renault 2014 and the `S_m`-invariant
+ideals of Faugère-Perret-Petit-Renault 2012. Our linear solve already uses those variables, and the
+swap is the part of the `S_2` symmetry that is left after it. What is new is the ablation itself:
+the leftover swap is worth one MXL degree at `d = 11`.
+
 ## 5. Further leads (all checked: on paper, measured, or against the literature)
 
 1. ~~Explain the degree-3 refutations~~: there is no degree-3 identity behind them. The plain
    t-Macaulay certificate needs degree 4-5 where the mutant closure refutes at degree 3
    (Sec. 4c), so the mutant closure is exploiting higher-degree cancellations, not a short direct
-   mechanism.
+   mechanism. Sec. 4f finds which structure the closure exploits. The `F_2[T]` convolution saves
+   one degree against a generic Boolean bilinear system. The summand swap `A -> A + D` saves one
+   more at `d = 11`.
 2. ~~Measure the degree trend beyond `d = 13`~~: done in Sec. 4b-4c with `smxl.c`. The degree is 3
    for `d <= 9`, 4 for `d = 12-18`, 5 at `d = 21` and >= 5 at `d = 24`. Sec. 4c turns this into an
    exponent bound for the whole closure family.
@@ -416,6 +502,25 @@ projection. That inflated IC's margin over rho by about 4x in most rows, and 88x
    m = 2 over one subspace (k >= 3 summands, non-subspace bases) are covered by the literature
    table in Sec. 1 and by Sec. 5b.
 4. **Further on-paper checks (2026-10-06), none giving a candidate:**
+   - **Non-subspace factor bases are dominated for linear oracles (proved; checked by
+     `nonsubspace.py`, `results/nonsubspace.jsonl`, `test_nonsubspace.py`).**
+     - **Setup.** Take any F of size `2^l`. An m = 2 oracle linear in `(e1, e2)` has unknowns in
+       `span(F + F) x span(F)^(2)`. Its residual is
+       `d_lin(F) = dim span(F + F) + dim span(F)^(2) - n - 1`.
+     - **Bound.** `span(F + F)` contains `x0 + F`, so it has dimension at least l. By
+       Hou-Leung-Xiang, `dim span(F)^(2) >= 2 dim span(F) - 1 >= 2l - 1`. So
+       `d_lin(F) >= 3l - n - 2`, the progression's value.
+     - **Dominance.** The heuristic relation yield, about `2^(2l - n)`, depends only on `|F|`. A
+       progression of the same size is therefore never worse.
+     - **Bases that are not subspaces.** The other generic oracle enumerates one summand in F, at
+       cost `2^l >= 2^(3l - n - 2)` for every `l <= (n + 2)/2`. So these bases can help only
+       through a genuinely nonlinear solver, which means Gröbner bases or resultants on their
+       defining equations. That is the published route of Petit-Kosters-Messeng 2016 and the
+       quasi-subfield polynomials of Huang-Kosters-Petit-Yeo-Yun 2020 (Sec. 1).
+     - **Measured** at n = 23 and 41, near the limit, at limit + 2 and at limit + 4. The cube
+       and fifth-power images of a progression and random sets span the whole field (`d_lin = n - 1`). Unions of two
+       `(l - 1)`-dimensional subspaces span about `2l - 2`. Their excess over a progression of the
+       same size is 9-40 dimensions, and it is never negative.
    - **Möbius images of a subspace**, `x in M(V)`. Translations, scalings and the inversion
      `x -> 1/x` all keep S_3 F_2-linear in `(e1, e2)`, for example
      `S_3(1/f1, 1/f2, S) f1^2 f2^2 = 1 + S^2 e1^2 + S e2 + b e2^2`. The unknowns stay
@@ -543,6 +648,11 @@ and a point-decomposition solver, with no relation linear algebra or target desc
 - **Large factor bases.** For `l >= 26`, the `2^l` points are not enumerated here, so B and the
   enumerated-set digest are unknown. The record stays recipe-only and the label is null, as for
   recipe-only fb-archive entries. The workload IDs are still exact.
+
+**No labels for Sec. 4f or the non-subspace check.** The ablation rows (`ablation-n41*.jsonl`)
+and the non-subspace rows (`nonsubspace.jsonl`) are structural diagnostics. They describe
+modified systems or span dimensions, not a decomposition solver on a factor base, so they carry
+no PS1 or IC1 label (`candidate_id: null`).
 
 All cells use the geomtraceu factor base with seed 1, on `EC1N<n>Ckb1` curves. Rows that share a
 workload ID were measured on the same targets.
