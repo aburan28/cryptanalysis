@@ -36,9 +36,15 @@ requires a qualifying host. The evaluator uses scalar-dependent atlas
 and table indices and remains an experimental public-scalar path until
 a constant-time policy is designed and verified for secret inputs.
 
-`make_inputs.py` and `verify_inputs.py` fix a new 4,096-scalar panel with
-seed `20261010138`, disjoint modulo the subgroup order from the prior
-panels. Draw it only after this patch, its atlases, and input generator
-are committed. After the shared source reservation clears, apply the
-patch to the current native branch, rebase it if that branch changed,
-and rerun the correctness checks on the integrated source.
+`make_inputs.py` and `verify_inputs.py` fixed a new 4,096-scalar panel
+with seed `20261010138`, disjoint modulo the subgroup order from the
+prior panels. The panel was drawn after source freeze `a913a83a5`.
+`make_fresh_fixture.py` supplied independently computed binary points;
+both the new mode and the prior radix-384 mode verified every case.
+`FRESH_RESULTS.md` and `fresh-result.json` retain that comparison.
+Run `python3 experiments/prime-j0-tau-frontier-native-prototype-20261010/verify_fresh.py`
+to check the compressed raw outputs against the fixture.
+
+After the shared source reservation clears, apply the patch to the
+current native branch, rebase it if that branch changed, and rerun the
+correctness checks on the integrated source.
