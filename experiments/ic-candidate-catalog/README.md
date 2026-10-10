@@ -279,6 +279,19 @@ This prioritizes a verified ordinary normal4 relation/rank gate with a W24
 control while preserving all target-dependent attempts and the final-matrix
 cost. The complete IC pipeline remains an unactivated proposal.
 
+The [balanced-S3 equal-B m6 gate](../ecc2k130-equalb-balanced-s3-20261010/RESULT.md)
+reorganizes those six exact leaves into three pair sums and a final two-link
+tree. Independent checked Sage replay passes both planted point chains and
+Boolean-root controls. Each all-lift formula saves 1,030 variables, 131
+ordinary clauses, and 899 native XORs against the target-first circuit.
+The normal4 and W24 ordinary-query searches both entered live search and
+reached their frozen external wall cap with `BOUNDED_UNKNOWN`; raw restart
+tables and independent audits distinguish this from a solver launch failure.
+The static reduction is small, so the next PDP gate is an exact four-index
+encoding of normal4's weight-four supports, with W24 retained as a paired
+reference. Verified ordinary relations and novel rank remain the promotion
+measure; `candidate_id` is still `null`.
+
 The [preregistered cold full-rank one-target control](../ecc2k130-cold-fullrank-20261006/RESULT.md)
 assigns canonical `IC1`/workload/run IDs to independently replayed n37 and n41
 four-summand exact-support recoveries; its n53 cell is a preserved 180-second
