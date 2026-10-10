@@ -11,7 +11,7 @@ rejections. The timings are diagnostics from an unisolated host.
 
 ## Construction and exact filter
 
-Work on `y^2 + xy = x^3 + x^2 + 1` over the polynomial-basis binary fields
+Work on `y^2 + xy = x^3 + 1` over the polynomial-basis binary fields
 specified in [`inputs.json`](inputs.json). Write `w=1/x(P)` for a diagonal
 atom and fix one nonzero seed `s` in the source subspace `W_d`. Two atoms
 whose source coordinates are `w` and `w+s` have product
