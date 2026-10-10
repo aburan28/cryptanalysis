@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import gzip
 import hashlib
 import json
@@ -200,11 +201,36 @@ def freeze() -> None:
 
 
 def rss_bytes(pid: int) -> int:
-    result = subprocess.run(["ps", "-o", "rss=", "-p", str(pid)],
-                            capture_output=True, text=True)
-    if result.returncode:
-        raise RuntimeError("RSS sampling failed")
-    return int(result.stdout.strip() or 0) * 1024
+    if sys.platform != "darwin":
+        raise RuntimeError("this local RSS sampler requires Darwin libproc")
+
+    class TaskInfo(ctypes.Structure):
+        _fields_ = [
+            ("virtual_size", ctypes.c_uint64),
+            ("resident_size", ctypes.c_uint64),
+            ("total_user", ctypes.c_uint64),
+            ("total_system", ctypes.c_uint64),
+            ("threads_user", ctypes.c_uint64),
+            ("threads_system", ctypes.c_uint64),
+            *[(name, ctypes.c_int32) for name in (
+                "policy", "faults", "pageins", "cow_faults", "messages_sent",
+                "messages_received", "syscalls_mach", "syscalls_unix", "csw",
+                "threadnum", "numrunning", "priority")],
+        ]
+
+    libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+    libproc.proc_pidinfo.argtypes = [
+        ctypes.c_int, ctypes.c_int, ctypes.c_uint64, ctypes.c_void_p,
+        ctypes.c_int]
+    libproc.proc_pidinfo.restype = ctypes.c_int
+    info = TaskInfo()
+    size = libproc.proc_pidinfo(pid, 4, 0, ctypes.byref(info),
+                               ctypes.sizeof(info))
+    if size == 0:
+        return 0  # The process may have exited between poll and sample.
+    if size != ctypes.sizeof(info):
+        raise RuntimeError("libproc returned incomplete task info")
+    return info.resident_size
 
 
 def solve(stem: str) -> None:
