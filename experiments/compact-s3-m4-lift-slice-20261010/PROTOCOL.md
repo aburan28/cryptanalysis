@@ -24,6 +24,11 @@ points before folding, K=227 columns, workload `74f2979b3e68`. N83 uses
 workload `bab50a1e5f66`. Source, input, library, target-lift x values,
 and limits are hashed in `freeze.json` before measured calls.
 
+The first source freeze is preserved in `pilot_v1`. Its control command
+failed during Python module import before constructing a SAT formula. The
+runner was then changed to load Q1425 under a unique module name and
+refrozen as v2. The failed launch contributes no solver observation.
+
 One SAT thread and at most 90 seconds of target-dependent wall time are
 allowed per lift, with at most 17 incremental solve calls, 16 root
 refinements, 100,000 conflicts and 25 CPU seconds per call. A returned

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import resource
@@ -18,7 +19,11 @@ ROOT = HERE.parents[1]
 Q1425 = ROOT / "experiments/compact-s3-m4-root-hybrid-20261010"
 sys.path.insert(0, str(Q1425))
 
-import run as prior  # noqa: E402
+prior_spec = importlib.util.spec_from_file_location(
+    "q1425_root_run", Q1425 / "run.py")
+assert prior_spec and prior_spec.loader
+prior = importlib.util.module_from_spec(prior_spec)
+prior_spec.loader.exec_module(prior)
 from cmsat_native import IncrementalSolver, LIBRARY  # noqa: E402
 from hybrid import MeteredField, bits_value, build_hybrid, exact_roots, root_lemma  # noqa: E402
 
@@ -69,7 +74,7 @@ def freeze():
                      ("curve_id", "workload_id", "B", "K", "base_digest")) == (
                          prior.CASES[n])
     frozen = {
-        "schema": "q1426-lift-slice-freeze-v1", "proposal_id": "Q1426",
+        "schema": "q1426-lift-slice-freeze-v2", "proposal_id": "Q1426",
         "candidate_id": None, "run_id": None, "isogeny": "none",
         "protocol_sha256": prior.digest(HERE / "PROTOCOL.md"),
         "runner_sha256": prior.digest(__file__),
@@ -87,7 +92,7 @@ def freeze():
 
 def check_freeze():
     frozen = json.loads((HERE / "freeze.json").read_text())
-    assert frozen["schema"] == "q1426-lift-slice-freeze-v1"
+    assert frozen["schema"] == "q1426-lift-slice-freeze-v2"
     assert frozen["protocol_sha256"] == prior.digest(HERE / "PROTOCOL.md")
     assert frozen["runner_sha256"] == prior.digest(__file__)
     assert frozen["verifier_sha256"] == prior.digest(HERE / "verify.py")
