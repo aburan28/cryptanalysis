@@ -20,9 +20,9 @@ memory hints, and point work changes.
    correctness-preserving no-op fallback on other targets.
 2. Preserve exact scalar representative, fourteen digit/lookup choices,
    nonidentity count, retained table bytes, and final point for every
-   compared scalar. Record zero selections and failures. Neither arm
-   allocates a per-scalar heap object. The staged mode uses a fixed
-   stack array of at most sixteen choices.
+   compared scalar. Record zero selections and failures. The staged
+   mode adds no per-scalar heap allocation beyond the shared scalar
+   selector; its choices use a fixed stack array of at most sixteen.
 3. Pass the native release tests, the 129 independent fixed-generator
    fixture points in both modes, and all 519 frozen scalar inputs
    against the reference. Also compare at least 128 fresh scalars to
