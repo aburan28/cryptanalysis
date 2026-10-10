@@ -662,9 +662,9 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
-    if format == 20 || format == 21 || format == 22 || format == 23 {
+    if format == 20 || format == 21 || format == 22 || format == 23 || format == 24 {
         std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
-        if format == 22 || format == 23 {
+        if format == 22 || format == 23 || format == 24 {
             std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
         }
         return TABLES.retained_bytes;
@@ -748,7 +748,7 @@ pub(super) fn multiply_word_format(
     }
     let lattice = &*SCALAR_LATTICE;
     let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
-    let (mut a, mut b, original) = if format == 22 || format == 23 {
+    let (mut a, mut b, original) = if format == 22 || format == 23 || format == 24 {
         let (a, b) = super::hexagonal_certified_fixed_choice(&residue).0;
         (a, b, None)
     } else {
@@ -763,7 +763,7 @@ pub(super) fn multiply_word_format(
          Some((start_a, start_b)))
     };
     let start_fixed = (a, b);
-    let tables = selected(if (20..=23).contains(&format) { 14 } else { format });
+    let tables = selected(if (20..=24).contains(&format) { 14 } else { format });
     let mut result = Jacobian::identity();
     let mut nonidentity: usize = 0;
     for (index, &width) in tables.widths.iter().enumerate() {
@@ -1281,6 +1281,86 @@ mod tests {
             if (fresh_start..fresh_start + 128).contains(&index) {
                 let reduced = scalar % &SCALAR_LATTICE.n;
                 assert_eq!(point.affine_hex_hybrid(),
+                           independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+    }
+
+    #[test]
+    fn binary_inverse_modular_halves_and_inverses_match_reference() {
+        let (ctx, _, _) = &*super::super::HYBRID_FIELD;
+        let (p_minus_one, _) = super::super::U256::sbb(&ctx.n, &super::super::U256::ONE);
+        let (p_minus_two, _) = super::super::U256::sbb(
+            &p_minus_one, &super::super::U256::ONE);
+        let mut values = vec![super::super::U256::ZERO, super::super::U256::ONE,
+                              super::super::Uint([2, 0, 0, 0]), p_minus_one,
+                              p_minus_two, super::super::Uint([0, 0, 0, 1u64 << 63])];
+        let mut state = 0xced7_22b5_0a41_b3d9u64;
+        for _ in 0..512 {
+            let mut limbs = [0u64; 4];
+            for limb in &mut limbs {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                *limb = state;
+            }
+            let mut value = super::super::Uint(limbs);
+            if !bool::from(value.ct_lt(&ctx.n)) {
+                value = super::super::U256::sbb(&value, &ctx.n).0;
+            }
+            values.push(value);
+        }
+        for (index, value) in values.into_iter().enumerate() {
+            let expected_half = {
+                let mut whole = value.to_biguint();
+                if value.0[0] & 1 != 0 { whole += ctx.n.to_biguint(); }
+                super::super::U256::from_biguint(&(whole >> 1usize))
+            };
+            assert_eq!(super::super::binary_mod_half(value, &ctx.n).0,
+                       expected_half.0, "half {index}");
+            if bool::from(value.ct_is_zero()) { continue; }
+            let mont = ctx.to_montgomery(&value);
+            let binary = super::super::hybrid_binary_invert(mont, ctx);
+            let chain = super::super::hybrid_invert(mont, ctx);
+            assert_eq!(binary.0, chain.0, "inverse {index}");
+            assert_eq!(ctx.mont_mul(&mont, &binary).0, ctx.r_mod_n.0,
+                       "inverse product {index}");
+        }
+    }
+
+    #[test]
+    fn binary_inverse_finalizer_matches_complete_prior_and_fresh_points() {
+        let panels = [
+            include_str!("../../../../prime-j0-radix943-word-20261009/inputs.json"),
+            include_str!("../../../../prime-j0-exact-reciprocal-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-certified-voronoi-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-fixed-limb-voronoi-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-hybrid-finalize-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-binary-inverse-20261010/fresh-inputs.json"),
+        ];
+        let mut cases = vec![BigInt::ZERO, BigInt::from(1),
+                             &SCALAR_LATTICE.n - BigInt::from(1),
+                             SCALAR_LATTICE.n.clone(),
+                             (BigInt::from(1) << 256usize) - BigInt::from(1)];
+        for panel in panels {
+            let data: serde_json::Value = serde_json::from_str(panel).unwrap();
+            cases.extend(data["scalars_hex"].as_array().unwrap().iter().map(|value|
+                BigInt::parse_bytes(value.as_str().unwrap().as_bytes(), 16).unwrap()));
+        }
+        assert_eq!(cases.len(), 5 + 519 + 5 * 4096);
+        let fresh_start = cases.len() - 4096;
+        for (index, scalar) in cases.iter().enumerate() {
+            let reference = multiply_word_format(scalar, 23);
+            let candidate = multiply_word_format(scalar, 24);
+            assert_eq!((&reference.1, &reference.2, reference.3, reference.4),
+                       (&candidate.1, &candidate.2, candidate.3, candidate.4),
+                       "scalar path {index}");
+            assert_eq!(candidate.0.affine_hex_binary_inverse(),
+                       reference.0.affine_hex_hybrid(), "point {index}");
+            if (fresh_start..fresh_start + 128).contains(&index) {
+                let reduced = scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0.affine_hex_binary_inverse(),
                            independent_binary_point(&reduced).affine_hex(),
                            "independent point {index}");
             }
