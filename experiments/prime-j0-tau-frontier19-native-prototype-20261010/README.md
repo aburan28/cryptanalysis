@@ -21,19 +21,18 @@ checked all **21,930 nonidentity stored points**. A separate native test
 matched all 4,096 scalars in the prior radix-384 panel, including 128
 direct binary-point checks. The complete release suite passed **102/102**.
 
-The frozen input generator uses seed `20261010139` and excludes every
-earlier committed scalar panel, including the seventeen-window fresh
-panel. Commit the patch, receipt, input generator, independent binary
-fixture generator, and serial runner before drawing those inputs. Then:
+The patch, receipt, input generator, and independent binary fixture
+generator were frozen in commit `6f04f10ef` before drawing a new
+4,096-scalar panel with seed `20261010139`. The panel excludes every
+earlier listed scalar panel, including the seventeen-window fresh panel.
+The nineteen-window evaluator and the seventeen-window control each
+matched every expected point. [FRESH_RESULTS.md](FRESH_RESULTS.md) records
+the evidence. Replay the committed checks from the repository root:
 
 ```sh
-python3 experiments/prime-j0-tau-frontier19-native-prototype-20261010/make_inputs.py
 python3 experiments/prime-j0-tau-frontier19-native-prototype-20261010/verify_inputs.py
-python3 experiments/prime-j0-tau-frontier19-native-prototype-20261010/make_fresh_fixture.py
-python3 experiments/prime-j0-tau-frontier19-native-prototype-20261010/run_fresh.py \
-  --binary /absolute/path/to/eisenstein_fixed \
-  --fixture /absolute/path/to/fresh-fixture.json \
-  --output /absolute/path/to/fresh4096-frontier19.out.gz
+python3 experiments/prime-j0-tau-frontier19-native-prototype-20261010/verify_receipt.py
+python3 experiments/prime-j0-tau-frontier19-native-prototype-20261010/verify_fresh.py
 ```
 
 The runs are correctness and retained-allocation evidence. The public
