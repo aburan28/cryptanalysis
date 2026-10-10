@@ -3577,10 +3577,10 @@ fn check_generator_case(
     let preparation_start = Instant::now();
     LazyLock::force(&SCALAR_LATTICE);
     LazyLock::force(&DECODE_CONSTANTS);
-    if (123..=130).contains(&unit_orbit_format) {
+    if (123..=132).contains(&unit_orbit_format) {
         LazyLock::force(&HYBRID_FIELD);
     }
-    if (124..=130).contains(&unit_orbit_format) {
+    if (124..=132).contains(&unit_orbit_format) {
         LazyLock::force(&BINARY_INVERSE_R3);
     }
     let retained_bytes = if unit_orbit_format != 0 {
@@ -3626,11 +3626,19 @@ fn check_generator_case(
         LazyLock::force(&GLV_COMB10_POINTS);
     }
     let scalar = scalar_from_hex(scalar_hex);
-    let scalar_words = (125..=130).contains(&unit_orbit_format)
+    let scalar_words = (125..=132).contains(&unit_orbit_format)
         .then(|| scalar_words_256(&scalar)).flatten();
     let preparation_ms = preparation_start.elapsed().as_secs_f64() * 1000.0;
     let start = Instant::now();
-    let actual = if unit_orbit_format == 130 {
+    let actual = if unit_orbit_format == 132 {
+        unit_orbit_windows::multiply_u256_sector16(
+            scalar_words.expect("sector16 digit requires unsigned 256-bit scalar")
+        ).0
+    } else if unit_orbit_format == 131 {
+        unit_orbit_windows::multiply_u256_sector15(
+            scalar_words.expect("sector15 digit requires unsigned 256-bit scalar")
+        ).0
+    } else if unit_orbit_format == 130 {
         unit_orbit_windows::multiply_u256_sector(
             scalar_words.expect("sector digit requires unsigned 256-bit scalar")
         ).0
@@ -3706,7 +3714,11 @@ fn check_generator_case(
     };
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if unit_orbit_format == 130 {
+    let mode = if unit_orbit_format == 132 {
+        "unit_orbit_u256_sector16_fixed"
+    } else if unit_orbit_format == 131 {
+        "unit_orbit_u256_sector15_fixed"
+    } else if unit_orbit_format == 130 {
         "unit_orbit_u256_sector14_fixed"
     } else if unit_orbit_format == 129 {
         "unit_orbit_u256_formula14_fixed"
@@ -3856,7 +3868,11 @@ fn main() {
             || args[0].starts_with("--benchmark-scalar-unit-orbit-radix943"))
         && args[0].ends_with("-fixed-fixture")
     {
-        let format = if args[0].contains("unit-orbit-u256-sector-fixed-fixture") {
+        let format = if args[0].contains("unit-orbit-u256-sector16-fixed-fixture") {
+            132
+        } else if args[0].contains("unit-orbit-u256-sector15-fixed-fixture") {
+            131
+        } else if args[0].contains("unit-orbit-u256-sector-fixed-fixture") {
             130
         } else if args[0].contains("unit-orbit-u256-formula-fixed-fixture") {
             129
@@ -4039,6 +4055,10 @@ fn main() {
             || args[0] == "--check-scalar-unit-orbit-u256-formula-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-u256-sector-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-u256-sector-fixed-case"
+            || args[0] == "--benchmark-scalar-unit-orbit-u256-sector15-fixed-case"
+            || args[0] == "--check-scalar-unit-orbit-u256-sector15-fixed-case"
+            || args[0] == "--benchmark-scalar-unit-orbit-u256-sector16-fixed-case"
+            || args[0] == "--check-scalar-unit-orbit-u256-sector16-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-radix943-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-radix943-fixed-case")
     {
@@ -4080,7 +4100,11 @@ fn main() {
             args[0].contains("w6-comb13-hex9-radius2"),
             args[0].contains("w6-comb13-hex9-graph33"),
             args[0].contains("w6-comb13-hex9-graphaware33"),
-            if args[0].contains("unit-orbit-u256-sector") {
+            if args[0].contains("unit-orbit-u256-sector16") {
+                132
+            } else if args[0].contains("unit-orbit-u256-sector15") {
+                131
+            } else if args[0].contains("unit-orbit-u256-sector") {
                 130
             } else if args[0].contains("unit-orbit-u256-formula") {
                 129
