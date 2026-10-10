@@ -1,5 +1,18 @@
 # ECC2K-130 single-target index-calculus goal
 
+**Exact W15 pair-order quotient and public gate (2026-10-10):**
+[canonical ordering inside all six pairs](n131_w15_pair_lex_public_20261010/RESULT.md)
+removes a proven 64-fold source symmetry with only 90 added CNF clauses;
+the previous formula's variables, native-XOR rows, AND gates, and all
+other clauses remain unchanged. The exact quotient source count has a
+uniform-target mean of 532.793 signed tuples before intermediate
+filtering. A complete constructed assignment and group lift pass. The
+same-point public query reached `CENSORED_TIME` after 592.109 s under
+one worker and 4 GiB; the byte-level terminal and archive audits pass.
+This selects target-coupled elimination across multiple output
+families, using the unpinned N41 twelve-point join as the next control,
+over further local SAT clause additions.
+
 **Exact N131 fixed-seed S3 family join (2026-10-10):**
 [target-coupled quadratic inversion](n131_w15_fixedseed_s3_join_20261010/RESULT.md)
 joins the two complete W15 fixed-seed pair-output sets of 8,176 and
