@@ -1,7 +1,7 @@
 name: prime-j0-cache-window
 
-# Correctness on Linux x86-64; performance ratios use the separate isolated
-# benchmark service and its host-level preflight.
+# Correctness on Linux x86-64 for the staged native scalar formats;
+# performance ratios use the isolated benchmark service and its host preflight.
 on:
   push:
     branches: ["**"]
@@ -9,6 +9,15 @@ on:
       - ".github/workflows/prime-j0-cache-window.yml"
       - "experiments/prime-j0-cache-window-20261010/**"
       - "experiments/prime-j0-secp256k1-native/**"
+      - "experiments/prime-j0-tau-expanded-20261010/**"
+      - "experiments/prime-j0-tau-native-integration-20261010/**"
+  pull_request:
+    paths:
+      - ".github/workflows/prime-j0-cache-window.yml"
+      - "experiments/prime-j0-cache-window-20261010/**"
+      - "experiments/prime-j0-secp256k1-native/**"
+      - "experiments/prime-j0-tau-expanded-20261010/**"
+      - "experiments/prime-j0-tau-native-integration-20261010/**"
   workflow_dispatch:
 
 permissions:
@@ -53,7 +62,7 @@ jobs:
               tail -40 "$RUNNER_TEMP/native-tests.log"
               exit 1
             }
-          grep -F 'test result: ok. 90 passed; 0 failed;' "$RUNNER_TEMP/native-tests.log"
+          grep -F 'test result: ok. 106 passed; 0 failed;' "$RUNNER_TEMP/native-tests.log"
 
       - name: Build executable and replay all fixture points
         run: |
@@ -68,6 +77,38 @@ jobs:
             test "$(wc -l < "$RUNNER_TEMP/${flag}.stdout")" -eq 129
           done
 
+      - name: Verify frozen integration receipt
+        run: python3 experiments/prime-j0-tau-native-integration-20261010/verify_receipt.py
+
+      - name: Replay three frontier modes on independent scalar panel
+        run: |
+          python3 - <<'PY'
+          import gzip
+          import os
+          from pathlib import Path
+          import subprocess
+
+          binary = Path("experiments/prime-j0-secp256k1-native/target/release/eisenstein_fixed")
+          reference = Path("experiments/prime-j0-tau-expanded-20261010")
+          fixture = reference / "fresh-fixture.json"
+          modes = {
+              "expanded": "--check-scalar-unit-orbit-u256-tau-frontier19-expanded-fixed-fixture",
+              "orbit_x": "--check-scalar-unit-orbit-u256-tau-frontier19-orbit-x-fixed-fixture",
+              "frontier19": "--check-scalar-unit-orbit-u256-tau-frontier19-fixed-fixture",
+          }
+          for label, flag in modes.items():
+              run = subprocess.run([str(binary), flag, str(fixture)],
+                                   capture_output=True, check=True, timeout=600)
+              assert not run.stderr, (label, run.stderr[-2000:])
+              frozen = gzip.decompress((reference / f"fresh4096-{label}.out.gz").read_bytes())
+              assert run.stdout == frozen, label
+              assert len(run.stdout.splitlines()) == 4096, label
+              (Path(os.environ["RUNNER_TEMP"]) / f"frontier-{label}.stdout").write_bytes(run.stdout)
+              print(f"linux_{label}_verified=4096")
+          PY
+          sha256sum experiments/prime-j0-secp256k1-native/target/release/eisenstein_fixed \
+            > "$RUNNER_TEMP/linux-binary.sha256"
+
       - name: Preserve raw Linux outputs
         if: always()
         uses: actions/upload-artifact@v4
@@ -77,4 +118,6 @@ jobs:
             ${{ runner.temp }}/native-tests.log
             ${{ runner.temp }}/u256-sector*.stdout
             ${{ runner.temp }}/u256-sector*.stderr
+            ${{ runner.temp }}/frontier-*.stdout
+            ${{ runner.temp }}/linux-binary.sha256
           if-no-files-found: warn
