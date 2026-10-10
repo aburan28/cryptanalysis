@@ -178,13 +178,16 @@ def main() -> None:
     action = parser.add_mutually_exclusive_group(required=True)
     action.add_argument("--check", action="store_true")
     action.add_argument("--run", action="store_true")
+    parser.add_argument("--run-id", default="R1")
     args = parser.parse_args()
+    if re.fullmatch(r"R[1-9][0-9]*", args.run_id) is None:
+        parser.error("run ID must be R followed by a positive decimal integer")
     config = json.loads(CONFIG.read_text())
     if config["schema"] != "ecc2k130-equalb-gauss-gate-config-v1":
         raise ValueError("unknown config schema")
-    outdir = HERE / "runs" / "R1"
+    outdir = HERE / "runs" / args.run_id
     if args.run and outdir.exists():
-        raise FileExistsError("refusing to reuse R1")
+        raise FileExistsError(f"refusing to reuse {args.run_id}")
     with tempfile.TemporaryDirectory(prefix="ecc2k130-gauss-gate-") as tmp:
         sources, solver = source_check(config, Path(tmp))
         if args.check:
