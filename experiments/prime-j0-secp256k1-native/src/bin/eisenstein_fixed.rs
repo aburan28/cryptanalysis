@@ -23,7 +23,7 @@ mod utils {
     }
 }
 
-use ct_bignum::{Uint, U256};
+use ct_bignum::{MontgomeryContext, Uint, U256};
 use num_bigint::{BigInt, Sign};
 use num_traits::{Signed as NumSigned, ToPrimitive, Zero};
 use serde_json::{json, Value};
@@ -70,6 +70,56 @@ static DECODE_CONSTANTS: LazyLock<(BigInt, BigInt, BigInt)> = LazyLock::new(|| {
     assert_eq!((&radix * &r_inverse) % &p, BigInt::from(1u8));
     (p, beta, r_inverse)
 });
+
+// The Eisenstein kernel stores z*2^128 as a+b*beta. The conventional
+// Montgomery kernel stores z*2^256. These constants map the former to the
+// latter using one fixed-width product per signed coefficient.
+static HYBRID_FIELD: LazyLock<(MontgomeryContext<4>, U256, U256)> = LazyLock::new(|| {
+    let p = Uint([P_SIGNED.magnitude.0[0], P_SIGNED.magnitude.0[1],
+                  P_SIGNED.magnitude.0[2], P_SIGNED.magnitude.0[3]]);
+    let ctx = MontgomeryContext::new(p).expect("odd field prime");
+    let radix = num_bigint::BigUint::from(1u8) << 128usize;
+    let beta = DECODE_CONSTANTS.1.to_biguint().expect("positive beta");
+    let modulus = p.to_biguint();
+    let c0 = ctx.to_montgomery(&U256::from_biguint(&radix));
+    let c1 = ctx.to_montgomery(&U256::from_biguint(&((beta * radix) % modulus)));
+    (ctx, c0, c1)
+});
+
+fn hybrid_pair_mont(value: Pair) -> U256 {
+    let (ctx, c0, c1) = &*HYBRID_FIELD;
+    let term = |coefficient: Signed, constant: &U256| {
+        let words = coefficient.magnitude.0;
+        assert_eq!(words[4..], [0; 4], "hybrid input exceeds four limbs");
+        let magnitude = Uint([words[0], words[1], words[2], words[3]]);
+        let product = ctx.mont_mul(&magnitude, constant);
+        if coefficient.negative { U256::ZERO.sub_mod(&product, &ctx.n) } else { product }
+    };
+    term(value.a, c0).add_mod(&term(value.b, c1), &ctx.n)
+}
+
+fn hybrid_invert(value: U256, ctx: &MontgomeryContext<4>) -> U256 {
+    assert!(!bool::from(value.ct_is_zero()), "cannot invert zero field element");
+    let squares = |mut x: U256, count: usize| {
+        for _ in 0..count { x = ctx.mont_sqr(&x); }
+        x
+    };
+    let mul = |a: U256, b: U256| ctx.mont_mul(&a, &b);
+    let t2 = mul(ctx.mont_sqr(&value), value);
+    let t3 = mul(ctx.mont_sqr(&t2), value);
+    let t4 = mul(squares(t2, 2), t2);
+    let t8 = mul(squares(t4, 4), t4);
+    let t11 = mul(squares(t8, 3), t3);
+    let t22 = mul(squares(t11, 11), t11);
+    let t44 = mul(squares(t22, 22), t22);
+    let t88 = mul(squares(t44, 44), t44);
+    let t176 = mul(squares(t88, 88), t88);
+    let t220 = mul(squares(t176, 44), t44);
+    let t223 = mul(squares(t220, 3), t3);
+    let x45 = mul(mul(t4, t4), t4);
+    let head = mul(squares(t223, 23), t22);
+    mul(squares(head, 10), x45)
+}
 
 #[derive(Clone, Copy, Debug)]
 struct Signed {
@@ -870,6 +920,18 @@ impl Jacobian {
         let x = self.x.mul(square).canonical_hex();
         let y = self.y.mul(cube).canonical_hex();
         format!("{x}:{y}")
+    }
+
+    fn affine_hex_hybrid(self) -> String {
+        if self.is_identity() { return "identity".to_owned(); }
+        let (ctx, _, _) = &*HYBRID_FIELD;
+        let z_inverse = hybrid_invert(hybrid_pair_mont(self.z), ctx);
+        let z_square = ctx.mont_sqr(&z_inverse);
+        let z_cube = ctx.mont_mul(&z_square, &z_inverse);
+        let x = ctx.mont_mul(&hybrid_pair_mont(self.x), &z_square);
+        let y = ctx.mont_mul(&hybrid_pair_mont(self.y), &z_cube);
+        format!("{}:{}", hex::encode(ctx.from_montgomery(&x).to_bytes_be()),
+                hex::encode(ctx.from_montgomery(&y).to_bytes_be()))
     }
 
     fn into_affine(self) -> Self {
@@ -3425,6 +3487,7 @@ fn check_generator_case(
     let preparation_start = Instant::now();
     LazyLock::force(&SCALAR_LATTICE);
     LazyLock::force(&DECODE_CONSTANTS);
+    if unit_orbit_format == 123 { LazyLock::force(&HYBRID_FIELD); }
     let retained_bytes = if unit_orbit_format != 0 {
         unit_orbit_windows::warm_format(unit_orbit_format % 100)
     } else {
@@ -3509,10 +3572,16 @@ fn check_generator_case(
     } else {
         scalar_multiply_width_two(&scalar).0
     };
-    let actual = point.affine_hex();
+    let actual = if unit_orbit_format == 123 {
+        point.affine_hex_hybrid()
+    } else {
+        point.affine_hex()
+    };
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if unit_orbit_format == 122 {
+    let mode = if unit_orbit_format == 123 {
+        "unit_orbit_hybrid14_fixed"
+    } else if unit_orbit_format == 122 {
         "unit_orbit_fixed_limb14_fixed"
     } else if unit_orbit_format == 121 {
         "unit_orbit_certified14_fixed"
@@ -3626,11 +3695,15 @@ fn main() {
             || args[0].starts_with("--benchmark-scalar-unit-orbit-certified")
             || args[0].starts_with("--check-scalar-unit-orbit-fixed-limb")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-fixed-limb")
+            || args[0].starts_with("--check-scalar-unit-orbit-hybrid")
+            || args[0].starts_with("--benchmark-scalar-unit-orbit-hybrid")
             || args[0].starts_with("--check-scalar-unit-orbit-radix943")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-radix943"))
         && args[0].ends_with("-fixed-fixture")
     {
-        let format = if args[0].contains("unit-orbit-fixed-limb-fixed-fixture") {
+        let format = if args[0].contains("unit-orbit-hybrid-fixed-fixture") {
+            123
+        } else if args[0].contains("unit-orbit-fixed-limb-fixed-fixture") {
             122
         } else if args[0].contains("unit-orbit-certified-fixed-fixture") {
             121
@@ -3781,6 +3854,8 @@ fn main() {
             || args[0] == "--check-scalar-unit-orbit-certified-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-fixed-limb-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-fixed-limb-fixed-case"
+            || args[0] == "--benchmark-scalar-unit-orbit-hybrid-fixed-case"
+            || args[0] == "--check-scalar-unit-orbit-hybrid-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-radix943-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-radix943-fixed-case")
     {
@@ -3822,7 +3897,9 @@ fn main() {
             args[0].contains("w6-comb13-hex9-radius2"),
             args[0].contains("w6-comb13-hex9-graph33"),
             args[0].contains("w6-comb13-hex9-graphaware33"),
-            if args[0].contains("unit-orbit-fixed-limb") {
+            if args[0].contains("unit-orbit-hybrid") {
+                123
+            } else if args[0].contains("unit-orbit-fixed-limb") {
                 122
             } else if args[0].contains("unit-orbit-certified") {
                 121
