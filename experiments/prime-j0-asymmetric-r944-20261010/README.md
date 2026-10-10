@@ -30,6 +30,11 @@ the affine replay's operation counts. The two radix-944 native tests passed;
 the quotient test covered 10,595 signed boundary cases. The
 [constant-division proof](FAST_DIVISION.md) and Python checker independently
 passed 100,000 deterministic 129-bit inputs.
+The final-source release suite passed all **135 tests**. The public CLI also
+verified the prior 4,096-point fixture and the 10-point edge fixture with
+empty stderr. `native-receipt.json` records the tested binary, generated
+source, raw logs, fixtures, and output hashes; `verify.py` checks their
+binding to the frozen construction and input commits.
 
 `materialize_native.py OUTPUT_DIRECTORY` applies the mode-158 base patch and
 the [mode-159 delta](native-delta.patch) in a separate Cargo crate. Its
