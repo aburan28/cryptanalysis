@@ -306,6 +306,17 @@ yield and rank remain unmeasured; held-out N131 four-policy prefixes await a
 relation-producing PDP. The next independent gates are the degree-263
 exceptional-input transport proof and charged n53 compact-orbit recovery.
 
+The [equal-B Gaussian-matrix gate](../ecc2k130-equalb-gauss-gate-20261010/RESULT.md)
+replayed the exact normal4-counter and W24-balanced four-lift query under
+matched CryptoMiniSat default and raised Gaussian limits. The raised limit
+admitted 8,262-by-13,084 components and recorded active elimination, while
+peak RSS rose 3.6–3.9-fold and all four guarded searches remained
+`BOUNDED_UNKNOWN`. The first sandboxed launch is preserved as four
+`PRODUCER_FAILURE` rows; the corrected R2 launch and independent raw-log
+audit are linked from the result. The next bounded solver gate cuts the
+five selected large matrices to two before sampling additional ordinary
+queries. `candidate_id` remains `null` pending verified relations and rank.
+
 The [preregistered cold full-rank one-target control](../ecc2k130-cold-fullrank-20261006/RESULT.md)
 assigns canonical `IC1`/workload/run IDs to independently replayed n37 and n41
 four-summand exact-support recoveries; its n53 cell is a preserved 180-second
