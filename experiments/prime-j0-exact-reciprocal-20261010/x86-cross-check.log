@@ -1,0 +1,97 @@
+   Compiling autocfg v1.5.1
+   Compiling zmij v1.0.23
+   Compiling serde_core v1.0.229
+   Compiling serde_json v1.0.151
+    Checking memchr v2.8.3
+    Checking itoa v1.0.18
+    Checking hex v0.4.3
+    Checking subtle v2.6.1
+   Compiling num-traits v0.2.19
+    Checking num-integer v0.1.47
+    Checking num-bigint v0.4.8
+    Checking prime-j0-secp256k1-native-replay v0.1.0 (/Volumes/SSD990/crypto/worktrees/prime-j0-exact-reciprocal-20261010/experiments/prime-j0-secp256k1-native)
+warning: multiple associated items are never used
+   --> src/bin/../../../../suite/src/ct_bignum.rs:56:15
+    |
+ 54 | impl<const LIMBS: usize> Uint<LIMBS> {
+    | ------------------------------------ associated items in this implementation
+ 55 |     pub const ZERO: Self = Self([0; LIMBS]);
+ 56 |     pub const ONE: Self = {
+    |               ^^^
+...
+131 |     pub fn cmov(a: &Self, b: &Self, choice: Choice) -> Self {
+    |            ^^^^
+...
+141 |     pub fn cswap(a: &mut Self, b: &mut Self, choice: Choice) {
+    |            ^^^^^
+...
+190 |     pub fn add_mod(&self, other: &Self, p: &Self) -> Self {
+    |            ^^^^^^^
+...
+203 |     pub fn sub_mod(&self, other: &Self, p: &Self) -> Self {
+    |            ^^^^^^^
+...
+221 |     pub fn mul_wide(a: &Self, b: &Self) -> (Self, Self) {
+    |            ^^^^^^^^
+...
+275 |     pub fn mont_mul(a: &Self, b: &Self, p: &Self, p_inv_low: u64) -> Self {
+    |            ^^^^^^^^
+...
+374 |     pub fn mont_sqr(a: &Self, p: &Self, p_inv_low: u64) -> Self {
+    |            ^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated items `to_bytes_be` and `from_bytes_be` are never used
+   --> src/bin/../../../../suite/src/ct_bignum.rs:389:12
+    |
+387 | impl Uint<4> {
+    | ------------ associated items in this implementation
+388 |     /// Big-endian byte serialization (32 bytes).  No allocation.
+389 |     pub fn to_bytes_be(&self) -> [u8; 32] {
+    |            ^^^^^^^^^^^
+...
+400 |     pub fn from_bytes_be(bytes: &[u8; 32]) -> Self {
+    |            ^^^^^^^^^^^^^
+
+warning: struct `MontgomeryContext` is never constructed
+   --> src/bin/../../../../suite/src/ct_bignum.rs:435:12
+    |
+435 | pub struct MontgomeryContext<const LIMBS: usize> {
+    |            ^^^^^^^^^^^^^^^^^
+
+warning: associated items `new`, `mont_mul`, `mont_sqr`, `to_montgomery`, and `from_montgomery` are never used
+   --> src/bin/../../../../suite/src/ct_bignum.rs:460:12
+    |
+451 | impl<const LIMBS: usize> MontgomeryContext<LIMBS> {
+    | ------------------------------------------------- associated items in this implementation
+...
+460 |     pub fn new(n: Uint<LIMBS>) -> Option<Self> {
+    |            ^^^
+...
+481 |     pub fn mont_mul(&self, a: &Uint<LIMBS>, b: &Uint<LIMBS>) -> Uint<LIMBS> {
+    |            ^^^^^^^^
+...
+486 |     pub fn mont_sqr(&self, a: &Uint<LIMBS>) -> Uint<LIMBS> {
+    |            ^^^^^^^^
+...
+491 |     pub fn to_montgomery(&self, a: &Uint<LIMBS>) -> Uint<LIMBS> {
+    |            ^^^^^^^^^^^^^
+...
+497 |     pub fn from_montgomery(&self, a_mont: &Uint<LIMBS>) -> Uint<LIMBS> {
+    |            ^^^^^^^^^^^^^^^
+
+warning: function `mont_pow_ct` is never used
+   --> src/bin/../../../../suite/src/ct_bignum.rs:525:8
+    |
+525 | pub fn mont_pow_ct<const LIMBS: usize>(
+    |        ^^^^^^^^^^^
+
+warning: function `compute_minv64` is never used
+   --> src/bin/../../../../suite/src/ct_bignum.rs:568:14
+    |
+568 | pub const fn compute_minv64(n: u64) -> u64 {
+    |              ^^^^^^^^^^^^^^
+
+warning: `prime-j0-secp256k1-native-replay` (bin "eisenstein_fixed") generated 6 warnings
+    Finished `release` profile [optimized] target(s) in 3.71s
