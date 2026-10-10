@@ -37,12 +37,13 @@ class Field:
             for j in range(k):
                 conv[i + j] += u[i] * w[j]
         self.C = conv                                          # x1 x2
-        self.A = self.linear(self.sqMatrix(), conv)            # (x1 x2)^2
-        sq = self.sqMatrix()
+        sq = self.sqMatrix()  # constant for the lifetime of this field
+        self.A = self.linear(sq, conv)                         # (x1 x2)^2
         x1 = [u[i] if i < k else self.B(0) for i in range(n)]
         x2 = [w[i] if i < k else self.B(0) for i in range(n)]
         self.S = [a + c for a, c in zip(self.linear(sq, x1), self.linear(sq, x2))]  # x1^2 + x2^2
         self.u, self.w = u, w
+        self._zero = self.B(0)
 
     def vec(self, e):
         v = e.polynomial().list()
