@@ -254,6 +254,19 @@ replay, and the bound one-target point. Its
 retains `candidate_id: null` while PDP, rank, final matrix, and target stages
 are pending.
 
+The [exact equal-B source-leaf m6 gate](../ecc2k130-equalb-m6-leaf-circuit-20261010/RESULT.md)
+now constructs matched native-XOR six-summand circuits for source W24 and
+normal4 with two multiplication equations and one trace equation per exact
+rational leaf. Checked Sage replays all 192 frozen source-point controls and
+both planted six-point chains; pinned SAT positive/negative controls also
+pass. On the first frozen ordinary public query, both CryptoMiniSat attempts
+entered search and reached their 150-second external cap with
+`BOUNDED_UNKNOWN` status. The checked order-four torsion witness gives four
+distinct raw x-target lifts of the same projected `[4]Q` relation. The next
+paired gate must charge all four lifts per query and compare independently
+verified relations and novel rank, with this exact circuit as its control.
+This is a PDP-stage proposal with `candidate_id: null`.
+
 The [preregistered cold full-rank one-target control](../ecc2k130-cold-fullrank-20261006/RESULT.md)
 assigns canonical `IC1`/workload/run IDs to independently replayed n37 and n41
 four-summand exact-support recoveries; its n53 cell is a preserved 180-second
