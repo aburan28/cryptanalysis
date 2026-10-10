@@ -30,7 +30,7 @@ def main():
     parser.add_argument("--cgroup", required=True)
     parser.add_argument("--cpus", required=True)
     parser.add_argument("--execution-cpu", type=int, required=True)
-    parser.add_argument("--mem-node", type=int, required=True)
+    parser.add_argument("--mem-node", required=True)
     parser.add_argument("--repetitions", type=int, default=5)
     parser.add_argument("--output-prefix", type=Path, required=True)
     args = parser.parse_args()

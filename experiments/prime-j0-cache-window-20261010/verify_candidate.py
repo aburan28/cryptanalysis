@@ -4,10 +4,13 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import platform
 import re
+import subprocess
 import sys
+import time
 
 from make_inputs import COUNT, N, SEED, SOURCES
 
@@ -68,28 +71,45 @@ def verify_suite():
     return {"cases": 4096, "counts_sha256": hashlib.sha256(counts).hexdigest()}
 
 
+def run_with_rusage(argv, name):
+    stdout = HERE / (name + ".stdout.txt")
+    stderr = HERE / (name + ".stderr.txt")
+    exit_file = HERE / (name + ".exit")
+    start = time.monotonic()
+    with stdout.open("wb") as out, stderr.open("wb") as err:
+        process = subprocess.Popen(argv, cwd=ROOT, stdout=out, stderr=err)
+        deadline = start + 1800
+        while True:
+            pid, status, usage = os.wait4(process.pid, os.WNOHANG)
+            if pid:
+                code = os.waitstatus_to_exitcode(status)
+                break
+            if time.monotonic() >= deadline:
+                process.kill()
+                _, _, usage = os.wait4(process.pid, 0)
+                code = 124
+                break
+            time.sleep(0.05)
+        process.returncode = code
+    exit_file.write_text(str(code) + "\n")
+    return {
+        "argv": [str(arg) for arg in argv], "exit_code": code,
+        "stdout_file": stdout.name, "stdout_sha256": replay.sha(stdout),
+        "stderr_file": stderr.name, "stderr_sha256": replay.sha(stderr),
+        "exit_file": exit_file.name, "exit_sha256": replay.sha(exit_file),
+        "outer_wall_ms": (time.monotonic() - start) * 1000,
+        "max_rss_bytes": usage.ru_maxrss * (1024 if platform.system() == "Linux" else 1),
+    }
+
+
 def resource_record(binary, label, mode, flag, expected_bytes, case):
-    if platform.system() == "Darwin":
-        argv = ["/usr/bin/time", "-l", str(binary),
-                f"--benchmark-scalar-unit-orbit-{flag}-fixed-case",
-                str(replay.FIXTURE), "0"]
-        pattern = r"^\s*(\d+)\s+maximum resident set size\s*$"
-    elif platform.system() == "Linux":
-        argv = ["/usr/bin/time", "-v", str(binary),
-                f"--benchmark-scalar-unit-orbit-{flag}-fixed-case",
-                str(replay.FIXTURE), "0"]
-        pattern = r"^\s*Maximum resident set size \(kbytes\):\s*(\d+)\s*$"
-    else:
-        raise ValueError("unsupported resource accounting platform")
-    record = replay.run_record(argv, HERE, label + "-resource")
+    argv = [str(binary), f"--benchmark-scalar-unit-orbit-{flag}-fixed-case",
+            str(replay.FIXTURE), "0"]
+    record = run_with_rusage(argv, label + "-resource")
     row = replay.rows_for(record, HERE, 1)[0]
     replay.verify_row(row, case, mode, timed=True)
     if int(row["retained_bytes"]) != expected_bytes:
         raise ValueError(label + " retained table size differs")
-    matches = re.findall(pattern, (HERE / record["stderr_file"]).read_text(), re.MULTILINE)
-    if len(matches) != 1:
-        raise ValueError(label + " RSS sample missing")
-    record["max_rss_bytes"] = int(matches[0]) * (1024 if platform.system() == "Linux" else 1)
     record["retained_bytes"] = expected_bytes
     return record
 
@@ -143,9 +163,10 @@ def main():
         "make_isolated_manifests.py", "stage_source.py"))
     raw = [HERE / name for name in ("native-tests.log", "native-tests.exit",
                                         "native-build.log", "native-build.exit")]
-    for record in (*runs.values(), *resources.values()):
-        raw.extend(HERE / record[key] for key in
-                   ("stdout_file", "stderr_file", "exit_file"))
+    for label, _, _, _ in MODES:
+        for stage in ("fixture", "resource"):
+            for suffix in ("stdout.txt", "stderr.txt", "exit"):
+                raw.append(HERE / f"{label}-{stage}.{suffix}")
     receipt = {
         "schema": 1, "status": "passed" if not problems else "failed",
         "problems": problems, "binary": str(binary), "binary_sha256": replay.sha(binary),
