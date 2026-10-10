@@ -1034,6 +1034,11 @@ fn scalar_from_hex(value: &str) -> BigInt {
     }
 }
 
+fn scalar_words_256(scalar: &BigInt) -> Option<[u64; 4]> {
+    let (sign, bytes) = scalar.to_bytes_le();
+    (sign != Sign::Minus && bytes.len() <= 32).then(|| positive_limbs::<4>(scalar))
+}
+
 fn round_div(numerator: BigInt, denominator: BigInt) -> BigInt {
     assert!(!denominator.is_zero());
     let (top, bottom) = if denominator < BigInt::ZERO {
@@ -1345,6 +1350,13 @@ static FIXED_SCALAR_LATTICE: LazyLock<FixedScalarLattice> = LazyLock::new(|| {
     }
 });
 
+const SCALAR_ORDER_WORDS: U256 = Uint([
+    0xbfd2_5e8c_d036_4141,
+    0xbaae_dce6_af48_a03b,
+    0xffff_ffff_ffff_fffe,
+    0xffff_ffff_ffff_ffff,
+]);
+
 fn add_one_192(mut value: [u64; 3], bit: i32) -> [u64; 3] {
     assert!((0..=1).contains(&bit));
     let mut carry = bit as u64;
@@ -1411,14 +1423,24 @@ fn signed_192_from_twos_complement(mut limbs: [u64; 6]) -> Signed192 {
 }
 
 fn hexagonal_certified_fixed_choice(scalar: &BigInt) -> ((Signed192, Signed192), bool, usize) {
-    LazyLock::force(&EXACT_RECIPROCAL_CHECK);
     let lattice = &*SCALAR_LATTICE;
     assert!(scalar >= &BigInt::ZERO && scalar < &lattice.n);
     let k = positive_limbs::<4>(scalar);
+    hexagonal_certified_fixed_choice_words(k)
+}
+
+fn hexagonal_certified_fixed_choice_words(k: [u64; 4]) -> ((Signed192, Signed192), bool, usize) {
+    LazyLock::force(&EXACT_RECIPROCAL_CHECK);
+    assert!(bool::from(Uint(k).ct_lt(&SCALAR_ORDER_WORDS)));
     let (qw, hw) = reciprocal_cell_limbs_from_words_512(k, &RECIP_V1);
     let (qv, hv) = reciprocal_cell_limbs_from_words_512(k, &RECIP_MINUS_W1);
     let Some(corner) = certified_corner_from_fraction_limb(hw, hv) else {
-        let (a, b) = hexagonal_four_corner_choices(scalar).remove(0);
+        let mut bytes = [0u8; 32];
+        for (index, limb) in k.iter().enumerate() {
+            bytes[8 * index..8 * (index + 1)].copy_from_slice(&limb.to_le_bytes());
+        }
+        let scalar = BigInt::from_bytes_le(Sign::Plus, &bytes);
+        let (a, b) = hexagonal_four_corner_choices(&scalar).remove(0);
         return ((Signed192::from_bigint(&a), Signed192::from_bigint(&b)), true, usize::MAX);
     };
     let (dw, dv) = [(0i32, 0i32), (1, 0), (0, 1), (1, 1)][corner];
@@ -3555,10 +3577,12 @@ fn check_generator_case(
     let preparation_start = Instant::now();
     LazyLock::force(&SCALAR_LATTICE);
     LazyLock::force(&DECODE_CONSTANTS);
-    if unit_orbit_format == 123 || unit_orbit_format == 124 {
+    if (123..=125).contains(&unit_orbit_format) {
         LazyLock::force(&HYBRID_FIELD);
     }
-    if unit_orbit_format == 124 { LazyLock::force(&BINARY_INVERSE_R3); }
+    if unit_orbit_format == 124 || unit_orbit_format == 125 {
+        LazyLock::force(&BINARY_INVERSE_R3);
+    }
     let retained_bytes = if unit_orbit_format != 0 {
         unit_orbit_windows::warm_format(unit_orbit_format % 100)
     } else {
@@ -3602,9 +3626,17 @@ fn check_generator_case(
         LazyLock::force(&GLV_COMB10_POINTS);
     }
     let scalar = scalar_from_hex(scalar_hex);
+    let scalar_words = (unit_orbit_format == 125)
+        .then(|| scalar_words_256(&scalar)).flatten();
     let preparation_ms = preparation_start.elapsed().as_secs_f64() * 1000.0;
     let start = Instant::now();
-    let point = if unit_orbit_format >= 100 {
+    let point = if unit_orbit_format == 125 {
+        if let Some(words) = scalar_words {
+            unit_orbit_windows::multiply_word_direct(words).0
+        } else {
+            unit_orbit_windows::multiply_word_format(&scalar, 24).0
+        }
+    } else if unit_orbit_format >= 100 {
         unit_orbit_windows::multiply_word_format(&scalar, unit_orbit_format % 100).0
     } else if unit_orbit_format != 0 {
         unit_orbit_windows::multiply_format(&scalar, unit_orbit_format).0
@@ -3643,7 +3675,7 @@ fn check_generator_case(
     } else {
         scalar_multiply_width_two(&scalar).0
     };
-    let actual = if unit_orbit_format == 124 {
+    let actual = if unit_orbit_format == 124 || unit_orbit_format == 125 {
         point.affine_hex_binary_inverse()
     } else if unit_orbit_format == 123 {
         point.affine_hex_hybrid()
@@ -3652,7 +3684,9 @@ fn check_generator_case(
     };
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if unit_orbit_format == 124 {
+    let mode = if unit_orbit_format == 125 {
+        "unit_orbit_direct_limb14_fixed"
+    } else if unit_orbit_format == 124 {
         "unit_orbit_binary_inverse14_fixed"
     } else if unit_orbit_format == 123 {
         "unit_orbit_hybrid14_fixed"
@@ -3774,11 +3808,15 @@ fn main() {
             || args[0].starts_with("--benchmark-scalar-unit-orbit-hybrid")
             || args[0].starts_with("--check-scalar-unit-orbit-binary-inverse")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-binary-inverse")
+            || args[0].starts_with("--check-scalar-unit-orbit-direct-limb")
+            || args[0].starts_with("--benchmark-scalar-unit-orbit-direct-limb")
             || args[0].starts_with("--check-scalar-unit-orbit-radix943")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-radix943"))
         && args[0].ends_with("-fixed-fixture")
     {
-        let format = if args[0].contains("unit-orbit-binary-inverse-fixed-fixture") {
+        let format = if args[0].contains("unit-orbit-direct-limb-fixed-fixture") {
+            125
+        } else if args[0].contains("unit-orbit-binary-inverse-fixed-fixture") {
             124
         } else if args[0].contains("unit-orbit-hybrid-fixed-fixture") {
             123
@@ -3937,6 +3975,8 @@ fn main() {
             || args[0] == "--check-scalar-unit-orbit-hybrid-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-binary-inverse-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-binary-inverse-fixed-case"
+            || args[0] == "--benchmark-scalar-unit-orbit-direct-limb-fixed-case"
+            || args[0] == "--check-scalar-unit-orbit-direct-limb-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-radix943-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-radix943-fixed-case")
     {
@@ -3978,7 +4018,9 @@ fn main() {
             args[0].contains("w6-comb13-hex9-radius2"),
             args[0].contains("w6-comb13-hex9-graph33"),
             args[0].contains("w6-comb13-hex9-graphaware33"),
-            if args[0].contains("unit-orbit-binary-inverse") {
+            if args[0].contains("unit-orbit-direct-limb") {
+                125
+            } else if args[0].contains("unit-orbit-binary-inverse") {
                 124
             } else if args[0].contains("unit-orbit-hybrid") {
                 123
