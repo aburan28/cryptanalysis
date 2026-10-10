@@ -662,6 +662,10 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 20 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        return TABLES.retained_bytes;
+    }
     if format == 19 {
         return TABLES.retained_bytes;
     }
@@ -741,10 +745,14 @@ pub(super) fn multiply_word_format(
     }
     let lattice = &*SCALAR_LATTICE;
     let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
-    let (start_a, start_b) = hexagonal_four_corner_choices(&residue).remove(0);
+    let (start_a, start_b) = if format == 20 {
+        super::hexagonal_four_corner_choices_reciprocal(&residue)
+    } else {
+        hexagonal_four_corner_choices(&residue)
+    }.remove(0);
     let mut a = Signed192::from_bigint(&start_a);
     let mut b = Signed192::from_bigint(&start_b);
-    let tables = selected(format);
+    let tables = selected(if format == 20 { 14 } else { format });
     let mut result = Jacobian::identity();
     let mut nonidentity: usize = 0;
     for (index, &width) in tables.widths.iter().enumerate() {
@@ -1052,6 +1060,45 @@ mod tests {
                 assert_eq!(staged.0.affine_hex(),
                            independent_binary_point(&reduced).affine_hex(),
                            "independent fresh {index}");
+            }
+        }
+    }
+
+    #[test]
+    fn exact_reciprocal_selector_matches_all_frozen_and_fresh_scalars() {
+        let frozen: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-radix943-word-20261009/inputs.json"
+        )).unwrap();
+        let fresh: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-exact-reciprocal-20261010/fresh-inputs.json"
+        )).unwrap();
+        let frozen_scalars = frozen["scalars_hex"].as_array().unwrap();
+        let fresh_scalars = fresh["scalars_hex"].as_array().unwrap();
+        assert_eq!(frozen_scalars.len(), 519);
+        assert_eq!(fresh_scalars.len(), 4096);
+        let lattice = &*SCALAR_LATTICE;
+        let w1 = &lattice.u1 - 2 * &lattice.v1;
+        for (index, hex) in frozen_scalars.iter().chain(fresh_scalars).enumerate() {
+            let scalar = BigInt::parse_bytes(hex.as_str().unwrap().as_bytes(), 16).unwrap();
+            let reduced = &scalar % &lattice.n;
+            assert_eq!(super::super::reciprocal_floor_512(&reduced, &super::super::RECIP_V1),
+                       (&reduced * &lattice.v1) / &lattice.n, "v1 floor {index}");
+            assert_eq!(super::super::reciprocal_floor_512(
+                           &reduced, &super::super::RECIP_MINUS_W1),
+                       (&reduced * -&w1) / &lattice.n, "w1 floor {index}");
+            assert_eq!(super::super::hexagonal_four_corner_choices_reciprocal(&reduced),
+                       hexagonal_four_corner_choices(&reduced), "ordered corners {index}");
+            let reference = multiply_word_format(&scalar, 14);
+            let candidate = multiply_word_format(&scalar, 20);
+            assert_eq!((&candidate.1, &candidate.2, candidate.3, candidate.4),
+                       (&reference.1, &reference.2, reference.3, reference.4),
+                       "representative and accounting {index}");
+            assert_eq!(candidate.0.affine_hex(), reference.0.affine_hex(),
+                       "point {index}");
+            if (519..647).contains(&index) {
+                assert_eq!(candidate.0.affine_hex(),
+                           independent_binary_point(&reduced).affine_hex(),
+                           "independent fresh point {index}");
             }
         }
     }
