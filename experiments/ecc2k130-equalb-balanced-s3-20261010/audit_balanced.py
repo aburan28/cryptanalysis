@@ -35,6 +35,16 @@ def main() -> None:
     progress = [line for line in output.splitlines()
                 if ("conflict" in line.lower() or "restarts" in line.lower()
                     or line.startswith("s "))]
+    # CryptoMiniSat prints live search as "c rst ... <restarts> <conflicts>".
+    # The frozen pilot runner only counted spelled-out summary lines; external
+    # termination can leave that count zero even after substantial search.
+    restart_rows = []
+    for line in output.splitlines():
+        words = line.split()
+        if (len(words) >= 7 and words[:2] == ["c", "rst"]
+                and words[5].isdigit()
+                and re.fullmatch(r"\d+(?:\.\d+)?[KMG]?", words[6])):
+            restart_rows.append((int(words[5]), words[6]))
     if (built["schema"] != "ecc2k130-equalb-balanced-s3-m6-xcnf-v1"
             or built["policy"] != args.policy or pilot["policy"] != args.policy
             or built["formula_sha256"] != formula_sha
@@ -62,8 +72,10 @@ def main() -> None:
         internal_timeout = (pilot["guard"] is None
                             and pilot["exit_code"] == 15
                             and "s INDETERMINATE" in terminal)
-        if (not progress or not conflicts or max(conflicts) <= 0
-                or not restarts or max(restarts) <= 0
+        live_search = (restart_rows and restart_rows[-1][0] > 0
+                       or conflicts and max(conflicts) > 0
+                       and restarts and max(restarts) > 0)
+        if (not live_search
                 or not (guarded or internal_timeout)
                 or any("SATISFIABLE" in line for line in terminal)):
             raise ValueError("bounded status lacks search and timeout evidence")
@@ -85,8 +97,12 @@ def main() -> None:
         "stdout_sha256": balanced.ref.sha(stdout_path),
         "stderr_sha256": balanced.ref.sha(stderr_path),
         "search_progress_lines": len(progress),
-        "conflicts": max(conflicts, default=0),
-        "restarts": max(restarts, default=0),
+        "live_restart_rows": len(restart_rows),
+        "last_live_restart_count": restart_rows[-1][0] if restart_rows else None,
+        "last_live_conflict_display": restart_rows[-1][1]
+        if restart_rows else None,
+        "exact_terminal_conflicts": max(conflicts) if conflicts else None,
+        "exact_terminal_restarts": max(restarts) if restarts else None,
         "terminal_lines": terminal,
         "audit_source_sha256": balanced.ref.sha(Path(__file__)),
     }
