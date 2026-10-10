@@ -13,6 +13,7 @@ on:
       - "experiments/prime-j0-tau-native-integration-20261010/**"
       - "experiments/prime-j0-orbit-tau-fusion-20261010/**"
       - "experiments/prime-j0-xyzz-orbit-tau-20261010/**"
+      - "experiments/prime-j0-frontier17-orbit-xyzz-20261010/**"
   pull_request:
     paths:
       - ".github/workflows/prime-j0-cache-window.yml"
@@ -22,6 +23,7 @@ on:
       - "experiments/prime-j0-tau-native-integration-20261010/**"
       - "experiments/prime-j0-orbit-tau-fusion-20261010/**"
       - "experiments/prime-j0-xyzz-orbit-tau-20261010/**"
+      - "experiments/prime-j0-frontier17-orbit-xyzz-20261010/**"
   workflow_dispatch:
 
 permissions:
@@ -68,7 +70,7 @@ jobs:
               tail -40 "$RUNNER_TEMP/native-tests.log"
               exit 1
             }
-          grep -F 'test result: ok. 110 passed; 0 failed;' "$RUNNER_TEMP/native-tests.log"
+          grep -F 'test result: ok. 112 passed; 0 failed;' "$RUNNER_TEMP/native-tests.log"
 
       - name: Build executable and replay all fixture points
         run: |
@@ -95,6 +97,11 @@ jobs:
         run: |
           python3 experiments/prime-j0-xyzz-orbit-tau-20261010/verify_fresh.py
           python3 experiments/prime-j0-xyzz-orbit-tau-20261010/verify_ops.py
+
+      - name: Verify seventeen-window source and operation receipts
+        run: |
+          python3 experiments/prime-j0-frontier17-orbit-xyzz-20261010/verify_fresh.py
+          python3 experiments/prime-j0-frontier17-orbit-xyzz-20261010/verify_ops.py
 
       - name: Replay three frontier modes on independent scalar panel
         run: |
@@ -159,6 +166,35 @@ jobs:
           modes = {
               "xyzz": "--check-scalar-unit-orbit-u256-tau-frontier19-xyzz-fixed-fixture",
               "orbit_tau": "--check-scalar-unit-orbit-u256-tau-frontier19-orbit-tau-fixed-fixture",
+          }
+          for label, flag in modes.items():
+              for panel, count in (("fresh", 4096), ("edge", 10)):
+                  fixture = reference / ("fresh-fixture.json" if panel == "fresh" else "edge-fixture.json")
+                  run = subprocess.run([str(binary), flag, str(fixture)],
+                                       capture_output=True, check=True, timeout=600)
+                  assert not run.stderr, (label, panel, run.stderr[-2000:])
+                  frozen = (gzip.decompress((reference / f"fresh4096-{label}.out.gz").read_bytes())
+                            if panel == "fresh" else
+                            (reference / f"edges-{label}.out").read_bytes())
+                  assert run.stdout == frozen, (label, panel)
+                  assert len(run.stdout.splitlines()) == count, (label, panel)
+                  (Path(os.environ["RUNNER_TEMP"]) / f"frontier-{label}-{panel}.stdout").write_bytes(run.stdout)
+                  print(f"linux_{label}_{panel}_verified={count}")
+          PY
+
+      - name: Replay seventeen and nineteen window XYZZ modes
+        run: |
+          python3 - <<'PY'
+          import gzip
+          import os
+          from pathlib import Path
+          import subprocess
+
+          binary = Path("experiments/prime-j0-secp256k1-native/target/release/eisenstein_fixed")
+          reference = Path("experiments/prime-j0-frontier17-orbit-xyzz-20261010")
+          modes = {
+              "frontier17_xyzz": "--check-scalar-unit-orbit-u256-tau-frontier17-orbit-xyzz-fixed-fixture",
+              "xyzz": "--check-scalar-unit-orbit-u256-tau-frontier19-xyzz-fixed-fixture",
           }
           for label, flag in modes.items():
               for panel, count in (("fresh", 4096), ("edge", 10)):
