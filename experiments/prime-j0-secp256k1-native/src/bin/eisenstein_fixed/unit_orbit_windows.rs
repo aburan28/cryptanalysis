@@ -2807,23 +2807,37 @@ mod tests {
         for (window, row) in tables.windows.iter().enumerate() {
             assert_eq!(row.len(), 24_578);
             let tau_base = base.tau();
-            for (index, &(a, b)) in tables.atlas.digits.iter().enumerate() {
-                let left = multiply_small(base, i32::from(a));
-                let right = multiply_small(tau_base, i32::from(b));
+            let max_a = tables.atlas.digits.iter().map(|d| d.0.unsigned_abs())
+                .max().unwrap() as usize;
+            let max_b = tables.atlas.digits.iter().map(|d| d.1.unsigned_abs())
+                .max().unwrap() as usize;
+            // Each coordinate multiple is obtained by binary multiplication,
+            // separately from build_window's repeated-addition tables.
+            let a_multiples: Vec<_> = (0..=max_a)
+                .map(|k| multiply_small(base, k as i32).into_affine()).collect();
+            let b_multiples: Vec<_> = (0..=max_b)
+                .map(|k| multiply_small(tau_base, k as i32).into_affine()).collect();
+            assert_eq!(tables.atlas.digits[0], (0, 0));
+            assert_eq!(row[0].x.0, super::super::U256::ZERO.0);
+            assert_eq!(row[0].y.0, super::super::U256::ZERO.0);
+            let mut expected_points = Vec::with_capacity(row.len() - 1);
+            for &(a, b) in tables.atlas.digits.iter().skip(1) {
+                let left = if a < 0 { a_multiples[a.unsigned_abs() as usize].neg() }
+                           else { a_multiples[a as usize] };
+                let right = if b < 0 { b_multiples[b.unsigned_abs() as usize].neg() }
+                            else { b_multiples[b as usize] };
                 let expected = if left.is_identity() { right }
                     else if right.is_identity() { left }
-                    else { left.add_mixed(right.into_affine()) };
-                if index == 0 {
-                    assert!(expected.is_identity());
-                    assert_eq!(row[index].x.0, super::super::U256::ZERO.0);
-                    assert_eq!(row[index].y.0, super::super::U256::ZERO.0);
-                } else {
-                    let affine = expected.into_affine();
-                    assert_eq!(row[index].x.0, super::super::hybrid_pair_mont(affine.x).0,
-                               "window {window} slot {index} x");
-                    assert_eq!(row[index].y.0, super::super::hybrid_pair_mont(affine.y).0,
-                               "window {window} slot {index} y");
-                }
+                    else { left.add_mixed(right) };
+                assert!(!expected.is_identity());
+                expected_points.push(expected);
+            }
+            let affine = batch_to_affine(&expected_points);
+            for (index, point) in affine.iter().enumerate() {
+                assert_eq!(row[index + 1].x.0, super::super::hybrid_pair_mont(point.x).0,
+                           "window {window} slot {} x", index + 1);
+                assert_eq!(row[index + 1].y.0, super::super::hybrid_pair_mont(point.y).0,
+                           "window {window} slot {} y", index + 1);
             }
             if window + 1 < RADIX384_WINDOWS {
                 base = multiply_small(base, RADIX384 as i32);
@@ -2832,6 +2846,61 @@ mod tests {
         println!("radix384_residues={} table_slots={} retained_bytes={}",
                  RADIX384 * RADIX384, RADIX384_WINDOWS * tables.atlas.digits.len(),
                  tables.retained_bytes);
+    }
+
+    #[test]
+    fn radix384_matches_fresh_panel_and_independent_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-radix384-20261010/fresh-inputs.json"
+        )).unwrap();
+        assert_eq!(panel["seed"], 20261010134i64);
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let tables = &*RADIX384_TABLES;
+        let mut histogram = [0usize; RADIX384_WINDOWS];
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_sector15(words);
+            let candidate = multiply_u256_radix384(words);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            assert_eq!((candidate.4, candidate.5), (reference.4, reference.5),
+                       "representative selection {index}");
+            assert_eq!(candidate.3, tables.retained_bytes);
+            assert!(candidate.2 <= 14 && candidate.6 <= 2);
+            histogram[candidate.2] += 1;
+
+            let (mut a, mut b) = (candidate.1.0.to_bigint(), candidate.1.1.to_bigint());
+            let mut choices = [(0usize, 0usize); RADIX384_WINDOWS];
+            let radix = BigInt::from(RADIX384);
+            for (window, choice) in choices.iter_mut().enumerate() {
+                let (digit, orbit, code) = tables.atlas.digit(&a, &b);
+                *choice = (orbit, code);
+                a = (a - digit.0) / &radix;
+                b = (b - digit.1) / &radix;
+                assert_eq!(tables.atlas.digits[orbit],
+                           nearest_digit(unit_images((digit.0, digit.1))
+                               .map(|(x, y)| (x.rem_euclid(RADIX384 as i32),
+                                             y.rem_euclid(RADIX384 as i32)))
+                               .into_iter().min().unwrap(), RADIX384 as i32),
+                           "canonical digit {index}/{window}");
+            }
+            assert!(a.is_zero() && b.is_zero(), "reconstruction {index}");
+            assert_eq!(candidate.2,
+                       choices.iter().filter(|&&(orbit, _)| orbit != 0)
+                           .count().saturating_sub(1), "additions {index}");
+            let replay = evaluate_u256_gauge(&choices, &tables.windows);
+            assert_eq!((candidate.0.as_str(), candidate.6),
+                       (replay.0.as_str(), replay.1), "staged choices {index}");
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+        println!("radix384_panel_cases={} retained_bytes={} addition_histogram={histogram:?}",
+                 scalars.len(), tables.retained_bytes);
     }
 
     #[test]
