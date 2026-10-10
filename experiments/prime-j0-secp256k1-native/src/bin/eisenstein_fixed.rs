@@ -1091,7 +1091,7 @@ static EXACT_RECIPROCAL_CHECK: LazyLock<()> = LazyLock::new(|| {
                ((BigInt::from(1) << 512) * -w1) / &lattice.n);
 });
 
-fn reciprocal_floor_512(scalar: &BigInt, reciprocal: &[u64; 7]) -> BigInt {
+fn reciprocal_cell_512(scalar: &BigInt, reciprocal: &[u64; 7]) -> (BigInt, u64) {
     let (sign, bytes) = scalar.to_bytes_le();
     assert!(sign != Sign::Minus && bytes.len() <= 32);
     let mut k = [0u64; 4];
@@ -1122,7 +1122,11 @@ fn reciprocal_floor_512(scalar: &BigInt, reciprocal: &[u64; 7]) -> BigInt {
     for (index, limb) in product[8..].iter().enumerate() {
         quotient_bytes[index * 8..(index + 1) * 8].copy_from_slice(&limb.to_le_bytes());
     }
-    BigInt::from_bytes_le(Sign::Plus, &quotient_bytes)
+    (BigInt::from_bytes_le(Sign::Plus, &quotient_bytes), product[7])
+}
+
+fn reciprocal_floor_512(scalar: &BigInt, reciprocal: &[u64; 7]) -> BigInt {
+    reciprocal_cell_512(scalar, reciprocal).0
 }
 
 fn hexagonal_four_corner_choices_reciprocal(scalar: &BigInt) -> Vec<(BigInt, BigInt)> {
@@ -1134,6 +1138,48 @@ fn hexagonal_four_corner_choices_reciprocal(scalar: &BigInt) -> Vec<(BigInt, Big
     let floor_w = reciprocal_floor_512(scalar, &RECIP_V1);
     let floor_v = reciprocal_floor_512(scalar, &RECIP_MINUS_W1);
     hexagonal_grid_choices(scalar, floor_w, floor_v, 2, &w0, &w1)
+}
+
+// The high fractional limb of each reciprocal product bounds the true
+// Eisenstein cell coordinate within two units of 2^-64. A strict separation
+// of the resulting norm intervals certifies the nearest of four corners.
+fn certified_corner_from_fraction_limb(hw: u64, hv: u64) -> Option<usize> {
+    let b = 1i128 << 64;
+    let (hw, hv) = (i128::from(hw), i128::from(hv));
+    let a10 = b - 2 * hw + hv;
+    let a01 = b + hw - 2 * hv;
+    let a11 = b - hw - hv;
+    let bounds = [(0, 0), (a10 - 4, a10 + 2),
+                  (a01 - 4, a01 + 2), (a11 - 4, a11)];
+    let mut winner = None;
+    for i in 0..bounds.len() {
+        if (0..bounds.len()).all(|j| i == j || bounds[i].1 < bounds[j].0) {
+            assert!(winner.replace(i).is_none());
+        }
+    }
+    winner
+}
+
+fn hexagonal_certified_corner_choice(scalar: &BigInt) -> ((BigInt, BigInt), bool, usize) {
+    LazyLock::force(&EXACT_RECIPROCAL_CHECK);
+    let lattice = &*SCALAR_LATTICE;
+    assert!(scalar >= &BigInt::ZERO && scalar < &lattice.n);
+    let (qw, hw) = reciprocal_cell_512(scalar, &RECIP_V1);
+    let (qv, hv) = reciprocal_cell_512(scalar, &RECIP_MINUS_W1);
+    let Some(corner) = certified_corner_from_fraction_limb(hw, hv) else {
+        // Exact norm and coordinate ordering also resolves boundary ties.
+        return (hexagonal_four_corner_choices(scalar).remove(0), true, usize::MAX);
+    };
+    let (dw, dv) = [(0i32, 0i32), (1, 0), (0, 1), (1, 1)][corner];
+    let w0 = &lattice.u0 - 2 * &lattice.v0;
+    let w1 = &lattice.u1 - 2 * &lattice.v1;
+    let coeff_w: BigInt = &qw + dw;
+    let coeff_v: BigInt = &qv + dv;
+    let a = scalar - &coeff_w * &w0 - &coeff_v * &lattice.v0;
+    let b_first: BigInt = &coeff_w * &w1;
+    let b_second: BigInt = &coeff_v * &lattice.v1;
+    let b = -b_first - b_second;
+    ((a, b), false, corner)
 }
 
 // Nearby lattice representatives occupy at most 130 bits per coordinate.
@@ -3339,7 +3385,9 @@ fn check_generator_case(
     let actual = point.affine_hex();
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if unit_orbit_format == 120 {
+    let mode = if unit_orbit_format == 121 {
+        "unit_orbit_certified14_fixed"
+    } else if unit_orbit_format == 120 {
         "unit_orbit_reciprocal14_fixed"
     } else if unit_orbit_format == 119 {
         "unit_orbit_staged14_fixed"
@@ -3445,11 +3493,15 @@ fn main() {
             || args[0].starts_with("--benchmark-scalar-unit-orbit-staged")
             || args[0].starts_with("--check-scalar-unit-orbit-reciprocal")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-reciprocal")
+            || args[0].starts_with("--check-scalar-unit-orbit-certified")
+            || args[0].starts_with("--benchmark-scalar-unit-orbit-certified")
             || args[0].starts_with("--check-scalar-unit-orbit-radix943")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-radix943"))
         && args[0].ends_with("-fixed-fixture")
     {
-        let format = if args[0].contains("unit-orbit-reciprocal-fixed-fixture") {
+        let format = if args[0].contains("unit-orbit-certified-fixed-fixture") {
+            121
+        } else if args[0].contains("unit-orbit-reciprocal-fixed-fixture") {
             120
         } else if args[0].contains("unit-orbit-staged-fixed-fixture") {
             119
@@ -3592,6 +3644,8 @@ fn main() {
             || args[0] == "--check-scalar-unit-orbit-staged-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-reciprocal-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-reciprocal-fixed-case"
+            || args[0] == "--benchmark-scalar-unit-orbit-certified-fixed-case"
+            || args[0] == "--check-scalar-unit-orbit-certified-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-radix943-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-radix943-fixed-case")
     {
@@ -3633,7 +3687,9 @@ fn main() {
             args[0].contains("w6-comb13-hex9-radius2"),
             args[0].contains("w6-comb13-hex9-graph33"),
             args[0].contains("w6-comb13-hex9-graphaware33"),
-            if args[0].contains("unit-orbit-reciprocal") {
+            if args[0].contains("unit-orbit-certified") {
+                121
+            } else if args[0].contains("unit-orbit-reciprocal") {
                 120
             } else if args[0].contains("unit-orbit-staged") {
                 119
