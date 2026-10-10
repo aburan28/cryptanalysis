@@ -41,6 +41,12 @@ RunPod serial worker, after the active N131 job and two earlier j=0 jobs.
 Its 59-file source archive matched every SHA-256 on transfer; archive hash
 `82b98593374db39ec9ef870a7e0ff63384745a54a25d8370544694decb26f5e2`.
 That job will run the Linux release suite, all three fixture arms, and a
-read-only host-isolation probe. A CPU online ratio enters the result table
-only after the dedicated host service passes its CPU, NUMA, IRQ, frequency,
-and noise checks in [ISOLATED_PANEL.md](ISOLATED_PANEL.md).
+read-only host-isolation probe. A separate read-only
+[host inspection](remote-host-inspection.json) found that the current Pod
+exposes `tmpfs` at `/sys/fs/cgroup`, has no cgroup v2
+`cpuset.cpus.partition` file, and stores `/workspace` on an overlay.
+Consequently, this Pod cannot pass the service's strict isolated-partition
+gate; its job is a Linux correctness replay. A CPU online ratio enters the
+result table only after an administrator-controlled host passes the CPU,
+NUMA, IRQ, frequency, and noise checks in
+[ISOLATED_PANEL.md](ISOLATED_PANEL.md).

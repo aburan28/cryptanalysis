@@ -35,4 +35,7 @@ place of the example values. Submit both manifests to one persistent
 serializes them and retains raw paired rows and noise-gate failures.
 The RunPod `exp-run` job supplies a Linux correctness replay and a
 read-only host probe; its container does not itself certify exclusive
-physical CPUs or NUMA memory.
+physical CPUs or NUMA memory. The current Pod exposes `tmpfs` instead of
+cgroup v2 at `/sys/fs/cgroup`, so its strict isolated-partition preflight
+cannot pass. Use an administrator-controlled host or a provider allocation
+with equivalent auditable host-level isolation for the paired timing panel.
