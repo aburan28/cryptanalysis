@@ -2,10 +2,12 @@
 
 import importlib.util
 import copy
+import fcntl
 import json
 import os
 from pathlib import Path
 import tempfile
+import threading
 import unittest
 
 
@@ -130,6 +132,48 @@ class IsolatedBenchTests(unittest.TestCase):
             self.assertEqual(db.execute("SELECT status FROM jobs WHERE id='b'").fetchone()[0], "queued")
             self.assertFalse(marker.exists())
             self.assertFalse((root / "results" / "a" / "runs.jsonl").exists())
+
+    def test_shared_job_lock_waits_for_other_launcher(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            root = Path(dirname)
+            lock_path = root / "experiment-runs.lock"
+            db = bench.database(root)
+            db.execute("INSERT INTO jobs(id,status,created_ns,manifest) VALUES(?,?,?,?)",
+                       ("a", "queued", 1, "{}"))
+            db.close()
+            started = threading.Event()
+            original_execute, original_host_lock = bench.execute, bench.HOST_LOCK_PATH
+
+            def fake_execute(_manifest, _output):
+                started.set()
+                return {"status": "rejected"}
+
+            bench.execute = fake_execute
+            bench.HOST_LOCK_PATH = root / "host.lock"
+            worker = threading.Thread(target=bench.serve,
+                                      args=(root,),
+                                      kwargs={"once": True, "shared_job_lock": lock_path})
+            try:
+                with lock_path.open("a+") as other_launcher:
+                    fcntl.flock(other_launcher, fcntl.LOCK_EX)
+                    worker.start()
+                    worker.join(0.2)
+                    self.assertTrue(worker.is_alive())
+                    self.assertFalse(started.is_set())
+                    check = bench.database(root)
+                    self.assertEqual(check.execute("SELECT status FROM jobs WHERE id='a'")
+                                     .fetchone()[0], "queued")
+                    check.close()
+                worker.join(2)
+                self.assertFalse(worker.is_alive())
+                self.assertTrue(started.is_set())
+                check = bench.database(root)
+                self.assertEqual(check.execute("SELECT status FROM jobs WHERE id='a'")
+                                 .fetchone()[0], "rejected")
+                check.close()
+            finally:
+                worker.join(2) if worker.ident is not None else None
+                bench.execute, bench.HOST_LOCK_PATH = original_execute, original_host_lock
 
     def test_shared_wrong_target_or_answer_cannot_produce_speedup(self):
         with tempfile.TemporaryDirectory() as dirname:
