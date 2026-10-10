@@ -3577,10 +3577,10 @@ fn check_generator_case(
     let preparation_start = Instant::now();
     LazyLock::force(&SCALAR_LATTICE);
     LazyLock::force(&DECODE_CONSTANTS);
-    if (123..=125).contains(&unit_orbit_format) {
+    if (123..=126).contains(&unit_orbit_format) {
         LazyLock::force(&HYBRID_FIELD);
     }
-    if unit_orbit_format == 124 || unit_orbit_format == 125 {
+    if (124..=126).contains(&unit_orbit_format) {
         LazyLock::force(&BINARY_INVERSE_R3);
     }
     let retained_bytes = if unit_orbit_format != 0 {
@@ -3626,10 +3626,15 @@ fn check_generator_case(
         LazyLock::force(&GLV_COMB10_POINTS);
     }
     let scalar = scalar_from_hex(scalar_hex);
-    let scalar_words = (unit_orbit_format == 125)
+    let scalar_words = (125..=126).contains(&unit_orbit_format)
         .then(|| scalar_words_256(&scalar)).flatten();
     let preparation_ms = preparation_start.elapsed().as_secs_f64() * 1000.0;
     let start = Instant::now();
+    let actual = if unit_orbit_format == 126 {
+        unit_orbit_windows::multiply_u256_direct(
+            scalar_words.expect("four-limb backend requires unsigned 256-bit scalar")
+        ).0
+    } else {
     let point = if unit_orbit_format == 125 {
         if let Some(words) = scalar_words {
             unit_orbit_windows::multiply_word_direct(words).0
@@ -3675,16 +3680,19 @@ fn check_generator_case(
     } else {
         scalar_multiply_width_two(&scalar).0
     };
-    let actual = if unit_orbit_format == 124 || unit_orbit_format == 125 {
+    if unit_orbit_format == 124 || unit_orbit_format == 125 {
         point.affine_hex_binary_inverse()
     } else if unit_orbit_format == 123 {
         point.affine_hex_hybrid()
     } else {
         point.affine_hex()
+    }
     };
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if unit_orbit_format == 125 {
+    let mode = if unit_orbit_format == 126 {
+        "unit_orbit_u256_point14_fixed"
+    } else if unit_orbit_format == 125 {
         "unit_orbit_direct_limb14_fixed"
     } else if unit_orbit_format == 124 {
         "unit_orbit_binary_inverse14_fixed"
@@ -3810,11 +3818,15 @@ fn main() {
             || args[0].starts_with("--benchmark-scalar-unit-orbit-binary-inverse")
             || args[0].starts_with("--check-scalar-unit-orbit-direct-limb")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-direct-limb")
+            || args[0].starts_with("--check-scalar-unit-orbit-u256-point")
+            || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-point")
             || args[0].starts_with("--check-scalar-unit-orbit-radix943")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-radix943"))
         && args[0].ends_with("-fixed-fixture")
     {
-        let format = if args[0].contains("unit-orbit-direct-limb-fixed-fixture") {
+        let format = if args[0].contains("unit-orbit-u256-point-fixed-fixture") {
+            126
+        } else if args[0].contains("unit-orbit-direct-limb-fixed-fixture") {
             125
         } else if args[0].contains("unit-orbit-binary-inverse-fixed-fixture") {
             124
@@ -3977,6 +3989,8 @@ fn main() {
             || args[0] == "--check-scalar-unit-orbit-binary-inverse-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-direct-limb-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-direct-limb-fixed-case"
+            || args[0] == "--benchmark-scalar-unit-orbit-u256-point-fixed-case"
+            || args[0] == "--check-scalar-unit-orbit-u256-point-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-radix943-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-radix943-fixed-case")
     {
@@ -4018,7 +4032,9 @@ fn main() {
             args[0].contains("w6-comb13-hex9-radius2"),
             args[0].contains("w6-comb13-hex9-graph33"),
             args[0].contains("w6-comb13-hex9-graphaware33"),
-            if args[0].contains("unit-orbit-direct-limb") {
+            if args[0].contains("unit-orbit-u256-point") {
+                126
+            } else if args[0].contains("unit-orbit-direct-limb") {
                 125
             } else if args[0].contains("unit-orbit-binary-inverse") {
                 124
