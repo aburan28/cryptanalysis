@@ -47,6 +47,13 @@ def main():
     assert b"test result: ok. 106 passed; 0 failed;" in release
     assert b"frontier19_expanded_checked_tau_points=21930 retained_bytes=2916756" in targeted
     assert b"test result: ok. 2 passed; 0 failed;" in targeted
+    ops = json.loads((HERE / "ops-diagnostic.json").read_text())
+    diagnostic = HERE / "ops-diagnostic.patch"
+    assert ops["base_source_sha256"] == receipt["prototype_source_sha256"][
+        "experiments/prime-j0-secp256k1-native/src/bin/eisenstein_fixed/unit_orbit_windows.rs"]
+    assert digest(diagnostic.read_bytes()) == ops["diagnostic_patch_sha256"]
+    assert digest((HERE / "ops-diagnostic.log").read_bytes()) == ops["diagnostic_log_sha256"]
+    assert digest((HERE / "fresh-inputs.json").read_bytes()) == ops["fresh_input_sha256"]
     with tempfile.TemporaryDirectory(prefix="tau-expanded-index-") as temporary:
         environment = os.environ.copy()
         environment["GIT_INDEX_FILE"] = str(Path(temporary) / "index")
@@ -58,6 +65,10 @@ def main():
         git("apply", "--cached", str(patches[-1]), env=environment)
         for path, expected in receipt["prototype_source_sha256"].items():
             assert digest(git("show", f":{path}", env=environment)) == expected
+        git("apply", "--cached", str(diagnostic), env=environment)
+        path = "experiments/prime-j0-secp256k1-native/src/bin/eisenstein_fixed/unit_orbit_windows.rs"
+        assert digest(git("show", f":{path}", env=environment)) == ops[
+            "instrumented_source_sha256"]
     assert receipt["retained_bytes"] == 2_916_756
     assert receipt["table_slots"] == 21_949
     assert receipt["checked_tau_points"] == 21_930

@@ -8,6 +8,8 @@ The format retains 2,916,756 bytes across 21,949 table slots, the same byte coun
 
 The [fresh replay](FRESH_RESULTS.md) records 4,096 disjoint post-freeze scalars, independent point expectations, three native output streams, and source and result verifiers.
 
+The [point-kernel operation diagnostic](OPS_DIAGNOSTIC.md) counts native field wrapper calls for those same scalars in all three formats, with its counter patch and log bound to the frozen source. It records a 40,697-multiplication and 12,288-squaring reduction relative to the original nineteen-window point kernel.
+
 ## Exact one-bucket identity
 
 Write the chosen scalar representative as `a + b*tau` modulo the group order. The exact radix recoder gives a finite sum of window digits

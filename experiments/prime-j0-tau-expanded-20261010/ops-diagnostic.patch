@@ -1,0 +1,86 @@
+--- a/experiments/prime-j0-secp256k1-native/src/bin/eisenstein_fixed/unit_orbit_windows.rs
++++ b/experiments/prime-j0-secp256k1-native/src/bin/eisenstein_fixed/unit_orbit_windows.rs
+@@ -637,19 +637,34 @@
+     z: super::U256,
+ }
+ 
++#[derive(Clone, Copy, Default)]
++struct FieldOpCounts { add: u64, sub: u64, mul: u64, square: u64 }
++
++thread_local! {
++    static FIELD_OPS: std::cell::Cell<FieldOpCounts> =
++        const { std::cell::Cell::new(FieldOpCounts { add: 0, sub: 0, mul: 0, square: 0 }) };
++}
++
++fn reset_field_ops() { FIELD_OPS.with(|counter| counter.set(FieldOpCounts::default())); }
++fn field_ops() -> FieldOpCounts { FIELD_OPS.with(|counter| counter.get()) }
++
+ fn u256_add(a: super::U256, b: super::U256) -> super::U256 {
++    FIELD_OPS.with(|counter| { let mut c = counter.get(); c.add += 1; counter.set(c); });
+     a.add_mod(&b, &super::HYBRID_FIELD.0.n)
+ }
+ 
+ fn u256_sub(a: super::U256, b: super::U256) -> super::U256 {
++    FIELD_OPS.with(|counter| { let mut c = counter.get(); c.sub += 1; counter.set(c); });
+     a.sub_mod(&b, &super::HYBRID_FIELD.0.n)
+ }
+ 
+ fn u256_mul(a: super::U256, b: super::U256) -> super::U256 {
++    FIELD_OPS.with(|counter| { let mut c = counter.get(); c.mul += 1; counter.set(c); });
+     super::HYBRID_FIELD.0.mont_mul(&a, &b)
+ }
+ 
+ fn u256_square(a: super::U256) -> super::U256 {
++    FIELD_OPS.with(|counter| { let mut c = counter.get(); c.square += 1; counter.set(c); });
+     super::HYBRID_FIELD.0.mont_sqr(&a)
+ }
+ 
+@@ -4192,6 +4207,48 @@
+         }
+         println!("frontier19_expanded_table_slots=21949 retained_bytes={}",
+                  tables.retained_bytes);
++    }
++
++    #[test]
++    fn frontier19_exact_point_kernel_operations() {
++        let panel: serde_json::Value = serde_json::from_str(include_str!(
++            "../../../../prime-j0-tau-expanded-20261010/fresh-inputs.json"
++        )).unwrap();
++        assert_eq!(panel["seed"].as_i64(), Some(20261010141));
++        let scalars = panel["scalars_hex"].as_array().unwrap();
++        assert_eq!(scalars.len(), 4096);
++        std::sync::LazyLock::force(&FRONTIER19_TABLES);
++        std::sync::LazyLock::force(&FRONTIER19_ORBIT_X_TABLES);
++        std::sync::LazyLock::force(&FRONTIER19_TAU_EXPANDED_TABLES);
++        let mut totals = [FieldOpCounts::default(); 3];
++        let mut gauges = [0u64; 3];
++        for (index, text) in scalars.iter().enumerate() {
++            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
++            let words = super::super::scalar_words_256(&scalar).unwrap();
++            let functions: [fn([u64; 4]) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize); 3] = [
++                multiply_u256_tau_frontier19,
++                multiply_u256_tau_frontier19_orbit_x,
++                multiply_u256_tau_frontier19_expanded,
++            ];
++            let mut expected = None;
++            for (mode, function) in functions.iter().enumerate() {
++                reset_field_ops();
++                let result = function(words);
++                let count = field_ops();
++                if let Some(ref point) = expected { assert_eq!(&result.0, point, "point {index}"); }
++                else { expected = Some(result.0); }
++                totals[mode].add += count.add;
++                totals[mode].sub += count.sub;
++                totals[mode].mul += count.mul;
++                totals[mode].square += count.square;
++                gauges[mode] += result.6 as u64;
++            }
++        }
++        for (mode, name) in ["frontier19", "orbit_x", "tau_expanded"].iter().enumerate() {
++            let c = totals[mode];
++            println!("mode={name} cases=4096 point_kernel_add={} point_kernel_sub={} point_kernel_mul={} point_kernel_square={} gauge_rotations={}",
++                     c.add, c.sub, c.mul, c.square, gauges[mode]);
++        }
+     }
+ 
+     #[test]

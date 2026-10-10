@@ -21,3 +21,5 @@ The tau-preexpanded table evaluates all **4,096** post-freeze secp256k1 scalars 
 `make_inputs.py` draws full-range 256-bit scalars and rejects any scalar congruent modulo the group order to the earlier panels, including the orbit-X holdout. `make_fresh_fixture.py` uses the independent binary group implementation in `prime-j0-tau-power16-20261010/verify_group.py`. The three native modes process the whole fixture in one command each. `verify_inputs.py`, `verify_receipt.py`, and `verify_fresh.py` check the input law, four-patch source reconstruction, frozen commit, output hashes, each expected point, and three-way equality.
 
 At equal retained table bytes, this format moves the degree-three map into target-independent preparation, whereas orbit-X caches the three unit X coordinates and removes bucket rotations. A controlled paired run can now compare those choices on the same one-target scalar workload and physical CPU partition.
+
+The [source-instrumented point-kernel diagnostic](OPS_DIAGNOSTIC.md) measures exact native field-operation calls for this panel. It keeps the operation boundary separate from the full online wall-time boundary.
