@@ -21,6 +21,15 @@ fixture cases across the candidate and three controls. The source receipt,
 binary hash, compressed outputs, test logs, and point-operation diagnostics
 are kept beside this note.
 
+On the same 4,096-scalar panel, the sixteen-window evaluator used 65,536
+digit terms and 532,480 field multiplications in its point kernel. The
+seventeen-window control used 69,627 digit terms and 565,198 multiplications.
+The candidate therefore saved **4,091 digit terms, 32,718 multiplications,
+and 8,179 squares** across the panel. Its retained table plus atlas is
+11,786,576 bytes versus 6,615,956 bytes for the seventeen-window control.
+`verify_ops.py` replays the temporary counter patch against the frozen source
+and checks the recorded counts; the shipping source contains no counters.
+
 Operation counts and table bytes are algorithmic diagnostics. A CPU wall-time
 comparison requires the host-level isolation receipt in
 `docs/ISOLATED_BENCHMARKS.md`.
