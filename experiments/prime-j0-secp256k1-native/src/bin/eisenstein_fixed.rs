@@ -1066,6 +1066,76 @@ fn hexagonal_four_corner_choices(scalar: &BigInt) -> Vec<(BigInt, BigInt)> {
     hexagonal_grid_choices(scalar, floor_w, floor_v, 2, &w0, &w1)
 }
 
+// floor(2^512*c/n), little endian, for c=v1 and c=-(u1-2*v1).
+// The proof in prime-j0-exact-reciprocal-20261010/PROTOCOL.md shows that
+// floor(k*R/2^512)=floor(k*c/n) for every reduced 256-bit scalar k.
+const RECIP_V1: [u64; 7] = [
+    0x44180e526536385c, 0x46683369b37d7630, 0x1571b4ae8ac47f71,
+    0x221208ac9df506c6, 0x6f547fa90abfe4c4, 0xe4437ed6010e8828, 0,
+];
+const RECIP_MINUS_W1: [u64; 7] = [
+    0x06dfcbca80313b00, 0x30e98f407e1a0fa2, 0xfe04d548d0a02fa2,
+    0x5fbc92c10fddd145, 0x57c1108d9d44cfd9, 0x14ca50f7a8e2f3f6, 1,
+];
+
+static EXACT_RECIPROCAL_CHECK: LazyLock<()> = LazyLock::new(|| {
+    let lattice = &*SCALAR_LATTICE;
+    let w1: BigInt = &lattice.u1 - 2 * &lattice.v1;
+    let limbs_to_bigint = |limbs: &[u64; 7]| {
+        let bytes: Vec<u8> = limbs.iter().flat_map(|limb| limb.to_le_bytes()).collect();
+        BigInt::from_bytes_le(Sign::Plus, &bytes)
+    };
+    assert_eq!(limbs_to_bigint(&RECIP_V1),
+               ((BigInt::from(1) << 512) * &lattice.v1) / &lattice.n);
+    assert_eq!(limbs_to_bigint(&RECIP_MINUS_W1),
+               ((BigInt::from(1) << 512) * -w1) / &lattice.n);
+});
+
+fn reciprocal_floor_512(scalar: &BigInt, reciprocal: &[u64; 7]) -> BigInt {
+    let (sign, bytes) = scalar.to_bytes_le();
+    assert!(sign != Sign::Minus && bytes.len() <= 32);
+    let mut k = [0u64; 4];
+    for (index, chunk) in bytes.chunks(8).enumerate() {
+        let mut word = [0u8; 8];
+        word[..chunk.len()].copy_from_slice(chunk);
+        k[index] = u64::from_le_bytes(word);
+    }
+    let mut product = [0u64; 11];
+    for (i, &ki) in k.iter().enumerate() {
+        let mut carry = 0u128;
+        for (j, &rj) in reciprocal.iter().enumerate() {
+            let sum = u128::from(ki) * u128::from(rj)
+                + u128::from(product[i + j]) + carry;
+            product[i + j] = sum as u64;
+            carry = sum >> 64;
+        }
+        let mut index = i + reciprocal.len();
+        while carry != 0 {
+            assert!(index < product.len());
+            let sum = u128::from(product[index]) + carry;
+            product[index] = sum as u64;
+            carry = sum >> 64;
+            index += 1;
+        }
+    }
+    let mut quotient_bytes = [0u8; 24];
+    for (index, limb) in product[8..].iter().enumerate() {
+        quotient_bytes[index * 8..(index + 1) * 8].copy_from_slice(&limb.to_le_bytes());
+    }
+    BigInt::from_bytes_le(Sign::Plus, &quotient_bytes)
+}
+
+fn hexagonal_four_corner_choices_reciprocal(scalar: &BigInt) -> Vec<(BigInt, BigInt)> {
+    LazyLock::force(&EXACT_RECIPROCAL_CHECK);
+    let lattice = &*SCALAR_LATTICE;
+    assert!(scalar >= &BigInt::ZERO && scalar < &lattice.n);
+    let w0 = &lattice.u0 - 2 * &lattice.v0;
+    let w1 = &lattice.u1 - 2 * &lattice.v1;
+    let floor_w = reciprocal_floor_512(scalar, &RECIP_V1);
+    let floor_v = reciprocal_floor_512(scalar, &RECIP_MINUS_W1);
+    hexagonal_grid_choices(scalar, floor_w, floor_v, 2, &w0, &w1)
+}
+
 // Nearby lattice representatives occupy at most 130 bits per coordinate.
 // Keep each tau recoding in three stack limbs instead of repeated BigInt division.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -3269,7 +3339,9 @@ fn check_generator_case(
     let actual = point.affine_hex();
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if unit_orbit_format == 119 {
+    let mode = if unit_orbit_format == 120 {
+        "unit_orbit_reciprocal14_fixed"
+    } else if unit_orbit_format == 119 {
         "unit_orbit_staged14_fixed"
     } else if unit_orbit_format == 118 {
         "unit_orbit_tau_pair_fixed"
@@ -3371,11 +3443,15 @@ fn main() {
             || args[0].starts_with("--benchmark-scalar-unit-orbit-tau-pair")
             || args[0].starts_with("--check-scalar-unit-orbit-staged")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-staged")
+            || args[0].starts_with("--check-scalar-unit-orbit-reciprocal")
+            || args[0].starts_with("--benchmark-scalar-unit-orbit-reciprocal")
             || args[0].starts_with("--check-scalar-unit-orbit-radix943")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-radix943"))
         && args[0].ends_with("-fixed-fixture")
     {
-        let format = if args[0].contains("unit-orbit-staged-fixed-fixture") {
+        let format = if args[0].contains("unit-orbit-reciprocal-fixed-fixture") {
+            120
+        } else if args[0].contains("unit-orbit-staged-fixed-fixture") {
             119
         } else if args[0].contains("unit-orbit-tau-pair-fixed-fixture") {
             118
@@ -3514,6 +3590,8 @@ fn main() {
             || args[0] == "--check-scalar-unit-orbit-tau-pair-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-staged-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-staged-fixed-case"
+            || args[0] == "--benchmark-scalar-unit-orbit-reciprocal-fixed-case"
+            || args[0] == "--check-scalar-unit-orbit-reciprocal-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-radix943-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-radix943-fixed-case")
     {
@@ -3555,7 +3633,9 @@ fn main() {
             args[0].contains("w6-comb13-hex9-radius2"),
             args[0].contains("w6-comb13-hex9-graph33"),
             args[0].contains("w6-comb13-hex9-graphaware33"),
-            if args[0].contains("unit-orbit-staged") {
+            if args[0].contains("unit-orbit-reciprocal") {
+                120
+            } else if args[0].contains("unit-orbit-staged") {
                 119
             } else if args[0].contains("unit-orbit-tau-pair") {
                 118
