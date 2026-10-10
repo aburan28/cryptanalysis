@@ -60,6 +60,16 @@ FORMULA_SOURCE_PATHS = (
     ROOT / "experiments/prime-j0-formula-atlas-20261010/verify_candidate.py",
     ROOT / "experiments/prime-j0-formula-atlas-20261010/runpod_correctness.sh",
 )
+SECTOR_SOURCE_PATHS = (
+    ROOT / "experiments/prime-j0-sector-digit-20261010/PROTOCOL.md",
+    ROOT / "experiments/prime-j0-sector-digit-20261010/PROOF.md",
+    ROOT / "experiments/prime-j0-sector-digit-20261010/check_algebra.py",
+    ROOT / "experiments/prime-j0-sector-digit-20261010/ISOLATED_PANEL.md",
+    ROOT / "experiments/prime-j0-sector-digit-20261010/fresh-inputs.json",
+    ROOT / "experiments/prime-j0-sector-digit-20261010/make_inputs.py",
+    ROOT / "experiments/prime-j0-sector-digit-20261010/verify_candidate.py",
+    ROOT / "experiments/prime-j0-sector-digit-20261010/runpod_correctness.sh",
+)
 COMPARISONS = {
     "point": {
         "modes": (
@@ -67,7 +77,7 @@ COMPARISONS = {
             ("candidate", "unit_orbit_u256_point14_fixed", "u256-point"),
         ),
         "retained_bytes": {"reference": 78_470_208, "candidate": 70_430_960},
-        "native_tests": 85,
+        "native_tests": 87,
         "algebra": ROOT / "experiments/prime-j0-u256-point-20261010/check_algebra.py",
         "comparison_kind": "single-public-scalar-u14-eisenstein-vs-four-limb-point",
         "boundary": (
@@ -83,7 +93,7 @@ COMPARISONS = {
             ("candidate", "unit_orbit_u256_gauge14_fixed", "u256-gauge"),
         ),
         "retained_bytes": {"reference": 70_430_960, "candidate": 70_430_960},
-        "native_tests": 85,
+        "native_tests": 87,
         "algebra": ROOT / "experiments/prime-j0-u14-gauge-20261010/check_algebra.py",
         "comparison_kind": "single-public-scalar-u14-grouped-unit-gauge-vs-direct-unit",
         "boundary": (
@@ -101,7 +111,7 @@ COMPARISONS = {
             ("candidate", "unit_orbit_u256_arithmetic14_fixed", "u256-arithmetic"),
         ),
         "retained_bytes": {"reference": 70_430_960, "candidate": 65_188_008},
-        "native_tests": 85,
+        "native_tests": 87,
         "algebra": ROOT / "experiments/prime-j0-u14-gauge-20261010/check_algebra.py",
         "comparison_kind": "single-public-scalar-u14-arithmetic-orbit-index-vs-stored-atlas",
         "boundary": (
@@ -118,7 +128,7 @@ COMPARISONS = {
             ("candidate", "unit_orbit_u256_formula14_fixed", "u256-formula"),
         ),
         "retained_bytes": {"reference": 65_188_008, "candidate": 64_314_112},
-        "native_tests": 85,
+        "native_tests": 87,
         "algebra": ROOT / "experiments/prime-j0-u14-gauge-20261010/check_algebra.py",
         "comparison_kind": "single-public-scalar-u14-point-only-table-vs-digit-atlas",
         "boundary": (
@@ -127,6 +137,23 @@ COMPARISONS = {
             "reduction, certified Voronoi selection, signed-word recoding, orbit and digit "
             "computation, point lookup, grouped-gauge additions, final inversion, affine "
             "formatting, and expected-point verification. Stops after that verification."
+        ),
+    },
+    "sector": {
+        "modes": (
+            ("reference", "unit_orbit_u256_formula14_fixed", "u256-formula"),
+            ("candidate", "unit_orbit_u256_sector14_fixed", "u256-sector"),
+        ),
+        "retained_bytes": {"reference": 64_314_112, "candidate": 64_314_112},
+        "native_tests": 87,
+        "algebra": ROOT / "experiments/prime-j0-sector-digit-20261010/check_algebra.py",
+        "comparison_kind": "single-public-scalar-u14-sector-digit-vs-four-corner-digit",
+        "boundary": (
+            "Starts after fixture loading, scalar decoding, U14 point-table preparation, "
+            "field and unit constants, and binary-inverse correction setup. Includes scalar "
+            "reduction, certified Voronoi selection, signed-word recoding, canonical-orbit "
+            "and digit computation, point lookup, grouped-gauge additions, final inversion, "
+            "affine formatting, and expected-point verification. Stops after verification."
         ),
     },
 }
@@ -148,12 +175,14 @@ def decoded(value):
 def source_paths(comparison):
     """Bind embedded Rust fixture/atlas files as well as direct sources."""
     paths = set(BASE_SOURCE_PATHS)
-    if comparison in ("gauge", "arithmetic", "formula"):
+    if comparison in ("gauge", "arithmetic", "formula", "sector"):
         paths.update(GAUGE_SOURCE_PATHS)
-    if comparison in ("arithmetic", "formula"):
+    if comparison in ("arithmetic", "formula", "sector"):
         paths.update(ARITHMETIC_SOURCE_PATHS)
-    if comparison == "formula":
+    if comparison in ("formula", "sector"):
         paths.update(FORMULA_SOURCE_PATHS)
+    if comparison == "sector":
+        paths.update(SECTOR_SOURCE_PATHS)
     pattern = re.compile(r'(?:include_(?:bytes|str)!\(\s*|#\[path\s*=\s*)"([^"]+)"')
     pending = [path for path in paths if path.suffix == ".rs"]
     while pending:
@@ -270,10 +299,20 @@ def verify(out_dir, comparison):
     if algebra["exit_code"] != 0:
         raise SystemExit("field algebra check failed; raw output retained")
     algebra_result = json.loads((out_dir / algebra["stdout_file"]).read_text())
-    if (algebra_result.get("status") != "passed" or
-            len(algebra_result.get("checks", {})) != 5 or
-            not all(algebra_result["checks"].values())):
-        raise SystemExit("field algebra identities failed")
+    if comparison == "sector":
+        expected_rows = [(512, 43_692, 86), (1024, 174_764, 171)]
+        rows = algebra_result.get("rows", [])
+        algebra_ok = (algebra_result.get("status") == "passed" and
+                      [(row.get("radix"), row.get("canonical_count"), row.get("norm_ties"))
+                       for row in rows] == expected_rows and
+                      all(re.fullmatch(r"[0-9a-f]{64}", row.get("digit_sha256", ""))
+                          for row in rows))
+    else:
+        algebra_ok = (algebra_result.get("status") == "passed" and
+                      len(algebra_result.get("checks", {})) == 5 and
+                      all(algebra_result["checks"].values()))
+    if not algebra_ok:
+        raise SystemExit("algebra check failed")
 
     tests = cargo_run("native-tests", ["test", "--locked", "--release",
                                         "--bin", "eisenstein_fixed", "--",

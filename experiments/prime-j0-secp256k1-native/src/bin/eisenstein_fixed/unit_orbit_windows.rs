@@ -2474,6 +2474,51 @@ mod tests {
     }
 
     #[test]
+    fn u256_sector_digit_matches_new_holdout_and_point_table() {
+        let old = &*FORMULA_U256_TABLES;
+        let new = &*SECTOR_U256_TABLES;
+        assert_eq!(old.retained_bytes, 64_314_112);
+        assert_eq!(new.retained_bytes, old.retained_bytes);
+        for (window, (left, right)) in old.windows.iter().zip(&new.windows).enumerate() {
+            assert_eq!(left.len(), right.len(), "window size {window}");
+            for (index, (a, b)) in left.iter().zip(right).enumerate() {
+                assert_eq!(a.x.0, b.x.0, "window {window} point {index} x");
+                assert_eq!(a.y.0, b.y.0, "window {window} point {index} y");
+            }
+        }
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-sector-digit-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let mut per_scalar_counts = Vec::with_capacity(2 * scalars.len());
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_formula(words);
+            let candidate = multiply_u256_sector(words);
+            assert_eq!(reference.0, candidate.0, "point {index}");
+            assert_eq!(reference.1, candidate.1, "representative {index}");
+            assert_eq!((reference.2, reference.3, reference.4, reference.5, reference.6),
+                       (candidate.2, candidate.3, candidate.4, candidate.5, candidate.6),
+                       "scalar accounting {index}");
+            assert_eq!(u256_formula_choices(reference.1),
+                       u256_sector_choices(candidate.1),
+                       "all fourteen choices {index}");
+            per_scalar_counts.push(reference.6 as u8);
+            per_scalar_counts.push(candidate.6 as u8);
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+        println!("sector_panel_cases={} retained_reference={} retained_candidate={} counts_hex={}",
+                 scalars.len(), old.retained_bytes, new.retained_bytes,
+                 hex::encode(per_scalar_counts));
+    }
+
+    #[test]
     fn radix943_atlas_covers_all_residues_and_fixture_points() {
         let tables = &*RADIX13_TABLES;
         assert_eq!(tables.windows.len(), RADIX13_WINDOWS);
