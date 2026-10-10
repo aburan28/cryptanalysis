@@ -453,8 +453,19 @@ costs were 556.629 ms (n37) and 28,308.249 ms (n41), while the n41 support
 index alone cost 25,902.961 ms. The pinned producer's published online timer
 double-counted final solving and solution validation; the archived verifier
 recomputes exclusive phase costs. These are stage diagnostics, not controlled
-speedups or evidence for n131. Next test a compact-orbit n53 support index with
-streaming setup receipts and corrected producer timers before any cold claim.
+speedups or evidence for n131. That n53 timeout belongs to the
+signed-expanded support-index policy. The separate
+[compact K220 n53 fixed-base replay](../ecc2k130-n53-fixed-base-rank-bridge-20261010/RESULT.md)
+records 23,320 usable points in 220 folded columns and independently replays
+all 12 full-rank IC recoveries plus six same-Q signed-Frobenius rho recoveries
+from merged crypto commit 9be831f4ec75c9a18334a67033333aeeb4b42fad.
+The six-seed 400,000-probe restart reduced median paired rank probes by
+5.189% with median paired complete-cold ratio 1.020, missing its frozen
+15%-without-higher-cold-cost gate. The observed same-Q target-online ratios
+are exploratory on the shared host; controlled speedup remains unknown.
+Next freeze the per-probe arithmetic or pair-root-index policy on this base,
+then complete the equal-useful-size degree-263 route comparison with charged
+transport and held-out targets.
 
 Screen the 1,000 proposals in stages rather than launch 1,000 complete DLPs.
 First materialize and replay factor bases, then benchmark PDPs on identical
