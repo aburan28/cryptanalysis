@@ -1,0 +1,47 @@
+   Compiling prime-j0-secp256k1-native-replay v0.1.0 (/Volumes/SSD990/llm/tmp/prime-j0-arithmetic-atlas-20261010/experiments/prime-j0-secp256k1-native)
+error[E0369]: binary operation `==` cannot be applied to type `ct_bignum::Uint<4>`
+    --> src/bin/eisenstein_fixed/unit_orbit_windows.rs:2170:17
+     |
+2170 |                 assert_eq!(a.x, b.x, "window {window} point {index} x");
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |                 |
+     |                 ct_bignum::Uint<4>
+     |                 ct_bignum::Uint<4>
+     |
+note: an implementation of `PartialEq` might be missing for `ct_bignum::Uint<4>`
+    --> src/bin/../../../../suite/src/ct_bignum.rs:48:1
+     |
+  48 | pub struct Uint<const LIMBS: usize>(pub [u64; LIMBS]);
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ must implement `PartialEq`
+     = note: this error originates in the macro `assert_eq` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `ct_bignum::Uint<4>` with `#[derive(PartialEq)]`
+    -->  src/bin/../../../../suite/src/ct_bignum.rs:48:1
+     |
+  48 + #[derive(PartialEq)]
+  49 | pub struct Uint<const LIMBS: usize>(pub [u64; LIMBS]);
+     |
+
+error[E0369]: binary operation `==` cannot be applied to type `ct_bignum::Uint<4>`
+    --> src/bin/eisenstein_fixed/unit_orbit_windows.rs:2171:17
+     |
+2171 |                 assert_eq!(a.y, b.y, "window {window} point {index} y");
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |                 |
+     |                 ct_bignum::Uint<4>
+     |                 ct_bignum::Uint<4>
+     |
+note: an implementation of `PartialEq` might be missing for `ct_bignum::Uint<4>`
+    --> src/bin/../../../../suite/src/ct_bignum.rs:48:1
+     |
+  48 | pub struct Uint<const LIMBS: usize>(pub [u64; LIMBS]);
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ must implement `PartialEq`
+     = note: this error originates in the macro `assert_eq` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `ct_bignum::Uint<4>` with `#[derive(PartialEq)]`
+    -->  src/bin/../../../../suite/src/ct_bignum.rs:48:1
+     |
+  48 + #[derive(PartialEq)]
+  49 | pub struct Uint<const LIMBS: usize>(pub [u64; LIMBS]);
+     |
+
+For more information about this error, try `rustc --explain E0369`.
+error: could not compile `prime-j0-secp256k1-native-replay` (bin "eisenstein_fixed" test) due to 2 previous errors
