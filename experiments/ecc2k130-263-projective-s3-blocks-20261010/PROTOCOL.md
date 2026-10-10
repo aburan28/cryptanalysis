@@ -11,6 +11,8 @@ yield and rank are separate measurements.
 
 `CONFIG.json` pins the parent commit, every source/input digest needed for
 this control, the solver binary, order, and caps before any new solver run.
+An amendment before the first solver launch added the parent RSS sampler
+source to those pins and bound the shared local helper source in run receipts.
 The parent archive-only audit must pass. For each policy decompress and verify
 the parent control-base XCNF and load its named input-variable map and checked
 group witness. Append sorted DIMACS unit clauses to form two exact inputs:
