@@ -44,6 +44,7 @@ def main():
     if any(path.exists() for path in (args.out, stdout_path, stderr_path)):
         parser.error("refusing to overwrite pilot evidence")
     config = ref.read(HERE / "CONFIG.json")
+    query_index = config["first_query_index"]
     audit = ref.read(HERE / "runs/R1/build_audit.json")
     receipt_path = args.formula.with_suffix(".json")
     receipt = ref.read(receipt_path)
@@ -137,7 +138,7 @@ def main():
         "proposal_id": config["proposal_id"],
         "policy": args.policy,
         "primary_workload_id": config["primary_workload_id"],
-        "ordinary_query_index": config["query_index"],
+        "ordinary_query_index": query_index,
         "target_lifts": 4,
         "formula_sha256": ref.sha(args.formula),
         "formula_receipt_sha256": ref.sha(receipt_path),
