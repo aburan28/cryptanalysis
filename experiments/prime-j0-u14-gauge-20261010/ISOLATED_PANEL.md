@@ -8,14 +8,17 @@ expected point. Its timer includes scalar reduction, digit staging,
 lookup, unit or gauge operations, mixed additions, inversion, formatting,
 and expected-point verification. Table preparation is reported separately.
 
-Build and verify the exact source on the qualifying Linux host, then
-generate a new receipt for that host's executable and raw outputs. Use
-that receipt and the host's actual isolated CPU partition:
+Build and verify the exact source on the qualifying Linux host with the
+[host replay](../prime-j0-host-replay-20261010/README.md). It verifies the
+81-test release suite, both 129-case fixture arms, process resources, and
+source and executable hashes before generating a new receipt. Use that
+receipt and the host's actual isolated CPU partition:
 
 ```sh
-python3 experiments/prime-j0-u14-gauge-20261010/make_isolated_manifest.py \
-  --binary /absolute/path/to/eisenstein_fixed \
-  --receipt /absolute/path/to/host-verification.json \
+python3 experiments/prime-j0-host-replay-20261010/host_replay.py verify \
+  --comparison gauge --output-dir /absolute/path/to/host-replay-gauge-result
+python3 experiments/prime-j0-host-replay-20261010/host_replay.py manifest \
+  --receipt /absolute/path/to/host-replay-gauge-result/verification.json \
   --cgroup /sys/fs/cgroup/benchmark-isolated \
   --cpus 4-5 --execution-cpu 4 --mem-node 0 \
   --output /absolute/path/to/paired-manifest.json
