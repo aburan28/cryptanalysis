@@ -189,9 +189,19 @@ All x0/x5 cells remain `BOUNDED_UNKNOWN`. The first rewrite adds about 3.5%
 total XCNF constraints and the second adds 32–33%; positive/negative
 controls and all 24 solver inputs pass archive replay. Since selectors stay
 fixed in these cells, the SAT assignments reconstruct the archived relation
-and measure leaf propagation. Next compare the smaller `w*z` rewrite and
-parent on frozen ordinary queries with all selectors free, recording verified
-relation yield and novel rank before promoting a candidate ID.
+and measure leaf propagation. The subsequent free-selector gate is below.
+The [matched ordinary Q1420 bilinear gate](../ecc2k130-263-bilinear-ordinary-q0-20261010/RESULT.md)
+reproduced the source and descendant projective-S3 comparator formulas byte
+for byte, then froze and searched `wz_only` and `both_products` on the same
+public target and four-lift mux. All four new attempts entered search and
+reached their 120/150-second caps with `BOUNDED_UNKNOWN`; the archive audit
+records 561–939 live restart rows. `wz_only` adds 3.26–3.29% total
+constraints, and `both_products` adds 29.83–30.71%. This one-query result
+does not estimate natural yield; no verified decomposition row was emitted,
+so novel rank stays `null` and `candidate_id` remains `null`. Next freeze a
+matched selector/x/inverse release ladder on the six-distinct-leaf control
+at early and late S3 positions to locate the free-selector bottleneck before
+expanding ordinary-query volume.
 The [functional W24/m6 solver gate](../ecc2k130-w24-functional-s3-20261006/RESULT.md)
 removed free inverse and S3-intermediate witnesses but enlarged the planted
 XCNF 20.448-fold; CryptoMiniSat timed out at 30 seconds while an independent
