@@ -662,9 +662,9 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
-    if format == 20 || format == 21 || format == 22 {
+    if format == 20 || format == 21 || format == 22 || format == 23 {
         std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
-        if format == 22 {
+        if format == 22 || format == 23 {
             std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
         }
         return TABLES.retained_bytes;
@@ -748,7 +748,7 @@ pub(super) fn multiply_word_format(
     }
     let lattice = &*SCALAR_LATTICE;
     let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
-    let (mut a, mut b, original) = if format == 22 {
+    let (mut a, mut b, original) = if format == 22 || format == 23 {
         let (a, b) = super::hexagonal_certified_fixed_choice(&residue).0;
         (a, b, None)
     } else {
@@ -763,7 +763,7 @@ pub(super) fn multiply_word_format(
          Some((start_a, start_b)))
     };
     let start_fixed = (a, b);
-    let tables = selected(if (20..=22).contains(&format) { 14 } else { format });
+    let tables = selected(if (20..=23).contains(&format) { 14 } else { format });
     let mut result = Jacobian::identity();
     let mut nonidentity: usize = 0;
     for (index, &width) in tables.widths.iter().enumerate() {
@@ -857,6 +857,7 @@ fn multiply_word_staged14(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::{Pair, Signed};
 
     fn word_as_bigint(word: Signed192) -> BigInt {
         BigInt::from_biguint(
@@ -1214,6 +1215,76 @@ mod tests {
             }
         }
         assert_eq!(fallbacks, 0);
+    }
+
+    #[test]
+    fn hybrid_pair_conversion_matches_bigint_mapping() {
+        let (ctx, _, _) = &*super::super::HYBRID_FIELD;
+        let edge = [0u128, 1, u128::MAX, super::super::PI_A,
+                    super::super::PI_B_MAG, 1u128 << 127];
+        let mut values = Vec::new();
+        for &a in &edge {
+            for &b in &edge {
+                for negative_a in [false, true] {
+                    for negative_b in [false, true] {
+                        values.push((a, b, negative_a, negative_b));
+                    }
+                }
+            }
+        }
+        let mut state = 0x8d1a_d574_1f33_e91cu128;
+        for _ in 0..256 {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            let a = state;
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            values.push((a, state, a & 1 != 0, state & 1 != 0));
+        }
+        for (index, (a, b, negative_a, negative_b)) in values.into_iter().enumerate() {
+            let pair = Pair {
+                a: if negative_a { Signed::from_u128(a).neg() } else { Signed::from_u128(a) },
+                b: if negative_b { Signed::from_u128(b).neg() } else { Signed::from_u128(b) },
+            };
+            let converted = ctx.from_montgomery(&super::super::hybrid_pair_mont(pair));
+            assert_eq!(hex::encode(converted.to_bytes_be()), pair.canonical_hex(),
+                       "pair {index}");
+        }
+    }
+
+    #[test]
+    fn hybrid_finalizer_matches_parent_and_fresh_points() {
+        let panels = [
+            include_str!("../../../../prime-j0-radix943-word-20261009/inputs.json"),
+            include_str!("../../../../prime-j0-exact-reciprocal-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-certified-voronoi-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-fixed-limb-voronoi-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-hybrid-finalize-20261010/fresh-inputs.json"),
+        ];
+        let mut cases = vec![BigInt::ZERO, BigInt::from(1),
+                             &SCALAR_LATTICE.n - BigInt::from(1),
+                             SCALAR_LATTICE.n.clone(),
+                             (BigInt::from(1) << 256usize) - BigInt::from(1)];
+        for panel in panels {
+            let data: serde_json::Value = serde_json::from_str(panel).unwrap();
+            cases.extend(data["scalars_hex"].as_array().unwrap().iter().map(|value|
+                BigInt::parse_bytes(value.as_str().unwrap().as_bytes(), 16).unwrap()));
+        }
+        assert_eq!(cases.len(), 5 + 519 + 4 * 4096);
+        let fresh_start = cases.len() - 4096;
+        for (index, scalar) in cases.iter().enumerate() {
+            let point = multiply_word_format(scalar, 23).0;
+            assert_eq!(point.affine_hex_hybrid(), point.affine_hex(),
+                       "finalizer point {index}");
+            if (fresh_start..fresh_start + 128).contains(&index) {
+                let reduced = scalar % &SCALAR_LATTICE.n;
+                assert_eq!(point.affine_hex_hybrid(),
+                           independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
     }
 
     #[test]
