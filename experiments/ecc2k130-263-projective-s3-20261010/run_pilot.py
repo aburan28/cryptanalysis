@@ -72,7 +72,7 @@ def main():
         raise ValueError("solver version changed")
     limits = config["solver_pilot"]
     if (limits["attempts_per_policy"] != 1 or limits["threads"] != 1
-            or limits["cryptominisat_maxtime_seconds"] != 120
+            or limits["solver_maxtime_seconds"] != 120
             or limits["external_wall_limit_seconds"] != 150
             or limits["peak_rss_limit_bytes"] != 4 * (1 << 30)):
         raise ValueError("frozen pilot limits changed")
@@ -147,7 +147,7 @@ def main():
         "solver_version": version,
         "command": command,
         "threads": limits["threads"],
-        "solver_maxtime_seconds": limits["cryptominisat_maxtime_seconds"],
+        "solver_maxtime_seconds": limits["solver_maxtime_seconds"],
         "external_wall_cap_seconds": limits["external_wall_limit_seconds"],
         "rss_cap_bytes": limits["peak_rss_limit_bytes"],
         "wall_seconds": wall,
