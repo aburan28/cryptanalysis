@@ -42,6 +42,8 @@ expected-point verification. A controlled wall-time result awaits a
 physical host that passes the repository's isolation preflight. The
 existing RunPod container is assigned to serial x86 correctness replay;
 its CPU topology cannot certify an isolated speedup.
+The x86 replay is queued through the serial remote runner; its completion
+status remains pending.
 The local manifest structure check emitted nine cases and five repetitions
 with digest `352ba68749a59b8f5aa22b9bf547aa1dd1c03c8278c8f9483d68a830d57a6e83`;
 its CPU and NUMA identifiers were placeholders.
