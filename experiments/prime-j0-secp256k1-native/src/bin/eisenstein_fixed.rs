@@ -3577,10 +3577,10 @@ fn check_generator_case(
     let preparation_start = Instant::now();
     LazyLock::force(&SCALAR_LATTICE);
     LazyLock::force(&DECODE_CONSTANTS);
-    if (123..=140).contains(&unit_orbit_format) {
+    if (123..=141).contains(&unit_orbit_format) {
         LazyLock::force(&HYBRID_FIELD);
     }
-    if (124..=140).contains(&unit_orbit_format) {
+    if (124..=141).contains(&unit_orbit_format) {
         LazyLock::force(&BINARY_INVERSE_R3);
     }
     let retained_bytes = if unit_orbit_format != 0 {
@@ -3626,11 +3626,15 @@ fn check_generator_case(
         LazyLock::force(&GLV_COMB10_POINTS);
     }
     let scalar = scalar_from_hex(scalar_hex);
-    let scalar_words = (125..=140).contains(&unit_orbit_format)
+    let scalar_words = (125..=141).contains(&unit_orbit_format)
         .then(|| scalar_words_256(&scalar)).flatten();
     let preparation_ms = preparation_start.elapsed().as_secs_f64() * 1000.0;
     let start = Instant::now();
-    let actual = if unit_orbit_format == 140 {
+    let actual = if unit_orbit_format == 141 {
+        unit_orbit_windows::multiply_u256_tau_frontier19_orbit_tau(
+            scalar_words.expect("tau frontier19 orbit-tau requires unsigned 256-bit scalar")
+        ).0
+    } else if unit_orbit_format == 140 {
         unit_orbit_windows::multiply_u256_tau_frontier19_expanded(
             scalar_words.expect("tau frontier19 expanded requires unsigned 256-bit scalar")
         ).0
@@ -3742,7 +3746,9 @@ fn check_generator_case(
     };
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if unit_orbit_format == 140 {
+    let mode = if unit_orbit_format == 141 {
+        "unit_orbit_u256_tau_frontier19_orbit_tau_fixed"
+    } else if unit_orbit_format == 140 {
         "unit_orbit_u256_tau_frontier19_expanded_fixed"
     } else if unit_orbit_format == 139 {
         "unit_orbit_u256_tau_frontier19_orbit_x_fixed"
@@ -3906,6 +3912,8 @@ fn main() {
             || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-formula")
             || args[0].starts_with("--check-scalar-unit-orbit-u256-sector")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-sector")
+            || args[0].starts_with("--check-scalar-unit-orbit-u256-tau-frontier19-orbit-tau")
+            || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-tau-frontier19-orbit-tau")
             || args[0].starts_with("--check-scalar-unit-orbit-u256-tau-frontier19-expanded")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-tau-frontier19-expanded")
             || args[0].starts_with("--check-scalar-unit-orbit-u256-tau-frontier19-orbit-x")
@@ -3922,7 +3930,9 @@ fn main() {
             || args[0].starts_with("--benchmark-scalar-unit-orbit-radix943"))
         && args[0].ends_with("-fixed-fixture")
     {
-        let format = if args[0].contains("unit-orbit-u256-tau-frontier19-expanded-fixed-fixture") {
+        let format = if args[0].contains("unit-orbit-u256-tau-frontier19-orbit-tau-fixed-fixture") {
+            141
+        } else if args[0].contains("unit-orbit-u256-tau-frontier19-expanded-fixed-fixture") {
             140
         } else if args[0].contains("unit-orbit-u256-tau-frontier19-orbit-x-fixed-fixture") {
             139
@@ -4127,6 +4137,8 @@ fn main() {
             || args[0] == "--check-scalar-unit-orbit-u256-sector15-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-u256-sector16-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-u256-sector16-fixed-case"
+            || args[0] == "--benchmark-scalar-unit-orbit-u256-tau-frontier19-orbit-tau-fixed-case"
+            || args[0] == "--check-scalar-unit-orbit-u256-tau-frontier19-orbit-tau-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-u256-tau-frontier19-expanded-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-u256-tau-frontier19-expanded-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-u256-tau-frontier19-orbit-x-fixed-case"
@@ -4182,7 +4194,9 @@ fn main() {
             args[0].contains("w6-comb13-hex9-radius2"),
             args[0].contains("w6-comb13-hex9-graph33"),
             args[0].contains("w6-comb13-hex9-graphaware33"),
-            if args[0].contains("unit-orbit-u256-tau-frontier19-expanded") {
+            if args[0].contains("unit-orbit-u256-tau-frontier19-orbit-tau") {
+                141
+            } else if args[0].contains("unit-orbit-u256-tau-frontier19-expanded") {
                 140
             } else if args[0].contains("unit-orbit-u256-tau-frontier19-orbit-x") {
                 139
