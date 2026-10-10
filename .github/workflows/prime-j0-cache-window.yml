@@ -91,38 +91,37 @@ jobs:
             test "$(wc -l < "$RUNNER_TEMP/${flag}.stdout")" -eq 129
           done
 
-      - name: Verify frozen integration receipt
-        run: python3 experiments/prime-j0-tau-native-integration-20261010/verify_receipt.py
-
-      - name: Verify orbit-tau source and operation receipts
+      - name: Verify frozen receipts at their producing commits
         run: |
-          python3 experiments/prime-j0-orbit-tau-fusion-20261010/verify_fresh.py
-          python3 experiments/prime-j0-orbit-tau-fusion-20261010/verify_ops.py
-
-      - name: Verify XYZZ source and operation receipts
-        run: |
-          python3 experiments/prime-j0-xyzz-orbit-tau-20261010/verify_fresh.py
-          python3 experiments/prime-j0-xyzz-orbit-tau-20261010/verify_ops.py
-
-      - name: Verify seventeen-window source and operation receipts
-        run: |
-          python3 experiments/prime-j0-frontier17-orbit-xyzz-20261010/verify_fresh.py
-          python3 experiments/prime-j0-frontier17-orbit-xyzz-20261010/verify_ops.py
-
-      - name: Verify eighteen-window source and operation receipts
-        run: |
-          python3 experiments/prime-j0-frontier18-orbit-xyzz-20261010/verify_fresh.py
-          python3 experiments/prime-j0-frontier18-orbit-xyzz-20261010/verify_ops.py
-
-      - name: Verify two-x orbit source and operation receipts
-        run: |
-          python3 experiments/prime-j0-two-x-orbit-20261010/verify_fresh.py
-          python3 experiments/prime-j0-two-x-orbit-20261010/verify_ops.py
-
-      - name: Verify deferred-tau bucket source and operation receipts
-        run: |
-          python3 experiments/prime-j0-tau-bucket-two-x-20261010/verify_fresh.py
-          python3 experiments/prime-j0-tau-bucket-two-x-20261010/verify_ops.py
+          set -euo pipefail
+          verify_at_commit() {
+            local artifact="$1"
+            shift
+            local commit checkout status
+            commit=$(git log -1 --format=%H HEAD -- "experiments/$artifact")
+            test -n "$commit"
+            checkout="$RUNNER_TEMP/receipt-$artifact"
+            git worktree add --quiet --detach "$checkout" "$commit"
+            status=0
+            (
+              cd "$checkout"
+              for checker in "$@"; do
+                python3 "experiments/$artifact/$checker" || exit $?
+              done
+            ) || status=$?
+            git worktree remove --force "$checkout"
+            return "$status"
+          }
+          verify_at_commit prime-j0-tau-native-integration-20261010 verify_receipt.py
+          for artifact in \
+            prime-j0-orbit-tau-fusion-20261010 \
+            prime-j0-xyzz-orbit-tau-20261010 \
+            prime-j0-frontier17-orbit-xyzz-20261010 \
+            prime-j0-frontier18-orbit-xyzz-20261010 \
+            prime-j0-two-x-orbit-20261010 \
+            prime-j0-tau-bucket-two-x-20261010; do
+            verify_at_commit "$artifact" verify_fresh.py verify_ops.py
+          done
 
       - name: Replay three frontier modes on independent scalar panel
         run: |
