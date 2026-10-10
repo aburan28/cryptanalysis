@@ -3033,6 +3033,51 @@ mod tests {
     }
 
     #[test]
+    fn two_limb_radix384_matches_fresh_panel_and_independent_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-radix384-fast-20261010/fresh-inputs.json"
+        )).unwrap();
+        assert_eq!(panel["seed"], 20261010135i64);
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let tables = &*RADIX384_TABLES;
+        let mut divisions = 0usize;
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_radix384(words);
+            let candidate = multiply_u256_radix384_fast(words);
+            assert_eq!(candidate, reference, "whole scalar {index}");
+            assert_eq!(candidate.3, 24_283_336);
+            assert!(candidate.2 <= 14 && candidate.6 <= 2);
+            let (mut a, mut b) = candidate.1;
+            for window in 0..RADIX384_WINDOWS {
+                let old_a = a.div_rem_small_radix(RADIX384 as u64);
+                let old_b = b.div_rem_small_radix(RADIX384 as u64);
+                assert_eq!(a.div_rem_radix384_fast(), old_a,
+                           "coordinate a {index}/{window}");
+                assert_eq!(b.div_rem_radix384_fast(), old_b,
+                           "coordinate b {index}/{window}");
+                let (digit, _, _) = tables.atlas.digit_residue(old_a.2, old_b.2);
+                a = old_a.0.adjust_small_radix_quotient(old_a.1, digit.0,
+                                                         RADIX384 as i32);
+                b = old_b.0.adjust_small_radix_quotient(old_b.1, digit.1,
+                                                         RADIX384 as i32);
+                divisions += 2;
+            }
+            assert!(a.is_zero() && b.is_zero(), "reconstruction {index}");
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+        assert_eq!(divisions, 122_880);
+        println!("fast_radix384_fresh_panel_cases={} division_checks={divisions}",
+                 scalars.len());
+    }
+
+    #[test]
     fn radix943_atlas_covers_all_residues_and_fixture_points() {
         let tables = &*RADIX13_TABLES;
         assert_eq!(tables.windows.len(), RADIX13_WINDOWS);
