@@ -180,6 +180,18 @@ fixture-specific recall rather than evidence of easy x-leaf inversion. Next
 compare an exact selector-weighted bilinear encoding of the W24 leaf
 inverse equations on
 these same inputs before opening another ordinary-query gate.
+The [selector-weighted W24 leaf comparison](../ecc2k130-263-bilinear-leaf-20261010/RESULT.md)
+completed that gate on both curves. With the same six finite-state witnesses,
+the sparse `w*z` rewrite returned fully audited SAT for source z0/z5 and
+descendant z0, while both-product rewriting additionally returned SAT for
+descendant z5; the parent circuit had eight bounded coordinate releases.
+All x0/x5 cells remain `BOUNDED_UNKNOWN`. The first rewrite adds about 3.5%
+total XCNF constraints and the second adds 32–33%; positive/negative
+controls and all 24 solver inputs pass archive replay. Since selectors stay
+fixed in these cells, the SAT assignments reconstruct the archived relation
+and measure leaf propagation. Next compare the smaller `w*z` rewrite and
+parent on frozen ordinary queries with all selectors free, recording verified
+relation yield and novel rank before promoting a candidate ID.
 The [functional W24/m6 solver gate](../ecc2k130-w24-functional-s3-20261006/RESULT.md)
 removed free inverse and S3-intermediate witnesses but enlarged the planted
 XCNF 20.448-fold; CryptoMiniSat timed out at 30 seconds while an independent
