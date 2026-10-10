@@ -1,0 +1,79 @@
+digraph ThreesumTransfer {
+  // Why the claimed subquadratic 3SUM does not transfer to IC decomposition.
+  // Source of truth for figures/transfer.svg and figures/transfer.pdf.
+  // Green = intact fact; red = broken transfer link; yellow = conditional.
+  rankdir=TB;
+  splines=spline;
+  nodesep=0.30;
+  ranksep=0.70;
+  compound=true;
+  fontname="Helvetica";
+  fontsize=14;
+  labelloc=t;
+  label="3SUM breakthrough vs index calculus: where the transfer breaks  |  green = intact; red = broken link; yellow = conditional";
+  node [fontname="Helvetica"];
+  edge [fontname="Helvetica", fontsize=9];
+
+  subgraph cluster_claim {
+    label="Claim (arXiv 2610.06783, Oct 5 2026, unreviewed preprint)";
+    style="rounded,filled";
+    fillcolor="#fef9c3";
+    CLAIM [label="CLAIM", shape=box, style="filled,bold", fillcolor="#fde68a", fontsize=12];
+    C_3SUM [label="3SUM on n integers\nO(n^1.9992) deterministic", shape=box, style=filled, fillcolor="white", fontsize=11];
+    C_APSP [label="integer APSP\nO(n^2.9995)", shape=box, style=filled, fillcolor="white", fontsize=11];
+    C_TECH [label="via thin matrix products\n(Schonhage/Coppersmith\nmachinery)", shape=box, style=filled, fillcolor="white", fontsize=11];
+    C_LEAN [label="Lean 4 certificate\nreported by aggregators\n(unverified here)", shape=ellipse, style=filled, fillcolor="#fef9c3", fontsize=11];
+    CLAIM -> C_3SUM;
+    CLAIM -> C_APSP;
+    CLAIM -> C_TECH;
+    CLAIM -> C_LEAN [style=dashed];
+  }
+
+  subgraph cluster_gaps {
+    label="Transfer gaps (each link independently blocks)";
+    style="rounded,filled";
+    fillcolor="#fef2f2";
+    GAPS [label="GAPS", shape=box, style="filled,bold", fillcolor="#fecaca", fontsize=12];
+    G_MODEL [label="GAP 1 model (broken):\nordered integers +\ncomparisons vs curve\ngroups + hash lookups", shape=ellipse, style=filled, fillcolor="#fecaca", fontsize=11];
+    G_TASK [label="GAP 2 task (broken):\none-shot decision vs\nrepeated witness\nenumeration", shape=ellipse, style=filled, fillcolor="#fecaca", fontsize=11];
+    G_PRAC [label="GAP 3 practicality (broken):\n0.0008 exponent gain,\ngalactic constants,\nno implementation", shape=ellipse, style=filled, fillcolor="#fecaca", fontsize=11];
+    GAPS -> G_MODEL;
+    GAPS -> G_TASK;
+    GAPS -> G_PRAC;
+  }
+
+  subgraph cluster_ic {
+    label="IC decomposition as built (this tree)";
+    style="rounded,filled";
+    fillcolor="#f0fdf4";
+    IC [label="IC ORACLES", shape=box, style="filled,bold", fillcolor="#bbf7d0", fontsize=12];
+    I_PAIR [label="pair-table MITM\nO(F^2) build +\nO(1) lookups", shape=box, style=filled, fillcolor="white", fontsize=11];
+    I_ALG [label="Groebner / SAT\noracles + lift checks", shape=box, style=filled, fillcolor="white", fontsize=11];
+    I_LEDGER [label="measured S-ledgers\n+ paired rho baselines", shape=box, style=filled, fillcolor="white", fontsize=11];
+    M_NONE [label="no IC row moves:\nno oracle invokes 3SUM;\nno measurement rerun", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=11];
+    IC -> I_PAIR;
+    IC -> I_ALG;
+    IC -> I_LEDGER;
+    I_PAIR -> M_NONE;
+    I_ALG -> M_NONE [style=dashed];
+    I_LEDGER -> M_NONE [style=dashed];
+  }
+
+  subgraph cluster_floors {
+    label="Floors (independent of the 3SUM hypothesis)";
+    style="rounded,filled";
+    fillcolor="#eff6ff";
+    FLOORS [label="FLOORS", shape=box, style="filled,bold", fillcolor="#dbeafe", fontsize=12];
+    F_GENERIC [label="generic-group\nOmega(sqrt(r/|Aut|))\nunconditional in GGM", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=11];
+    F_COUNT [label="counting ceilings\nC(F+m-1,m)/#E\ncombinatorial", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=11];
+    FLOORS -> F_GENERIC;
+    FLOORS -> F_COUNT;
+  }
+
+  C_3SUM -> G_MODEL [penwidth=2.0, ltail=cluster_claim, lhead=cluster_gaps, label="needs groups"];
+  C_3SUM -> G_TASK [penwidth=2.0, ltail=cluster_claim, lhead=cluster_gaps, label="needs witnesses"];
+  C_TECH -> G_PRAC [penwidth=2.0, ltail=cluster_claim, lhead=cluster_gaps, label="needs code"];
+  G_MODEL -> I_PAIR [penwidth=2.0, style=dashed, ltail=cluster_gaps, lhead=cluster_ic, label="blocked"];
+  G_TASK -> I_PAIR [penwidth=2.0, style=dashed, ltail=cluster_gaps, lhead=cluster_ic, label="blocked"];
+  G_PRAC -> I_ALG [penwidth=2.0, style=dashed, ltail=cluster_gaps, lhead=cluster_ic, label="blocked"];
+}
