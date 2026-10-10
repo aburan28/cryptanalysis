@@ -2621,6 +2621,72 @@ mod tests {
     }
 
     #[test]
+    fn cache_sized_sector_formats_match_fresh_panel() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-cache-window-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let atlases = [OrbitAtlas::new(8), OrbitAtlas::new(9), OrbitAtlas::new(10)];
+        let reference_choices = |representative: (Signed192, Signed192), widths: &[u8]| {
+            let (mut a, mut b) = representative;
+            let mut choices = Vec::with_capacity(widths.len());
+            for &width in widths {
+                let (digit, orbit, unit) = atlases[usize::from(width - 8)].digit_word(a, b);
+                choices.push((orbit, unit));
+                a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+                b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+            }
+            assert!(a.is_zero() && b.is_zero());
+            choices
+        };
+        let mut counts = Vec::with_capacity(6 * scalars.len());
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let u14 = multiply_u256_sector(words);
+            let u15 = multiply_u256_sector15(words);
+            let u16 = multiply_u256_sector16(words);
+            assert_eq!(u14.3, 64_314_112);
+            for (label, candidate, widths, bytes) in [
+                ("U14", &u14, &WIDTHS[..], 64_314_112),
+                ("U15", &u15, &WIDTHS15[..], 29_361_680),
+                ("U16", &u16, &WIDTHS16[..], 13_283_616),
+            ] {
+                assert_eq!(candidate.0, u14.0, "{label} point {index}");
+                assert_eq!(candidate.1, u14.1, "{label} representative {index}");
+                assert_eq!((candidate.4, candidate.5), (u14.4, u14.5),
+                           "{label} scalar selector {index}");
+                assert_eq!(candidate.3, bytes, "{label} retained bytes {index}");
+                let choices = reference_choices(candidate.1, widths);
+                let actual = if widths.len() == 14 {
+                    u256_sector_choices(candidate.1).0.to_vec()
+                } else if widths.len() == 15 {
+                    u256_sector_choices_with(candidate.1, &WIDTHS15).0.to_vec()
+                } else {
+                    u256_sector_choices_with(candidate.1, &WIDTHS16).0.to_vec()
+                };
+                assert_eq!(actual, choices, "{label} choices {index}");
+                assert_eq!(candidate.2,
+                           choices.iter().filter(|&&(orbit, _)| orbit != 0)
+                               .count().saturating_sub(1),
+                           "{label} additions {index}");
+                assert!(candidate.6 <= 2, "{label} gauge products {index}");
+                counts.extend([candidate.2 as u8, candidate.6 as u8]);
+            }
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(u14.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+        println!("cache_panel_cases={} bytes_u14={} bytes_u15={} bytes_u16={} counts_hex={}",
+                 scalars.len(), SECTOR_U256_TABLES.retained_bytes,
+                 SECTOR15_U256_TABLES.retained_bytes,
+                 SECTOR16_U256_TABLES.retained_bytes, hex::encode(counts));
+    }
+
+    #[test]
     fn radix943_atlas_covers_all_residues_and_fixture_points() {
         let tables = &*RADIX13_TABLES;
         assert_eq!(tables.windows.len(), RADIX13_WINDOWS);
