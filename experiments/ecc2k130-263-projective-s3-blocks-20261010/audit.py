@@ -38,6 +38,21 @@ def search_counts(output):
         values = re.findall(r"^c " + name + r"\s*:\s*(\d+)",
                             output, re.MULTILINE)
         result[name] = int(values[-1]) if values else None
+    # An external SIGKILL has no final statistics. Keep the final printed
+    # restart row as a rounded progress observation, never an exact count.
+    restart_rows = [line for line in output.splitlines()
+                    if line.startswith("c rst ")]
+    if restart_rows:
+        fields = restart_rows[-1].split()
+        if (len(fields) < 7 or not fields[5].isdigit()
+                or not re.fullmatch(r"\d+(?:\.\d+)?[KMG]?", fields[6])):
+            raise ValueError("last restart progress row is malformed")
+        result["last_restart_index"] = int(fields[5])
+        result["last_printed_conflicts"] = fields[6]
+    else:
+        result["last_restart_index"] = None
+        result["last_printed_conflicts"] = None
+    result["search_started"] = bool(restart_rows)
     return result
 
 
@@ -233,6 +248,10 @@ def parent_baseline(policy):
 
 
 def diagnosis(cells):
+    if any(row["status"] == "BOUNDED_UNKNOWN"
+           and not row["search_counts"]["search_started"]
+           for row in cells.values()):
+        return "INCOMPLETE_SEARCH_ACTIVITY"
     left = cells["intermediate_free"]["status"]
     right = cells["leaf_free"]["status"]
     if (left, right) == ("SAT_VERIFIED_GROUP", "SAT_VERIFIED_GROUP"):
@@ -272,7 +291,8 @@ def main():
             "cells": results,
             "diagnosis": diagnosis(results),
         }
-    intact = all(row["diagnosis"] != "INCOMPLETE_DIAGNOSTIC"
+    intact = all(row["diagnosis"] not in (
+        "INCOMPLETE_DIAGNOSTIC", "INCOMPLETE_SEARCH_ACTIVITY")
                  for row in policies.values())
     result = {
         "schema": "ecc2k130-263-projective-s3-search-block-audit-v1",
