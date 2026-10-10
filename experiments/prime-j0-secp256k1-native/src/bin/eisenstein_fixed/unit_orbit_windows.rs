@@ -383,6 +383,179 @@ static TABLES: LazyLock<Tables> = LazyLock::new(Tables::new);
 static TABLES15: LazyLock<Tables> = LazyLock::new(|| Tables::with_widths(&WIDTHS15));
 static TABLES16: LazyLock<Tables> = LazyLock::new(|| Tables::with_widths(&WIDTHS16));
 
+#[derive(Clone, Copy)]
+struct U256Affine {
+    x: super::U256,
+    y: super::U256,
+}
+
+#[derive(Clone, Copy)]
+struct U256Jacobian {
+    x: super::U256,
+    y: super::U256,
+    z: super::U256,
+}
+
+fn u256_add(a: super::U256, b: super::U256) -> super::U256 {
+    a.add_mod(&b, &super::HYBRID_FIELD.0.n)
+}
+
+fn u256_sub(a: super::U256, b: super::U256) -> super::U256 {
+    a.sub_mod(&b, &super::HYBRID_FIELD.0.n)
+}
+
+fn u256_mul(a: super::U256, b: super::U256) -> super::U256 {
+    super::HYBRID_FIELD.0.mont_mul(&a, &b)
+}
+
+fn u256_square(a: super::U256) -> super::U256 {
+    super::HYBRID_FIELD.0.mont_sqr(&a)
+}
+
+static U256_BETA_UNITS: LazyLock<[super::U256; 3]> = LazyLock::new(|| {
+    let ctx = &super::HYBRID_FIELD.0;
+    let beta = super::U256::from_biguint(
+        &super::DECODE_CONSTANTS.1.to_biguint().expect("positive cube root"));
+    let omega = ctx.to_montgomery(&beta);
+    [ctx.r_mod_n, omega, ctx.mont_sqr(&omega)]
+});
+
+impl U256Affine {
+    fn unit(self, code: usize) -> Self {
+        assert!(code < 6);
+        let power = code / 2;
+        let x = if power == 0 { self.x } else {
+            u256_mul(self.x, U256_BETA_UNITS[power])
+        };
+        let y = if code & 1 == 0 { self.y } else {
+            u256_sub(super::U256::ZERO, self.y)
+        };
+        Self { x, y }
+    }
+}
+
+impl U256Jacobian {
+    fn identity() -> Self {
+        Self { x: super::U256::ZERO, y: super::HYBRID_FIELD.0.r_mod_n,
+               z: super::U256::ZERO }
+    }
+
+    fn from_affine(point: U256Affine) -> Self {
+        Self { x: point.x, y: point.y, z: super::HYBRID_FIELD.0.r_mod_n }
+    }
+
+    fn is_identity(self) -> bool {
+        bool::from(self.z.ct_is_zero())
+    }
+
+    fn double(self) -> Self {
+        if self.is_identity() || bool::from(self.y.ct_is_zero()) {
+            return Self::identity();
+        }
+        let a = u256_square(self.x);
+        let b = u256_square(self.y);
+        let c = u256_square(b);
+        let d = u256_sub(u256_sub(u256_square(u256_add(self.x, b)), a), c);
+        let d = u256_add(d, d);
+        let e = u256_add(u256_add(a, a), a);
+        let rx = u256_sub(u256_square(e), u256_add(d, d));
+        let c2 = u256_add(c, c);
+        let c4 = u256_add(c2, c2);
+        let c8 = u256_add(c4, c4);
+        let ry = u256_sub(u256_mul(e, u256_sub(d, rx)), c8);
+        let yz = u256_mul(self.y, self.z);
+        let rz = u256_add(yz, yz);
+        Self { x: rx, y: ry, z: rz }
+    }
+
+    fn add_mixed(self, q: U256Affine) -> Self {
+        if self.is_identity() {
+            return Self::from_affine(q);
+        }
+        let zz = u256_square(self.z);
+        let u = u256_mul(q.x, zz);
+        let s = u256_mul(q.y, u256_mul(self.z, zz));
+        let h = u256_sub(u, self.x);
+        let v = u256_sub(s, self.y);
+        if bool::from(h.ct_is_zero()) {
+            return if bool::from(v.ct_is_zero()) { self.double() }
+                   else { Self::identity() };
+        }
+        let hh = u256_square(h);
+        let hhh = u256_mul(hh, h);
+        let xhh = u256_mul(self.x, hh);
+        let rx = u256_sub(u256_sub(u256_square(v), hhh), u256_add(xhh, xhh));
+        let ry = u256_sub(u256_mul(v, u256_sub(xhh, rx)), u256_mul(self.y, hhh));
+        let rz = u256_mul(self.z, h);
+        Self { x: rx, y: ry, z: rz }
+    }
+
+    fn affine_hex_binary_inverse(self) -> String {
+        if self.is_identity() { return "identity".to_owned(); }
+        let ctx = &super::HYBRID_FIELD.0;
+        let inverse = super::hybrid_binary_invert(self.z, ctx);
+        let square = ctx.mont_sqr(&inverse);
+        let cube = ctx.mont_mul(&square, &inverse);
+        let x = ctx.mont_mul(&self.x, &square);
+        let y = ctx.mont_mul(&self.y, &cube);
+        format!("{}:{}", hex::encode(ctx.from_montgomery(&x).to_bytes_be()),
+                hex::encode(ctx.from_montgomery(&y).to_bytes_be()))
+    }
+}
+
+struct U256Tables {
+    atlases: [Option<OrbitAtlas>; 3],
+    windows: Vec<Box<[U256Affine]>>,
+    retained_bytes: usize,
+}
+
+impl U256Tables {
+    fn new() -> Self {
+        assert_eq!(size_of::<U256Affine>(), 64);
+        let atlases: [Option<OrbitAtlas>; 3] = std::array::from_fn(|index| {
+            let width = 8 + index as u8;
+            WIDTHS.contains(&width).then(|| OrbitAtlas::new(width))
+        });
+        let mut windows = Vec::with_capacity(WIDTHS.len());
+        let mut base = Jacobian::generator();
+        for &width in &WIDTHS {
+            let atlas = atlases[usize::from(width - 8)].as_ref().unwrap();
+            let row = build_window(&atlas.digits, base);
+            let converted = row.iter().enumerate().map(|(index, &packed)| {
+                if index == 0 {
+                    U256Affine { x: super::U256::ZERO, y: super::U256::ZERO }
+                } else {
+                    let point = packed.into_affine();
+                    U256Affine { x: super::hybrid_pair_mont(point.x),
+                                 y: super::hybrid_pair_mont(point.y) }
+                }
+            }).collect::<Vec<_>>().into_boxed_slice();
+            windows.push(converted);
+            for _ in 0..width { base = base.double(); }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        assert_eq!(entries, WIDTHS.iter().map(|&width| {
+            let radix = 1usize << width;
+            (radix * radix + 8) / 6
+        }).sum::<usize>());
+        let retained_bytes = entries * size_of::<U256Affine>()
+            + atlases.iter().flatten().map(|atlas| {
+                atlas.codes.len() * size_of::<u32>()
+                    + atlas.digits.len() * size_of::<(i16, i16)>()
+            }).sum::<usize>()
+            + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[U256Affine]>>();
+        assert!(retained_bytes < CAP_BYTES);
+        Self { atlases, windows, retained_bytes }
+    }
+
+    fn atlas(&self, width: u8) -> &OrbitAtlas {
+        self.atlases[usize::from(width - 8)].as_ref().unwrap()
+    }
+}
+
+static U256_TABLES: LazyLock<U256Tables> = LazyLock::new(U256Tables::new);
+
 struct Radix13Tables {
     atlas: OrbitAtlas,
     windows: Vec<Box<[CompactPairPoint]>>,
@@ -662,6 +835,12 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 26 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return U256_TABLES.retained_bytes;
+    }
     if (20..=25).contains(&format) {
         std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
         if (22..=25).contains(&format) {
@@ -773,6 +952,34 @@ pub(super) fn multiply_word_direct(
     let (point, additions) =
         evaluate_word_representative(representative.0, representative.1, &TABLES);
     (point, representative, additions, TABLES.retained_bytes, fallback, corner)
+}
+
+pub(super) fn multiply_u256_direct(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*U256_TABLES;
+    let (mut a, mut b) = representative;
+    let mut result = U256Jacobian::identity();
+    let mut nonidentity = 0usize;
+    for (index, &width) in WIDTHS.iter().enumerate() {
+        let (digit, orbit_id, unit_code) = tables.atlas(width).digit_word(a, b);
+        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+        if orbit_id == 0 { continue; }
+        result = result.add_mixed(tables.windows[index][orbit_id].unit(unit_code));
+        nonidentity += 1;
+    }
+    assert!(a.is_zero() && b.is_zero(), "four-limb U14 recoding did not terminate");
+    (result.affine_hex_binary_inverse(), representative,
+     nonidentity.saturating_sub(1), tables.retained_bytes, fallback, corner)
 }
 
 pub(super) fn multiply_word_format(
@@ -1470,6 +1677,131 @@ mod tests {
                 assert_eq!(direct.0.affine_hex_binary_inverse(),
                            independent_binary_point(&reduced).affine_hex(),
                            "independent point {index}");
+            }
+        }
+    }
+
+    #[test]
+    fn u256_table_points_and_unit_images_match_eisenstein_field() {
+        let compact = &*TABLES;
+        let converted = &*U256_TABLES;
+        let ctx = &super::super::HYBRID_FIELD.0;
+        let seven = ctx.to_montgomery(&super::super::Uint([7, 0, 0, 0]));
+        assert!(converted.retained_bytes < compact.retained_bytes);
+        assert_eq!(compact.windows.len(), converted.windows.len());
+        let mut checked = 0usize;
+        for (old_row, new_row) in compact.windows.iter().zip(&converted.windows) {
+            assert_eq!(old_row.len(), new_row.len());
+            for &point in new_row.iter().skip(1) {
+                let left = u256_square(point.y);
+                let right = u256_add(u256_mul(u256_square(point.x), point.x), seven);
+                assert!(bool::from(left.ct_eq_full(&right)),
+                        "converted table point {checked} is off curve");
+                checked += 1;
+            }
+        }
+        assert!(checked > 1_000_000);
+        let mut state = 0xd19a_7d26_4ce2_831bu64;
+        for sample in 0..512 {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            let row = state as usize % compact.windows.len();
+            let index = 1 + ((state >> 16) as usize % (compact.windows[row].len() - 1));
+            let source = compact.windows[row][index].into_affine();
+            for code in 0..6 {
+                let mut expected = source;
+                for _ in 0..(code / 2) { expected = expected.omega(); }
+                if code & 1 != 0 { expected = expected.neg(); }
+                let actual = converted.windows[row][index].unit(code);
+                assert_eq!(hex::encode(ctx.from_montgomery(&actual.x).to_bytes_be()),
+                           expected.x.canonical_hex(), "x sample {sample}, unit {code}");
+                assert_eq!(hex::encode(ctx.from_montgomery(&actual.y).to_bytes_be()),
+                           expected.y.canonical_hex(), "y sample {sample}, unit {code}");
+            }
+        }
+    }
+
+    #[test]
+    fn u256_jacobian_group_law_matches_pair_backend() {
+        let source = &*TABLES;
+        let converted = &*U256_TABLES;
+        let old_q = source.windows[0][1].into_affine();
+        let new_q = converted.windows[0][1];
+        assert_eq!(U256Jacobian::identity().add_mixed(new_q).affine_hex_binary_inverse(),
+                   old_q.affine_hex_binary_inverse());
+        assert!(U256Jacobian::from_affine(new_q).add_mixed(new_q.unit(1)).is_identity());
+        assert_eq!(U256Jacobian::from_affine(new_q).add_mixed(new_q)
+                       .affine_hex_binary_inverse(),
+                   old_q.double().affine_hex_binary_inverse());
+        let fresh: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-u256-point-20261010/fresh-inputs.json"
+        )).unwrap();
+        for (sample, value) in fresh["scalars_hex"].as_array().unwrap().iter().take(512).enumerate() {
+            let scalar = BigInt::parse_bytes(value.as_str().unwrap().as_bytes(), 16).unwrap();
+            let parent = multiply_word_direct(super::super::scalar_words_256(&scalar).unwrap()).0;
+            let new_parent = U256Jacobian {
+                x: super::super::hybrid_pair_mont(parent.x),
+                y: super::super::hybrid_pair_mont(parent.y),
+                z: super::super::hybrid_pair_mont(parent.z),
+            };
+            let row = sample % WIDTHS.len();
+            let slot = 1 + ((sample * 7919) % (source.windows[row].len() - 1));
+            let expected = parent.add_mixed(source.windows[row][slot].into_affine());
+            let actual = new_parent.add_mixed(converted.windows[row][slot]);
+            assert_eq!(actual.affine_hex_binary_inverse(),
+                       expected.affine_hex_binary_inverse(), "addition {sample}");
+        }
+    }
+
+    #[test]
+    fn u256_backend_matches_complete_prior_and_fresh_points() {
+        let panels = [
+            include_str!("../../../../prime-j0-radix943-word-20261009/inputs.json"),
+            include_str!("../../../../prime-j0-exact-reciprocal-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-certified-voronoi-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-fixed-limb-voronoi-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-hybrid-finalize-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-binary-inverse-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-direct-limb-scalar-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-u256-point-20261010/fresh-inputs.json"),
+        ];
+        let mut cases = vec![BigInt::ZERO, BigInt::from(1),
+                             &SCALAR_LATTICE.n - BigInt::from(1),
+                             SCALAR_LATTICE.n.clone(),
+                             (BigInt::from(1) << 256usize) - BigInt::from(1)];
+        for panel in panels {
+            let data: serde_json::Value = serde_json::from_str(panel).unwrap();
+            cases.extend(data["scalars_hex"].as_array().unwrap().iter().map(|value|
+                BigInt::parse_bytes(value.as_str().unwrap().as_bytes(), 16).unwrap()));
+        }
+        assert_eq!(cases.len(), 5 + 519 + 7 * 4096);
+        let fresh_start = cases.len() - 4096;
+        for (index, scalar) in cases.iter().enumerate() {
+            let words = super::super::scalar_words_256(scalar).unwrap();
+            let parent = multiply_word_direct(words);
+            let candidate = multiply_u256_direct(words);
+            assert_eq!(candidate.1, parent.1, "representative {index}");
+            assert_eq!((candidate.2, candidate.4, candidate.5),
+                       (parent.2, parent.4, parent.5), "accounting {index}");
+            assert_eq!(candidate.3, U256_TABLES.retained_bytes);
+            assert_eq!(candidate.0, parent.0.affine_hex_binary_inverse(),
+                       "point {index}");
+            if (fresh_start..fresh_start + 128).contains(&index) {
+                let reduced = scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+            let (mut a, mut b) = parent.1;
+            let (mut ca, mut cb) = candidate.1;
+            for &width in &WIDTHS {
+                let lhs = TABLES.atlas(width).digit_word(a, b);
+                let rhs = U256_TABLES.atlas(width).digit_word(ca, cb);
+                assert_eq!(lhs, rhs, "orbit and unit {index}");
+                a = a.sub(Signed192::from_i32(lhs.0.0)).div_exact_power_of_two(width);
+                b = b.sub(Signed192::from_i32(lhs.0.1)).div_exact_power_of_two(width);
+                ca = ca.sub(Signed192::from_i32(rhs.0.0)).div_exact_power_of_two(width);
+                cb = cb.sub(Signed192::from_i32(rhs.0.1)).div_exact_power_of_two(width);
             }
         }
     }
