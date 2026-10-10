@@ -74,9 +74,9 @@ class InstallTest(unittest.TestCase):
 
     def test_a_mode_change_keeps_the_age(self):
         write(self.base / "t2", self.first)
-        os.chmod(self.base / "t2" / "README", 0o755)
+        os.chmod(self.base / "t2" / "README", 0o700)
         self.assertEqual(install_tree.install(self.base / "t2", self.checkout), (0, 0))
-        self.assertEqual((self.checkout / "README").stat().st_mode & 0o777, 0o755)
+        self.assertEqual((self.checkout / "README").stat().st_mode & 0o777, 0o700)
         self.assertEqual((self.checkout / "README").stat().st_mtime_ns, OLD)
 
     def test_files_and_directories_trade_places(self):
