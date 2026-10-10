@@ -662,6 +662,9 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 19 {
+        return TABLES.retained_bytes;
+    }
     if format == 18 {
         return TAU_PAIR_TABLES.retained_bytes;
     }
@@ -724,6 +727,9 @@ pub(super) fn multiply_word_format(
     scalar: &BigInt,
     format: u8,
 ) -> (Jacobian, BigInt, BigInt, usize, usize) {
+    if format == 19 {
+        return multiply_word_staged14(scalar);
+    }
     if format == 18 {
         return multiply_tau_pair(scalar);
     }
@@ -760,6 +766,70 @@ pub(super) fn multiply_word_format(
         nonidentity += 1;
     }
     assert!(a.is_zero() && b.is_zero(), "word unit-orbit recoding did not terminate");
+    (result, start_a, start_b, nonidentity.saturating_sub(1), tables.retained_bytes)
+}
+
+#[inline(always)]
+fn prefetch_compact_point(point: &CompactPairPoint) {
+    debug_assert!(size_of::<CompactPairPoint>() > 64);
+    let address = point as *const CompactPairPoint as *const i8;
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        use std::arch::x86_64::{_mm_prefetch, _MM_HINT_T0};
+        _mm_prefetch::<{ _MM_HINT_T0 }>(address);
+        _mm_prefetch::<{ _MM_HINT_T0 }>(address.wrapping_add(64));
+    }
+    #[cfg(target_arch = "aarch64")]
+    unsafe {
+        let first = address as usize;
+        let second = first + 64;
+        std::arch::asm!("prfm pldl1keep, [{ptr}]", ptr = in(reg) first,
+                        options(nostack, readonly, preserves_flags));
+        std::arch::asm!("prfm pldl1keep, [{ptr}]", ptr = in(reg) second,
+                        options(nostack, readonly, preserves_flags));
+    }
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    let _ = address;
+}
+
+fn multiply_word_staged14(
+    scalar: &BigInt,
+) -> (Jacobian, BigInt, BigInt, usize, usize) {
+    let lattice = &*SCALAR_LATTICE;
+    let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
+    let (start_a, start_b) = hexagonal_four_corner_choices(&residue).remove(0);
+    let mut a = Signed192::from_bigint(&start_a);
+    let mut b = Signed192::from_bigint(&start_b);
+    let tables = &*TABLES;
+    assert!(tables.widths.len() <= 16);
+    let mut choices = [(0usize, 0usize); 16];
+    for (index, &width) in tables.widths.iter().enumerate() {
+        let atlas = tables.atlas(width);
+        let (digit, orbit_id, unit_code) = atlas.digit_word(a, b);
+        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+        choices[index] = (orbit_id, unit_code);
+        if orbit_id != 0 {
+            prefetch_compact_point(&tables.windows[index][orbit_id]);
+        }
+    }
+    assert!(a.is_zero() && b.is_zero(), "staged word unit-orbit recoding did not terminate");
+    let mut result = Jacobian::identity();
+    let mut nonidentity = 0usize;
+    for (index, &(orbit_id, unit_code)) in choices[..tables.widths.len()].iter().enumerate() {
+        if orbit_id == 0 {
+            continue;
+        }
+        let mut addend = tables.windows[index][orbit_id].into_affine();
+        for _ in 0..(unit_code / 2) {
+            addend = addend.omega();
+        }
+        if unit_code & 1 != 0 {
+            addend = addend.neg();
+        }
+        result = result.add_mixed(addend);
+        nonidentity += 1;
+    }
     (result, start_a, start_b, nonidentity.saturating_sub(1), tables.retained_bytes)
 }
 
@@ -955,6 +1025,31 @@ mod tests {
             if (7..135).contains(&index) {
                 let reduced = &scalar % &SCALAR_LATTICE.n;
                 assert_eq!(candidate.0.affine_hex(),
+                           independent_binary_point(&reduced).affine_hex(),
+                           "independent fresh {index}");
+            }
+        }
+    }
+
+    #[test]
+    fn staged_word14_matches_reference_and_independent_points() {
+        let input: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-radix943-word-20261009/inputs.json"
+        )).unwrap();
+        let scalars = input["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 519);
+        for (index, hex) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(hex.as_str().unwrap().as_bytes(), 16).unwrap();
+            let reference = multiply_word_format(&scalar, 14);
+            let staged = multiply_word_staged14(&scalar);
+            assert_eq!((&staged.1, &staged.2, staged.3, staged.4),
+                       (&reference.1, &reference.2, reference.3, reference.4),
+                       "same scalar and table accounting {index}");
+            assert_eq!(staged.0.affine_hex(), reference.0.affine_hex(),
+                       "staged output {index}");
+            if (7..135).contains(&index) {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(staged.0.affine_hex(),
                            independent_binary_point(&reduced).affine_hex(),
                            "independent fresh {index}");
             }
