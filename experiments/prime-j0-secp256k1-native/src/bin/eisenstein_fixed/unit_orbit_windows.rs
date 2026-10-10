@@ -657,6 +657,80 @@ struct U256Jacobian {
     z: super::U256,
 }
 
+#[derive(Clone, Copy)]
+struct U256XYZZ {
+    x: super::U256,
+    y: super::U256,
+    zz: super::U256,
+    zzz: super::U256,
+}
+
+impl U256XYZZ {
+    fn identity() -> Self {
+        Self { x: super::U256::ZERO, y: super::HYBRID_FIELD.0.r_mod_n,
+               zz: super::U256::ZERO, zzz: super::U256::ZERO }
+    }
+
+    fn from_affine(point: U256Affine) -> Self {
+        let one = super::HYBRID_FIELD.0.r_mod_n;
+        Self { x: point.x, y: point.y, zz: one, zzz: one }
+    }
+
+    fn is_identity(self) -> bool {
+        bool::from(self.zz.ct_is_zero())
+    }
+
+    // Sutherland's XYZZ mixed addition, with a=0 and an affine second point.
+    fn add_mixed(self, q: U256Affine) -> Self {
+        if self.is_identity() { return Self::from_affine(q); }
+        let u2 = u256_mul(q.x, self.zz);
+        let s2 = u256_mul(q.y, self.zzz);
+        let p = u256_sub(u2, self.x);
+        let r = u256_sub(s2, self.y);
+        if bool::from(p.ct_is_zero()) {
+            return if bool::from(r.ct_is_zero()) { self.double() }
+                   else { Self::identity() };
+        }
+        let pp = u256_square(p);
+        let ppp = u256_mul(p, pp);
+        let qx = u256_mul(self.x, pp);
+        let rx = u256_sub(u256_sub(u256_square(r), ppp), u256_add(qx, qx));
+        let ry = u256_sub(u256_mul(r, u256_sub(qx, rx)), u256_mul(self.y, ppp));
+        let rzz = u256_mul(self.zz, pp);
+        let rzzz = u256_mul(self.zzz, ppp);
+        Self { x: rx, y: ry, zz: rzz, zzz: rzzz }
+    }
+
+    fn double(self) -> Self {
+        if self.is_identity() || bool::from(self.y.ct_is_zero()) {
+            return Self::identity();
+        }
+        let u = u256_add(self.y, self.y);
+        let v = u256_square(u);
+        let w = u256_mul(u, v);
+        let s = u256_mul(self.x, v);
+        let xx = u256_square(self.x);
+        let m = u256_add(u256_add(xx, xx), xx);
+        let rx = u256_sub(u256_square(m), u256_add(s, s));
+        let ry = u256_sub(u256_mul(m, u256_sub(s, rx)), u256_mul(w, self.y));
+        let rzz = u256_mul(v, self.zz);
+        let rzzz = u256_mul(w, self.zzz);
+        Self { x: rx, y: ry, zz: rzz, zzz: rzzz }
+    }
+
+    fn affine_hex_binary_inverse(self) -> String {
+        if self.is_identity() { return "identity".to_owned(); }
+        let ctx = &super::HYBRID_FIELD.0;
+        let inv_zzz = super::hybrid_binary_invert(self.zzz, ctx);
+        let inv_z = ctx.mont_mul(&self.zz, &inv_zzz);
+        let inv_zz = ctx.mont_sqr(&inv_z);
+        let x = ctx.mont_mul(&self.x, &inv_zz);
+        let y = ctx.mont_mul(&self.y, &inv_zzz);
+        format!("{}:{}", hex::encode(ctx.from_montgomery(&x).to_bytes_be()),
+                hex::encode(ctx.from_montgomery(&y).to_bytes_be()))
+    }
+}
+
 fn u256_add(a: super::U256, b: super::U256) -> super::U256 {
     a.add_mod(&b, &super::HYBRID_FIELD.0.n)
 }
@@ -1642,6 +1716,12 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 42 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return FRONTIER19_ORBIT_TAU_TABLES.retained_bytes;
+    }
     if format == 41 {
         std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
         std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
@@ -2440,6 +2520,44 @@ pub(super) fn multiply_u256_tau_frontier19_orbit_tau(
     assert!(a.is_zero() && b.is_zero(), "frontier19 orbit-tau recoding did not terminate");
 
     let mut bucket = U256Jacobian::identity();
+    for (index, &(seed_id, exponent, unit_code)) in choices.iter().enumerate() {
+        if seed_id == 0 { continue; }
+        bucket = bucket.add_mixed(tables.windows[index][seed_id].select(exponent, unit_code));
+    }
+    let point = bucket.affine_hex_binary_inverse();
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes, fallback, corner, 0)
+}
+
+pub(super) fn multiply_u256_tau_frontier19_xyzz(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*FRONTIER19_ORBIT_TAU_TABLES;
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize, 0usize); FRONTIER19_WIDTHS.len()];
+    let mut nonidentity = 0usize;
+    for (index, choice) in choices.iter_mut().enumerate() {
+        let width = FRONTIER19_WIDTHS[index];
+        let residue_a = a.rem_euclid_power_of_two(width);
+        let residue_b = b.rem_euclid_power_of_two(width);
+        let (digit, seed_id, exponent, unit_code) =
+            tables.atlas(index).digit_residue(residue_a, residue_b);
+        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+        *choice = (seed_id, exponent, unit_code);
+        nonidentity += usize::from(seed_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "frontier19 XYZZ recoding did not terminate");
+
+    let mut bucket = U256XYZZ::identity();
     for (index, &(seed_id, exponent, unit_code)) in choices.iter().enumerate() {
         if seed_id == 0 { continue; }
         bucket = bucket.add_mixed(tables.windows[index][seed_id].select(exponent, unit_code));
@@ -4362,6 +4480,63 @@ mod tests {
         }
         println!("frontier19_orbit_tau_table_slots=21949 retained_bytes={}",
                  tables.retained_bytes);
+    }
+
+    #[test]
+    fn frontier19_xyzz_mixed_group_law_matches_jacobian() {
+        let tables = &*FRONTIER19_TABLES;
+        let first = tables.windows[0][1];
+        assert!(U256XYZZ::identity().is_identity());
+        assert_eq!(U256XYZZ::identity().add_mixed(first).affine_hex_binary_inverse(),
+                   U256Jacobian::from_affine(first).affine_hex_binary_inverse());
+        assert!(U256XYZZ::from_affine(first).add_mixed(first.unit(1)).is_identity());
+        assert_eq!(U256XYZZ::from_affine(first).add_mixed(first)
+                       .affine_hex_binary_inverse(),
+                   U256Jacobian::from_affine(first).add_mixed(first)
+                       .affine_hex_binary_inverse());
+
+        let mut xyzz = U256XYZZ::identity();
+        let mut jacobian = U256Jacobian::identity();
+        for index in 0..128 {
+            let window = index % tables.windows.len();
+            let row = &tables.windows[window];
+            let point = row[1 + (index * 17 % (row.len() - 1))].unit(index % 6);
+            xyzz = xyzz.add_mixed(point);
+            jacobian = jacobian.add_mixed(point);
+            assert_eq!(xyzz.affine_hex_binary_inverse(),
+                       jacobian.affine_hex_binary_inverse(), "step {index}");
+            if !xyzz.is_identity() {
+                assert_eq!(u256_square(xyzz.zzz).0,
+                           u256_mul(xyzz.zz, u256_square(xyzz.zz)).0,
+                           "XYZZ invariant step {index}");
+            }
+        }
+    }
+
+    #[test]
+    fn frontier19_xyzz_matches_prior_panel_and_binary_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-orbit-tau-fusion-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_tau_frontier19_orbit_tau(words);
+            let candidate = multiply_u256_tau_frontier19_xyzz(words);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            assert_eq!((candidate.4, candidate.5), (reference.4, reference.5),
+                       "selector {index}");
+            assert_eq!(candidate.3, reference.3, "retained bytes {index}");
+            assert!(candidate.2 <= 18 && candidate.6 == 0);
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "binary point {index}");
+            }
+        }
     }
 
     #[test]
