@@ -245,6 +245,90 @@ impl OrbitAtlas {
     }
 }
 
+// The lexicographically first member of each six-unit orbit occupies three
+// contiguous intervals per nonzero row. Rank it without a residue-code array.
+struct ArithmeticOrbitAtlas {
+    width: u8,
+    digits: Box<[(i16, i16)]>,
+}
+
+impl ArithmeticOrbitAtlas {
+    fn new(width: u8) -> Self {
+        assert!((9..=10).contains(&width));
+        let base = 1usize << width;
+        let (q, r) = (base / 3, base % 3);
+        let mut digits = Vec::with_capacity((base * base + 8) / 6);
+        for b in 0..=base / 2 {
+            digits.push(nearest_digit((0, b as i32), base as i32));
+        }
+        for a in 1..=q {
+            for b in 0..=q - a {
+                digits.push(nearest_digit((a as i32, b as i32), base as i32));
+            }
+            for b in q + 1..=2 * q + r - 1 - a {
+                digits.push(nearest_digit((a as i32, b as i32), base as i32));
+            }
+            for b in 2 * q + r..=base - 1 - a {
+                digits.push(nearest_digit((a as i32, b as i32), base as i32));
+            }
+        }
+        assert_eq!(digits.len(), (base * base + 8) / 6);
+        assert_eq!(digits[0], (0, 0));
+        Self { width, digits: digits.into_boxed_slice() }
+    }
+
+    fn rank(&self, a: usize, b: usize) -> usize {
+        let base = 1usize << self.width;
+        let (q, r) = (base / 3, base % 3);
+        if a == 0 {
+            assert!(b <= base / 2);
+            return b;
+        }
+        assert!(a <= q);
+        let mut rank = base / 2 + 1 + (a - 1) * base - 3 * (a - 1) * a / 2;
+        if b <= q - a {
+            return rank + b;
+        }
+        rank += q - a + 1;
+        if (q + 1..=2 * q + r - 1 - a).contains(&b) {
+            return rank + b - (q + 1);
+        }
+        rank += q + r - 1 - a;
+        assert!((2 * q + r..=base - 1 - a).contains(&b));
+        rank + b - (2 * q + r)
+    }
+
+    fn digit_word(&self, a: Signed192, b: Signed192) -> ((i32, i32), usize, usize) {
+        let ra = a.rem_euclid_power_of_two(self.width);
+        let rb = b.rem_euclid_power_of_two(self.width);
+        self.digit_residue(ra, rb)
+    }
+
+    fn digit_residue(&self, ra: usize, rb: usize) -> ((i32, i32), usize, usize) {
+        let base = 1i32 << self.width;
+        let mut value = (ra as i32, rb as i32);
+        let mut best = ((usize::MAX, usize::MAX), usize::MAX);
+        for power in 0..3 {
+            for sign in 0..2 {
+                let image = if sign == 0 { value } else { (-value.0, -value.1) };
+                let image = (image.0.rem_euclid(base) as usize,
+                             image.1.rem_euclid(base) as usize);
+                let inverse_code = 2 * ((3 - power) % 3) + sign;
+                best = best.min((image, inverse_code));
+            }
+            let rotated = omega(value);
+            value = (rotated.0.rem_euclid(base), rotated.1.rem_euclid(base));
+        }
+        let (canonical, unit_code) = best;
+        let orbit_id = self.rank(canonical.0, canonical.1);
+        let (da, db) = self.digits[orbit_id];
+        let digit = unit_images((i32::from(da), i32::from(db)))[unit_code];
+        debug_assert_eq!((digit.0.rem_euclid(base) as usize,
+                          digit.1.rem_euclid(base) as usize), (ra, rb));
+        (digit, orbit_id, unit_code)
+    }
+}
+
 fn affine_multiples(base: Jacobian, max_abs: usize) -> Vec<Jacobian> {
     let base = base.into_affine();
     let mut projective = Vec::with_capacity(max_abs);
@@ -517,6 +601,18 @@ struct U256Tables {
     retained_bytes: usize,
 }
 
+fn build_u256_window(digits: &[(i16, i16)], base: Jacobian) -> Box<[U256Affine]> {
+    build_window(digits, base).iter().enumerate().map(|(index, &packed)| {
+        if index == 0 {
+            U256Affine { x: super::U256::ZERO, y: super::U256::ZERO }
+        } else {
+            let point = packed.into_affine();
+            U256Affine { x: super::hybrid_pair_mont(point.x),
+                         y: super::hybrid_pair_mont(point.y) }
+        }
+    }).collect::<Vec<_>>().into_boxed_slice()
+}
+
 impl U256Tables {
     fn new() -> Self {
         assert_eq!(size_of::<U256Affine>(), 64);
@@ -528,17 +624,7 @@ impl U256Tables {
         let mut base = Jacobian::generator();
         for &width in &WIDTHS {
             let atlas = atlases[usize::from(width - 8)].as_ref().unwrap();
-            let row = build_window(&atlas.digits, base);
-            let converted = row.iter().enumerate().map(|(index, &packed)| {
-                if index == 0 {
-                    U256Affine { x: super::U256::ZERO, y: super::U256::ZERO }
-                } else {
-                    let point = packed.into_affine();
-                    U256Affine { x: super::hybrid_pair_mont(point.x),
-                                 y: super::hybrid_pair_mont(point.y) }
-                }
-            }).collect::<Vec<_>>().into_boxed_slice();
-            windows.push(converted);
+            windows.push(build_u256_window(&atlas.digits, base));
             for _ in 0..width { base = base.double(); }
         }
         let entries = windows.iter().map(|row| row.len()).sum::<usize>();
@@ -563,6 +649,44 @@ impl U256Tables {
 }
 
 static U256_TABLES: LazyLock<U256Tables> = LazyLock::new(U256Tables::new);
+
+struct ArithmeticU256Tables {
+    atlases: [Option<ArithmeticOrbitAtlas>; 3],
+    windows: Vec<Box<[U256Affine]>>,
+    retained_bytes: usize,
+}
+
+impl ArithmeticU256Tables {
+    fn new() -> Self {
+        let atlases: [Option<ArithmeticOrbitAtlas>; 3] = std::array::from_fn(|index| {
+            let width = 8 + index as u8;
+            WIDTHS.contains(&width).then(|| ArithmeticOrbitAtlas::new(width))
+        });
+        let mut windows = Vec::with_capacity(WIDTHS.len());
+        let mut base = Jacobian::generator();
+        for &width in &WIDTHS {
+            let atlas = atlases[usize::from(width - 8)].as_ref().unwrap();
+            windows.push(build_u256_window(&atlas.digits, base));
+            for _ in 0..width { base = base.double(); }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        let retained_bytes = entries * size_of::<U256Affine>()
+            + atlases.iter().flatten().map(|atlas| {
+                atlas.digits.len() * size_of::<(i16, i16)>()
+            }).sum::<usize>()
+            + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[U256Affine]>>();
+        assert!(retained_bytes < CAP_BYTES);
+        Self { atlases, windows, retained_bytes }
+    }
+
+    fn atlas(&self, width: u8) -> &ArithmeticOrbitAtlas {
+        self.atlases[usize::from(width - 8)].as_ref().unwrap()
+    }
+}
+
+static ARITHMETIC_U256_TABLES: LazyLock<ArithmeticU256Tables> =
+    LazyLock::new(ArithmeticU256Tables::new);
 
 struct Radix13Tables {
     atlas: OrbitAtlas,
@@ -843,6 +967,12 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 28 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return ARITHMETIC_U256_TABLES.retained_bytes;
+    }
     if format == 26 || format == 27 {
         std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
         std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
@@ -1007,19 +1137,26 @@ fn u256_gauge_choices(
     (choices, nonidentity)
 }
 
-pub(super) fn multiply_u256_gauge(
-    scalar_words: [u64; 4],
-) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
-    let scalar = super::Uint(scalar_words);
-    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
-        scalar
-    } else {
-        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
-    };
-    let (representative, fallback, corner) =
-        super::hexagonal_certified_fixed_choice_words(residue.0);
-    let tables = &*U256_TABLES;
-    let (choices, nonidentity) = u256_gauge_choices(representative, tables);
+fn u256_arithmetic_choices(
+    representative: (Signed192, Signed192), tables: &ArithmeticU256Tables,
+) -> ([(usize, usize); 14], usize) {
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize); 14];
+    let mut nonidentity = 0usize;
+    for (index, &width) in WIDTHS.iter().enumerate() {
+        let (digit, orbit_id, unit_code) = tables.atlas(width).digit_word(a, b);
+        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+        choices[index] = (orbit_id, unit_code);
+        nonidentity += usize::from(orbit_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "arithmetic U14 recoding did not terminate");
+    (choices, nonidentity)
+}
+
+fn evaluate_u256_gauge(
+    choices: &[(usize, usize); 14], windows: &[Box<[U256Affine]>],
+) -> (String, usize) {
     let mut result = U256Jacobian::identity();
     let mut gauge = None;
     let mut gauge_products = 0usize;
@@ -1037,7 +1174,7 @@ pub(super) fn multiply_u256_gauge(
         gauge = Some(power);
         for (index, &(orbit_id, unit_code)) in choices.iter().enumerate() {
             if orbit_id == 0 || unit_code / 2 != power { continue; }
-            result = result.add_mixed(tables.windows[index][orbit_id].unit(unit_code & 1));
+            result = result.add_mixed(windows[index][orbit_id].unit(unit_code & 1));
         }
     }
     if let Some(power) = gauge {
@@ -1047,9 +1184,44 @@ pub(super) fn multiply_u256_gauge(
         }
     }
     assert!(gauge_products <= 2);
-    (result.affine_hex_binary_inverse(), representative,
+    (result.affine_hex_binary_inverse(), gauge_products)
+}
+
+pub(super) fn multiply_u256_gauge(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*U256_TABLES;
+    let (choices, nonidentity) = u256_gauge_choices(representative, tables);
+    let (point, gauge_products) = evaluate_u256_gauge(&choices, &tables.windows);
+    (point, representative,
      nonidentity.saturating_sub(1), tables.retained_bytes, fallback, corner,
      gauge_products)
+}
+
+pub(super) fn multiply_u256_arithmetic(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*ARITHMETIC_U256_TABLES;
+    let (choices, nonidentity) = u256_arithmetic_choices(representative, tables);
+    let (point, gauge_products) = evaluate_u256_gauge(&choices, &tables.windows);
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes, fallback, corner, gauge_products)
 }
 
 pub(super) fn multiply_word_format(
@@ -1747,6 +1919,23 @@ mod tests {
                 assert_eq!(direct.0.affine_hex_binary_inverse(),
                            independent_binary_point(&reduced).affine_hex(),
                            "independent point {index}");
+            }
+        }
+    }
+
+    #[test]
+    fn arithmetic_atlas_matches_every_u14_residue() {
+        for width in [9u8, 10] {
+            let stored = OrbitAtlas::new(width);
+            let arithmetic = ArithmeticOrbitAtlas::new(width);
+            assert_eq!(&*arithmetic.digits, &*stored.digits, "digit list width {width}");
+            let base = 1usize << width;
+            for ra in 0..base {
+                for rb in 0..base {
+                    assert_eq!(arithmetic.digit_residue(ra, rb),
+                               stored.digit_residue(ra, rb),
+                               "width {width} residue ({ra},{rb})");
+                }
             }
         }
     }
