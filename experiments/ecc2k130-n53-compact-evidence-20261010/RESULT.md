@@ -86,6 +86,23 @@ requires independent rank seeds for the final comparison. It must count
 aborted probes, new-query generation, final rank, target recovery and matched
 rho, so a probe reduction alone cannot be reported as a cold or online gain.
 
+**Follow-up outcome.** The frozen restart experiment is complete in merged
+[`crypto` PR #1626](https://github.com/aburan28/crypto/pull/1626) at
+[`9be831f4ec75c9a18334a67033333aeeb4b42fad`](https://github.com/aburan28/crypto/commit/9be831f4ec75c9a18334a67033333aeeb4b42fad).
+The selected 400,000-probe cap and unbounded control used the same 23,320-point
+base (220 signed-Frobenius columns) and six independent rank seeds on the new
+held-out public point `Q=[2939726529610565,1384157319972946]`. All 18 IC
+and same-point rho cells independently verified scalar `11184763905218`.
+The cap reduced median paired total rank probes by 5.189%, below the frozen
+15% gate, while its median paired complete-cold cost ratio was 1.020, above
+the no-increase gate. The cap therefore does not advance. The
+[`HELDOUT_RESULT.md`](https://github.com/aburan28/crypto/blob/9be831f4ec75c9a18334a67033333aeeb4b42fad/research/notes/ecc2k130/n53_fixed_base_rank_restarts_20261010/HELDOUT_RESULT.md)
+retains each run, uncertainty, exact input and source identities, and
+independent replay. Its online IC and rho timings are exploratory because
+the shared host lacks a CPU isolation receipt. The next fixed-base test should
+reduce cost per support probe or change the pair-root index policy, with
+complete cold and target-online gates frozen before execution.
+
 Replay this audit from a clone containing the pinned `crypto` commit:
 
 ```sh

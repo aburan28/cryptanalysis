@@ -243,9 +243,14 @@ independently replayed full-rank n53 controls on different source-curve bases.
 The [retrospective trace audit](../ecc2k130-n53-compact-evidence-20261010/RESULT.md)
 pins those inputs and shows that the n53 K220 collector's 22 most costly
 rank rows used 34.8261% of its 18,413,613 probes. Its six timing repeats
-share one byte-identical rank stream. The next frozen comparison holds that
-exact base and public point fixed while testing bounded rank-query restarts;
-the signed-expanded n53 timeout remains a separate, censored configuration.
+share one byte-identical rank stream. The [fixed-base restart follow-up](https://github.com/aburan28/crypto/pull/1626)
+held the exact 23,320-point K220 base fixed and tested a selected 400,000-probe
+cap on a new held-out public point over six independent rank seeds. Its median
+paired probe reduction was 5.189% and median paired complete-cold cost ratio
+was 1.020, so it missed both advancement conditions. All IC and same-point
+rho cells independently verified the target scalar. The next producer test
+should target cost per support probe or the pair-root index; the
+signed-expanded n53 timeout remains a separate, censored configuration.
 
 Screen the 1,000 proposals in stages rather than launch 1,000 complete DLPs.
 First materialize and replay factor bases, then benchmark PDPs on identical
