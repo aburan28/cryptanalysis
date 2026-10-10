@@ -23,6 +23,17 @@ that every discarded high limb is a valid sign extension before entering
 the existing `Signed192` recoder. On an ambiguous corner certificate,
 use the parent's exact selector and convert its coordinates.
 
+The fixed basis satisfies `u1,v1<2^128` and `w0,-w1<2^129`.
+For `k<n`, each quotient plus its corner bit is at most its positive
+numerator constant. Thus each 3-by-3 product is below `2^258`, and
+the largest positive intermediate, `k+(q_v+d_v)u1`, is below
+`2^256+2^257<2^258`. Six 64-bit limbs cover the intermediate with
+ample headroom. The nearest hexagonal cell has norm at most `n/3`;
+minimizing `a²+3ab+3b²` over the other coordinate gives
+`|a|<=2*sqrt(n/3)<2^129` and `|b|<=2*sqrt(n)/3<2^128`.
+Three limbs therefore cover both signed outputs. The implementation
+also checks every discarded limb before recoding.
+
 ## Evaluation gates
 
 1. Freeze this protocol before generating a disjoint 4,096-scalar holdout.

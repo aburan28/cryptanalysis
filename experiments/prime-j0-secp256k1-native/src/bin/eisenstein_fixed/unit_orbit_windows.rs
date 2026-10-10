@@ -662,8 +662,11 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
-    if format == 20 || format == 21 {
+    if format == 20 || format == 21 || format == 22 {
         std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        if format == 22 {
+            std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        }
         return TABLES.retained_bytes;
     }
     if format == 19 {
@@ -745,16 +748,22 @@ pub(super) fn multiply_word_format(
     }
     let lattice = &*SCALAR_LATTICE;
     let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
-    let (start_a, start_b) = if format == 21 {
-        super::hexagonal_certified_corner_choice(&residue).0
-    } else if format == 20 {
-        super::hexagonal_four_corner_choices_reciprocal(&residue).remove(0)
+    let (mut a, mut b, original) = if format == 22 {
+        let (a, b) = super::hexagonal_certified_fixed_choice(&residue).0;
+        (a, b, None)
     } else {
-        hexagonal_four_corner_choices(&residue).remove(0)
+        let (start_a, start_b) = if format == 21 {
+            super::hexagonal_certified_corner_choice(&residue).0
+        } else if format == 20 {
+            super::hexagonal_four_corner_choices_reciprocal(&residue).remove(0)
+        } else {
+            hexagonal_four_corner_choices(&residue).remove(0)
+        };
+        (Signed192::from_bigint(&start_a), Signed192::from_bigint(&start_b),
+         Some((start_a, start_b)))
     };
-    let mut a = Signed192::from_bigint(&start_a);
-    let mut b = Signed192::from_bigint(&start_b);
-    let tables = selected(if format == 20 || format == 21 { 14 } else { format });
+    let start_fixed = (a, b);
+    let tables = selected(if (20..=22).contains(&format) { 14 } else { format });
     let mut result = Jacobian::identity();
     let mut nonidentity: usize = 0;
     for (index, &width) in tables.widths.iter().enumerate() {
@@ -776,6 +785,8 @@ pub(super) fn multiply_word_format(
         nonidentity += 1;
     }
     assert!(a.is_zero() && b.is_zero(), "word unit-orbit recoding did not terminate");
+    let (start_a, start_b) = original.unwrap_or_else(||
+        (start_fixed.0.to_bigint(), start_fixed.1.to_bigint()));
     (result, start_a, start_b, nonidentity.saturating_sub(1), tables.retained_bytes)
 }
 
@@ -1159,6 +1170,50 @@ mod tests {
         }
         assert_eq!(fallback, 0);
         assert_eq!(counts, [2983, 1414, 1455, 2863]);
+    }
+
+    #[test]
+    fn fixed_limb_voronoi_matches_certified_representative_and_points() {
+        let panels = [
+            include_str!("../../../../prime-j0-radix943-word-20261009/inputs.json"),
+            include_str!("../../../../prime-j0-exact-reciprocal-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-certified-voronoi-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-fixed-limb-voronoi-20261010/fresh-inputs.json"),
+        ];
+        let mut cases = vec![BigInt::ZERO, &SCALAR_LATTICE.n - BigInt::from(1),
+                             SCALAR_LATTICE.n.clone(),
+                             (BigInt::from(1) << 256usize) - BigInt::from(1)];
+        for panel in panels {
+            let data: serde_json::Value = serde_json::from_str(panel).unwrap();
+            cases.extend(data["scalars_hex"].as_array().unwrap().iter().map(|value|
+                BigInt::parse_bytes(value.as_str().unwrap().as_bytes(), 16).unwrap()));
+        }
+        assert_eq!(cases.len(), 4 + 519 + 3 * 4096);
+        let fresh_start = 4 + 519 + 2 * 4096;
+        let mut fallbacks = 0usize;
+        for (index, scalar) in cases.iter().enumerate() {
+            let reduced = scalar % &SCALAR_LATTICE.n;
+            let ((a, b), fallback, corner) =
+                super::super::hexagonal_certified_fixed_choice(&reduced);
+            let (parent, parent_fallback, parent_corner) =
+                super::super::hexagonal_certified_corner_choice(&reduced);
+            assert_eq!((fallback, corner), (parent_fallback, parent_corner),
+                       "certificate {index}");
+            assert_eq!((a.to_bigint(), b.to_bigint()), parent,
+                       "coordinates {index}");
+            fallbacks += usize::from(fallback);
+            let expected = multiply_word_format(scalar, 21);
+            let actual = multiply_word_format(scalar, 22);
+            assert_eq!((&actual.1, &actual.2, actual.3, actual.4),
+                       (&expected.1, &expected.2, expected.3, expected.4),
+                       "accounting {index}");
+            assert_eq!(actual.0.affine_hex(), expected.0.affine_hex(), "point {index}");
+            if (fresh_start..fresh_start + 128).contains(&index) {
+                assert_eq!(actual.0.affine_hex(), independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+        assert_eq!(fallbacks, 0);
     }
 
     #[test]
