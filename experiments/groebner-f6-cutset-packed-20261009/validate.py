@@ -175,7 +175,7 @@ def cluster_summary(rows):
         logs, k=TARGETS))) for _ in range(2000))
     medians = {}
     for arm in ('direct', 'packed'):
-        values = [entry[rep, arm] for _, entries in complete
+        values = [entries[rep, arm] for _, entries in complete
                   for rep in range(REPETITIONS)]
         medians[arm] = {name: statistics.median(v[name] for v in values) / 1e6
                         for name in ('online_ns', 'coefficient_ns',
