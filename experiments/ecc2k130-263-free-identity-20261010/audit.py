@@ -25,8 +25,6 @@ sys.path.insert(0, str(NATIVE))
 import field as ref  # noqa: E402
 sys.path.insert(0, str(VERIFY))
 from verify_model import parse_assignment, replay_signs, verify_xcnf  # noqa: E402
-sys.path.insert(0, str(HERE))
-import experiment as producer  # noqa: E402
 
 
 def load_module(path: Path, name: str):
@@ -60,10 +58,65 @@ def check_known_identity(policy: str, named: dict, values: list[int]):
     return {"x0": x, "z0": z, "field_identity": True}
 
 
+def check_identity_tail(formula: Path, receipt: dict, named: dict,
+                        policy: str, unit_path: Path | None):
+    """Independently reconstruct every added Tseitin and field-XOR record."""
+    alpha, _ = ref.coefficients(policy)
+    old_vars = receipt["stats"]["vars"]
+    old_constraints = receipt["stats"]["clauses"] + receipt["stats"]["xors"]
+    products = [[] for _ in range(ref.DEGREE)]
+    with formula.open("rb") as stream:
+        header = stream.readline().split()
+        if len(header) != 4 or header[:2] != [b"p", b"cnf"]:
+            raise ValueError("bad strengthened formula header")
+        for _ in range(old_constraints):
+            next(stream)
+        for i in range(ref.DEGREE):
+            x = named[f"x0:{i}"]
+            for j in range(ref.DEGREE):
+                z = named[f"z0:{j}"]
+                aux = old_vars + 1 + i * ref.DEGREE + j
+                expected = (f"-{x} -{z} {aux} 0\n".encode(),
+                            f"{x} -{aux} 0\n".encode(),
+                            f"{z} -{aux} 0\n".encode())
+                if tuple(next(stream) for _ in range(3)) != expected:
+                    raise ValueError("AND gate differs from independent encoding")
+                # Different reduction order from the producer's linear-map
+                # columns: t^(i+j) is reduced first, then scaled by alpha.
+                column = ref.multiply(alpha, ref.reduce(1 << (i + j)))
+                while column:
+                    low = column & -column
+                    products[low.bit_length() - 1].append(aux)
+                    column ^= low
+        alpha_square = ref.reduce(sum(1 << (2 * i)
+                                      for i in range(ref.DEGREE)
+                                      if (alpha >> i) & 1))
+        for bit in range(ref.DEGREE):
+            literals = products[bit] + [named[f"x0:{i}"]
+                                        for i in range(ref.DEGREE)
+                                        if (ref.reduce(1 << (2 * i)) >> bit) & 1]
+            if not (alpha_square >> bit) & 1:
+                literals[0] = -literals[0]
+            expected = ("x" + " ".join(map(str, literals)) + " 0\n").encode()
+            if next(stream) != expected:
+                raise ValueError("field identity XOR differs from independent encoding")
+        expected_delta = unit_path.read_bytes() if unit_path else b""
+        if stream.read() != expected_delta:
+            raise ValueError("unit-clause tail differs")
+    return {"and_gates": ref.DEGREE**2, "clauses": 3 * ref.DEGREE**2,
+            "field_xors": ref.DEGREE, "independent_tail_replay": True}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--write", action="store_true")
     args = parser.parse_args()
+    # The archived ordinary auditor imports its own module named experiment.
+    # Load it first from its directory, then load this producer under a
+    # distinct name so neither module can shadow the other's source.
+    sys.path.insert(0, str(ORDINARY))
+    ordinary_audit = load_module(ORDINARY / "audit.py", "free_identity_ordinary_audit")
+    producer = load_module(HERE / "experiment.py", "free_identity_producer")
     cfg = producer.config()
     panel = producer.read(RUN / "cells.json")
     if (panel["schema"] != "ecc2k130-free-identity-cells-v1"
@@ -74,7 +127,6 @@ def main() -> None:
             or panel["source_sha256"] != producer.sha(HERE / "source.json")
             or panel["runner_sha256"] != producer.sha(HERE / "experiment.py")):
         raise ValueError("frozen input panel changed")
-    ordinary_audit = load_module(ORDINARY / "audit.py", "free_identity_ordinary_audit")
     ordinary_cfg = producer.read(ORDINARY / "CONFIG.json")
     witness = producer.read(WITNESS)
     rows = {}
@@ -90,9 +142,11 @@ def main() -> None:
             actual = producer.build(kind, policy, variant, formula)
             if any(actual[key] != expected[key] for key in actual):
                 raise ValueError("full XCNF does not match precommitted input")
-            archive_path, receipt_path, named_path, _ = producer.paths(kind, policy)
+            archive_path, receipt_path, named_path, unit_path = producer.paths(kind, policy)
             receipt = producer.read(receipt_path)
             named = producer.read(named_path)
+            tail_check = (check_identity_tail(formula, receipt, named, policy, unit_path)
+                          if variant == "identity" else None)
             result_path = RUN / f"{stem}.solver.json"
             result = producer.read(result_path)
             stdout_path = RUN / f"{stem}.stdout.txt.gz"
@@ -170,6 +224,7 @@ def main() -> None:
                 "solver_receipt_sha256": producer.sha(result_path),
                 "stdout_archive_sha256": producer.sha(stdout_path),
                 "xcnf_checks": verification, "field_identity_check": identity,
+                "encoding_tail_check": tail_check,
                 "group_replay": relation, "verified_relation": relation is not None,
                 "novel_rank": None,
             }
