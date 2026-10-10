@@ -3577,10 +3577,10 @@ fn check_generator_case(
     let preparation_start = Instant::now();
     LazyLock::force(&SCALAR_LATTICE);
     LazyLock::force(&DECODE_CONSTANTS);
-    if (123..=134).contains(&unit_orbit_format) {
+    if (123..=135).contains(&unit_orbit_format) {
         LazyLock::force(&HYBRID_FIELD);
     }
-    if (124..=134).contains(&unit_orbit_format) {
+    if (124..=135).contains(&unit_orbit_format) {
         LazyLock::force(&BINARY_INVERSE_R3);
     }
     let retained_bytes = if unit_orbit_format != 0 {
@@ -3626,11 +3626,15 @@ fn check_generator_case(
         LazyLock::force(&GLV_COMB10_POINTS);
     }
     let scalar = scalar_from_hex(scalar_hex);
-    let scalar_words = (125..=134).contains(&unit_orbit_format)
+    let scalar_words = (125..=135).contains(&unit_orbit_format)
         .then(|| scalar_words_256(&scalar)).flatten();
     let preparation_ms = preparation_start.elapsed().as_secs_f64() * 1000.0;
     let start = Instant::now();
-    let actual = if unit_orbit_format == 134 {
+    let actual = if unit_orbit_format == 135 {
+        unit_orbit_windows::multiply_u256_tau384_matching(
+            scalar_words.expect("tau384 matching requires unsigned 256-bit scalar")
+        ).0
+    } else if unit_orbit_format == 134 {
         unit_orbit_windows::multiply_u256_radix384_fast(
             scalar_words.expect("fast radix-384 digit requires unsigned 256-bit scalar")
         ).0
@@ -3722,7 +3726,9 @@ fn check_generator_case(
     };
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if unit_orbit_format == 134 {
+    let mode = if unit_orbit_format == 135 {
+        "unit_orbit_u256_tau384_matching_fixed"
+    } else if unit_orbit_format == 134 {
         "unit_orbit_u256_radix384_fast_fixed"
     } else if unit_orbit_format == 133 {
         "unit_orbit_u256_radix384_fixed"
@@ -3876,13 +3882,17 @@ fn main() {
             || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-formula")
             || args[0].starts_with("--check-scalar-unit-orbit-u256-sector")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-sector")
+            || args[0].starts_with("--check-scalar-unit-orbit-u256-tau384-matching")
+            || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-tau384-matching")
             || args[0].starts_with("--check-scalar-unit-orbit-u256-radix384")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-radix384")
             || args[0].starts_with("--check-scalar-unit-orbit-radix943")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-radix943"))
         && args[0].ends_with("-fixed-fixture")
     {
-        let format = if args[0].contains("unit-orbit-u256-radix384-fast-fixed-fixture") {
+        let format = if args[0].contains("unit-orbit-u256-tau384-matching-fixed-fixture") {
+            135
+        } else if args[0].contains("unit-orbit-u256-radix384-fast-fixed-fixture") {
             134
         } else if args[0].contains("unit-orbit-u256-radix384-fixed-fixture") {
             133
@@ -4079,6 +4089,8 @@ fn main() {
             || args[0] == "--check-scalar-unit-orbit-u256-sector16-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-u256-radix384-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-u256-radix384-fixed-case"
+            || args[0] == "--benchmark-scalar-unit-orbit-u256-tau384-matching-fixed-case"
+            || args[0] == "--check-scalar-unit-orbit-u256-tau384-matching-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-u256-radix384-fast-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-u256-radix384-fast-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-radix943-fixed-case"
@@ -4122,7 +4134,9 @@ fn main() {
             args[0].contains("w6-comb13-hex9-radius2"),
             args[0].contains("w6-comb13-hex9-graph33"),
             args[0].contains("w6-comb13-hex9-graphaware33"),
-            if args[0].contains("unit-orbit-u256-radix384-fast") {
+            if args[0].contains("unit-orbit-u256-tau384-matching") {
+                135
+            } else if args[0].contains("unit-orbit-u256-radix384-fast") {
                 134
             } else if args[0].contains("unit-orbit-u256-radix384") {
                 133
