@@ -10,10 +10,10 @@ HERE = Path(__file__).resolve().parent
 SUPPORT = HERE.parent / "n131_w14_ten_source_gate_20261009"
 sha = lambda path: hashlib.sha256(Path(path).read_bytes()).hexdigest()
 control = json.loads((HERE / "control.json").read_text())
-protocol = json.loads((HERE / "protocol.json").read_text())
+protocol = json.loads((HERE / "protocol_v2.json").read_text())
 profile = json.loads((HERE / "profile.json").read_text())
 runtime = json.loads((HERE / "sage_runtime_info.json").read_text())
-assert protocol["status"] == "FROZEN_BEFORE_FULL_FORMULA"
+assert protocol["status"] == "FROZEN_BEFORE_FULL_FORMULA_V2"
 assert profile["status"] == "PASS_FULL_FORMULA_CONSTRUCTED_GROUP_WITNESS"
 assert runtime["status"] == "verified"
 assert protocol["control_sha256"] == sha(HERE / "control.json")
@@ -98,7 +98,7 @@ result = {"status": "PASS_INDEPENDENT_SAGE_N131_GROUP_AND_FRAME_REPLAY",
           "target_q": control["target_q"], "raw_sum": control["raw_sum"],
           "checked_frame_leaf_links": 5, "checked_upper_links": 4,
           "source_sha256": {"control": sha(HERE / "control.json"),
-                            "protocol": sha(HERE / "protocol.json"),
+                            "protocol": sha(HERE / "protocol_v2.json"),
                             "profile": sha(HERE / "profile.json"),
                             "runtime": sha(HERE / "sage_runtime_info.json"),
                             "script": sha(__file__)}}

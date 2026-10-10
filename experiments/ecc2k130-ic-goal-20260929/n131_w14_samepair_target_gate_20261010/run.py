@@ -19,6 +19,7 @@ R = 680564733841876926932320129493409985129
 LOW_TERMS = [0, 1, 2, 13]
 CAP_SECONDS = 120
 RSS_CAP = 4 * 1024**3
+PROTOCOL_V2 = HERE / "protocol_v2.json"
 
 
 def load(name, path):
@@ -173,12 +174,41 @@ def freeze():
                       "pair_input_indices": control["pair_input_indices"]}))
 
 
+def refreeze_v2():
+    old_record = json.loads((HERE / "protocol.json").read_text())
+    failure = json.loads((HERE / "failure_v1.json").read_text())
+    if (old_record["status"] != "FROZEN_BEFORE_FULL_FORMULA" or
+            failure["status"] != "PRODUCER_FAILURE_ROTATION_POLICY_MISMATCH" or
+            old_record["control_sha256"] != sha(HERE / "control.json") or
+            old_record["rotations"] != ROTATIONS):
+        raise ValueError("v1 input or failure receipt changed")
+    sources = {"runner": Path(__file__), "circuit": HERE / "circuit.py",
+               "query": HERE / "query.py",
+               "support_protocol": SUPPORT / "support_protocol.json",
+               "support_audit": SUPPORT / "sage_support_audit.json",
+               "support_masks": SUPPORT / "support_w14.tsv",
+               "pair_inputs": PAIR / "inputs.json",
+               "pair_sage_audit": PAIR / "sage_audit.json",
+               "old_runner": OLD / "run.py"}
+    record = {**old_record,
+              "status": "FROZEN_BEFORE_FULL_FORMULA_V2",
+              "corrects_protocol_sha256": sha(HERE / "protocol.json"),
+              "preserved_failure_sha256": sha(HERE / "failure_v1.json"),
+              "source_sha256": {name: sha(path)
+                                for name, path in sources.items()}}
+    save(PROTOCOL_V2, record)
+    print(json.dumps({"status": record["status"],
+                      "rotations": record["rotations"]}))
+
+
 def profile():
-    record = json.loads((HERE / "protocol.json").read_text())
+    record = json.loads(PROTOCOL_V2.read_text())
     control = json.loads((HERE / "control.json").read_text())
+    assert record["status"] == "FROZEN_BEFORE_FULL_FORMULA_V2"
     assert record["control_sha256"] == sha(HERE / "control.json")
     assert record["source_sha256"]["runner"] == sha(__file__)
     assert record["source_sha256"]["circuit"] == sha(HERE / "circuit.py")
+    assert record["source_sha256"]["query"] == sha(HERE / "query.py")
     protocol, audit, columns, field, curve, source_w, source_u = source()
     q = tuple(control["target_q"])
     assert curve.mul(R, q) is None
@@ -188,7 +218,7 @@ def profile():
     circuit = old.old.base.KaratsubaCircuit(131, LOW_TERMS)
     started = time.monotonic()
     meta = method.build(circuit, field, source_w, source_u,
-                        protocol["rotations"], columns, columns, target_us)
+                        record["rotations"], columns, columns, target_us)
     build_seconds = time.monotonic() - started
     formula = HERE / "constructed_full.xcnf"
     circuit.write(formula)
@@ -221,7 +251,7 @@ def profile():
               "formula_build_seconds": build_seconds,
               "profile_wall_seconds": elapsed,
               "sampled_python_rss_bytes": rss,
-              "source_sha256": {"protocol": sha(HERE / "protocol.json"),
+              "source_sha256": {"protocol": sha(PROTOCOL_V2),
                                 "control": sha(HERE / "control.json"),
                                 "formula": sha(formula)}}
     save(HERE / "profile.json", result)
@@ -231,5 +261,6 @@ def profile():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=("freeze", "profile"))
-    {"freeze": freeze, "profile": profile}[parser.parse_args().mode]()
+    parser.add_argument("mode", choices=("freeze", "refreeze_v2", "profile"))
+    {"freeze": freeze, "refreeze_v2": refreeze_v2,
+     "profile": profile}[parser.parse_args().mode]()

@@ -27,7 +27,7 @@ FLAGS = ["--threads=1", "--xor=0", "--printsol=1",
 def sources():
     return {"runner": Path(__file__), "formula_runner": HERE / "run.py",
             "circuit": HERE / "circuit.py",
-            "construction_protocol": HERE / "protocol.json",
+            "construction_protocol": run.PROTOCOL_V2,
             "construction_profile": HERE / "profile.json",
             "sage_replay": HERE / "sage_audit.json",
             "official_parameters": OFFICIAL / "official_fixed_parameters.json",
@@ -56,7 +56,8 @@ def freeze():
     assert construction["status"] == "PASS_FULL_FORMULA_CONSTRUCTED_GROUP_WITNESS"
     assert replay["status"] == "PASS_INDEPENDENT_SAGE_N131_GROUP_AND_FRAME_REPLAY"
     _, geometry, _, field, curve, _, _ = run.source()
-    construction_protocol = json.loads((HERE / "protocol.json").read_text())
+    construction_protocol = json.loads(run.PROTOCOL_V2.read_text())
+    assert construction_protocol["status"] == "FROZEN_BEFORE_FULL_FORMULA_V2"
     q = published_q(field, curve)
     record = {"status": "FROZEN_BEFORE_PUBLISHED_POINT_QUERY",
               "candidate_id": None, "curve_id": construction["curve_id"],
