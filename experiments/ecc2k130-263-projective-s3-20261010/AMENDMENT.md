@@ -18,3 +18,11 @@ receipt. The paired solver diagnostic uses the complete retry receipt, while
 the earlier source search remains a separate failed-producer row. No other
 retry is authorized by this amendment. No CPU wall-time speedup can be
 promoted from these unisolated, sequential cells.
+
+The first launch of that retry stopped in the `ps` RSS-sampler preflight:
+the execution sandbox returned `PermissionError: [Errno 1] Operation not
+permitted: 'ps'`. No solver process or output stream was created. Preserve
+the preflight receipt, then launch the one permitted source *solver* retry
+with the same frozen settings in an environment where the RSS guard works.
+The same host `ps -o rss= -p <pid>` command passed outside that sandbox before
+this clarification was committed.
