@@ -243,6 +243,15 @@ actual `B` against the four Q1420 geometries. Q1421 remains a proposal with
 separate from the sampled type-II normal-basis weight-six four-summand policy
 and from Q1420.
 
+The [Q1420/Q1421 equal-B six-policy input gate](../ecc2k130-normal4-equalb-m6-20261010/PROTOCOL.md)
+fixes `B=11,743,888` for source W24, transported W24, descendant-native
+W24, its pullback, normal4 source, and transported normal4. It binds the
+verified degree-263 route and Q1420 one-target public point, specifies
+deterministic W24 mask prefixes and 65,536 target-independent ordinary
+queries, and requires checked-Sage point/map replay before a paired
+six-summand PDP screen. Its [configuration](../ecc2k130-normal4-equalb-m6-20261010/CONFIG.json)
+retains `candidate_id: null` while solver and end-to-end stages are pending.
+
 The [preregistered cold full-rank one-target control](../ecc2k130-cold-fullrank-20261006/RESULT.md)
 assigns canonical `IC1`/workload/run IDs to independently replayed n37 and n41
 four-summand exact-support recoveries; its n53 cell is a preserved 180-second
