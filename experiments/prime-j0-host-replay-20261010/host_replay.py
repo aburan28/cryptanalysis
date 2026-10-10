@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rebuild, verify, and prepare a U14 point comparison on one Linux host.
+"""Rebuild, verify, and prepare a U14 comparison on one Linux host.
 
 The receipt is produced from this host's executable and outputs. The older
 macOS resource logs are deliberately outside its source and result set.
@@ -35,18 +35,51 @@ BASE_SOURCE_PATHS = (
     ROOT / "suite/src/ct_bignum.rs",
     FIXTURE,
 )
-MODES = (
-    ("reference", "unit_orbit_direct_limb14_fixed", "direct-limb"),
-    ("candidate", "unit_orbit_u256_point14_fixed", "u256-point"),
+GAUGE_SOURCE_PATHS = (
+    ROOT / "experiments/prime-j0-u14-gauge-20261010/PROTOCOL.md",
+    ROOT / "experiments/prime-j0-u14-gauge-20261010/PROOF.md",
+    ROOT / "experiments/prime-j0-u14-gauge-20261010/fresh-inputs.json",
+    ROOT / "experiments/prime-j0-u14-gauge-20261010/check_algebra.py",
+    ROOT / "experiments/prime-j0-u14-gauge-20261010/make_inputs.py",
+    ROOT / "experiments/prime-j0-u14-gauge-20261010/verify_candidate.py",
 )
+COMPARISONS = {
+    "point": {
+        "modes": (
+            ("reference", "unit_orbit_direct_limb14_fixed", "direct-limb"),
+            ("candidate", "unit_orbit_u256_point14_fixed", "u256-point"),
+        ),
+        "retained_bytes": {"reference": 78_470_208, "candidate": 70_430_960},
+        "native_tests": 81,
+        "algebra": ROOT / "experiments/prime-j0-u256-point-20261010/check_algebra.py",
+        "comparison_kind": "single-public-scalar-u14-eisenstein-vs-four-limb-point",
+        "boundary": (
+            "After fixture loading, scalar decoding, and both U14 table preparations. "
+            "Includes scalar reduction, certified Voronoi selection, recoding, "
+            "orbit lookup, unit actions, mixed point additions, final inversion, "
+            "affine formatting, and expected-point verification."
+        ),
+    },
+    "gauge": {
+        "modes": (
+            ("reference", "unit_orbit_u256_point14_fixed", "u256-point"),
+            ("candidate", "unit_orbit_u256_gauge14_fixed", "u256-gauge"),
+        ),
+        "retained_bytes": {"reference": 70_430_960, "candidate": 70_430_960},
+        "native_tests": 81,
+        "algebra": ROOT / "experiments/prime-j0-u14-gauge-20261010/check_algebra.py",
+        "comparison_kind": "single-public-scalar-u14-grouped-unit-gauge-vs-direct-unit",
+        "boundary": (
+            "Starts after fixture loading, scalar decoding, U14 point-table preparation, "
+            "field and unit constants, and binary-inverse correction setup. Includes scalar "
+            "reduction, certified Voronoi selection, signed-word recoding, choice staging, "
+            "orbit lookups, unit or accumulator-gauge actions, mixed additions, final "
+            "inversion, affine formatting, and expected-point verification. Stops after "
+            "that verification."
+        ),
+    },
+}
 INDICES = (0, 16, 32, 48, 64, 80, 96, 112, 128)
-EXPECTED_RETAINED_BYTES = {"reference": 78_470_208, "candidate": 70_430_960}
-BOUNDARY = (
-    "After fixture loading, scalar decoding, and both U14 table preparations. "
-    "Includes scalar reduction, certified Voronoi selection, recoding, "
-    "orbit lookup, unit actions, mixed point additions, final inversion, "
-    "affine formatting, and expected-point verification."
-)
 
 
 def sha(path):
@@ -61,9 +94,11 @@ def decoded(value):
     return value.decode(errors="replace") if isinstance(value, bytes) else (value or "")
 
 
-def source_paths():
+def source_paths(comparison):
     """Bind embedded Rust fixture/atlas files as well as direct sources."""
     paths = set(BASE_SOURCE_PATHS)
+    if comparison == "gauge":
+        paths.update(GAUGE_SOURCE_PATHS)
     pattern = re.compile(r'(?:include_(?:bytes|str)!\(\s*|#\[path\s*=\s*)"([^"]+)"')
     pending = [path for path in paths if path.suffix == ".rs"]
     while pending:
@@ -142,7 +177,7 @@ def rows_for(record, out_dir, count):
     return rows
 
 
-def verify(out_dir):
+def verify(out_dir, comparison):
     if platform.system() != "Linux":
         raise SystemExit("host replay requires Linux and GNU time -v")
     out_dir = out_dir.resolve()
@@ -152,7 +187,9 @@ def verify(out_dir):
     fixture = json.loads(FIXTURE.read_text())
     if fixture.get("schema") != 1 or len(fixture.get("cases", [])) != 129:
         raise SystemExit("unexpected fixture schema or count")
-    source_sha = {str(path.relative_to(ROOT)): sha(path) for path in source_paths()}
+    config = COMPARISONS[comparison]
+    source_sha = {str(path.relative_to(ROOT)): sha(path)
+                  for path in source_paths(comparison)}
     cargo = NATIVE / "Cargo.toml"
     target_dir = out_dir / "target"
     env = dict(os.environ, CARGO_TARGET_DIR=str(target_dir))
@@ -173,8 +210,7 @@ def verify(out_dir):
                 "log_sha256": sha(log), "exit_file": exit_file.name,
                 "exit_sha256": sha(exit_file)}
 
-    algebra = run_record([sys.executable,
-                          str(ROOT / "experiments/prime-j0-u256-point-20261010/check_algebra.py")],
+    algebra = run_record([sys.executable, str(config["algebra"])],
                          out_dir, "algebra-check")
     if algebra["exit_code"] != 0:
         raise SystemExit("field algebra check failed; raw output retained")
@@ -189,7 +225,8 @@ def verify(out_dir):
                                         "--test-threads=2"])
     log = (out_dir / tests["log_file"]).read_text()
     match = re.search(r"test result: ok\. (\d+) passed; 0 failed;", log)
-    if tests["exit_code"] != 0 or not match or int(match.group(1)) != 79:
+    if (tests["exit_code"] != 0 or not match or
+            int(match.group(1)) != config["native_tests"]):
         raise SystemExit("native release suite failed; raw log retained in " + str(out_dir))
     build = cargo_run("native-build", ["build", "--locked", "--release",
                                         "--bin", "eisenstein_fixed"])
@@ -199,7 +236,7 @@ def verify(out_dir):
     records = {}
     fixture_rows = {}
     resources = {}
-    for label, mode, flag in MODES:
+    for label, mode, flag in config["modes"]:
         record = run_record([str(binary), f"--check-scalar-unit-orbit-{flag}-fixed-fixture",
                              str(FIXTURE)], out_dir, label + "-fixture")
         rows = rows_for(record, out_dir, 129)
@@ -212,7 +249,7 @@ def verify(out_dir):
                                str(FIXTURE), "0"], out_dir, label + "-resource")
         row = rows_for(resource, out_dir, 1)[0]
         verify_row(row, fixture["cases"][0], mode, timed=True)
-        if int(row["retained_bytes"]) != EXPECTED_RETAINED_BYTES[label]:
+        if int(row["retained_bytes"]) != config["retained_bytes"][label]:
             raise ValueError("retained table byte count changed")
         stderr = (out_dir / resource["stderr_file"]).read_text()
         matches = re.findall(r"^\s*Maximum resident set size \(kbytes\):\s*(\d+)\s*$",
@@ -227,12 +264,15 @@ def verify(out_dir):
                 k: v for k, v in right.items() if k != "mode"}:
             raise ValueError("paired fixture rows differ")
     receipt = {
-        "schema": 1, "status": "passed", "platform": platform.platform(),
+        "schema": 1, "status": "passed", "comparison": comparison,
+        "modes": {label: mode for label, mode, _ in config["modes"]},
+        "platform": platform.platform(),
         "architecture": platform.machine(),
         "rustc_version": subprocess.check_output(["rustc", "--version"], text=True).strip(),
         "cargo_version": subprocess.check_output(["cargo", "--version"], text=True).strip(),
         "binary": str(binary), "binary_sha256": sha(binary),
-        "source_sha256": source_sha, "native_tests_passed": 79,
+        "source_sha256": source_sha,
+        "native_tests_passed": config["native_tests"],
         "algebra": algebra, "tests": tests, "build": build,
         "runs": records, "resources": resources,
         "fixture_cases_per_mode": 129, "cpu_speedup_claim": None,
@@ -247,13 +287,19 @@ def verify(out_dir):
 def manifest(args):
     receipt_path = args.receipt.resolve(strict=True)
     receipt = json.loads(receipt_path.read_text())
-    if receipt.get("status") != "passed" or receipt.get("native_tests_passed") != 79:
+    comparison = receipt.get("comparison")
+    if comparison not in COMPARISONS:
+        raise SystemExit("unknown comparison in host receipt")
+    config = COMPARISONS[comparison]
+    if (receipt.get("status") != "passed" or
+            receipt.get("native_tests_passed") != config["native_tests"] or
+            receipt.get("modes") != {label: mode for label, mode, _ in config["modes"]}):
         raise SystemExit("host verification did not pass")
     if (set(receipt.get("runs", {})) != {"reference", "candidate"} or
             set(receipt.get("resources", {})) != {"reference", "candidate"}):
         raise SystemExit("host verification arms differ")
     if set(receipt.get("source_sha256", {})) != {
-            str(path.relative_to(ROOT)) for path in source_paths()}:
+            str(path.relative_to(ROOT)) for path in source_paths(comparison)}:
         raise SystemExit("host verification source set differs")
     if (receipt.get("fixture_cases_per_mode") != 129 or
             any(record["exit_code"] != 0 for record in
@@ -280,6 +326,7 @@ def manifest(args):
             artifacts.append(path)
     fixture = json.loads(FIXTURE.read_text())
     cases = []
+    flags = {label: flag for label, _, flag in config["modes"]}
     for index in INDICES:
         case = fixture["cases"][index]
         if case["index"] != index:
@@ -292,9 +339,11 @@ def manifest(args):
                                 ("curve", "base_x", "base_y", "scalar")},
             "expected_result": fields["point"],
             "reference": [str(binary),
-                          "--benchmark-scalar-unit-orbit-direct-limb-fixed-case", *common],
+                          f"--benchmark-scalar-unit-orbit-{flags['reference']}-fixed-case",
+                          *common],
             "candidate": [str(binary),
-                          "--benchmark-scalar-unit-orbit-u256-point-fixed-case", *common],
+                          f"--benchmark-scalar-unit-orbit-{flags['candidate']}-fixed-case",
+                          *common],
         })
     result = {
         "schema": 1, "workdir": str(ROOT),
@@ -302,10 +351,10 @@ def manifest(args):
                       "execution_cpu": args.execution_cpu, "mem_nodes": args.mem_node},
         "artifacts": [str(path) for path in dict.fromkeys(artifacts)],
         "timeout_s": 1200, "repetitions": args.repetitions,
-        "metric_field": "online_ms", "measurement_boundary": BOUNDARY,
+        "metric_field": "online_ms", "measurement_boundary": config["boundary"],
         "pair_fields": ["curve", "base_x", "base_y", "scalar"],
         "result_field": "point", "workload_sha256": sha(FIXTURE),
-        "comparison_kind": "single-public-scalar-u14-eisenstein-vs-four-limb-point",
+        "comparison_kind": config["comparison_kind"],
         "cases": cases,
     }
     sys.path.insert(0, str(ROOT / "scripts"))
@@ -324,6 +373,7 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     verify_parser = commands.add_parser("verify")
     verify_parser.add_argument("--output-dir", type=Path, required=True)
+    verify_parser.add_argument("--comparison", choices=COMPARISONS, default="point")
     manifest_parser = commands.add_parser("manifest")
     manifest_parser.add_argument("--receipt", type=Path, required=True)
     manifest_parser.add_argument("--cgroup", required=True)
@@ -334,7 +384,7 @@ def main():
     manifest_parser.add_argument("--repetitions", type=int, default=5)
     args = parser.parse_args()
     if args.command == "verify":
-        verify(args.output_dir)
+        verify(args.output_dir, args.comparison)
     else:
         manifest(args)
 
