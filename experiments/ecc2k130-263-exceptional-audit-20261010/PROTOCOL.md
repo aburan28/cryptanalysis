@@ -28,6 +28,10 @@ python3 experiments/ecc2k130-263-exceptional-audit-20261010/audit.py
 semantic field of the new checked-Sage receipt to the archived receipt. It
 excludes only the four elapsed-time fields from that equality, checks the
 forward and reverse kernel counts, and verifies the static registry binding.
+The first preflight on protocol commit `ec19eefd6` stopped before Sage launch
+because one copied transport-source digest was missing twelve hex characters;
+[`preflight_attempt1.json`](preflight_attempt1.json) retains that failure.
+The corrected digest is published in a follow-up commit before the replay.
 If the replay differs, retain the raw run and leave the catalog status open.
 If it passes, replace the catalog's stale exceptional-transport “next gate”
 with the verified route and keep the equal-base PDP/rank comparison as the
