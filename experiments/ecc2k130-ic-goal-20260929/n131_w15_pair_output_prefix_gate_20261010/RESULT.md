@@ -76,6 +76,8 @@ checks their appended trace constraints and the 37,366-clause difference,
 binds [result.json](result.json) to the [solver log](solver.stdout.txt),
 and verifies the terminal status. The raw formula SHA-256 is
 `c23ffef8cea7a17faddfb88f75177f85f43923a4db431c72359346be6a648ce5`.
+Run `python3 -B audit_archive.py` from this directory to replay the hash
+and formula checks using the committed archive alone.
 
 The next method gate should act on target-coupled S3 and pair-product
 constraints before expanding a large SAT formula. First recover and
