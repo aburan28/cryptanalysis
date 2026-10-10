@@ -1,5 +1,22 @@
 # ECC2K-130 single-target index-calculus goal
 
+**Exact N131 fixed-seed S3 family join (2026-10-10):**
+[target-coupled quadratic inversion](n131_w15_fixedseed_s3_join_20261010/RESULT.md)
+joins the two complete W15 fixed-seed pair-output sets of 8,176 and
+8,340 coordinates without expanding a dense norm or SAT formula. A
+constructed four-atom raw sum has one coordinate hit and an independent
+Sage group replay; both admissible raw lifts of the published subgroup
+point have zero hits in this four-atom family. The frozen bit-field and
+checked-Sage full scans, opposite-direction Sage audit, and terminal
+source/resource audit passed under one worker and 4 GiB. The measured
+per-coordinate query intervals are stage diagnostics, not complete
+one-target DLP times. The next full-relation method gate replaces the
+explicit constrained-block Cartesian loop in the [unpinned N41
+seed-partitioned join](n41_seed_partition_indexless_20261010/RESULT.md)
+with target-coupled family elimination, preserving its verified
+twelve-point witness and counting rejected families before an N131
+work/RSS projection.
+
 **Exact fixed-pair output-prefix gate (2026-10-10):**
 [complete W15 pair-output enumeration](n131_w15_pair_output_prefix_gate_20261010/RESULT.md)
 certifies that the first two fixed-seed blocks admit only 7,661 and 7,828
