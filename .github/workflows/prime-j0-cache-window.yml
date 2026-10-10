@@ -17,6 +17,7 @@ on:
       - "experiments/prime-j0-frontier18-orbit-xyzz-20261010/**"
       - "experiments/prime-j0-two-x-orbit-20261010/**"
       - "experiments/prime-j0-tau-bucket-two-x-20261010/**"
+      - "experiments/prime-j0-xyzz-jacobian-merge-20261010/**"
   pull_request:
     paths:
       - ".github/workflows/prime-j0-cache-window.yml"
@@ -30,6 +31,7 @@ on:
       - "experiments/prime-j0-frontier18-orbit-xyzz-20261010/**"
       - "experiments/prime-j0-two-x-orbit-20261010/**"
       - "experiments/prime-j0-tau-bucket-two-x-20261010/**"
+      - "experiments/prime-j0-xyzz-jacobian-merge-20261010/**"
   workflow_dispatch:
 
 permissions:
@@ -76,7 +78,7 @@ jobs:
               tail -40 "$RUNNER_TEMP/native-tests.log"
               exit 1
             }
-          grep -F 'test result: ok. 122 passed; 0 failed;' "$RUNNER_TEMP/native-tests.log"
+          grep -F 'test result: ok. 123 passed; 0 failed;' "$RUNNER_TEMP/native-tests.log"
 
       - name: Build executable and replay all fixture points
         run: |
@@ -122,6 +124,7 @@ jobs:
             prime-j0-tau-bucket-two-x-20261010; do
             verify_at_commit "$artifact" verify_fresh.py verify_ops.py
           done
+          verify_at_commit prime-j0-xyzz-jacobian-merge-20261010 verify.py
 
       - name: Replay three frontier modes on independent scalar panel
         run: |

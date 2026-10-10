@@ -759,6 +759,34 @@ impl U256XYZZ {
         Self { x: rx, y: ry, zz: rzz, zzz: rzzz }
     }
 
+    // Add a Jacobian point while keeping the first bucket in XYZZ form.
+    fn add_jacobian(self, q: U256Jacobian) -> Self {
+        if q.is_identity() { return self; }
+        let qzz = u256_square(q.z);
+        let qzzz = u256_mul(qzz, q.z);
+        if self.is_identity() {
+            return Self { x: q.x, y: q.y, zz: qzz, zzz: qzzz };
+        }
+        let u1 = u256_mul(self.x, qzz);
+        let u2 = u256_mul(q.x, self.zz);
+        let s1 = u256_mul(self.y, qzzz);
+        let s2 = u256_mul(q.y, self.zzz);
+        let h = u256_sub(u2, u1);
+        let r = u256_sub(s2, s1);
+        if bool::from(h.ct_is_zero()) {
+            return if bool::from(r.ct_is_zero()) { self.double() }
+                   else { Self::identity() };
+        }
+        let hh = u256_square(h);
+        let hhh = u256_mul(h, hh);
+        let v = u256_mul(u1, hh);
+        let rx = u256_sub(u256_sub(u256_square(r), hhh), u256_add(v, v));
+        let ry = u256_sub(u256_mul(r, u256_sub(v, rx)), u256_mul(s1, hhh));
+        let rzz = u256_mul(u256_mul(self.zz, qzz), hh);
+        let rzzz = u256_mul(u256_mul(self.zzz, qzzz), hhh);
+        Self { x: rx, y: ry, zz: rzz, zzz: rzzz }
+    }
+
     fn double(self) -> Self {
         if self.is_identity() || bool::from(self.y.ct_is_zero()) {
             return Self::identity();
@@ -2056,6 +2084,9 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 50 || format == 49 {
+        return warm_format(format - 2);
+    }
     if format == 48 {
         std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
         std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
@@ -3101,6 +3132,7 @@ fn multiply_u256_tau_bucket_two_x_with<const N: usize>(
     atlas: impl Fn(usize) -> &'static FrontierAtlas,
     windows: &[Box<[U256TwoXAffine]>],
     retained_bytes: usize,
+    direct_merge: bool,
 ) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
     let scalar = super::Uint(scalar_words);
     let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
@@ -3132,9 +3164,12 @@ fn multiply_u256_tau_bucket_two_x_with<const N: usize>(
         buckets[exponent] = buckets[exponent].add_mixed(
             windows[index][seed_id].unit(unit_code));
     }
-    let ordinary = buckets[0].into_jacobian();
     let transformed = buckets[1].into_jacobian().tau();
-    let point = ordinary.add_projective(transformed).affine_hex_binary_inverse();
+    let point = if direct_merge {
+        buckets[0].add_jacobian(transformed).affine_hex_binary_inverse()
+    } else {
+        buckets[0].into_jacobian().add_projective(transformed).affine_hex_binary_inverse()
+    };
     (point, representative, nonidentity.saturating_sub(1),
      retained_bytes, fallback, corner, 0)
 }
@@ -3144,7 +3179,7 @@ pub(super) fn multiply_u256_tau_frontier18_bucket_two_x(
 ) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
     let tables: &'static Frontier18BucketTwoXTables = &*FRONTIER18_BUCKET_TWO_X_TABLES;
     multiply_u256_tau_bucket_two_x_with(scalar_words, &FRONTIER18_WIDTHS,
-        |index| tables.atlas(index), &tables.windows, tables.retained_bytes)
+        |index| tables.atlas(index), &tables.windows, tables.retained_bytes, false)
 }
 
 pub(super) fn multiply_u256_tau_frontier17_bucket_two_x(
@@ -3152,7 +3187,23 @@ pub(super) fn multiply_u256_tau_frontier17_bucket_two_x(
 ) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
     let tables: &'static Frontier17BucketTwoXTables = &*FRONTIER17_BUCKET_TWO_X_TABLES;
     multiply_u256_tau_bucket_two_x_with(scalar_words, &FRONTIER17_WIDTHS,
-        |index| tables.atlas(index), &tables.windows, tables.retained_bytes)
+        |index| tables.atlas(index), &tables.windows, tables.retained_bytes, false)
+}
+
+pub(super) fn multiply_u256_tau_frontier18_bucket_two_x_direct(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let tables: &'static Frontier18BucketTwoXTables = &*FRONTIER18_BUCKET_TWO_X_TABLES;
+    multiply_u256_tau_bucket_two_x_with(scalar_words, &FRONTIER18_WIDTHS,
+        |index| tables.atlas(index), &tables.windows, tables.retained_bytes, true)
+}
+
+pub(super) fn multiply_u256_tau_frontier17_bucket_two_x_direct(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let tables: &'static Frontier17BucketTwoXTables = &*FRONTIER17_BUCKET_TWO_X_TABLES;
+    multiply_u256_tau_bucket_two_x_with(scalar_words, &FRONTIER17_WIDTHS,
+        |index| tables.atlas(index), &tables.windows, tables.retained_bytes, true)
 }
 
 fn multiply_u256_sector_with<const N: usize>(
@@ -4672,6 +4723,32 @@ mod tests {
                     &BigInt::from(left_scalar + right_scalar)).affine_hex();
                 assert_eq!(encoded.add_projective(right).affine_hex_binary_inverse(),
                            expected, "add {left_scalar}+{right_scalar}");
+            }
+        }
+    }
+
+    #[test]
+    fn xyzz_jacobian_merge_matches_projective_sum_and_exceptions() {
+        let first = FRONTIER19_TABLES.windows[0][1];
+        let second = FRONTIER19_TABLES.windows[1][1];
+        let p = U256XYZZ::from_affine(first).double();
+        let q = U256Jacobian::from_affine(second).double();
+        assert_eq!(U256XYZZ::identity().add_jacobian(q).affine_hex_binary_inverse(),
+                   q.affine_hex_binary_inverse());
+        assert_eq!(p.add_jacobian(U256Jacobian::identity()).affine_hex_binary_inverse(),
+                   p.affine_hex_binary_inverse());
+        let inverse = U256Jacobian {
+            y: u256_sub(super::super::U256::ZERO, p.into_jacobian().y),
+            ..p.into_jacobian()
+        };
+        assert!(p.add_jacobian(inverse).is_identity());
+        assert_eq!(p.add_jacobian(p.into_jacobian()).affine_hex_binary_inverse(),
+                   p.double().affine_hex_binary_inverse());
+        for left in [p, p.add_mixed(second), p.double()] {
+            for right in [q, q.double(), q.add_mixed(first)] {
+                assert_eq!(left.add_jacobian(right).affine_hex_binary_inverse(),
+                           left.into_jacobian().add_projective(right)
+                               .affine_hex_binary_inverse());
             }
         }
     }
