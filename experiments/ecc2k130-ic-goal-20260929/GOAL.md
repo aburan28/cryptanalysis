@@ -1,5 +1,22 @@
 # ECC2K-130 single-target index-calculus goal
 
+**Exact W15 five-pair source gate (2026-10-10):** fixing a target-independent
+two-column prefix and freeing the remaining five W15 pairs gives exactly
+45,910,670,045,280,721,008,901,187,314,530,927,830,630,400 signed
+source tuples with twelve distinct folded columns, or 67,459.667 per
+uniform subgroup target before intermediate-point filtering. Two independent
+counts agree. The [constructed XCNF control and public run](n131_w15_unrestricted_fivepair_public_20261010/RESULT.md)
+reduce the public formula to 97,074 variables, 354,246 CNF clauses, and
+34,509 native-XOR rows. The exact published-point search recorded
+`CENSORED_TIME` at 592.101 seconds of target formula construction and
+search under one worker and 4 GiB, with 796,459,008 bytes sampled peak RSS;
+the [terminal audit](n131_w15_unrestricted_fivepair_public_20261010/terminal_audit.json)
+replayed its formula and source hashes. The next method gate is a
+target-conditioned generator of realizable partial sums that retains at
+least four free pair blocks. On an ordinary unpinned N41 query, measure
+verified relation yield and novel rows per query, then bound N131 work and
+memory from the same algorithm before another frozen challenge-width run.
+
 **Measured N131 public-target gate (2026-10-09 22:22 UTC):** the frozen
 d13/m12 proposal `Q20261006081500` completed its first accepted-seed
 ordinary query on the published target. The [v4 run](n131_phi_torsion_frobenius_domains_20261005/d13_m12_probe/public_q_runs/d13_m12_20261009T221148Z/result.json)
