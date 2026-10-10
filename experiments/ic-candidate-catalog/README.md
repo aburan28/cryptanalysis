@@ -287,10 +287,24 @@ ordinary clauses, and 899 native XORs against the target-first circuit.
 The normal4 and W24 ordinary-query searches both entered live search and
 reached their frozen external wall cap with `BOUNDED_UNKNOWN`; raw restart
 tables and independent audits distinguish this from a solver launch failure.
-The static reduction is small, so the next PDP gate is an exact four-index
-encoding of normal4's weight-four supports, with W24 retained as a paired
+The static reduction is small, so the next PDP gate compares exact four-hot
+encodings of normal4's weight-four supports, with W24 retained as a paired
 reference. Verified ordinary relations and novel rank remain the promotion
 measure; `candidate_id` is still `null`.
+
+The [normal4 selector gate](../ecc2k130-normal4-support-index-20261010/RESULT.md)
+corrects the support-position width to eight bits and compares both an exact
+four-threshold counter and four ordered support indices against the frozen
+balanced formula. Checked Sage passes 128 frozen points and a position-130
+leaf; 11 native-XOR SAT controls pass. The counter saves 93,654 variables
+(17.451%) and 181,914 ordinary clauses (30.320%) in the full m6 formula,
+without adding XORs. Its formula is smaller than the support-index formula
+in all three XCNF dimensions. Both ordinary query-zero searches reached the
+150-second external guard with `BOUNDED_UNKNOWN` and independent live-search
+audits. The counter becomes the normal4 circuit baseline, while relation
+yield and rank remain unmeasured; held-out N131 four-policy prefixes await a
+relation-producing PDP. The next independent gates are the degree-263
+exceptional-input transport proof and charged n53 compact-orbit recovery.
 
 The [preregistered cold full-rank one-target control](../ecc2k130-cold-fullrank-20261006/RESULT.md)
 assigns canonical `IC1`/workload/run IDs to independently replayed n37 and n41
