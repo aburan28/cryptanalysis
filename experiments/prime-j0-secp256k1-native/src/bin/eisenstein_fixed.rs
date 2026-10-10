@@ -3269,7 +3269,9 @@ fn check_generator_case(
     let actual = point.affine_hex();
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if unit_orbit_format == 118 {
+    let mode = if unit_orbit_format == 119 {
+        "unit_orbit_staged14_fixed"
+    } else if unit_orbit_format == 118 {
         "unit_orbit_tau_pair_fixed"
     } else if unit_orbit_format == 117 {
         "unit_orbit_tau_bucket_fixed"
@@ -3367,11 +3369,15 @@ fn main() {
             || args[0].starts_with("--benchmark-scalar-unit-orbit-tau-bucket")
             || args[0].starts_with("--check-scalar-unit-orbit-tau-pair")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-tau-pair")
+            || args[0].starts_with("--check-scalar-unit-orbit-staged")
+            || args[0].starts_with("--benchmark-scalar-unit-orbit-staged")
             || args[0].starts_with("--check-scalar-unit-orbit-radix943")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-radix943"))
         && args[0].ends_with("-fixed-fixture")
     {
-        let format = if args[0].contains("unit-orbit-tau-pair-fixed-fixture") {
+        let format = if args[0].contains("unit-orbit-staged-fixed-fixture") {
+            119
+        } else if args[0].contains("unit-orbit-tau-pair-fixed-fixture") {
             118
         } else if args[0].contains("unit-orbit-tau-bucket-fixed-fixture") {
             117
@@ -3506,6 +3512,8 @@ fn main() {
             || args[0] == "--check-scalar-unit-orbit-tau-bucket-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-tau-pair-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-tau-pair-fixed-case"
+            || args[0] == "--benchmark-scalar-unit-orbit-staged-fixed-case"
+            || args[0] == "--check-scalar-unit-orbit-staged-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-radix943-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-radix943-fixed-case")
     {
@@ -3547,7 +3555,9 @@ fn main() {
             args[0].contains("w6-comb13-hex9-radius2"),
             args[0].contains("w6-comb13-hex9-graph33"),
             args[0].contains("w6-comb13-hex9-graphaware33"),
-            if args[0].contains("unit-orbit-tau-pair") {
+            if args[0].contains("unit-orbit-staged") {
+                119
+            } else if args[0].contains("unit-orbit-tau-pair") {
                 118
             } else if args[0].contains("unit-orbit-tau-bucket") {
                 117
