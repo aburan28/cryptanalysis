@@ -155,6 +155,16 @@ and signed point sums. This moves the next encoding test to the leaf inverse
 constraints: split x-only and z-only releases before selectively changing
 either subcircuit. These are witness diagnostics on the Q1420 W24 bases;
 equal-B ordinary-query yield and rank remain open, with `candidate_id: null`.
+The [single-coordinate leaf frontier](../ecc2k130-263-leaf-inverse-frontier-20261010/RESULT.md)
+keeps that exceptional witness fixed while freeing only `x` or only `z` at
+leaf 0 or leaf 5 on both curves. Only leaf-0 `x` returned verified SAT under
+the frozen cap; the other six cells were `BOUNDED_UNKNOWN` after 768,859 to
+1,063,899 final conflicts. Both SAT models exactly recall the archived
+duplicate first pair and identity intermediate, so the fast branch adds no
+new relation row. The [audit](../ecc2k130-263-leaf-inverse-frontier-20261010/runs/R1/audit.json)
+checks exact inputs, transcripts, XCNF, and group sums. Next isolate leaf
+inverse propagation with a six-distinct-leaf finite-state witness before a
+selective encoding change. Ordinary-query yield and rank remain unmeasured.
 The [functional W24/m6 solver gate](../ecc2k130-w24-functional-s3-20261006/RESULT.md)
 removed free inverse and S3-intermediate witnesses but enlarged the planted
 XCNF 20.448-fold; CryptoMiniSat timed out at 30 seconds while an independent
