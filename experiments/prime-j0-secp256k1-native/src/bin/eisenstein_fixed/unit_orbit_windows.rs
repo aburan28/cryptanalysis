@@ -3312,6 +3312,63 @@ mod tests {
     }
 
     #[test]
+    fn tau384_all_window_points_match_independent_group_sums() {
+        fn multiply_small(base: Jacobian, multiplier: i32) -> Jacobian {
+            let mut result = Jacobian::identity();
+            let addend = base.into_affine();
+            let magnitude = multiplier.unsigned_abs();
+            for bit in (0..(32 - magnitude.leading_zeros())).rev() {
+                result = result.double();
+                if (magnitude >> bit) & 1 != 0 {
+                    result = result.add_mixed(addend);
+                }
+            }
+            if multiplier < 0 { result.neg() } else { result }
+        }
+        let tables = &*TAU384_MATCHING_TABLES;
+        let seeds = tables.atlas.seed_digits();
+        assert_eq!(seeds[0], (0, 0));
+        assert_eq!(tables.retained_bytes, 18_013_472);
+        let max_a = seeds.iter().map(|d| d.0.unsigned_abs()).max().unwrap() as usize;
+        let max_b = seeds.iter().map(|d| d.1.unsigned_abs()).max().unwrap() as usize;
+        let mut base = Jacobian::generator();
+        for (window, row) in tables.windows.iter().enumerate() {
+            assert_eq!(row.len(), 18_074);
+            let tau_base = base.tau();
+            let a_multiples: Vec<_> = (0..=max_a)
+                .map(|k| multiply_small(base, k as i32).into_affine()).collect();
+            let b_multiples: Vec<_> = (0..=max_b)
+                .map(|k| multiply_small(tau_base, k as i32).into_affine()).collect();
+            let mut expected = Vec::with_capacity(row.len() - 1);
+            for &(a, b) in seeds.iter().skip(1) {
+                let left = if a < 0 { a_multiples[a.unsigned_abs() as usize].neg() }
+                           else { a_multiples[a as usize] };
+                let right = if b < 0 { b_multiples[b.unsigned_abs() as usize].neg() }
+                            else { b_multiples[b as usize] };
+                let sum = if left.is_identity() { right }
+                    else if right.is_identity() { left }
+                    else { left.add_mixed(right) };
+                assert!(!sum.is_identity());
+                expected.push(sum);
+            }
+            let affine = batch_to_affine(&expected);
+            for (index, point) in affine.iter().enumerate() {
+                assert_eq!(row[index + 1].x.0,
+                           super::super::hybrid_pair_mont(point.x).0,
+                           "window {window} slot {} x", index + 1);
+                assert_eq!(row[index + 1].y.0,
+                           super::super::hybrid_pair_mont(point.y).0,
+                           "window {window} slot {} y", index + 1);
+            }
+            if window + 1 < RADIX384_WINDOWS {
+                base = multiply_small(base, RADIX384 as i32);
+            }
+        }
+        println!("tau384_table_slots={} retained_bytes={}",
+                 RADIX384_WINDOWS * seeds.len(), tables.retained_bytes);
+    }
+
+    #[test]
     fn tau384_matching_matches_fresh_panel_and_binary_points() {
         let panel: serde_json::Value = serde_json::from_str(include_str!(
             "../../../../prime-j0-tau384-matching-20261010/fresh-inputs.json"
@@ -3323,6 +3380,8 @@ mod tests {
         assert_eq!(tables.retained_bytes, 18_013_472);
         assert_eq!(tables.atlas.seeds.len() / 4, 18_074);
         let mut nonidentity_by_bucket = [0usize; 2];
+        let mut candidate_gauge_hist = [0usize; 5];
+        let mut reference_gauge_hist = [0usize; 3];
         for (index, text) in scalars.iter().enumerate() {
             let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
             let words = super::super::scalar_words_256(&scalar).unwrap();
@@ -3333,6 +3392,8 @@ mod tests {
             assert_eq!((candidate.4, candidate.5), (reference.4, reference.5),
                        "selector {index}");
             assert!(candidate.2 <= 14 && candidate.6 <= 4);
+            candidate_gauge_hist[candidate.6] += 1;
+            reference_gauge_hist[reference.6] += 1;
             let (mut a, mut b) = candidate.1;
             for window in 0..RADIX384_WINDOWS {
                 let (qa, ra, residue_a) = a.div_rem_radix384_fast();
@@ -3351,8 +3412,9 @@ mod tests {
                            "binary point {index}");
             }
         }
-        println!("tau384_panel_cases={} retained_bytes={} bucket_nonidentity={:?}",
-                 scalars.len(), tables.retained_bytes, nonidentity_by_bucket);
+        println!("tau384_panel_cases={} retained_bytes={} bucket_nonidentity={:?} candidate_gauge_hist={:?} reference_gauge_hist={:?}",
+                 scalars.len(), tables.retained_bytes, nonidentity_by_bucket,
+                 candidate_gauge_hist, reference_gauge_hist);
     }
 
     #[test]
