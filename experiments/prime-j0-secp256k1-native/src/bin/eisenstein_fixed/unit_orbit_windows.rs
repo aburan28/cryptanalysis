@@ -12,6 +12,7 @@ const WIDTHS: [u8; 14] = [10, 10, 10, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9];
 const WIDTHS15: [u8; 15] = [8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9];
 const WIDTHS16: [u8; 16] = [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9];
 const FRONTIER16_WIDTHS: [u8; 16] = [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9];
+const FRONTIER15_BUDGET_WIDTHS: [u8; 15] = [8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9];
 const SOLINAS_UNIT_CONSTANT_BYTES: usize = 3 * size_of::<super::U256>();
 const FRONTIER17_WIDTHS: [u8; 17] = [7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7];
 const FRONTIER18_WIDTHS: [u8; 18] = [7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 7];
@@ -36,6 +37,9 @@ const FRONTIER8_FULL_ATLAS: &[u8] = include_bytes!(
 );
 const FRONTIER9_FINAL_ATLAS: &[u8] = include_bytes!(
     "../../../../prime-j0-tau-power16-20261010/atlas-w9.bin"
+);
+const FRONTIER9_FULL_ATLAS: &[u8] = include_bytes!(
+    "../../../../prime-j0-bound-budget15-20261010/atlas-w9.bin"
 );
 const FRONTIER6_FULL_ATLAS: &[u8] = include_bytes!(
     "../../../../prime-j0-tau-frontier-20261010/w6-d64/atlas-w6.bin"
@@ -2032,6 +2036,48 @@ impl Frontier16BucketAffineTables {
 static FRONTIER16_BUCKET_AFFINE_TABLES: LazyLock<Frontier16BucketAffineTables> =
     LazyLock::new(Frontier16BucketAffineTables::new);
 
+struct Frontier15BudgetAffineTables {
+    full8: FrontierAtlas,
+    full9: FrontierAtlas,
+    final9: FrontierAtlas,
+    windows: Vec<Box<[U256Affine]>>,
+    retained_bytes: usize,
+}
+
+impl Frontier15BudgetAffineTables {
+    fn new() -> Self {
+        let full8 = FrontierAtlas::from_bytes(FRONTIER8_FULL_ATLAS, 8, 256, 5_463);
+        let full9 = FrontierAtlas::from_bytes(FRONTIER9_FULL_ATLAS, 9, 512, 21_847);
+        let final9 = FrontierAtlas::from_bytes(FRONTIER9_FINAL_ATLAS, 9, 363, 25_869);
+        let mut windows = Vec::with_capacity(FRONTIER15_BUDGET_WIDTHS.len());
+        let mut base = Jacobian::generator();
+        for (index, &width) in FRONTIER15_BUDGET_WIDTHS.iter().enumerate() {
+            let atlas = if index + 1 == FRONTIER15_BUDGET_WIDTHS.len() { &final9 }
+                        else if width == 8 { &full8 } else { &full9 };
+            windows.push(build_u256_window(&atlas.seed_digits(), base));
+            for _ in 0..width { base = base.double(); }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        assert_eq!(entries, 233_423);
+        assert_eq!(size_of::<U256Affine>(), 64);
+        let retained_bytes = entries * size_of::<U256Affine>()
+            + FRONTIER8_FULL_ATLAS.len() + FRONTIER9_FULL_ATLAS.len()
+            + FRONTIER9_FINAL_ATLAS.len() + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[U256Affine]>>();
+        assert_eq!(retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES, 17_511_596);
+        Self { full8, full9, final9, windows, retained_bytes }
+    }
+
+    fn atlas(&self, index: usize) -> &FrontierAtlas {
+        if index + 1 == FRONTIER15_BUDGET_WIDTHS.len() { &self.final9 }
+        else if FRONTIER15_BUDGET_WIDTHS[index] == 8 { &self.full8 }
+        else { &self.full9 }
+    }
+}
+
+static FRONTIER15_BUDGET_AFFINE_TABLES: LazyLock<Frontier15BudgetAffineTables> =
+    LazyLock::new(Frontier15BudgetAffineTables::new);
+
 struct TauBucketAtlas {
     codes: &'static [u8],
     digits: &'static [u8],
@@ -2279,6 +2325,13 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 56 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_CANONICAL);
+        return FRONTIER15_BUDGET_AFFINE_TABLES.retained_bytes
+            + SOLINAS_UNIT_CONSTANT_BYTES;
+    }
     if format == 55 {
         std::sync::LazyLock::force(&U256_BETA_CANONICAL);
         return warm_format(54) + SOLINAS_UNIT_CONSTANT_BYTES;
@@ -3464,6 +3517,17 @@ pub(super) fn multiply_u256_tau_frontier16_bucket_affine_solinas_xyzz_tau(
     let tables: &'static Frontier16BucketAffineTables = &*FRONTIER16_BUCKET_AFFINE_TABLES;
     let mut result = multiply_u256_tau_bucket_two_x_with::<16, true, _>(
         scalar_words, &FRONTIER16_WIDTHS, |index| tables.atlas(index),
+        &tables.windows, tables.retained_bytes, true, true);
+    result.3 += SOLINAS_UNIT_CONSTANT_BYTES;
+    result
+}
+
+pub(super) fn multiply_u256_tau_frontier15_budget_affine_solinas_xyzz_tau(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let tables: &'static Frontier15BudgetAffineTables = &*FRONTIER15_BUDGET_AFFINE_TABLES;
+    let mut result = multiply_u256_tau_bucket_two_x_with::<15, true, _>(
+        scalar_words, &FRONTIER15_BUDGET_WIDTHS, |index| tables.atlas(index),
         &tables.windows, tables.retained_bytes, true, true);
     result.3 += SOLINAS_UNIT_CONSTANT_BYTES;
     result
@@ -5201,6 +5265,42 @@ mod tests {
                            "binary point {index}");
             }
         }
+    }
+
+    #[test]
+    fn frontier15_bound_budget_replays_prior_panel_and_binary_points() {
+        let tables = &*FRONTIER15_BUDGET_AFFINE_TABLES;
+        assert_eq!(warm_format(56), 17_511_596);
+        assert_eq!(tables.windows.len(), 15);
+        assert_eq!(tables.windows.iter().map(|row| row.len()).sum::<usize>(), 233_423);
+        assert_eq!(tables.full9.seeds.len() / 4, 21_847);
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-frontier16-compact-affine-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let mut additions = 0usize;
+        let mut baseline_additions = 0usize;
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let candidate = multiply_u256_tau_frontier15_budget_affine_solinas_xyzz_tau(words);
+            let reference = multiply_u256_tau_frontier16_bucket_affine_solinas_xyzz_tau(words);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            assert_eq!((candidate.4, candidate.5, candidate.6),
+                       (reference.4, reference.5, reference.6), "metadata {index}");
+            assert!(candidate.2 <= 14, "addition bound {index}");
+            additions += candidate.2;
+            baseline_additions += reference.2;
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent binary {index}");
+            }
+        }
+        println!("bound_budget15_retained_bytes={} candidate_additions={} baseline_additions={}",
+                 warm_format(56), additions, baseline_additions);
     }
 
     #[test]
