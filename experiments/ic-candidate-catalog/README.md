@@ -144,6 +144,17 @@ The [independent replay](../ecc2k130-263-projective-s3-blocks-20261010/runs/R1/a
 checks the input partition, source/binary hashes, archived transcripts, and
 printed restart progress. This favors a sign-lift/projective-addition encoding
 test plus a frozen ordinary query; it does not establish natural yield or rank.
+The [single-block frontier](../ecc2k130-263-projective-s3-frontier-20261010/RESULT.md)
+then releases one leaf x/z pair or one projective state at a time from that
+same exceptional witness. On both curves, leaf 0 and leaf 5 each reached the
+120-second internal cap with `BOUNDED_UNKNOWN` and 782,430–955,100 final
+conflicts, while state 0 and state 3 each returned independently verified
+SAT group models with 0–13 conflicts. The [archive-only audit](../ecc2k130-263-projective-s3-frontier-20261010/runs/R1/audit.json)
+checks all eight exact inputs, raw solver transcripts, clauses, native XORs,
+and signed point sums. This moves the next encoding test to the leaf inverse
+constraints: split x-only and z-only releases before selectively changing
+either subcircuit. These are witness diagnostics on the Q1420 W24 bases;
+equal-B ordinary-query yield and rank remain open, with `candidate_id: null`.
 The [functional W24/m6 solver gate](../ecc2k130-w24-functional-s3-20261006/RESULT.md)
 removed free inverse and S3-intermediate witnesses but enlarged the planted
 XCNF 20.448-fold; CryptoMiniSat timed out at 30 seconds while an independent
