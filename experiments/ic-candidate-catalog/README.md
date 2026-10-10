@@ -246,8 +246,13 @@ W24, its pullback, normal4 source, and transported normal4. It binds the
 verified degree-263 route and Q1420 one-target public point, specifies
 deterministic W24 mask prefixes and 65,536 target-independent ordinary
 queries, and requires checked-Sage point/map replay before a paired
-six-summand PDP screen. Its [configuration](../ecc2k130-normal4-equalb-m6-20261010/CONFIG.json)
-retains `candidate_id: null` while solver and end-to-end stages are pending.
+six-summand PDP screen. The [verified input result](../ecc2k130-normal4-equalb-m6-20261010/RESULT.md)
+records both W24 prefix digests, all 256 fixed point/map controls, a matched
+65,536-query source/descendant public-point stream with independent checked-Sage
+replay, and the bound one-target point. Its
+[configuration](../ecc2k130-normal4-equalb-m6-20261010/CONFIG.json)
+retains `candidate_id: null` while PDP, rank, final matrix, and target stages
+are pending.
 
 The [preregistered cold full-rank one-target control](../ecc2k130-cold-fullrank-20261006/RESULT.md)
 assigns canonical `IC1`/workload/run IDs to independently replayed n37 and n41
