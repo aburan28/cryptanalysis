@@ -277,8 +277,8 @@ impl ArithmeticOrbitAtlas {
         Self { width, digits: digits.into_boxed_slice() }
     }
 
-    fn rank(&self, a: usize, b: usize) -> usize {
-        let base = 1usize << self.width;
+    fn rank(width: u8, a: usize, b: usize) -> usize {
+        let base = 1usize << width;
         let (q, r) = (base / 3, base % 3);
         if a == 0 {
             assert!(b <= base / 2);
@@ -320,13 +320,46 @@ impl ArithmeticOrbitAtlas {
             value = (rotated.0.rem_euclid(base), rotated.1.rem_euclid(base));
         }
         let (canonical, unit_code) = best;
-        let orbit_id = self.rank(canonical.0, canonical.1);
+        let orbit_id = Self::rank(self.width, canonical.0, canonical.1);
         let (da, db) = self.digits[orbit_id];
         let digit = unit_images((i32::from(da), i32::from(db)))[unit_code];
         debug_assert_eq!((digit.0.rem_euclid(base) as usize,
                           digit.1.rem_euclid(base) as usize), (ra, rb));
         (digit, orbit_id, unit_code)
     }
+}
+
+fn formula_digit_residue(width: u8, ra: usize, rb: usize) -> ((i32, i32), usize, usize) {
+    assert!((9..=10).contains(&width));
+    let base = 1i32 << width;
+    let mask = base - 1;
+    let (a, b) = (ra as i32, rb as i32);
+    let rotated = [
+        (a, b),
+        ((a + 3 * b) & mask, (-a - 2 * b) & mask),
+        ((-2 * a - 3 * b) & mask, (a + b) & mask),
+    ];
+    let mut best = ((usize::MAX, usize::MAX), usize::MAX);
+    for (power, &(x, y)) in rotated.iter().enumerate() {
+        for sign in 0..2 {
+            let image = if sign == 0 { (x, y) }
+                        else { ((-x) & mask, (-y) & mask) };
+            let inverse_code = 2 * ((3 - power) % 3) + sign;
+            best = best.min(((image.0 as usize, image.1 as usize), inverse_code));
+        }
+    }
+    let (canonical, unit_code) = best;
+    let orbit_id = ArithmeticOrbitAtlas::rank(width, canonical.0, canonical.1);
+    let canonical_digit = nearest_digit((canonical.0 as i32, canonical.1 as i32), base);
+    let digit = unit_images((i32::from(canonical_digit.0),
+                             i32::from(canonical_digit.1)))[unit_code];
+    debug_assert_eq!((digit.0 & mask, digit.1 & mask), (a, b));
+    (digit, orbit_id, unit_code)
+}
+
+fn formula_digit_word(width: u8, a: Signed192, b: Signed192) -> ((i32, i32), usize, usize) {
+    formula_digit_residue(width, a.rem_euclid_power_of_two(width),
+                          b.rem_euclid_power_of_two(width))
 }
 
 fn affine_multiples(base: Jacobian, max_abs: usize) -> Vec<Jacobian> {
@@ -688,6 +721,37 @@ impl ArithmeticU256Tables {
 static ARITHMETIC_U256_TABLES: LazyLock<ArithmeticU256Tables> =
     LazyLock::new(ArithmeticU256Tables::new);
 
+struct FormulaU256Tables {
+    windows: Vec<Box<[U256Affine]>>,
+    retained_bytes: usize,
+}
+
+impl FormulaU256Tables {
+    fn new() -> Self {
+        let temporary_atlases: [Option<ArithmeticOrbitAtlas>; 3] =
+            std::array::from_fn(|index| {
+                let width = 8 + index as u8;
+                WIDTHS.contains(&width).then(|| ArithmeticOrbitAtlas::new(width))
+            });
+        let mut windows = Vec::with_capacity(WIDTHS.len());
+        let mut base = Jacobian::generator();
+        for &width in &WIDTHS {
+            let atlas = temporary_atlases[usize::from(width - 8)].as_ref().unwrap();
+            windows.push(build_u256_window(&atlas.digits, base));
+            for _ in 0..width { base = base.double(); }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        let retained_bytes = entries * size_of::<U256Affine>()
+            + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[U256Affine]>>();
+        assert!(retained_bytes < CAP_BYTES);
+        Self { windows, retained_bytes }
+    }
+}
+
+static FORMULA_U256_TABLES: LazyLock<FormulaU256Tables> =
+    LazyLock::new(FormulaU256Tables::new);
+
 struct Radix13Tables {
     atlas: OrbitAtlas,
     windows: Vec<Box<[CompactPairPoint]>>,
@@ -967,6 +1031,12 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 29 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return FORMULA_U256_TABLES.retained_bytes;
+    }
     if format == 28 {
         std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
         std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
@@ -1154,6 +1224,23 @@ fn u256_arithmetic_choices(
     (choices, nonidentity)
 }
 
+fn u256_formula_choices(
+    representative: (Signed192, Signed192),
+) -> ([(usize, usize); 14], usize) {
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize); 14];
+    let mut nonidentity = 0usize;
+    for (index, &width) in WIDTHS.iter().enumerate() {
+        let (digit, orbit_id, unit_code) = formula_digit_word(width, a, b);
+        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+        choices[index] = (orbit_id, unit_code);
+        nonidentity += usize::from(orbit_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "point-only U14 recoding did not terminate");
+    (choices, nonidentity)
+}
+
 fn evaluate_u256_gauge(
     choices: &[(usize, usize); 14], windows: &[Box<[U256Affine]>],
 ) -> (String, usize) {
@@ -1219,6 +1306,24 @@ pub(super) fn multiply_u256_arithmetic(
         super::hexagonal_certified_fixed_choice_words(residue.0);
     let tables = &*ARITHMETIC_U256_TABLES;
     let (choices, nonidentity) = u256_arithmetic_choices(representative, tables);
+    let (point, gauge_products) = evaluate_u256_gauge(&choices, &tables.windows);
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes, fallback, corner, gauge_products)
+}
+
+pub(super) fn multiply_u256_formula(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*FORMULA_U256_TABLES;
+    let (choices, nonidentity) = u256_formula_choices(representative);
     let (point, gauge_products) = evaluate_u256_gauge(&choices, &tables.windows);
     (point, representative, nonidentity.saturating_sub(1),
      tables.retained_bytes, fallback, corner, gauge_products)
@@ -1934,6 +2039,21 @@ mod tests {
                 for rb in 0..base {
                     assert_eq!(arithmetic.digit_residue(ra, rb),
                                stored.digit_residue(ra, rb),
+                               "width {width} residue ({ra},{rb})");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn point_only_formula_matches_every_u14_residue() {
+        for width in [9u8, 10] {
+            let reference = ArithmeticOrbitAtlas::new(width);
+            let base = 1usize << width;
+            for ra in 0..base {
+                for rb in 0..base {
+                    assert_eq!(formula_digit_residue(width, ra, rb),
+                               reference.digit_residue(ra, rb),
                                "width {width} residue ({ra},{rb})");
                 }
             }
