@@ -448,6 +448,14 @@ impl U256Jacobian {
         bool::from(self.z.ct_is_zero())
     }
 
+    fn rotate_power(self, power: usize) -> Self {
+        assert!(power < 3);
+        if power == 0 || self.is_identity() {
+            return self;
+        }
+        Self { x: u256_mul(self.x, U256_BETA_UNITS[power]), ..self }
+    }
+
     fn double(self) -> Self {
         if self.is_identity() || bool::from(self.y.ct_is_zero()) {
             return Self::identity();
@@ -835,7 +843,7 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
-    if format == 26 {
+    if format == 26 || format == 27 {
         std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
         std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
         std::sync::LazyLock::force(&U256_BETA_UNITS);
@@ -980,6 +988,68 @@ pub(super) fn multiply_u256_direct(
     assert!(a.is_zero() && b.is_zero(), "four-limb U14 recoding did not terminate");
     (result.affine_hex_binary_inverse(), representative,
      nonidentity.saturating_sub(1), tables.retained_bytes, fallback, corner)
+}
+
+fn u256_gauge_choices(
+    representative: (Signed192, Signed192), tables: &U256Tables,
+) -> ([(usize, usize); 14], usize) {
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize); 14];
+    let mut nonidentity = 0usize;
+    for (index, &width) in WIDTHS.iter().enumerate() {
+        let (digit, orbit_id, unit_code) = tables.atlas(width).digit_word(a, b);
+        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+        choices[index] = (orbit_id, unit_code);
+        nonidentity += usize::from(orbit_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "gauge U14 recoding did not terminate");
+    (choices, nonidentity)
+}
+
+pub(super) fn multiply_u256_gauge(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*U256_TABLES;
+    let (choices, nonidentity) = u256_gauge_choices(representative, tables);
+    let mut result = U256Jacobian::identity();
+    let mut gauge = None;
+    let mut gauge_products = 0usize;
+    for power in [1usize, 2, 0] {
+        if !choices.iter().any(|&(orbit, code)| orbit != 0 && code / 2 == power) {
+            continue;
+        }
+        if let Some(previous) = gauge {
+            let delta = (previous + 3 - power) % 3;
+            if delta != 0 && !result.is_identity() {
+                result = result.rotate_power(delta);
+                gauge_products += 1;
+            }
+        }
+        gauge = Some(power);
+        for (index, &(orbit_id, unit_code)) in choices.iter().enumerate() {
+            if orbit_id == 0 || unit_code / 2 != power { continue; }
+            result = result.add_mixed(tables.windows[index][orbit_id].unit(unit_code & 1));
+        }
+    }
+    if let Some(power) = gauge {
+        if power != 0 && !result.is_identity() {
+            result = result.rotate_power(power);
+            gauge_products += 1;
+        }
+    }
+    assert!(gauge_products <= 2);
+    (result.affine_hex_binary_inverse(), representative,
+     nonidentity.saturating_sub(1), tables.retained_bytes, fallback, corner,
+     gauge_products)
 }
 
 pub(super) fn multiply_word_format(
@@ -1804,6 +1874,99 @@ mod tests {
                 cb = cb.sub(Signed192::from_i32(rhs.0.1)).div_exact_power_of_two(width);
             }
         }
+    }
+
+    #[test]
+    fn u256_gauge_rotation_commutes_with_mixed_group_law() {
+        let tables = &*U256_TABLES;
+        let q = tables.windows[0][1];
+        assert!(U256Jacobian::identity().rotate_power(1).is_identity());
+        assert!(U256Jacobian::from_affine(q).add_mixed(q.unit(1))
+                .rotate_power(2).is_identity());
+        let doubled = U256Jacobian::from_affine(q).add_mixed(q);
+        for power in 1..=2 {
+            let rotated = q.unit(2 * power);
+            assert_eq!(doubled.rotate_power(power).affine_hex_binary_inverse(),
+                       U256Jacobian::from_affine(rotated).add_mixed(rotated)
+                           .affine_hex_binary_inverse(), "equal addend, power {power}");
+        }
+        for sample in 0..512 {
+            let row = sample % WIDTHS.len();
+            let first = tables.windows[row][1 + ((sample * 7919) %
+                                (tables.windows[row].len() - 1))];
+            let second = tables.windows[row][1 + ((sample * 4001 + 17) %
+                                 (tables.windows[row].len() - 1))];
+            let parent = U256Jacobian::from_affine(first).add_mixed(second);
+            for power in 1..=2 {
+                let expected = U256Jacobian::from_affine(first.unit(2 * power))
+                    .add_mixed(second.unit(2 * power));
+                assert_eq!(parent.rotate_power(power).affine_hex_binary_inverse(),
+                           expected.affine_hex_binary_inverse(),
+                           "rotation {sample}, power {power}");
+            }
+        }
+    }
+
+    #[test]
+    fn u256_grouped_gauge_matches_complete_prior_and_fresh_points() {
+        let panels = [
+            include_str!("../../../../prime-j0-radix943-word-20261009/inputs.json"),
+            include_str!("../../../../prime-j0-exact-reciprocal-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-certified-voronoi-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-fixed-limb-voronoi-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-hybrid-finalize-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-binary-inverse-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-direct-limb-scalar-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-u256-point-20261010/fresh-inputs.json"),
+            include_str!("../../../../prime-j0-u14-gauge-20261010/fresh-inputs.json"),
+        ];
+        let mut scalars = vec![BigInt::ZERO, BigInt::from(1),
+                               &SCALAR_LATTICE.n - BigInt::from(1),
+                               SCALAR_LATTICE.n.clone(),
+                               (BigInt::from(1) << 256usize) - BigInt::from(1)];
+        for panel in panels {
+            let data: serde_json::Value = serde_json::from_str(panel).unwrap();
+            scalars.extend(data["scalars_hex"].as_array().unwrap().iter().map(|value|
+                BigInt::parse_bytes(value.as_str().unwrap().as_bytes(), 16).unwrap()));
+        }
+        assert_eq!(scalars.len(), 5 + 519 + 8 * 4096);
+        let fresh_start = scalars.len() - 4096;
+        let mut reference_products = 0usize;
+        let mut gauge_products = 0usize;
+        let mut per_scalar_counts = Vec::with_capacity(2 * scalars.len());
+        for (index, scalar) in scalars.iter().enumerate() {
+            let words = super::super::scalar_words_256(scalar).unwrap();
+            let reference = multiply_u256_direct(words);
+            let candidate = multiply_u256_gauge(words);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            assert_eq!((candidate.2, candidate.3, candidate.4, candidate.5),
+                       (reference.2, reference.3, reference.4, reference.5),
+                       "accounting {index}");
+            assert!(candidate.6 <= 2, "gauge products {index}");
+            let (choices, count) = u256_gauge_choices(candidate.1, &U256_TABLES);
+            assert_eq!(count.saturating_sub(1), candidate.2);
+            let original_products = choices.iter()
+                .filter(|&&(orbit, code)| orbit != 0 && code / 2 != 0).count();
+            reference_products += original_products;
+            gauge_products += candidate.6;
+            per_scalar_counts.push(original_products as u8);
+            per_scalar_counts.push(candidate.6 as u8);
+            let (mut a, mut b) = reference.1;
+            for (window, &width) in WIDTHS.iter().enumerate() {
+                let (digit, orbit, code) = TABLES.atlas(width).digit_word(a, b);
+                assert_eq!(choices[window], (orbit, code), "orbit/unit {index}/{window}");
+                a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+                b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+            }
+            if (fresh_start..fresh_start + 128).contains(&index) {
+                let reduced = scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+        println!("gauge_panel_cases={} reference_beta_products={} gauge_beta_products={} counts_hex={}",
+                 scalars.len(), reference_products, gauge_products, hex::encode(per_scalar_counts));
     }
 
     #[test]
