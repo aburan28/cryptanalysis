@@ -6,7 +6,9 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import re
 
+import archive_formulas
 import build_four_lift as gate
 
 
@@ -19,7 +21,13 @@ def main() -> None:
     args = parser.parse_args()
     if args.out.exists():
         parser.error("refusing to overwrite an audit")
-    built = json.loads(args.formula.with_suffix(".json").read_text())
+    if args.formula.name.endswith(".xcnf.gz"):
+        receipt_path = args.formula.with_suffix("").with_suffix(".json")
+        formula_sha, _ = archive_formulas.decompressed_sha(args.formula)
+    else:
+        receipt_path = args.formula.with_suffix(".json")
+        formula_sha = gate.ref.sha(args.formula)
+    built = json.loads(receipt_path.read_text())
     pilot = json.loads(args.pilot.read_text())
     stdout_path = args.pilot.with_suffix(".stdout.txt")
     stderr_path = args.pilot.with_suffix(".stderr.txt")
@@ -28,10 +36,9 @@ def main() -> None:
                 if ("conflict" in line.lower() or "restarts" in line.lower()
                     or line.startswith("s "))]
     if (built["policy"] != args.policy or pilot["policy"] != args.policy
-            or built["formula_sha256"] != gate.ref.sha(args.formula)
+            or built["formula_sha256"] != formula_sha
             or pilot["formula_sha256"] != built["formula_sha256"]
-            or pilot["formula_receipt_sha256"] != gate.ref.sha(
-                args.formula.with_suffix(".json"))
+            or pilot["formula_receipt_sha256"] != gate.ref.sha(receipt_path)
             or built["target_x_choices"] != [str(x) for x in gate.target_lifts()]
             or pilot["stdout_sha256"] != gate.ref.sha(stdout_path)
             or pilot["stderr_sha256"] != gate.ref.sha(stderr_path)
@@ -43,10 +50,20 @@ def main() -> None:
             or pilot["rss_cap_bytes"] != 4*(1 << 30)):
         raise ValueError("source, input, formula, or transcript changed")
     terminal = [line for line in output.splitlines() if line.startswith("s ")]
+    conflicts = [int(value) for value in re.findall(
+        r"^c conflicts\s*:\s*(\d+)", output, flags=re.MULTILINE)]
+    restarts = [int(value) for value in re.findall(
+        r"^c restarts\s*:\s*(\d+)", output, flags=re.MULTILINE)]
     if pilot["status"] == "BOUNDED_UNKNOWN":
-        if (not progress or pilot["guard"] != "WALL_CAP"
+        guarded = pilot["guard"] == "WALL_CAP"
+        internal_timeout = (pilot["guard"] is None
+                            and pilot["exit_code"] == 15
+                            and "s INDETERMINATE" in terminal)
+        if (not progress or not conflicts or max(conflicts) <= 0
+                or not restarts or max(restarts) <= 0
+                or not (guarded or internal_timeout)
                 or any("SATISFIABLE" in line for line in terminal)):
-            raise ValueError("bounded status lacks live-search and guard evidence")
+            raise ValueError("bounded status lacks live-search and timeout evidence")
     elif pilot["status"] == "SAT_UNVERIFIED":
         if not any(line == "s SATISFIABLE" for line in terminal):
             raise ValueError("SAT status lacks solver declaration")
@@ -65,6 +82,8 @@ def main() -> None:
         "stdout_sha256": gate.ref.sha(stdout_path),
         "stderr_sha256": gate.ref.sha(stderr_path),
         "search_progress_lines": len(progress),
+        "conflicts": max(conflicts, default=0),
+        "restarts": max(restarts, default=0),
         "terminal_lines": terminal,
         "audit_source_sha256": gate.ref.sha(Path(__file__)),
     }

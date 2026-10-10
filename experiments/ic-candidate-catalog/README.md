@@ -267,6 +267,18 @@ paired gate must charge all four lifts per query and compare independently
 verified relations and novel rank, with this exact circuit as its control.
 This is a PDP-stage proposal with `candidate_id: null`.
 
+The [exact four-lift equal-B m6 gate](../ecc2k130-equalb-four-lift-pdp-20261010/RESULT.md)
+puts all four checked raw x-preimages of one projected ordinary query into
+one native-XOR formula for each source geometry. Four SAT and four UNSAT
+target-mux controls and independent Sage lift replay pass. Both W24 and
+normal4 entered CryptoMiniSat search and returned `BOUNDED_UNKNOWN` at the
+frozen internal cap; the raw conflict and restart counts are retained. An
+exact restriction of the verified W24 orbit map gives 5,869,878 potential
+source columns at the common `B=11,743,888`, versus 44,824 for normal4.
+This prioritizes a verified ordinary normal4 relation/rank gate with a W24
+control while preserving all target-dependent attempts and the final-matrix
+cost. The complete IC pipeline remains an unactivated proposal.
+
 The [preregistered cold full-rank one-target control](../ecc2k130-cold-fullrank-20261006/RESULT.md)
 assigns canonical `IC1`/workload/run IDs to independently replayed n37 and n41
 four-summand exact-support recoveries; its n53 cell is a preserved 180-second

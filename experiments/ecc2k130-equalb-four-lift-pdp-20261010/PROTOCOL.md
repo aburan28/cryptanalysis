@@ -63,3 +63,12 @@ attempts to one query under the same frozen total resource envelope.
 Advance to held-out query prefixes only after a verified ordinary relation
 or a justified solver-policy change. Stage outcomes alone do not establish
 a one-target IC-versus-rho result.
+
+## Post-run scope clarification
+
+The S3 chain uses finite x coordinates at all five intermediate nodes.
+An ordered decomposition with an intermediate point at infinity is outside
+this formula's chart, even though its final projected group sum may be
+valid. This clarification was added after the R1 solver attempts; neither
+attempt returned a solution or an UNSAT certificate. A complete PDP policy
+must cover or separately account for the exceptional intermediate branches.
