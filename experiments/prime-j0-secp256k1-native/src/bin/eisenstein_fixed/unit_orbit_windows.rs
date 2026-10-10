@@ -2324,6 +2324,51 @@ mod tests {
     }
 
     #[test]
+    fn u256_point_only_table_matches_new_holdout_and_arithmetic_table() {
+        let old = &*ARITHMETIC_U256_TABLES;
+        let new = &*FORMULA_U256_TABLES;
+        let saved = old.retained_bytes - new.retained_bytes;
+        assert!((873_824..873_940).contains(&saved), "saved bytes {saved}");
+        for (window, (left, right)) in old.windows.iter().zip(&new.windows).enumerate() {
+            assert_eq!(left.len(), right.len(), "window size {window}");
+            for (index, (a, b)) in left.iter().zip(right).enumerate() {
+                assert_eq!(a.x.0, b.x.0, "window {window} point {index} x");
+                assert_eq!(a.y.0, b.y.0, "window {window} point {index} y");
+            }
+        }
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-formula-atlas-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let mut per_scalar_counts = Vec::with_capacity(2 * scalars.len());
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_arithmetic(words);
+            let candidate = multiply_u256_formula(words);
+            assert_eq!(reference.0, candidate.0, "point {index}");
+            assert_eq!(reference.1, candidate.1, "representative {index}");
+            assert_eq!((reference.2, reference.4, reference.5, reference.6),
+                       (candidate.2, candidate.4, candidate.5, candidate.6),
+                       "scalar accounting {index}");
+            let old_choices = u256_arithmetic_choices(reference.1, old);
+            let new_choices = u256_formula_choices(candidate.1);
+            assert_eq!(old_choices, new_choices, "all fourteen choices {index}");
+            per_scalar_counts.push(reference.6 as u8);
+            per_scalar_counts.push(candidate.6 as u8);
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+        println!("formula_panel_cases={} retained_reference={} retained_candidate={} counts_hex={}",
+                 scalars.len(), old.retained_bytes, new.retained_bytes,
+                 hex::encode(per_scalar_counts));
+    }
+
+    #[test]
     fn radix943_atlas_covers_all_residues_and_fixture_points() {
         let tables = &*RADIX13_TABLES;
         assert_eq!(tables.windows.len(), RADIX13_WINDOWS);
