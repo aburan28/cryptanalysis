@@ -1,5 +1,20 @@
 # ECC2K-130 single-target index-calculus goal
 
+**Exact W15 cofactor-class gate (2026-10-10):** the
+[source-frozen census](n131_w15_cofactor_class_gate_20261010/RESULT.md)
+classifies all W15 masks by `Tr(H(w²)/w)`, with 8,295 usable masks in the
+raw subgroup and 8,146 in its order-two coset. Independent Sage scalar
+multiplication checked 512 signed lifts. Every nonzero W15 XOR seed has
+7,660–8,856 class-zero and 7,664–8,856 class-one signed pair states,
+so this one-bit character does not reject entire seed families. Exact
+parity certificates rule out a degree-at-most-four Boolean formula for
+the class on the usable masks. Restricting all five free pairs to subgroup
+sums still leaves a source-count mean of 2,108.394 tuples per uniform
+subgroup target before zero-intermediate filtering, but it supplies no
+measured public relation. Keep the 32-KiB class table for cheap native
+witness screening and continue with target-conditioned S3 elimination
+while at least four pair blocks remain free.
+
 **Exact W15 five-pair source gate (2026-10-10):** fixing a target-independent
 two-column prefix and freeing the remaining five W15 pairs gives exactly
 45,910,670,045,280,721,008,901,187,314,530,927,830,630,400 signed
