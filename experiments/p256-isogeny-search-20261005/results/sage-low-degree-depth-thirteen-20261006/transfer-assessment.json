@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "status": "draft_evidence_assessment",
+  "question": "Do depth-12/13 low-degree isogeny transfers from P-256 expose a reproducible Pollard-rho iteration-rate advantage?",
+  "typed_correspondence": {
+    "source": "E_0(F_p)[n] for NIST P-256",
+    "destination": "E_i(F_p)[n] in short-Weierstrass form",
+    "edges": "explicit F_p-rational separable isogenies",
+    "edge_degrees": [3, 5, 11, 13],
+    "path_depths_added": [12, 13],
+    "kernel_intersection": "trivial because n is prime and differs from every edge degree",
+    "log_transport": "Q = kP implies phi(Q) = k phi(P)",
+    "recovery": "the destination logarithm is the same scalar modulo n"
+  },
+  "artifacts": {
+    "candidates": {
+      "path": "results/sage-low-degree-depth-thirteen-20261006/candidates-delta.json",
+      "sha256": "1183bcf2d344bf2b21cb3fed56393cf124d2b696666a9ecf2ad651f6c26de7a6"
+    },
+    "retained_union": {
+      "path": "results/sage-low-degree-depth-thirteen-20261006/retained-union.json",
+      "sha256": "844ed569ad87064f87e3d8cb02c15cc0723e0f5a83d737fef359818a462f6350"
+    },
+    "native_screen": {
+      "path": "results/sage-low-degree-depth-thirteen-20261006/native-screen/screening-summary.json",
+      "sha256": "c0bcb2f9988d1ec97644fcc87db1db4a1650a3287fcb844e9bca50e149234fc7"
+    },
+    "holdout": {
+      "path": "results/sage-low-degree-depth-thirteen-20261006/holdout.json",
+      "sha256": "5a1ada9a9ea37e787ad02619812126c6ad13115a326facf62f92d422416601bc"
+    }
+  },
+  "obligations": [
+    {"name": "existence", "status": "supported", "scope": "368 new explicit candidates"},
+    {"name": "executable_construction", "status": "supported", "scope": "all edge kernels, maps, isomorphisms, and transported generators retained"},
+    {"name": "map_correctness", "status": "supported", "scope": "Sage checks plus path continuity and degree-product verification"},
+    {"name": "subgroup_preservation", "status": "supported", "scope": "same prime order, trivial kernel intersection, generator transport, and scalar-relation checks"},
+    {"name": "measured_iteration_rate_advantage", "status": "refuted", "scope": "sixteen screen hits; zero fresh-holdout reproductions"},
+    {"name": "host_isolated_speedup", "status": "unknown", "scope": "CPU affinity is not an isolation-service receipt"},
+    {"name": "per_key_transfer_cost", "status": "unknown", "scope": "new path evaluation on both ECDLP points was not timed"},
+    {"name": "end_to_end_attack_advantage", "status": "unknown", "scope": "no full P-256 collision and no charged new transfer timing"},
+    {"name": "full_class_coverage", "status": "unknown", "scope": "1,298 curves are bounded; exact class-number computation is running"},
+    {"name": "exceptional_automorphism", "status": "refuted", "scope": "exact class-wide CM exclusion and automorphism-order-two candidate records"},
+    {"name": "low_norm_non_scalar_endomorphism", "status": "refuted", "scope": "exact fundamental-discriminant norm bound"}
+  ],
+  "controls": [
+    "fresh P-256 baseline in every screening block",
+    "identical native implementation for baseline and candidate",
+    "complete execution-position rotation within every block",
+    "tracked scalar relation verified after every timed trial",
+    "fresh 30-by-2-second holdout containing every unadjusted screening hit",
+    "candidate IDs deduplicated against the prior 930-curve union"
+  ],
+  "costs": {
+    "measured_seconds": {
+      "reusable_depth_12_13_discovery": 170.11213223301456,
+      "native_screen_blocks": 1669.196791507,
+      "fresh_holdout": 1048.728388087
+    },
+    "per_key_mapping": null,
+    "default_exact_class_group": "running",
+    "modeled_costs": null
+  },
+  "finding": "No reproducible iteration-rate advantage was found within depths 12 and 13 using edge degrees 3, 5, 11, and 13.",
+  "exploration_boundary": {
+    "new_curves": 368,
+    "combined_curves_including_p256": 1298,
+    "combined_non_root_curves_with_native_measurements": 1297,
+    "edge_degrees": [3, 5, 11, 13],
+    "maximum_depth": 13,
+    "claim": "not found within this family and boundary"
+  },
+  "open_obligations": [
+    "finish and independently check the exact class-number calculation",
+    "measure evaluation of each retained path on both ECDLP points before an end-to-end claim",
+    "rerun any future timing candidate under the repository host-isolation service",
+    "explore deeper paths or additional class-group generators"
+  ]
+}

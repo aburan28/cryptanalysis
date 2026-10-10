@@ -1,0 +1,61 @@
+name: Sage horizontal search
+
+"on":
+  workflow_dispatch:
+    inputs:
+      ells:
+        description: Comma-separated ramified or split prime degrees
+        required: true
+        default: "3,5,11,13"
+      depth:
+        description: Breadth-first depth
+        required: true
+        default: "2"
+      max_nodes:
+        description: Maximum number of retained curves
+        required: true
+        default: "100"
+      benchmark_seconds:
+        description: Seconds per timing trial and candidate
+        required: true
+        default: "1"
+
+permissions:
+  contents: read
+
+jobs:
+  explore:
+    runs-on: ubuntu-latest
+    container:
+      image: sagemath/sagemath:10.6
+      options: --user root
+    env:
+      SEARCH_ELLS: ${{ inputs.ells }}
+      SEARCH_DEPTH: ${{ inputs.depth }}
+      SEARCH_MAX_NODES: ${{ inputs.max_nodes }}
+      BENCHMARK_SECONDS: ${{ inputs.benchmark_seconds }}
+    defaults:
+      run:
+        working-directory: experiments/p256-isogeny-search-20261005
+    steps:
+      - uses: actions/checkout@v4
+      - name: Explore explicit horizontal paths
+        run: >-
+          sage -python scripts/explore_sage.py
+          --ells "$SEARCH_ELLS"
+          --depth "$SEARCH_DEPTH"
+          --max-nodes "$SEARCH_MAX_NODES"
+          --output runs/sage/candidates.json
+      - name: Benchmark every generated candidate
+        env:
+          PYTHONPATH: src
+        run: >-
+          sage -python scripts/benchmark_interleaved.py
+          --candidates runs/sage/candidates.json
+          --seconds "$BENCHMARK_SECONDS"
+          --trials 7
+          --output runs/sage/benchmark.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p256-sage-horizontal-search
+          path: experiments/p256-isogeny-search-20261005/runs/sage

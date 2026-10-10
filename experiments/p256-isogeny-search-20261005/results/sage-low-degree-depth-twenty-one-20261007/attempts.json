@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "attempts": [
+    {
+      "attempt_id": "depth-21-prospective-command",
+      "command": "docker exec --workdir /repo/experiments/p256-isogeny-search-20261005 p256-classgroup-default taskset -c 2 sage -python scripts/extend_sage_low_degree.py --input results/sage-low-degree-depth-nineteen-20261007/candidates-delta.json --ells 3,5,11,13 --target-depth 21 --max-new-nodes 2000 --output results/sage-low-degree-depth-twenty-one-20261007/candidates-delta.json",
+      "elapsed_seconds": 280.2168742379872,
+      "exit_code": 0,
+      "generated_candidates": 624,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "native-screen-environment-restart",
+      "command": "taskset -c 0 python3 experiments/p256-isogeny-search-20261005/scripts/run_native_screen.py --binary suite/target/release/examples/p256_isogeny_native_bench --candidates experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-twenty-one-20261007/candidates-delta.json --block-size 6 --seconds 0.5 --rotations 1 --warmup-seconds 0.05 --output-dir results/sage-low-degree-depth-twenty-one-20261007/native-screen",
+      "completed_blocks": 7,
+      "exit_code": null,
+      "failure": "Managed execution environment restarted and invalidated the controlling process session before block 8 completed.",
+      "partial_artifacts": "results/sage-low-degree-depth-twenty-one-20261007/native-screen-interrupted-environment-restart",
+      "screening_summary_generated": false,
+      "interpretation": "Interrupted run only. Seven complete raw blocks are preserved but excluded from the canonical aggregate; the full frozen screen restarts from block 1.",
+      "status": "interrupted_no_aggregate"
+    },
+    {
+      "attempt_id": "coefficient-audit-depth-label-correction",
+      "command": "python3 scripts/audit_candidate_coefficients_depth_twenty_one.py --candidates results/sage-low-degree-depth-twenty-one-20261007/candidates-delta.json --output results/sage-low-degree-depth-twenty-one-20261007/coefficient-audit.json",
+      "correction_scope": "Changed only the hard-coded depth-nineteen publication_status and finding labels emitted by the frozen generic audit; metrics and eligibility results were replayed unchanged.",
+      "exit_code": 0,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "conductor-audit-depth-label-correction",
+      "command": "python3 scripts/audit_candidate_conductors_depth_twenty_one.py --candidates results/sage-low-degree-depth-twenty-one-20261007/candidates-delta.json --output results/sage-low-degree-depth-twenty-one-20261007/conductor-audit.json",
+      "correction_scope": "Changed only the hard-coded depth-nineteen publication_status label emitted by the frozen generic audit; conductor rows and proof were replayed unchanged.",
+      "exit_code": 0,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "local-pytest-unavailable",
+      "command": "python3 -m pytest -q",
+      "exit_code": 1,
+      "failure": "The managed host Python does not have the pytest module installed.",
+      "interpretation": "Harness availability failure before test collection; the repository unittest suite is used instead.",
+      "status": "failed_before_test_collection"
+    },
+    {
+      "attempt_id": "local-unittest-missing-pythonpath",
+      "command": "python3 -m unittest discover -s tests -v",
+      "exit_code": 1,
+      "failure": "All five test modules failed import because the src directory was not on PYTHONPATH.",
+      "interpretation": "Test-launch configuration failure before any test method ran; rerun with PYTHONPATH=src.",
+      "status": "failed_before_test_execution"
+    },
+    {
+      "attempt_id": "local-unittest-corrected",
+      "command": "env PYTHONPATH=src python3 -m unittest discover -s tests -v",
+      "exit_code": 0,
+      "tests_passed": 11,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "native-screen-canonical-rerun",
+      "command": "taskset -c 0 python3 experiments/p256-isogeny-search-20261005/scripts/run_native_screen.py --binary suite/target/release/examples/p256_isogeny_native_bench --candidates experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-twenty-one-20261007/candidates-delta.json --block-size 6 --seconds 0.5 --rotations 1 --warmup-seconds 0.05 --output-dir results/sage-low-degree-depth-twenty-one-20261007/native-screen",
+      "candidate_trials": 4368,
+      "completed_blocks": 104,
+      "elapsed_wall_seconds_sum": 2829.0183023810005,
+      "exit_code": 0,
+      "screened_candidates": 624,
+      "unadjusted_hits": 5,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "native-holdout-canonical",
+      "command": "taskset -c 0 python3 experiments/p256-isogeny-search-20261005/scripts/run_native_holdout.py --binary suite/target/release/examples/p256_isogeny_native_bench --candidates experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-twenty-one-20261007/candidates-delta.json --screening experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-twenty-one-20261007/native-screen/screening-summary.json --seconds 2 --trials 30 --warmup-seconds 0.2 --output experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-twenty-one-20261007/holdout.json",
+      "candidate_hits": 5,
+      "curve_trials": 180,
+      "elapsed_wall_seconds": 369.778208094,
+      "exit_code": 0,
+      "reproduced_speedups": 0,
+      "status": "completed"
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "attempts": [
+    {
+      "attempt_id": "depth-23-prospective-command",
+      "command": "docker exec --workdir /repo/experiments/p256-isogeny-search-20261005 p256-classgroup-default taskset -c 2 sage -python scripts/extend_sage_low_degree.py --input results/sage-low-degree-depth-twenty-one-20261007/candidates-delta.json --ells 3,5,11,13 --target-depth 23 --max-new-nodes 2000 --output results/sage-low-degree-depth-twenty-three-20261007/candidates-delta.json",
+      "elapsed_seconds": 297.1651183979993,
+      "exit_code": 0,
+      "generated_candidates": 688,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "coefficient-audit-depth-label-correction",
+      "command": "python3 scripts/audit_candidate_coefficients_depth_twenty_three.py --candidates results/sage-low-degree-depth-twenty-three-20261007/candidates-delta.json --output results/sage-low-degree-depth-twenty-three-20261007/coefficient-audit.json",
+      "correction_scope": "Replayed the generic audit and corrected only its hard-coded depth-nineteen publication_status and finding labels.",
+      "exit_code": 0,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "conductor-audit-depth-label-correction",
+      "command": "python3 scripts/audit_candidate_conductors_depth_twenty_three.py --candidates results/sage-low-degree-depth-twenty-three-20261007/candidates-delta.json --output results/sage-low-degree-depth-twenty-three-20261007/conductor-audit.json",
+      "correction_scope": "Replayed the generic audit and corrected only its hard-coded depth-nineteen publication_status label.",
+      "exit_code": 0,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "native-screen-canonical",
+      "command": "taskset -c 0 python3 experiments/p256-isogeny-search-20261005/scripts/run_native_screen.py --binary suite/target/release/examples/p256_isogeny_native_bench --candidates experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-twenty-three-20261007/candidates-delta.json --block-size 6 --seconds 0.5 --rotations 1 --warmup-seconds 0.05 --output-dir results/sage-low-degree-depth-twenty-three-20261007/native-screen",
+      "candidate_trials": 4808,
+      "completed_blocks": 115,
+      "elapsed_wall_seconds_sum": 3109.156012997,
+      "exit_code": 0,
+      "screened_candidates": 688,
+      "unadjusted_hits": 18,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "native-holdout-canonical",
+      "command": "taskset -c 0 python3 experiments/p256-isogeny-search-20261005/scripts/run_native_holdout.py --binary suite/target/release/examples/p256_isogeny_native_bench --candidates experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-twenty-three-20261007/candidates-delta.json --screening experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-twenty-three-20261007/native-screen/screening-summary.json --seconds 2 --trials 30 --warmup-seconds 0.2 --output experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-twenty-three-20261007/holdout.json",
+      "candidate_hits": 18,
+      "curve_trials": 570,
+      "elapsed_wall_seconds": 1171.185920143,
+      "exit_code": 0,
+      "reproduced_speedups": 0,
+      "status": "completed"
+    }
+  ]
+}

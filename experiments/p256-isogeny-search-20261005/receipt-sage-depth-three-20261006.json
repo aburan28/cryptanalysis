@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "protocol_id": "p256-isogeny-search-exploratory-v1",
+  "status": "verified_exploratory_depth_three",
+  "claim": "Fifty-six curves were reached explicitly through depth three. All 17 new depth-two curves were screened, and a fresh holdout rejected the three screening leaders. No reproducible rho iteration-rate or exceptional-automorphism result was found.",
+  "run_completed_at": "2026-10-06T02:28:32.455828+00:00",
+  "source": {
+    "pr_parent_remote_commit": "cf3b79b4baaa5e59951d341e23eda92dca6a2f74",
+    "manifest": "source-sage-depth-one-20261006.sha256",
+    "manifest_sha256": "07fcff3dad0ca61c0fb6729be18f872459eaa0889a13dc2bcd1c01ba9267be41"
+  },
+  "runtime": {
+    "image": "sagemath/sagemath:10.6",
+    "image_digest": "sha256:19995db6194f4a4bab18ce9a88556fd15b9ed5e916b4504fefe618a7796ddbdb",
+    "host_cpu_isolation": "unverified; wall-time results are exploratory"
+  },
+  "commands": {
+    "depth_two": "sage -python scripts/explore_sage.py --ells 3,5,11,13 --depth 2 --max-nodes 100 --output runs/sage-depth-two/candidates.json",
+    "depth_three": "sage -python scripts/explore_sage.py --ells 3,5,11,13 --depth 3 --max-nodes 250 --output runs/sage-depth-three/candidates.json",
+    "screening": "sage -python scripts/benchmark_interleaved.py --candidates BLOCK --seconds 1 --trials BLOCK_SIZE --warmup-seconds 0.1 --output BENCHMARK",
+    "holdout": "sage -python scripts/benchmark_interleaved.py --candidates runs/sage-depth-two/holdout.json --seconds 2 --trials 20 --warmup-seconds 0.2 --output runs/sage-depth-two/benchmark-holdout-2s-20trials.json"
+  },
+  "artifacts": {
+    "results/sage-depth-three-20261006/depth-three-candidates.json": "df85b8007ee913db066da580abac04360190884db61a9ed0e5522ff4b817e41e",
+    "results/sage-depth-three-20261006/depth-two-candidates.json": "66f8f962e5d079eef1b431b1180e6b7461a1b959135fd04d8f24cd371ba0c4bf",
+    "results/sage-depth-three-20261006/holdout-benchmark.json": "4f6037665c133bf3e29e42746985d7b7613aebd2c8db0056ccd9198952b37f9b",
+    "results/sage-depth-three-20261006/holdout-candidates.json": "c30f3396f87ddac80314f4bb2ad903c7fddbb9e9ab0296166d3626e87a9f8742",
+    "results/sage-depth-three-20261006/screening-block-1.json": "7110dbcd6d6eedb053b2a240bd2f31f9f4b8995735c8f4f8acc85d54ff13b9bb",
+    "results/sage-depth-three-20261006/screening-block-2.json": "8734b7509cda8f8d7f32c75240e14879a6e0ac04ee9eaa0572ff354d23a77839",
+    "results/sage-depth-three-20261006/screening-block-3.json": "7a41ef42f84d225915be30ae813bd24314f31b7b2db8d39db902e8ecd77228e2",
+    "results/sage-depth-three-20261006/screening-summary.json": "04b2536f279a0819dfc6f3bd61ac018c1aff1187918c4a8a8d75c72a4776e8b0",
+    "results/sage-depth-three-20261006/summary.md": "2383837c150c5de54a8a3ecd9ac6412ae51070ec14ed619fd927a7292a4dc01c"
+  },
+  "traversal": {
+    "ells": [3, 5, 11, 13],
+    "depth_two": {
+      "nodes_found": 24,
+      "new_nodes": 17,
+      "elapsed_seconds": 3.7090534620074322
+    },
+    "depth_three": {
+      "nodes_found": 56,
+      "new_nodes": 32,
+      "elapsed_seconds": 11.415312691999134,
+      "maximum_path_degree_product": 2197
+    },
+    "explicit_paths_verified": true,
+    "exceptional_automorphisms_found": false
+  },
+  "depth_two_screening": {
+    "new_candidates": 17,
+    "blocks": [7, 7, 6],
+    "seconds_per_trial": 1,
+    "full_position_rotation_per_block": true,
+    "uncorrected_95_percent_screening_hits": 1,
+    "screening_hit": {
+      "path": [3, 13],
+      "path_degree_product": 39,
+      "paired_relative_iteration_speed": 1.0233686807430908,
+      "paired_relative_iteration_speed_95_percent_ci": [
+        1.0001158731192565,
+        1.0471621187847835
+      ]
+    }
+  },
+  "holdout": {
+    "selected_paths": [[3, 11], [3, 13], [5, 13]],
+    "seconds_per_trial": 2,
+    "trials_per_candidate": 20,
+    "complete_rotation_blocks": 5,
+    "all_linear_relations_verified": true,
+    "significant_speedups_at_95_percent": 0,
+    "paired_relative_results": {
+      "3,11": [1.0075352506465491, 0.9891340525324159, 1.0262787725247553],
+      "3,13": [1.0152944625103972, 0.9926522256205017, 1.0384531651655893],
+      "5,13": [1.0134674992076471, 0.9955390200568874, 1.031718849042713]
+    }
+  },
+  "class_number_attempts": [
+    {
+      "method": "PARI qfbclassno",
+      "outcome": "failed",
+      "error": "precision too low in truncr"
+    },
+    {
+      "method": "PARI quadclassunit",
+      "outcome": "stopped without result after approximately 12 minutes"
+    },
+    {
+      "method": "PARI lfun(quadchar(D),1)",
+      "outcome": "failed before computation",
+      "error": "quadchar was not available as a function in this build"
+    }
+  ],
+  "cost_accounting": {
+    "discovery_and_reusable_precomputation": "measured in candidate registries",
+    "per_instance_mapping": "explicit formulas retained for P and Q; evaluation not timed",
+    "per_instance_ecdlp": "all new depth-two curves screened; three leaders independently retested",
+    "amortization": "no end-to-end estimate because per-key mapping was not measured"
+  },
+  "decision": "No depth-two candidate advances. Preserve depth-three paths for structural or optimized-backend prefiltering, but do not spend further non-isolated Python timing budget on generic curves without a new structural reason."
+}

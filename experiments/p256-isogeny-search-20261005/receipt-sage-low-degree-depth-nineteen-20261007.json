@@ -1,0 +1,200 @@
+{
+  "artifacts": {
+    "protocol-depth-nineteen-20261007.json": "1d0a88bd2965bf4fe3d303f316f736cfd40c8b04b2dfd76bc0e373e713dda72e",
+    "results/sage-class-group-20261006/status-depth-nineteen.json": "bb1fd5ca69fcbedca249674a43d1f50de38271dfda95a7b70f6819b565b7f9bd",
+    "results/sage-low-degree-depth-nineteen-20261007/attempts.json": "c2e81fde9638bdd309e5fd7600ac30f5f376eb0f4a9d3cdfe09753984d8a8a10",
+    "results/sage-low-degree-depth-nineteen-20261007/candidate-model-audit.json": "80264d75bb9c2f81bbd7032fed2371fbb667625430b7420486977d6b0ca9f4f1",
+    "results/sage-low-degree-depth-nineteen-20261007/candidates-delta.json": "6f6f637c9833e85ac31d4754bd39dc5b243f5fe1435470a29eb2f7965c4d0db3",
+    "results/sage-low-degree-depth-nineteen-20261007/coefficient-audit.json": "c994b3542a88af345c28db37c92ec19ceb293c454356053dc53bf8c3a643df2c",
+    "results/sage-low-degree-depth-nineteen-20261007/conductor-audit.json": "6ea2b6275f9e14aa353f3733f472e25253a1777a713bcdd00e7668e223bc724b",
+    "results/sage-low-degree-depth-nineteen-20261007/holdout.json": "b6d7d7f27642a167062e92d1626b53a7d17947ee1c53a18223a62eabc61dec53",
+    "results/sage-low-degree-depth-nineteen-20261007/native-screen/screening-summary.json": "6ce4bce7c6fd4338559bf30d21311e15d58f7d99da226bcf14e1ecec5247f92b",
+    "results/sage-low-degree-depth-nineteen-20261007/retained-union.json": "bba32c148f8bd421c3dda079c3476ab4e0cb17c4823b51d13d03199e9f7388ce",
+    "results/sage-low-degree-depth-nineteen-20261007/summary.md": "a390e6e65026aa08716ed2a28473c69bd1dbb8fa530e519db4d80b797e667f7c",
+    "results/sage-low-degree-depth-nineteen-20261007/transfer-assessment.json": "2bf0aacfc14762ee2a06b125a2a970b09f2c1b170db162607db2de66d76211c0",
+    "results/sage-low-degree-depth-seventeen-20261006/retained-union.json": "2873037c345a4caed5acac21ba2292566841a3ff465cab9a78cfe036da3173bb"
+  },
+  "claim": "The prospectively frozen depth-nineteen extension added 560 explicit curves and measured every addition; 0 of 7 exploratory screen hits reproduced in the fresh holdout.",
+  "coefficient_gate": {
+    "eligible_candidates": 0,
+    "minimum_addition_chain_lower_bound": 243,
+    "minimum_binary_upper_bound": 353
+  },
+  "combined_native_coverage": {
+    "explicit_curves_including_p256": 2786,
+    "non_root_curves_with_matched_native_measurement": 2785,
+    "reproducible_speedups": 0
+  },
+  "commands": {
+    "corrections": [
+      "Docker search command added the experiment working directory.",
+      "Native screen and holdout binary/input paths were spelled relative to the repository root."
+    ],
+    "frozen_commands": {
+      "holdout": "taskset -c 0 python3 scripts/run_native_holdout.py --binary ../../suite/target/release/examples/p256_isogeny_native_bench --candidates results/sage-low-degree-depth-nineteen-20261007/candidates-delta.json --screening results/sage-low-degree-depth-nineteen-20261007/native-screen/screening-summary.json --seconds 2 --trials 30 --warmup-seconds 0.2 --output results/sage-low-degree-depth-nineteen-20261007/holdout.json",
+      "native_screen": "taskset -c 0 python3 scripts/run_native_screen.py --binary ../../suite/target/release/examples/p256_isogeny_native_bench --candidates results/sage-low-degree-depth-nineteen-20261007/candidates-delta.json --block-size 6 --seconds 0.5 --rotations 1 --warmup-seconds 0.05 --output-dir results/sage-low-degree-depth-nineteen-20261007/native-screen",
+      "search": "docker exec p256-classgroup-default taskset -c 2 sage -python scripts/extend_sage_low_degree.py --input results/sage-low-degree-depth-seventeen-20261006/candidates-delta.json --ells 3,5,11,13 --target-depth 19 --max-new-nodes 2000 --output results/sage-low-degree-depth-nineteen-20261007/candidates-delta.json"
+    },
+    "verify": "python3 scripts/verify_sage_low_degree_depth_nineteen.py"
+  },
+  "conductor": {
+    "curves_including_p256": 561,
+    "new_candidates": 560,
+    "new_candidates_with_conductor_one": 560,
+    "new_candidates_with_unknown_conductor": 0
+  },
+  "cost_accounting": {
+    "amortization": "no end-to-end estimate because new per-key mapping was not measured",
+    "default_exact_class_group_attempt": "running after at least 46150.0 seconds; no result counted",
+    "discovery_and_reusable_precomputation_seconds": 249.9312720419839,
+    "holdout_wall_seconds": 493.105719137,
+    "native_screen_block_wall_seconds_total": 2534.448735344,
+    "per_instance_mapping": "explicit formulas retained for P and Q; evaluation was not timed for the 560 additions"
+  },
+  "decision": "No candidate advances; all screen hits failed the fresh holdout.",
+  "holdout": {
+    "all_linear_relations_verified": true,
+    "candidates": 7,
+    "largest_point_estimate": {
+      "candidate_id": "p256-j-a0a428c131f0838531654dff268982c63edd1371c22896b114ed15ad12a92981",
+      "paired_relative_iteration_speed": 1.0137049068351027,
+      "paired_relative_iteration_speed_95_percent_ci": [
+        0.9919154778462574,
+        1.035972984686945
+      ]
+    },
+    "reproduced_speedups": 0,
+    "seconds_per_trial": 2.0,
+    "trials_per_candidate": 30
+  },
+  "limitations": [
+    "the traversal stops at depth nineteen and uses only edge degrees 3, 5, 11, and 13",
+    "the retained registry is not the entire finite class-group orbit",
+    "host-wide CPU isolation was not established",
+    "new path evaluation on both ECDLP points was not timed",
+    "screening intervals are unadjusted selection triggers",
+    "no full P-256 collision was attempted or required by the protocol"
+  ],
+  "model_eligibility": {
+    "all_candidate_normalizations_verified": true,
+    "target_a_counts": {
+      "1": 288,
+      "3": 273
+    }
+  },
+  "preserved_failures": [
+    {
+      "attempt_id": "depth-19-frozen-command-default-workdir",
+      "command": "docker exec p256-classgroup-default taskset -c 2 sage -python scripts/extend_sage_low_degree.py --input results/sage-low-degree-depth-seventeen-20261006/candidates-delta.json --ells 3,5,11,13 --target-depth 19 --max-new-nodes 2000 --output results/sage-low-degree-depth-nineteen-20261007/candidates-delta.json",
+      "exit_code": 2,
+      "failure": "python3: can't open file '/repo/scripts/extend_sage_low_degree.py': [Errno 2] No such file or directory",
+      "generated_candidates": 0,
+      "interpretation": "Pre-execution path failure: the frozen command omitted the experiment working directory. Inputs, parameters, and selection rules were unchanged for the corrected run.",
+      "status": "failed_preserved"
+    },
+    {
+      "attempt_id": "depth-19-corrected-workdir",
+      "command": "docker exec --workdir /repo/experiments/p256-isogeny-search-20261005 p256-classgroup-default taskset -c 2 sage -python scripts/extend_sage_low_degree.py --input results/sage-low-degree-depth-seventeen-20261006/candidates-delta.json --ells 3,5,11,13 --target-depth 19 --max-new-nodes 2000 --output results/sage-low-degree-depth-nineteen-20261007/candidates-delta.json",
+      "elapsed_seconds": 249.9312720419839,
+      "exit_code": 0,
+      "generated_candidates": 560,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "candidate-model-audit-verify-before-write",
+      "command": "python scripts/audit_candidate_models.py --candidates results/sage-low-degree-depth-nineteen-20261007/candidates-delta.json --output results/sage-low-degree-depth-nineteen-20261007/candidate-model-audit.json --verify",
+      "exit_code": 1,
+      "failure": "FileNotFoundError: candidate-model-audit.json did not yet exist",
+      "interpretation": "Invocation-order error only. The artifact was then generated and an identical verify-only replay passed.",
+      "status": "failed_preserved"
+    },
+    {
+      "attempt_id": "native-screen-frozen-relative-paths",
+      "command": "taskset -c 0 python3 scripts/run_native_screen.py --binary ../../suite/target/release/examples/p256_isogeny_native_bench --candidates results/sage-low-degree-depth-nineteen-20261007/candidates-delta.json --block-size 6 --seconds 0.5 --rotations 1 --warmup-seconds 0.05 --output-dir results/sage-low-degree-depth-nineteen-20261007/native-screen",
+      "exit_code": 1,
+      "failure": "FileNotFoundError: /workspace/cryptanalysis/results/sage-low-degree-depth-nineteen-20261007/candidates-delta.json",
+      "generated_benchmark_blocks": 0,
+      "interpretation": "Pre-benchmark path-resolution failure. The runner resolves binary and candidate inputs relative to the repository root; the corrected run changed only those path spellings.",
+      "status": "failed_preserved"
+    },
+    {
+      "attempt_id": "native-holdout-frozen-relative-paths",
+      "command": "taskset -c 0 python3 scripts/run_native_holdout.py --binary ../../suite/target/release/examples/p256_isogeny_native_bench --candidates results/sage-low-degree-depth-nineteen-20261007/candidates-delta.json --screening results/sage-low-degree-depth-nineteen-20261007/native-screen/screening-summary.json --seconds 2 --trials 30 --warmup-seconds 0.2 --output results/sage-low-degree-depth-nineteen-20261007/holdout.json",
+      "exit_code": 1,
+      "failure": "FileNotFoundError: /workspace/cryptanalysis/results/sage-low-degree-depth-nineteen-20261007/native-screen/screening-summary.json",
+      "generated_holdout_trials": 0,
+      "interpretation": "Pre-benchmark path-resolution failure. The corrected run changed only repository-relative path spellings and retained all seven prospectively selected candidates.",
+      "status": "failed_preserved"
+    },
+    {
+      "attempt_id": "holdout-summary-probe-wrong-trial-field",
+      "command": "read-only Python holdout summary probe",
+      "exit_code": 1,
+      "failure": "KeyError: 'trials'",
+      "interpretation": "Post-run reporting probe used a nonexistent convenience field. The artifact stores the frozen count in benchmark_design.trials_per_candidate and the 30-element rate arrays; the corrected read-only replay verified all 240 curve-trials.",
+      "mathematical_evidence": false,
+      "status": "failed_preserved"
+    },
+    {
+      "attempt_id": "first-depth-19-verifier-path-resolution",
+      "command": "python scripts/verify_sage_low_degree_depth_nineteen.py",
+      "exit_code": 1,
+      "failure": "FileNotFoundError: /workspace/cryptanalysis/results/sage-low-degree-depth-seventeen-20261006/candidates-delta.json",
+      "interpretation": "The independent verifier initially treated an experiment-relative results path as repository-relative. Resolution now prefers the experiment root and then falls back to the repository root.",
+      "mathematical_evidence": false,
+      "status": "failed_preserved"
+    }
+  ],
+  "protocol_id": "p256-isogeny-depth-nineteen-20261007-v1",
+  "run_completed_at": "2026-10-07T03:55:56Z",
+  "runtime": {
+    "cpu_affinity": {
+      "concurrent_default_class_group_process": "CPU 4",
+      "native_screen_and_holdout": "CPU 0",
+      "sage_frontier_extension": "CPU 2"
+    },
+    "host_isolation": "unverified; timing remains exploratory unless rerun through the repository isolation service",
+    "native_release_binary_sha256": "768fb614af10bcd3990b8373194713b5406051149ea9b627c01b5e1e4f0a9e5d",
+    "sage_image": "sagemath/sagemath:10.6",
+    "sage_image_digest": "sha256:19995db6194f4a4bab18ce9a88556fd15b9ed5e916b4504fefe618a7796ddbdb"
+  },
+  "schema_version": 1,
+  "screening": {
+    "all_linear_relations_verified": true,
+    "blocks": 94,
+    "candidate_trials": 3912,
+    "new_neighbors": 560,
+    "screening_point_estimate_range": [
+      1.0522421314267356,
+      1.1092327052269066
+    ],
+    "seconds_per_trial": 0.5,
+    "unadjusted_screening_hits": 7
+  },
+  "search": {
+    "combined_unique_curves_including_p256": 2786,
+    "ells": [
+      3,
+      5,
+      11,
+      13
+    ],
+    "exceptional_automorphisms_found": false,
+    "explicit_paths_verified": true,
+    "input_depth": 17,
+    "new_depth_counts": {
+      "18": 272,
+      "19": 288
+    },
+    "new_non_root_curves": 560,
+    "overlap_with_prior_union": 0,
+    "target_depth": 19
+  },
+  "source": {
+    "local_parent_commit": "2fe4426f810d88e7f5ece328ae94ad71ee9b58d4",
+    "manifest": "source-sage-low-degree-depth-nineteen-20261007.sha256",
+    "manifest_sha256": "5283b669bc7a44b5702ef4322bc1eb050d7e6d0fd2c3021ca6f241aa68d4bb13",
+    "pr_parent_remote_commit": "45185ba3ce38f38e50f90206c5684a73ab4a6329"
+  },
+  "status": "verified_exploratory_low_degree_depth_nineteen"
+}

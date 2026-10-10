@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "observed_at": "2026-10-08T09:22:52Z",
+  "command": "python3 scripts/isolated_bench.py probe-host",
+  "qualification": "not_qualified",
+  "probe": {
+    "affinity": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "architecture": "x86_64",
+    "cgroup_controllers": "cpuset cpu io memory hugetlb pids",
+    "cgroup_isolated_cpus": null,
+    "cmdline": "reboot=k panic=1 systemd.unit=kata-containers.target systemd.mask=systemd-networkd.service quiet root=/dev/pmem0p1 rootflags=dax,data=ordered,errors=remount-ro ro rootfstype=ext4 no_timer_check noreplace-smp systemd.log_target=console agent.container_pipe_size=1 agent.disable_erofs_overlay_volatile=true agent.erofs_overlay_reuse_upper=true cgroup_no_v1=all systemd.unified_cgroup_hierarchy=1 sysctl.vm.dirty_expire_centisecs=12000 sysctl.vm.dirty_writeback_centisecs=3000 agent.hotplug_timeout=25 agent.passfd_listener_port=1027",
+    "compiler": "cc (Debian 14.2.0-19) 14.2.0",
+    "cpu_quota": "400000 100000",
+    "euid": 1000,
+    "host": "c8e735309d5b",
+    "kernel": "6.18.44",
+    "nohz_full_cpus": "",
+    "numa_nodes": {
+      "node0": "0-4"
+    },
+    "numactl": null,
+    "online_cpus": "0-4",
+    "os_release": "PRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"\nNAME=\"Debian GNU/Linux\"\nVERSION_ID=\"13\"\nVERSION=\"13 (trixie)\"\nVERSION_CODENAME=trixie\nDEBIAN_VERSION_FULL=13.6\nID=debian\nHOME_URL=\"https://www.debian.org/\"\nSUPPORT_URL=\"https://www.debian.org/support\"\nBUG_REPORT_URL=\"https://bugs.debian.org/\"",
+    "self_cgroup": "0::/",
+    "system": "Linux",
+    "virtualization": "container-other"
+  },
+  "failed_requirements": [
+    "no isolated cgroup CPU partition",
+    "no nohz_full CPUs",
+    "numactl unavailable",
+    "CPU quota is 400000/100000 rather than unlimited",
+    "container virtualization does not establish physical-host exclusivity"
+  ],
+  "claim_effect": "Depth-39 timing remains exploratory; no candidate reproduced in holdout, and no timing can be promoted on this host."
+}

@@ -1,0 +1,189 @@
+{
+  "artifacts": {
+    "results/model-eligibility-20261006/model-eligibility.json": "0d15b2d433c9ff426ddeb0f9972a6861a7b3dc5328314fb8048d4c786187bd92",
+    "results/model-eligibility-20261006/summary.md": "d2ce05494e6d767c31fe3d486438b93f3c8fd54a9fff06ab5228f2f2a9039a79",
+    "results/sage-class-group-20261006/status-depth-seventeen.json": "e28455f0ebce5da25193657bd4973f8857d9f59b9f2e1ad6ead3c7d95a06c1a7",
+    "results/sage-low-degree-depth-fifteen-20261006/retained-union.json": "0d71298d2cd9adc9e04a5db0e9407ea132fee1cacd2035928a34484850bddb39",
+    "results/sage-low-degree-depth-seventeen-20261006/attempts.json": "ce9a904363cba4f63307a88e5a4fb48394d6a36b5758f32581c030262f463c07",
+    "results/sage-low-degree-depth-seventeen-20261006/candidate-model-audit.json": "4f9f16bc66d91592e2cc4a747939592ac64e1e2f889a75dba3f5773326d90321",
+    "results/sage-low-degree-depth-seventeen-20261006/candidates-delta.json": "258eead72e4720e08c899d39cff95e185e71203683631f28c632d40cf1d65bde",
+    "results/sage-low-degree-depth-seventeen-20261006/holdout.json": "166a783631bc60e8f179872d4deeaa9ebb7eb8e9dc013390a5224edf0d3994ef",
+    "results/sage-low-degree-depth-seventeen-20261006/native-screen/screening-summary.json": "bed20d24c5fa0eb762698876c52af9060aed86d4337236a58770b477ae254a39",
+    "results/sage-low-degree-depth-seventeen-20261006/retained-union.json": "2873037c345a4caed5acac21ba2292566841a3ff465cab9a78cfe036da3173bb",
+    "results/sage-low-degree-depth-seventeen-20261006/summary.md": "f3fbd432309319bc26d05ff85aacdfcaaa4941324f7d34cfdcf7f892415e423b",
+    "results/sage-low-degree-depth-seventeen-20261006/transfer-assessment.json": "a1b6fb3c9c24221f2060c5ab8bcb66dc0ca9c93c65114f74618265e877afa297"
+  },
+  "claim": "Resuming the low-degree frontier through depth seventeen added 496 explicit curves with no overlap against the prior 1,730-curve union. All additions received a CPU-separated matched-native screen; 0 of 8 exploratory hits reproduced in a fresh holdout.",
+  "combined_native_coverage": {
+    "explicit_curves_including_p256": 2226,
+    "non_root_curves_with_matched_native_measurement": 2225,
+    "reproducible_speedups": 0
+  },
+  "commands": {
+    "assemble": "python3 scripts/assemble_sage_low_degree_depth_seventeen.py",
+    "holdout": "taskset -c 0 python3 scripts/run_native_holdout.py --binary NATIVE_BINARY --candidates DELTA --screening SCREENING_SUMMARY --seconds 2 --trials 30 --warmup-seconds 0.2 --output results/sage-low-degree-depth-seventeen-20261006/holdout.json",
+    "native_screen": "taskset -c 0 python3 scripts/run_native_screen.py --binary NATIVE_BINARY --candidates results/sage-low-degree-depth-seventeen-20261006/candidates-delta.json --block-size 6 --seconds 0.5 --rotations 1 --warmup-seconds 0.05 --output-dir results/sage-low-degree-depth-seventeen-20261006/native-screen",
+    "search": "docker exec p256-classgroup-default taskset -c 2 sage -python scripts/extend_sage_low_degree.py --input results/sage-low-degree-depth-fifteen-20261006/candidates-delta.json --ells 3,5,11,13 --target-depth 17 --max-new-nodes 2000 --output results/sage-low-degree-depth-seventeen-20261006/candidates-delta.json",
+    "verify": "python3 scripts/verify_sage_low_degree_depth_seventeen.py"
+  },
+  "cost_accounting": {
+    "amortization": "no end-to-end estimate because per-key mapping for the added paths was not measured",
+    "default_exact_class_group_attempt": "running after at least 34716.8 seconds; no result counted",
+    "discovery_and_reusable_precomputation_seconds": 262.0092050729727,
+    "holdout_wall_seconds": 554.722170039,
+    "native_screen_block_wall_seconds_total": 2246.133037234,
+    "per_instance_mapping": "explicit formulas retained for P and Q; evaluation was not timed for the 496 additions"
+  },
+  "decision": "No candidate advances. All 8 unadjusted screening hit(s) failed the fresh holdout; all 2,225 retained non-root curves have matched native measurements and zero reproducible iteration-rate improvements.",
+  "failures": [
+    {
+      "command": "docker run -d --name p256-depth17 --cpuset-cpus 2 --mount type=bind,src=/workspace/cryptanalysis,dst=/repo -w /repo sagemath/sagemath@sha256:19995db6194f4a4bab18ce9a88556fd15b9ed5e916b4504fefe618a7796ddbdb sage -python experiments/p256-isogeny-search-20261005/scripts/extend_sage_low_degree.py --input experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-fifteen-20261006/candidates-delta.json --ells 3,5,11,13 --target-depth 17 --max-new-nodes 2000 --output experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-seventeen-20261006/candidates-delta.json",
+      "container_id": "c11fd65c0fc75884dcd3d80d37320564111e01cc180f22a45764f8352206fc03",
+      "exit_code": 1,
+      "failure": "OSError: [Errno 28] No space left on device while Sage created /tmp/sage_d46ge0f7 during import",
+      "image": "sagemath/sagemath@sha256:19995db6194f4a4bab18ce9a88556fd15b9ed5e916b4504fefe618a7796ddbdb",
+      "result_status": "failed before traversal; no candidate output created",
+      "storage_diagnosis": "The Docker vfs driver duplicated the approximately 3.14 GB Sage image for a second container and exhausted the 32 GB writable layer.",
+      "superseded_by": "CPU-2-pinned docker exec in the existing Sage container, whose primary class-group process is pinned to CPU 4",
+      "traceback": [
+        "Traceback (most recent call last):",
+        "  File /repo/experiments/p256-isogeny-search-20261005/scripts/extend_sage_low_degree.py, line 17, in <module>",
+        "    from sage.all import EllipticCurve, GF",
+        "  File /home/sage/sage/local/var/lib/sage/venv-python3.12.5/lib/python3.12/site-packages/sage/misc/temporary_file.py, line 37, in <module>",
+        "    TMP_DIR_FILENAME_BASE = tempfile.TemporaryDirectory(prefix='sage_')",
+        "  File /home/sage/sage/local/var/lib/sage/venv-python3.12.5/lib/python3.12/tempfile.py, line 384, in mkdtemp",
+        "    _os.mkdir(file, 0o700)",
+        "OSError: [Errno 28] No space left on device: '/tmp/sage_d46ge0f7'"
+      ]
+    },
+    {
+      "command": "python3 scripts/finalize_sage_low_degree_depth_seventeen.py --pr-parent-remote-commit fa864162deb918b6c0d1bca99a979d4e273bec8a",
+      "exit_code": 1,
+      "failure": "ValueError while formatting suite source paths with pathlib.Path.relative_to",
+      "result_status": "raw search, screen, holdout, model audit, assessment, and summary remained intact; no source manifest or receipt was emitted",
+      "superseded_by": "use os.path.relpath for source files outside the experiment directory",
+      "traceback_tail": "ValueError: /workspace/cryptanalysis/suite/examples/p256_isogeny_native_bench.rs is not in the subpath of /workspace/cryptanalysis/experiments/p256-isogeny-search-20261005"
+    },
+    {
+      "command": "python3 scripts/verify_sage_low_degree_depth_seventeen.py",
+      "exit_code": 1,
+      "failure": "FileNotFoundError while replaying the search input hash from the recorded /repo container mount",
+      "result_status": "all preceding model certificates reproduced; depth-17 verification stopped before evaluating the registry",
+      "superseded_by": "map an unavailable absolute /repo path to the current repository root before hashing",
+      "traceback_tail": "FileNotFoundError: /repo/experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-fifteen-20261006/candidates-delta.json"
+    },
+    {
+      "command": "python3 scripts/verify_sage_low_degree_depth_seventeen.py",
+      "exit_code": 1,
+      "failure": "AssertionError because the verifier expected exactly one failed attempt after later failures had been preserved",
+      "result_status": "registry and path checks passed through the failure-ledger gate; screen and holdout checks had not yet run",
+      "superseded_by": "validate failure contents and nonzero exit codes without fixing the ledger length",
+      "traceback_tail": "AssertionError at len(attempts['attempts']) == 1"
+    },
+    {
+      "command": "python3 scripts/audit_candidate_models.py --candidates results/sage-low-degree-depth-seventeen-20261006/candidates-delta.json --output results/sage-low-degree-depth-seventeen-20261006/candidate-model-audit.json --verify",
+      "exit_code": 1,
+      "failure": "AssertionError because the frozen input path string depended on the working directory even though its SHA-256 and replayed certificates matched",
+      "result_status": "the 497 model transformations recomputed, but exact JSON comparison rejected the path spelling",
+      "superseded_by": "resolve the input and store its canonical path relative to the experiment root",
+      "traceback_tail": "AssertionError: candidate model audit does not reproduce"
+    },
+    {
+      "command": "python3 /tmp/upload_p256_depth17_blob.py",
+      "exit_code": 1,
+      "failure": "GitHub Git Data blob API rejected the base64 request as too large (HTTP 422)",
+      "result_status": "no standalone remote blob was created; local Git blob acceea98885217f768c7c697e4cba23a533d1a99 remains intact",
+      "stderr": "gh: Sorry, your input was too large to process. Consider creating the blob in a local clone of the repository and then pushing it to GitHub. (HTTP 422)",
+      "superseded_by": "publish a remote-parent commit through Git's pack protocol"
+    }
+  ],
+  "holdout": {
+    "all_linear_relations_verified": true,
+    "candidates": 8,
+    "largest_point_estimate": {
+      "candidate_id": "p256-j-9e32666023db1f26d6df9fb7255b85ddc975055fadeb0305d82aca0cbd7cce4c",
+      "paired_relative_iteration_speed": 1.0097353774829625,
+      "paired_relative_iteration_speed_95_percent_ci": [
+        0.9899069704822354,
+        1.0299609589009935
+      ]
+    },
+    "reproduced_speedups": 0,
+    "seconds_per_trial": 2.0,
+    "trials_per_candidate": 30
+  },
+  "limitations": [
+    "the traversal stops at depth seventeen and uses only edge degrees 3, 5, 11, and 13",
+    "the 2,226-curve explicit registry is not the entire P-256 isogeny class",
+    "CPU affinity was separated but the repository host-isolation gate and frequency stability were not independently verified",
+    "the screens measure generic rho iteration cost rather than completing a full P-256 collision",
+    "per-key mapping cost was not measured for the 496 additions",
+    "the exact class-number computation had not completed when this bounded result was frozen",
+    "the word dramatic has no user-supplied numerical acceptance threshold"
+  ],
+  "model_eligibility": {
+    "all_candidate_normalizations_verified": true,
+    "artifact": "results/model-eligibility-20261006/model-eligibility.json",
+    "candidate_target_a_counts": {
+      "1": 245,
+      "3": 252
+    },
+    "dramatic_speedup_found": false,
+    "montgomery_edwards_shortcut": "refuted class-wide over F_p",
+    "small_a_neighbor_only_advantage": "refuted; P-256 maps to a=1"
+  },
+  "protocol_id": "p256-isogeny-search-exploratory-v1",
+  "run_completed_at": "2026-10-07T00:48:50Z",
+  "runtime": {
+    "cpu_affinity": {
+      "concurrent_default_class_group_process": "CPU 4 via taskset inside the Sage container",
+      "frequency_stability": "not independently verified",
+      "native_screen_and_holdout": "CPU 0 via taskset -c 0; inherited by child benchmark processes",
+      "sage_frontier_extension": "CPU 2 via Docker exec and taskset"
+    },
+    "host_isolation": "unverified; all wall-time comparisons remain exploratory under repository policy",
+    "native_release_binary_sha256": "768fb614af10bcd3990b8373194713b5406051149ea9b627c01b5e1e4f0a9e5d",
+    "sage_image": "sagemath/sagemath:10.6",
+    "sage_image_digest": "sha256:19995db6194f4a4bab18ce9a88556fd15b9ed5e916b4504fefe618a7796ddbdb"
+  },
+  "schema_version": 1,
+  "screening": {
+    "all_linear_relations_verified": true,
+    "blocks": 83,
+    "candidate_trials": 3464,
+    "complete_position_rotations_per_block": 1,
+    "new_neighbors": 496,
+    "screening_point_estimate_range": [
+      1.0194571244281982,
+      1.105925579846819
+    ],
+    "seconds_per_trial": 0.5,
+    "unadjusted_screening_hits": 8
+  },
+  "search": {
+    "combined_unique_curves_including_p256": 2226,
+    "ells": [
+      3,
+      5,
+      11,
+      13
+    ],
+    "exceptional_automorphisms_found": false,
+    "explicit_paths_verified": true,
+    "input_depth": 15,
+    "new_depth_counts": {
+      "16": 240,
+      "17": 256
+    },
+    "new_non_root_curves": 496,
+    "overlap_with_prior_union": 0,
+    "target_depth": 17
+  },
+  "source": {
+    "local_parent_commit": "afe853db93c034a22b3342466e66e909e07cfa3d",
+    "manifest": "source-sage-low-degree-depth-seventeen-20261006.sha256",
+    "manifest_sha256": "119ee689e35c152fc09d686fbca30b2e68fbdc223c2c7c816c99476909d4eac5",
+    "pr_parent_remote_commit": "fa864162deb918b6c0d1bca99a979d4e273bec8a"
+  },
+  "status": "verified_exploratory_low_degree_depth_seventeen"
+}
