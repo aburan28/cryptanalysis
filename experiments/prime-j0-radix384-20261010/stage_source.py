@@ -17,7 +17,7 @@ import host_replay as replay
 
 EXTRA = (
     "PROTOCOL.md", "PROOF.md", "check_algebra.py", "make_inputs.py",
-    "fresh-inputs.json", "runpod_correctness.sh", "stage_source.py",
+    "fresh-inputs.json", "verify_inputs.py", "runpod_correctness.sh", "stage_source.py",
 )
 
 

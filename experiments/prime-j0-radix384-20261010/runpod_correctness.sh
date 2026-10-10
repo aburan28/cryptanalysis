@@ -9,6 +9,8 @@ sha256sum -c source-files.sha256 > source-integrity-before.log
 printf 'source_index_sha256='; sha256sum source-files.sha256
 
 cd "$source_root"
+python3 experiments/prime-j0-radix384-20261010/check_algebra.py
+python3 experiments/prime-j0-radix384-20261010/verify_inputs.py
 uname -a
 rustc --version
 cargo --version
