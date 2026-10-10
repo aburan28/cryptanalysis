@@ -149,7 +149,7 @@ def audit():
     assert scalar_digest(frozen_values) == frozen["scalar_sha256"]
     assert scalar_digest(fresh_values) == fresh["scalar_sha256"]
     assert fresh["frozen_source_sha256"] == sha(FROZEN)
-    assert not set(frozen_values) & set(fresh_values)
+    assert not {value % N for value in frozen_values} & set(fresh_values)
     r_w = reciprocal(V1)
     r_v = reciprocal(-W1)
     assert r_w.bit_length() <= 385 and r_v.bit_length() <= 386
@@ -158,7 +158,9 @@ def audit():
     checked = 0
     point_replays = 0
     max_coordinate_bits = 0
-    for k in [0, N - 1] + frozen_values + fresh_values:
+    for raw_k in [0, N - 1] + frozen_values + fresh_values:
+        # The reference evaluator reduces public inputs before cell selection.
+        k = raw_k % N
         assert 0 <= k < N
         fw = exact_floor(k, V1, r_w)
         fv = exact_floor(k, -W1, r_v)
