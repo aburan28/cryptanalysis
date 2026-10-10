@@ -165,6 +165,21 @@ new relation row. The [audit](../ecc2k130-263-leaf-inverse-frontier-20261010/run
 checks exact inputs, transcripts, XCNF, and group sums. Next isolate leaf
 inverse propagation with a six-distinct-leaf finite-state witness before a
 selective encoding change. Ordinary-query yield and rank remain unmeasured.
+The [finite six-distinct S3 control](../ecc2k130-263-distinct-s3-control-20261010/RESULT.md)
+replaces that cancellation fixture with the six archived native-W24 leaves
+on each curve. Sage and the independent binary group law verify distinct
+fourfold subgroup projections, finite intermediates, five S3 links, and the
+exact raw-sum control target. Fixed positive/bit-flipped negative SAT
+controls pass on both curves; all eight x0/z0/x5/z5 single-coordinate
+releases reach `BOUNDED_UNKNOWN` with live restart progress under the frozen
+120/150-second limits. The
+[archive audit](../ecc2k130-263-distinct-s3-control-20261010/runs/R1/audit.json)
+reconstructs all twelve inputs and checks every SAT clause, XOR, and signed
+group sum. This supports treating the earlier half-second x0 model as a
+fixture-specific recall rather than evidence of easy x-leaf inversion. Next
+compare an exact selector-weighted bilinear encoding of the W24 leaf
+inverse equations on
+these same inputs before opening another ordinary-query gate.
 The [functional W24/m6 solver gate](../ecc2k130-w24-functional-s3-20261006/RESULT.md)
 removed free inverse and S3-intermediate witnesses but enlarged the planted
 XCNF 20.448-fold; CryptoMiniSat timed out at 30 seconds while an independent
