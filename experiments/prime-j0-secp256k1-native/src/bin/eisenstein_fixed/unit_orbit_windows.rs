@@ -662,7 +662,7 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
-    if format == 20 {
+    if format == 20 || format == 21 {
         std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
         return TABLES.retained_bytes;
     }
@@ -745,14 +745,16 @@ pub(super) fn multiply_word_format(
     }
     let lattice = &*SCALAR_LATTICE;
     let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
-    let (start_a, start_b) = if format == 20 {
-        super::hexagonal_four_corner_choices_reciprocal(&residue)
+    let (start_a, start_b) = if format == 21 {
+        super::hexagonal_certified_corner_choice(&residue).0
+    } else if format == 20 {
+        super::hexagonal_four_corner_choices_reciprocal(&residue).remove(0)
     } else {
-        hexagonal_four_corner_choices(&residue)
-    }.remove(0);
+        hexagonal_four_corner_choices(&residue).remove(0)
+    };
     let mut a = Signed192::from_bigint(&start_a);
     let mut b = Signed192::from_bigint(&start_b);
-    let tables = selected(if format == 20 { 14 } else { format });
+    let tables = selected(if format == 20 || format == 21 { 14 } else { format });
     let mut result = Jacobian::identity();
     let mut nonidentity: usize = 0;
     for (index, &width) in tables.widths.iter().enumerate() {
@@ -1101,6 +1103,62 @@ mod tests {
                            "independent fresh point {index}");
             }
         }
+    }
+
+    #[test]
+    fn certified_voronoi_selector_matches_complete_scalar_outputs() {
+        let frozen: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-radix943-word-20261009/inputs.json"
+        )).unwrap();
+        let prior: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-exact-reciprocal-20261010/fresh-inputs.json"
+        )).unwrap();
+        let holdout: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-certified-voronoi-20261010/fresh-inputs.json"
+        )).unwrap();
+        let boundary: [String; 4] = ["0".to_owned(),
+                        (&SCALAR_LATTICE.n - BigInt::from(1)).to_str_radix(16),
+                        SCALAR_LATTICE.n.to_str_radix(16),
+                        ((BigInt::from(1) << 256usize) - BigInt::from(1)).to_str_radix(16)];
+        let lists: [Vec<&str>; 4] = [
+            boundary.iter().map(String::as_str).collect::<Vec<_>>(),
+            frozen["scalars_hex"].as_array().unwrap().iter()
+                .map(|x| x.as_str().unwrap()).collect(),
+            prior["scalars_hex"].as_array().unwrap().iter()
+                .map(|x| x.as_str().unwrap()).collect(),
+            holdout["scalars_hex"].as_array().unwrap().iter()
+                .map(|x| x.as_str().unwrap()).collect(),
+        ];
+        assert_eq!(lists.iter().map(Vec::len).collect::<Vec<_>>(), [4, 519, 4096, 4096]);
+        assert_eq!(super::super::certified_corner_from_fraction_limb(1 << 63, 0), None);
+        let mut counts = [0usize; 4];
+        let mut fallback = 0usize;
+        for (panel, values) in lists.iter().enumerate() {
+            for (index, &hex) in values.iter().enumerate() {
+                let scalar = BigInt::parse_bytes(hex.as_bytes(), 16).unwrap();
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                let (chosen, did_fallback, corner) =
+                    super::super::hexagonal_certified_corner_choice(&reduced);
+                assert_eq!(chosen, hexagonal_four_corner_choices(&reduced)[0],
+                           "corner panel {panel} index {index}");
+                fallback += usize::from(did_fallback);
+                if !did_fallback { counts[corner] += 1; }
+                let reference = multiply_word_format(&scalar, 20);
+                let candidate = multiply_word_format(&scalar, 21);
+                assert_eq!((&candidate.1, &candidate.2, candidate.3, candidate.4),
+                           (&reference.1, &reference.2, reference.3, reference.4),
+                           "accounting panel {panel} index {index}");
+                assert_eq!(candidate.0.affine_hex(), reference.0.affine_hex(),
+                           "point panel {panel} index {index}");
+                if panel == 3 && index < 128 {
+                    assert_eq!(candidate.0.affine_hex(),
+                               independent_binary_point(&reduced).affine_hex(),
+                               "independent holdout {index}");
+                }
+            }
+        }
+        assert_eq!(fallback, 0);
+        assert_eq!(counts, [2983, 1414, 1455, 2863]);
     }
 
     #[test]
