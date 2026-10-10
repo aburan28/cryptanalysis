@@ -467,6 +467,16 @@ Next freeze the per-probe arithmetic or pair-root-index policy on this base,
 then complete the equal-useful-size degree-263 route comparison with charged
 transport and held-out targets.
 
+The separate [certified-base L384 batch replay](../ecc2k130-n53-l384-batch-bridge-20261010/RESULT.md)
+checks the complete 384-point same-Q IC/rho stream, including 512 training
+relations, rank 220/220 and all recovered scalars. Its fresh-base training,
+materialization and rank/log solve cost 199.233 s, exceeding that run's
+149.927 s matched batched-rho total before point queries. The full charged IC
+sum was 327.208 s. This base has a different ordered representative digest
+from the one-target K220 restart study above; the L384 ratio is a secondary
+shared-table measurement. It makes base-construction and rank cost, followed
+by matched one-target base-policy comparisons, the next empirical focus.
+
 Screen the 1,000 proposals in stages rather than launch 1,000 complete DLPs.
 First materialize and replay factor bases, then benchmark PDPs on identical
 ordinary and planted-control corpora. Advance only variants with verified
