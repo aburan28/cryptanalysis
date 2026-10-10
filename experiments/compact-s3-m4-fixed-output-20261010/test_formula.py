@@ -28,10 +28,25 @@ def check(n, variant, frozen):
         for bits, coordinate in zip(leaves, known_right):
             experiment.parent.parent.pin_bits(formula, bits, coordinate)
         with experiment.StatsSolver(formula.variables) as solver:
-            solver.load_formula(formula)
-            state, model, counters = solver.solve_assuming(
-                assumptions, seconds=10, conflicts=100000)
-        assert state == expected, (n, variant, value, state, counters)
+            if expected == "SAT":
+                solver.load_formula(formula)
+                consistent_at_root = True
+            else:
+                consistent_at_root = all(solver.add_clause(row)
+                                         for row in formula.clauses)
+                if consistent_at_root:
+                    consistent_at_root = all(solver.add_xor(row, rhs)
+                                             for row, rhs in formula.xors)
+            if consistent_at_root:
+                state, model, counters = solver.solve_assuming(
+                    assumptions, seconds=10, conflicts=100000)
+            else:
+                state, model = "UNSAT_ROOT", None
+                counters = {"conflicts": 0, "propagations": 0,
+                            "decisions": 0}
+        assert state == expected or (expected == "UNSAT" and
+                                     state == "UNSAT_ROOT"), (
+            n, variant, value, state, counters)
         if state == "SAT":
             experiment.prior.check_formula_model(formula, [], model)
             assert output is None or experiment.bits_value(output, model) == value

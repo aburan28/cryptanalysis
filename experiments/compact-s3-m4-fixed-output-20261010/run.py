@@ -85,7 +85,7 @@ def freeze():
             "selected": selected,
         }
     frozen = {
-        "schema": "q1429-fixed-output-freeze-v1",
+        "schema": "q1429-fixed-output-freeze-v2",
         "proposal_id": "Q1429", "candidate_id": None,
         "run_id": None, "isogeny": "none",
         "variants": list(VARIANTS), "limits": LIMITS,
@@ -103,7 +103,7 @@ def freeze():
 
 def check_freeze():
     frozen = json.loads((HERE / "freeze.json").read_text())
-    assert frozen["schema"] == "q1429-fixed-output-freeze-v1"
+    assert frozen["schema"] == "q1429-fixed-output-freeze-v2"
     assert frozen["variants"] == list(VARIANTS)
     assert frozen["source_sha256"] == source_hashes()
     assert frozen["protocol_sha256"] == prior.digest(HERE / "PROTOCOL.md")
@@ -127,27 +127,6 @@ def check_freeze():
                 f"n{n}_control.json" if kind == "control" else
                 f"n{n}_ordinary_anchor0.json"))
     return frozen
-
-
-def select_and_join(n, kind, profile, parent_receipt, old_case):
-    onb = prior.field.Onb(n)
-    if kind == "ordinary":
-        curve, keys, key = parent.parent.read_base(profile, onb)
-        selected = parent.parent.choose(profile, parent_receipt, 0,
-                                        onb, curve, keys, key)
-        assert selected == old_case["ordinary_anchors"][0]
-        lifts = old_case["ordinary_lifts"]
-        expected_join = old_case["ordinary_joins"][0]
-    else:
-        selected = old_case["control_anchor"]
-        roots = exact_roots(MeteredField(onb), *(
-            leaf["raw_x"] for leaf in selected["leaves"]))
-        assert list(roots) == selected["roots"]
-        lifts = old_case["control_lifts"]
-        expected_join = old_case["control_join"]
-    joined = parent.joined_branches(onb, selected, lifts)
-    assert joined == expected_join
-    return selected, joined
 
 
 def run_case(n, kind, variant):
