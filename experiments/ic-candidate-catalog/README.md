@@ -228,14 +228,17 @@ the formula, yet CryptoMiniSat recovered no unknown witness at either
 closed; prioritize a structurally different, bounded implicit PDP screen
 over further expansion of this exact SAT encoding.
 
-The [Q1421 normal-weight-four source-base protocol](../ecc2k130-normal-weight4-base-20261009/PROTOCOL.md)
-uses the already verified 131-coordinate normal basis to define a distinct,
-Frobenius-stable six-summand factor-base policy on the exact polynomial-basis
-ECC2K-130 source curve. Its 11,716,640 raw weight-four field parameters form
-89,440 cyclic orbits; exact rational, reciprocal, subgroup-point, and
-matrix-column counts are pending the preregistered census and independent
-Sage replay. It is a proposal with `candidate_id: null`, separate from the
-sampled type-II normal-basis weight-six four-summand policy and from Q1420.
+The [Q1421 normal-weight-four source-base result](../ecc2k130-normal-weight4-base-20261009/RESULT.md)
+replays all 89,440 cyclic orbits of 11,716,640 weight-four field parameters
+on the exact polynomial-basis ECC2K-130 source curve. It finds 44,824
+rational orbits, no in-base reciprocal pairs, `B=11,743,888` actual usable
+subgroup points, and `K=44,824` potential signed-Frobenius columns. Checked
+Sage independently matches every count and digest and verifies sampled group
+and Frobenius actions. Both frozen count gates pass; the next test is a
+matched ordinary-query six-summand PDP comparison at equal `B` of Q1421
+against the four Q1420 geometries. The [protocol](../ecc2k130-normal-weight4-base-20261009/PROTOCOL.md)
+and result remain proposal `Q1421` with `candidate_id: null` until the full
+pipeline is specified and measured.
 
 The [preregistered cold full-rank one-target control](../ecc2k130-cold-fullrank-20261006/RESULT.md)
 assigns canonical `IC1`/workload/run IDs to independently replayed n37 and n41
