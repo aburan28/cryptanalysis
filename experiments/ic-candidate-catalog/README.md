@@ -317,6 +317,14 @@ audit are linked from the result. The next bounded solver gate cuts the
 five selected large matrices to two before sampling additional ordinary
 queries. `candidate_id` remains `null` pending verified relations and rank.
 
+The [frozen Gaussian matrix-count gate](../ecc2k130-equalb-gauss-count-20261010/PROTOCOL.md)
+keeps those two exact XCNFs, the four raw lifts of public query zero, large
+row/column limits, solver binary, and resource caps fixed. It pairs two and
+five selected matrices on each formula and audits active elimination, peak
+RSS, and terminal status before deciding whether a longer one-query attempt
+is warranted. The held-out 16/256-query screen remains gated on a verified
+ordinary relation or an independently justified solver-policy change.
+
 The [preregistered cold full-rank one-target control](../ecc2k130-cold-fullrank-20261006/RESULT.md)
 assigns canonical `IC1`/workload/run IDs to independently replayed n37 and n41
 four-summand exact-support recoveries; its n53 cell is a preserved 180-second
