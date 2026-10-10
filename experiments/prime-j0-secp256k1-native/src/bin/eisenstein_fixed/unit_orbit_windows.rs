@@ -787,6 +787,49 @@ impl U256XYZZ {
         Self { x: rx, y: ry, zz: rzz, zzz: rzzz }
     }
 
+    fn add_xyzz(self, q: Self) -> Self {
+        if self.is_identity() { return q; }
+        if q.is_identity() { return self; }
+        let u1 = u256_mul(self.x, q.zz);
+        let u2 = u256_mul(q.x, self.zz);
+        let s1 = u256_mul(self.y, q.zzz);
+        let s2 = u256_mul(q.y, self.zzz);
+        let h = u256_sub(u2, u1);
+        let r = u256_sub(s2, s1);
+        if bool::from(h.ct_is_zero()) {
+            return if bool::from(r.ct_is_zero()) { self.double() }
+                   else { Self::identity() };
+        }
+        let hh = u256_square(h);
+        let hhh = u256_mul(h, hh);
+        let v = u256_mul(u1, hh);
+        let rx = u256_sub(u256_sub(u256_square(r), hhh), u256_add(v, v));
+        let ry = u256_sub(u256_mul(r, u256_sub(v, rx)), u256_mul(s1, hhh));
+        let rzz = u256_mul(u256_mul(self.zz, q.zz), hh);
+        let rzzz = u256_mul(u256_mul(self.zzz, q.zzz), hhh);
+        Self { x: rx, y: ry, zz: rzz, zzz: rzzz }
+    }
+
+    // Apply the degree-three endomorphism without choosing a Jacobian Z.
+    fn tau(self) -> Self {
+        if self.is_identity() || bool::from(self.x.ct_is_zero()) {
+            return Self::identity();
+        }
+        let x3 = u256_mul(u256_square(self.x), self.x);
+        let y2 = u256_square(self.y);
+        let three_x3 = u256_add(u256_add(x3, x3), x3);
+        let four_y2 = u256_add(u256_add(y2, y2), u256_add(y2, y2));
+        let rx = u256_sub(four_y2, three_x3);
+        let inner = u256_sub(three_x3, u256_add(rx, rx));
+        let ry = u256_mul(inner, self.y);
+        let w = u256_sub(self.x, u256_mul(self.x, U256_BETA_UNITS[1]));
+        let w2 = u256_square(w);
+        let w3 = u256_mul(w2, w);
+        let rzz = u256_mul(w2, self.zz);
+        let rzzz = u256_mul(w3, self.zzz);
+        Self { x: rx, y: ry, zz: rzz, zzz: rzzz }
+    }
+
     fn double(self) -> Self {
         if self.is_identity() || bool::from(self.y.ct_is_zero()) {
             return Self::identity();
@@ -2084,6 +2127,9 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 52 || format == 51 {
+        return warm_format(format - 4);
+    }
     if format == 50 || format == 49 {
         return warm_format(format - 2);
     }
@@ -3133,6 +3179,7 @@ fn multiply_u256_tau_bucket_two_x_with<const N: usize>(
     windows: &[Box<[U256TwoXAffine]>],
     retained_bytes: usize,
     direct_merge: bool,
+    xyzz_tau: bool,
 ) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
     let scalar = super::Uint(scalar_words);
     let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
@@ -3164,11 +3211,15 @@ fn multiply_u256_tau_bucket_two_x_with<const N: usize>(
         buckets[exponent] = buckets[exponent].add_mixed(
             windows[index][seed_id].unit(unit_code));
     }
-    let transformed = buckets[1].into_jacobian().tau();
-    let point = if direct_merge {
-        buckets[0].add_jacobian(transformed).affine_hex_binary_inverse()
+    let point = if xyzz_tau {
+        buckets[0].add_xyzz(buckets[1].tau()).affine_hex_binary_inverse()
     } else {
-        buckets[0].into_jacobian().add_projective(transformed).affine_hex_binary_inverse()
+        let transformed = buckets[1].into_jacobian().tau();
+        if direct_merge {
+            buckets[0].add_jacobian(transformed).affine_hex_binary_inverse()
+        } else {
+            buckets[0].into_jacobian().add_projective(transformed).affine_hex_binary_inverse()
+        }
     };
     (point, representative, nonidentity.saturating_sub(1),
      retained_bytes, fallback, corner, 0)
@@ -3179,7 +3230,7 @@ pub(super) fn multiply_u256_tau_frontier18_bucket_two_x(
 ) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
     let tables: &'static Frontier18BucketTwoXTables = &*FRONTIER18_BUCKET_TWO_X_TABLES;
     multiply_u256_tau_bucket_two_x_with(scalar_words, &FRONTIER18_WIDTHS,
-        |index| tables.atlas(index), &tables.windows, tables.retained_bytes, false)
+        |index| tables.atlas(index), &tables.windows, tables.retained_bytes, false, false)
 }
 
 pub(super) fn multiply_u256_tau_frontier17_bucket_two_x(
@@ -3187,7 +3238,7 @@ pub(super) fn multiply_u256_tau_frontier17_bucket_two_x(
 ) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
     let tables: &'static Frontier17BucketTwoXTables = &*FRONTIER17_BUCKET_TWO_X_TABLES;
     multiply_u256_tau_bucket_two_x_with(scalar_words, &FRONTIER17_WIDTHS,
-        |index| tables.atlas(index), &tables.windows, tables.retained_bytes, false)
+        |index| tables.atlas(index), &tables.windows, tables.retained_bytes, false, false)
 }
 
 pub(super) fn multiply_u256_tau_frontier18_bucket_two_x_direct(
@@ -3195,7 +3246,7 @@ pub(super) fn multiply_u256_tau_frontier18_bucket_two_x_direct(
 ) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
     let tables: &'static Frontier18BucketTwoXTables = &*FRONTIER18_BUCKET_TWO_X_TABLES;
     multiply_u256_tau_bucket_two_x_with(scalar_words, &FRONTIER18_WIDTHS,
-        |index| tables.atlas(index), &tables.windows, tables.retained_bytes, true)
+        |index| tables.atlas(index), &tables.windows, tables.retained_bytes, true, false)
 }
 
 pub(super) fn multiply_u256_tau_frontier17_bucket_two_x_direct(
@@ -3203,7 +3254,23 @@ pub(super) fn multiply_u256_tau_frontier17_bucket_two_x_direct(
 ) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
     let tables: &'static Frontier17BucketTwoXTables = &*FRONTIER17_BUCKET_TWO_X_TABLES;
     multiply_u256_tau_bucket_two_x_with(scalar_words, &FRONTIER17_WIDTHS,
-        |index| tables.atlas(index), &tables.windows, tables.retained_bytes, true)
+        |index| tables.atlas(index), &tables.windows, tables.retained_bytes, true, false)
+}
+
+pub(super) fn multiply_u256_tau_frontier18_bucket_two_x_xyzz_tau(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let tables: &'static Frontier18BucketTwoXTables = &*FRONTIER18_BUCKET_TWO_X_TABLES;
+    multiply_u256_tau_bucket_two_x_with(scalar_words, &FRONTIER18_WIDTHS,
+        |index| tables.atlas(index), &tables.windows, tables.retained_bytes, true, true)
+}
+
+pub(super) fn multiply_u256_tau_frontier17_bucket_two_x_xyzz_tau(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let tables: &'static Frontier17BucketTwoXTables = &*FRONTIER17_BUCKET_TWO_X_TABLES;
+    multiply_u256_tau_bucket_two_x_with(scalar_words, &FRONTIER17_WIDTHS,
+        |index| tables.atlas(index), &tables.windows, tables.retained_bytes, true, true)
 }
 
 fn multiply_u256_sector_with<const N: usize>(
@@ -4750,6 +4817,50 @@ mod tests {
                            left.into_jacobian().add_projective(right)
                                .affine_hex_binary_inverse());
             }
+        }
+    }
+
+    #[test]
+    fn xyzz_tau_and_projective_merge_match_jacobian_and_fresh_scalars() {
+        let first = FRONTIER19_TABLES.windows[0][1];
+        let second = FRONTIER19_TABLES.windows[1][1];
+        let p = U256XYZZ::from_affine(first).double();
+        let q = U256XYZZ::from_affine(second).double();
+        assert!(U256XYZZ::identity().tau().is_identity());
+        assert_eq!(q.tau().affine_hex_binary_inverse(),
+                   q.into_jacobian().tau().affine_hex_binary_inverse());
+        assert_eq!(U256XYZZ::identity().add_xyzz(q).affine_hex_binary_inverse(),
+                   q.affine_hex_binary_inverse());
+        assert_eq!(p.add_xyzz(U256XYZZ::identity()).affine_hex_binary_inverse(),
+                   p.affine_hex_binary_inverse());
+        let inverse = U256XYZZ {
+            y: u256_sub(super::super::U256::ZERO, p.y), ..p
+        };
+        assert!(p.add_xyzz(inverse).is_identity());
+        assert_eq!(p.add_xyzz(p).affine_hex_binary_inverse(),
+                   p.double().affine_hex_binary_inverse());
+        for left in [p, p.add_mixed(second), p.double()] {
+            for right in [q, q.double(), q.add_mixed(first)] {
+                assert_eq!(left.add_xyzz(right).affine_hex_binary_inverse(),
+                           left.into_jacobian().add_projective(right.into_jacobian())
+                               .affine_hex_binary_inverse());
+            }
+        }
+
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-tau-bucket-two-x-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            assert_eq!(multiply_u256_tau_frontier17_bucket_two_x_xyzz_tau(words).0,
+                       multiply_u256_tau_frontier17_bucket_two_x_direct(words).0,
+                       "frontier17 scalar {index}");
+            assert_eq!(multiply_u256_tau_frontier18_bucket_two_x_xyzz_tau(words).0,
+                       multiply_u256_tau_frontier18_bucket_two_x_direct(words).0,
+                       "frontier18 scalar {index}");
         }
     }
 
