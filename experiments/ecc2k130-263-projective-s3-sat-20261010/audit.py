@@ -121,7 +121,8 @@ def check_build(policy, run_dir, config):
     }
 
 
-def check_cell(policy, mode, run_dir, config, witness, build, base, inputs, cells):
+def check_cell(policy, mode, run_dir, config, witness, build, base, inputs,
+               cells, scratch_dir):
     prefix = run_dir / (policy + "_" + mode)
     delta = prefix.with_suffix(".units.txt")
     cell = cells["cells"][mode]
@@ -132,7 +133,8 @@ def check_cell(policy, mode, run_dir, config, witness, build, base, inputs, cell
             or cell["selected_target_choice"] != int(mode == "negative")
             or (cell["unit_count"] != (146 if mode == "free" else 2246))):
         raise ValueError("unit-delta identity or fixed domain changed")
-    with tempfile.TemporaryDirectory(prefix="s3-control-audit-") as temp:
+    with tempfile.TemporaryDirectory(prefix="s3-control-audit-",
+                                     dir=scratch_dir) as temp:
         formula = Path(temp) / "reconstructed.xcnf"
         vars_, total, unit_count = compose_cell(base, units, formula)
         if (ref.sha(formula) != cell["xcnf_sha256"]
@@ -171,6 +173,7 @@ def check_cell(policy, mode, run_dir, config, witness, build, base, inputs, cell
                 or solver["rss_cap_bytes"] != 4 * (1 << 30)
                 or solver["wall_seconds"] > wall_cap + 2
                 or solver["peak_observed_rss_bytes"] > 4 * (1 << 30)
+                or solver["peak_child_rss_bytes"] <= 0
                 or solver["command"][1:5] != [
                     "--threads=1", f"--maxtime={maxtime}",
                     "--verb=1", "--printsol=1"]):
@@ -204,6 +207,7 @@ def check_cell(policy, mode, run_dir, config, witness, build, base, inputs, cell
             "guard": solver["guard"],
             "wall_seconds": solver["wall_seconds"],
             "peak_observed_rss_bytes": solver["peak_observed_rss_bytes"],
+            "peak_child_rss_bytes": solver["peak_child_rss_bytes"],
             "exact_input_sha256": cell["xcnf_sha256"],
             "unit_count": unit_count,
             "stdout_sha256": solver["stdout_sha256"],
@@ -216,9 +220,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--scratch-dir", type=Path,
+                        help="filesystem for reconstructed XCNFs; defaults to output directory")
     args = parser.parse_args()
     if args.out.exists():
         parser.error("refusing to overwrite audit result")
+    scratch_dir = args.scratch_dir or args.out.parent
+    scratch_dir.mkdir(parents=True, exist_ok=True)
     config = ref.read(HERE / "CONFIG.json")
     group_receipt = check_parent(config)
     policies = {}
@@ -238,7 +246,8 @@ def main():
         for mode in ("positive", "negative", "free"):
             results[mode] = check_cell(
                 policy, mode, args.run_dir, config,
-                group_receipt["policies"][policy], build, base, inputs, cells)
+                group_receipt["policies"][policy], build, base, inputs, cells,
+                scratch_dir)
         policies[policy] = {"base": base_row, "cells": results}
     gate_pass = all(
         row["cells"]["positive"]["status"] == "SAT_VERIFIED_GROUP"

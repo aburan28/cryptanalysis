@@ -127,6 +127,17 @@ resource receipts. The next gate is a full SAT solve of the archived
 cancellation witness with sign decoding and group replay, followed by a
 matched ordinary-query chart comparison. Q1420 remains a proposal with
 natural relation yield and rank unset.
+The [full-SAT exceptional-control gate](../ecc2k130-263-projective-s3-sat-20261010/RESULT.md)
+then solves the archived cancellation witness on both curves and independently
+checks every ordinary clause, native XOR, decoded intermediate x class, leaf
+sign, and exact group target. The two one-bit target mutations return explicit
+UNSAT. Fixing only the six leaf masks instead gives `BOUNDED_UNKNOWN` at the
+120-second internal cap on both curves. The
+[archive-only replay](../ecc2k130-263-projective-s3-sat-20261010/runs/R1/audit.json)
+separates the complete fixed-witness correctness result from the remaining
+search gap. Next release leaf coordinates and projective intermediates in
+separate paired controls to localize that gap before another ordinary-query
+screen; natural relation yield and rank remain unset.
 The [functional W24/m6 solver gate](../ecc2k130-w24-functional-s3-20261006/RESULT.md)
 removed free inverse and S3-intermediate witnesses but enlarged the planted
 XCNF 20.448-fold; CryptoMiniSat timed out at 30 seconds while an independent
