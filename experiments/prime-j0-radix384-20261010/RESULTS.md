@@ -28,3 +28,20 @@ these checks establish correctness and retained allocation, not a
 controlled CPU wall-time ratio. The RunPod Linux replay is dispatched
 separately through the serial queue; its container fails the host-level
 isolation preflight, so its output is also a correctness receipt.
+
+## Linux dispatch
+
+On 2026-10-10, the frozen source archive from commit
+`2c52874c177e75fc36d87ca65640ab7e57731241` was copied to the
+existing RunPod worker. Its archive SHA-256 is
+`c6aa63505e7ddf407dfd20404c55d7ea9270ff1afd6a9cf4d813cdc2dfca9978`;
+the 59-file source index SHA-256 is
+`712df3041143d0586daef381851bb5257e00566ef97e8bd3e39ea5e0fd25dc5c`.
+The remote archive and extracted file index both verified before submission.
+
+The serial queue returned run ID
+`20261010T082731Z_prime-j0-radix384-2c52874c1_TE5Uj8`, with status
+`queued` at dispatch. The earlier N131 solver was the sole `running` job.
+This run will rebuild the release executable, repeat the full suite and
+both 129-point fixture modes on Linux, check source integrity before and
+after, and retain its host probe and raw resource/output files.
