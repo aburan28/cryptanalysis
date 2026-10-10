@@ -69,3 +69,12 @@ charges the extra endomorphism and projective merge during evaluation.
 The exact binary atlas hashes and the two prior 4,096-scalar recoding
 checks are in `screen-result.json`. Group-point construction and the fresh
 panel are separate validation gates in `PROTOCOL.md`.
+
+`verify_group.py` independently implements secp256k1 affine addition,
+binary scalar multiplication, the six-unit map, and `tau(P)=P-omega(P)`.
+It loads the saved binary atlases, constructs each selected seed point as
+`[a]G_i+[b]tau(G_i)`, evaluates both buckets, and compares the result to
+binary multiplication for all 8,192 scalars in the two frozen prior panels.
+The complete replay passed; `group-check.json` binds the panel and atlas
+hashes. The native table-point construction and new disjoint panel remain
+the next validation gates.
