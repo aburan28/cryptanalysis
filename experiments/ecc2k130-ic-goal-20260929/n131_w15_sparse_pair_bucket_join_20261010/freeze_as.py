@@ -1,0 +1,26 @@
+import hashlib
+import json
+from pathlib import Path
+
+HERE=Path(__file__).resolve().parent
+BASE=HERE.parent
+
+
+def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+record={"status":"FROZEN_BEFORE_N131_W15_AS_JOIN",
+        "source_sha256":{
+            "n131_as_join.py":digest(HERE/"n131_as_join.py"),
+            "run_as.py":digest(HERE/"run_as.py"),
+            "restricted_result.json":digest(BASE/"n131_w15_joint_block_resultant_20261010/restricted_result.json"),
+            "support_w15.tsv":digest(BASE/"n131_w15_coupled_sixpair_20261010/support_w15.tsv"),
+            "polynomial_sparse_v3.json":digest(BASE/"n131_w15_pair_bucket_polynomial_20261010/polynomial_sparse_v3.json"),
+            "sage_runtime_info.json":digest(HERE/"sage_runtime_info.json")},
+        "cap_seconds":600,"memory_cap_bytes":4*1024**3,"worker_count":1,
+        "positive_control":"constructed N131 block A, pair rotations 26 and 39",
+        "negative_control":"fixed nonroot residual t+1",
+        "stage":"one-sided product enumeration plus exact two-bucket join"}
+with (HERE/"protocol_as.json").open("x") as stream:
+    json.dump(record,stream,sort_keys=True,indent=2)
+    stream.write("\n")
