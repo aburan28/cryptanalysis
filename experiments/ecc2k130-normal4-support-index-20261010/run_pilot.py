@@ -66,6 +66,7 @@ def main() -> None:
     started = time.perf_counter()
     peak_observed = 0
     guard = None
+    producer_error = None
     with stdout_path.open("x") as stdout, stderr_path.open("x") as stderr:
         process = subprocess.Popen(command, stdout=stdout, stderr=stderr,
                                    start_new_session=True)
@@ -83,11 +84,11 @@ def main() -> None:
                     break
                 time.sleep(0.25)
             exit_code = process.wait()
-        except BaseException:
+        except Exception as error:
             if process.poll() is None:
                 os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
-            raise
+            exit_code = process.wait()
+            producer_error = type(error).__name__ + ": " + str(error)
     wall = time.perf_counter() - started
     child_rss = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
     child_rss *= 1 if sys.platform == "darwin" else 1024
@@ -95,7 +96,9 @@ def main() -> None:
     errors = stderr_path.read_text(errors="replace")
     sat = "s SATISFIABLE" in output
     unsat = "s UNSATISFIABLE" in output
-    if guard == "RSS_CAP":
+    if producer_error is not None:
+        status = "PRODUCER_FAILURE"
+    elif guard == "RSS_CAP":
         status = "OOM_GUARD"
     elif guard == "WALL_CAP":
         status = "BOUNDED_UNKNOWN"
@@ -130,6 +133,7 @@ def main() -> None:
         "peak_observed_rss_bytes": peak_observed,
         "peak_child_rss_bytes": child_rss,
         "guard": guard,
+        "producer_error": producer_error,
         "exit_code": exit_code,
         "stdout_sha256": circuit.ref.sha(stdout_path),
         "stderr_sha256": circuit.ref.sha(stderr_path),
