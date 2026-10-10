@@ -36,3 +36,20 @@ The local host was macOS ARM64. A controlled CPU wall-time comparison
 remains gated by the host-level isolation requirements in
 `docs/ISOLATED_BENCHMARKS.md`. The current RunPod container can perform
 a serialized Linux correctness replay.
+
+## Linux dispatch
+
+The frozen 60-file archive from commit
+`8455051462f8c8d259f8372723565f85deb3ecd7` has SHA-256
+`f2cd179c896efb024105f44f5a61c3193b03dda344f0e030509d9fd9d3a297e9`.
+Its source index has SHA-256
+`e7b3613a07f412c6c8f5e3c80fab3775faff42c587ff454922096ad249197f7d`.
+The archive and all extracted files verified on the existing RunPod
+worker before submission.
+
+The serial queue returned run ID
+`20261010T085013Z_prime-j0-radix384-fast-845505146_BGuCsR`, with status
+`queued` at dispatch on 2026-10-10. The N131 solver remained the sole
+`running` job. The Linux replay will rebuild the release executable,
+repeat the full suite and both 129-point fixture modes, check source
+integrity before and after, and retain its host probe and raw output.
