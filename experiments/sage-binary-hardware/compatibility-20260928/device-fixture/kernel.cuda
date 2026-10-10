@@ -1,0 +1,16 @@
+
+typedef unsigned int uint;
+extern "C" __global__ void bh_map(const uint *table, const uint *input,
+                                uint *output, uint bytes, uint words, uint count) {
+    uint i = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (i >= count * words) return;
+    uint e = i / words, w = i % words;
+    uint value = 0;
+    for (uint b = 0; b < bytes; ++b) {
+        uint digit = (input[e*words + b/4] >> (8*(b%4))) & 255u;
+        value ^= table[(b*256u + digit)*words + w];
+    }
+    output[i] = value;
+
+}

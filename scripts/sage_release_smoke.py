@@ -36,4 +36,32 @@ assert [E.frobenius_isogeny(3)(R) for R in points] == reference
 with FrobeniusPlan(E, power=3, backend="cpu") as plan:
     assert plan.apply(points) == reference
     assert plan.apply_batches([points[:2], [], points[2:]]) == [reference[:2], [], reference[2:]]
+
+# Exercise the accepted input/result conversions, rather than just finding
+# a native extension built from an earlier release on the import path.
+while not P or not P[0]:
+    P = E.random_point()
+calls = {name: 0 for name in ("_pari_point", "_from_pari_point")}
+originals = {name: getattr(binary_batch_ntl, name) for name in calls}
+
+
+def counted(name):
+    def invoke(*args, **kwargs):
+        calls[name] += 1
+        return originals[name](*args, **kwargs)
+    return invoke
+
+
+try:
+    for name in calls:
+        setattr(binary_batch_ntl, name, counted(name))
+    assert 17*P == sum([P]*17, E(0))
+finally:
+    for name, function in originals.items():
+        setattr(binary_batch_ntl, name, function)
+assert all(calls.values()), calls
+pairs = [(P, Q), (P, -P), (E(0), Q)]
+assert binary_batch.frobenius_add_pairs(E, pairs, 3) == [
+    E.frobenius_isogeny(3)(left) + right for left, right in pairs
+]
 print("Sage release binary-curve smoke passed")

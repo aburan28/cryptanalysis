@@ -336,9 +336,9 @@ still run on ordinary hosts when labeled accordingly.
 ## Local Sage runs
 
 **Required rule:** Agents must launch all new and resumed local Sage jobs
-through this repository's `sage` launcher, which selects our accepted
-optimized build. This includes jobs they write, run, or configure for later
-execution:
+through a checked launcher for the accepted optimized build. This includes
+jobs they write, run, or configure for later execution. On the primary local
+workspace, use its existing repository launcher:
 
 ```sh
 # From this repository:
@@ -349,17 +349,33 @@ execution:
 /Volumes/SSD990/cryptanalysis/sage -python /absolute/path/to/job.py
 ```
 
+For a source checkout without that workspace launcher, build the pinned
+stack as described in `docs/SAGE_RELEASE.md`, then use:
+
+```sh
+python3 scripts/sage_release.py run --sage /path/to/built/sage -- -python /absolute/path/to/job.py
+```
+
+This release launcher checks `scripts/sage-release-manifest.json` and the
+imported module paths. If using a compiled overlay, use its `run-overlay`
+command so the archive is checked before use. Rebuild overlays after the
+release manifest changes; do not reuse binaries with an older source stamp.
+
 This applies to commands written by agents, shell scripts, and Python
 subprocesses. Use the absolute repository launcher in subprocess argument
 lists; do not rely on a scheduler's PATH or a system `python3` to select Sage.
-The launcher verifies the accepted source and native binaries against
+The primary workspace launcher verifies the accepted source and native
+binaries against
 `experiments/sage-binary-arithmetic/runtime-current.json` before starting each
 job, and gives child commands named `sage` the same checked launcher on PATH.
 If verification fails, fix the installation before running the job; do not
 bypass the check or fall back to another installation.
 
-For measured runs, save `./sage --runtime-info` output alongside the results
-before starting the workload. Keep this startup check outside the arithmetic
+For measured runs on the primary workspace, save `./sage --runtime-info`
+output alongside the results
+before starting the workload. For other builds, retain the release manifest
+and compatibility receipt identifying the actual imported modules and native
+binaries. Keep this startup check outside the arithmetic
 or single-target online timing interval. The output records the actual
 imported modules, manifest hash, installation receipt, and native dispatch.
 Restart existing Python/Sage processes after an accepted build changes so
@@ -368,7 +384,8 @@ they load its new modules.
 Import the installed `sage.schemes.elliptic_curves` modules for ordinary
 local work. Eligible scalar operations use the installed acceleration
 automatically; independent point batches can use the public `binary_batch`
-APIs documented in `experiments/sage-binary-arithmetic/README.md`.
+APIs documented in the installed module, `docs/SAGE_RELEASE.md`, and
+`experiments/sage-binary-arithmetic/README.md`.
 When running the hardware experiment harness against the accepted build,
 set `SAGE_BINARY_USE_INSTALLED=1`; its default loader selects a development
 prototype. Prototype loaders and `SAGE_BINARY_CANDIDATE`,
