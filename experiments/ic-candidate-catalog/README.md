@@ -102,6 +102,17 @@ primary workload ID `eee7f6ee5f6b` contains exactly one target. Full mask
 streams, sampled point maps, and public fixture scalars have independent
 replays. Natural W24/m6 PDP yield, useful rank, and complete DLP costs remain
 unmeasured; this is an input activation gate, not an `IC1` result.
+The [exact source/descendant W24 m6 circuit gate](../ecc2k130-263-native-w24-m6-20261010/RESULT.md)
+now instantiates the same Q1420 public point on both equal-size bases. An
+independent checked-Sage and Boolean replay certifies their four raw target
+lifts, degree-263 transport, native leaf equations, and balanced S3 controls.
+Both native-XOR CryptoMiniSat cells at the precommitted 120-second cap ended
+`BOUNDED_UNKNOWN` after 753,756 source and 757,597 descendant conflicts;
+the [audit](../ecc2k130-263-native-w24-m6-20261010/runs/R1/audit.json)
+binds exact formulas, solver transcripts, resource receipts, and source/input
+hashes. The next gate is chart-complete point/sign decoding on the same
+public point before opening more target queries. Q1420 remains a proposal
+with `candidate_id: null` and no measured relation rank.
 The [functional W24/m6 solver gate](../ecc2k130-w24-functional-s3-20261006/RESULT.md)
 removed free inverse and S3-intermediate witnesses but enlarged the planted
 XCNF 20.448-fold; CryptoMiniSat timed out at 30 seconds while an independent
