@@ -113,9 +113,22 @@ class Curve:
         # y = x w with w^2 + w = x + a + b/x^2, solvable iff the trace is 0;
         # n is odd, so the half-trace gives w.
         self.fb = {}
-        for c in range(1, 2 ** fld.k):
-            x = fld.fromBits([(c >> i) & 1 for i in range(fld.k)])
-            rhs = x + a + b / x ** 2
+        # One inversion per nonzero x is unnecessary: compute the entire
+        # inverse table in a single batch, then reuse it for b/x^2.
+        xs = [fld.fromBits([(c >> i) & 1 for i in range(fld.k)])
+              for c in range(1, 2 ** fld.k)]
+        prefix = []
+        acc = F(1)
+        for x in xs:
+            prefix.append(acc)
+            acc *= x
+        inv_acc = 1 / acc
+        inverses = [None] * len(xs)
+        for i in range(len(xs) - 1, -1, -1):
+            inverses[i] = inv_acc * prefix[i]
+            inv_acc *= xs[i]
+        for x, inv_x in zip(xs, inverses):
+            rhs = x + a + b * inv_x ** 2
             if rhs.trace() != 0:
                 continue
             w = halfTrace(rhs, fld.n)
