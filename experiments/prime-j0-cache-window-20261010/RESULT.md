@@ -34,6 +34,9 @@ receipt are retained under [attempt1](attempt1). Per-child `wait4`
 resource accounting then passed and is preserved under [attempt2](attempt2)
 and the final receipt. The final generator also passed schema validation
 for separate nine-case, five-repetition U14/U15 and U14/U16 manifests.
+The targeted Linux x86-64 correctness workflow passes `actionlint`,
+but GitHub's repository Actions API reported `enabled: false` on
+2026-10-10, so no GitHub Actions run was scheduled for this PR.
 
 The Linux correctness replay is queued as
 `20261010T072902Z_prime-j0-cache-window-0bdfdfe_GVK1E7` on the existing
