@@ -1,5 +1,23 @@
 # ECC2K-130 single-target index-calculus goal
 
+**W15 six-pair public gates (2026-10-10):** the
+[unrestricted source census](n131_w15_unrestricted_sixpair_public_20261010/RESULT.md)
+counts exactly 24,863,471,058,848,457,991,060,203,338,856,652,134,570,456,632,524,800
+signed tuples with twelve distinct folded columns, or 36,533,587,214,387.252
+per uniform subgroup target before intermediate filtering. Its constructed
+XCNF witness and group lift passed; the frozen published-point search reached
+`CENSORED_TIME` after 592.058 seconds under one worker and 4 GiB. The
+[fixed-seed linear-product variant](n131_w15_fixedseed_linearproduct_20261010/RESULT.md)
+retains five free pairs and an exact mean of 1,105,103,811.282 source tuples
+per uniform target while removing 2,059 AND gates from the constructed
+circuit. An exhaustive 8,176-pair identity check, complete XCNF witness,
+group lift, and terminal audit passed. Its published-point search reached
+`CENSORED_TIME` after 592.036 seconds. Both capped searches preserve their
+formulas, logs, source hashes, and resource receipts. The next gate combines
+target-coupled seed-bucket S3 norms and four-atom product-space inversion on
+the unpinned N41 public point, requiring independent relation replay and a
+source-bound N131 work/RSS projection before another wide query.
+
 **Exact W15 cofactor-class gate (2026-10-10):** the
 [source-frozen census](n131_w15_cofactor_class_gate_20261010/RESULT.md)
 classifies all W15 masks by `Tr(H(w²)/w)`, with 8,295 usable masks in the
