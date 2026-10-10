@@ -756,6 +756,12 @@ impl U256XYZZ {
         bool::from(self.zz.ct_is_zero())
     }
 
+    fn rotate_power_solinas(self, power: usize) -> Self {
+        assert!(power < 3);
+        if power == 0 || self.is_identity() { return self; }
+        Self { x: u256_mul_const_solinas(self.x, U256_BETA_CANONICAL[power]), ..self }
+    }
+
     fn into_jacobian(self) -> U256Jacobian {
         if self.is_identity() { return U256Jacobian::identity(); }
         // x=X/ZZ, y=Y/ZZZ, and ZZ^3=ZZZ^2. Taking Z'=ZZ gives
@@ -2325,6 +2331,9 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 57 {
+        return warm_format(56);
+    }
     if format == 56 {
         std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
         std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
@@ -3531,6 +3540,71 @@ pub(super) fn multiply_u256_tau_frontier15_budget_affine_solinas_xyzz_tau(
         &tables.windows, tables.retained_bytes, true, true);
     result.3 += SOLINAS_UNIT_CONSTANT_BYTES;
     result
+}
+
+pub(super) fn multiply_u256_tau_frontier15_budget_affine_solinas_gauge_xyzz_tau(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables: &'static Frontier15BudgetAffineTables = &*FRONTIER15_BUDGET_AFFINE_TABLES;
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize, 0usize); 15];
+    let mut nonidentity = 0usize;
+    for (index, choice) in choices.iter_mut().enumerate() {
+        let width = FRONTIER15_BUDGET_WIDTHS[index];
+        let residue_a = a.rem_euclid_power_of_two(width);
+        let residue_b = b.rem_euclid_power_of_two(width);
+        let (digit, seed_id, exponent, unit_code) =
+            tables.atlas(index).digit_residue(residue_a, residue_b);
+        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+        *choice = (seed_id, exponent, unit_code);
+        nonidentity += usize::from(seed_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "fifteen-window gauge recoding did not terminate");
+
+    let mut buckets = [U256XYZZ::identity(); 2];
+    let mut gauge_products = 0usize;
+    for exponent in 0..2 {
+        let mut gauge = None;
+        for power in [1usize, 2, 0] {
+            if !choices.iter().any(|&(seed, bucket, unit)|
+                                   seed != 0 && bucket == exponent && unit / 2 == power) {
+                continue;
+            }
+            if let Some(previous) = gauge {
+                let delta = (previous + 3 - power) % 3;
+                if delta != 0 && !buckets[exponent].is_identity() {
+                    buckets[exponent] = buckets[exponent].rotate_power_solinas(delta);
+                    gauge_products += 1;
+                }
+            }
+            gauge = Some(power);
+            for (index, &(seed_id, bucket, unit_code)) in choices.iter().enumerate() {
+                if seed_id == 0 || bucket != exponent || unit_code / 2 != power { continue; }
+                buckets[exponent] = buckets[exponent].add_mixed(
+                    tables.windows[index][seed_id].unit_solinas(unit_code & 1));
+            }
+        }
+        if let Some(power) = gauge {
+            if power != 0 && !buckets[exponent].is_identity() {
+                buckets[exponent] = buckets[exponent].rotate_power_solinas(power);
+                gauge_products += 1;
+            }
+        }
+    }
+    assert!(gauge_products <= 4);
+    let point = buckets[0].add_xyzz(buckets[1].tau()).affine_hex_binary_inverse();
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES,
+     fallback, corner, gauge_products)
 }
 
 fn multiply_u256_sector_with<const N: usize>(
@@ -5301,6 +5375,37 @@ mod tests {
         }
         println!("bound_budget15_retained_bytes={} candidate_additions={} baseline_additions={}",
                  warm_format(56), additions, baseline_additions);
+    }
+
+    #[test]
+    fn frontier15_gauge_matches_per_term_units_and_binary_points() {
+        assert_eq!(warm_format(57), warm_format(56));
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-bound-budget15-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let mut gauge_products = 0usize;
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let candidate = multiply_u256_tau_frontier15_budget_affine_solinas_gauge_xyzz_tau(words);
+            let reference = multiply_u256_tau_frontier15_budget_affine_solinas_xyzz_tau(words);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            assert_eq!((candidate.2, candidate.3, candidate.4, candidate.5),
+                       (reference.2, reference.3, reference.4, reference.5),
+                       "metadata {index}");
+            assert!(candidate.6 <= 4, "gauge count {index}");
+            gauge_products += candidate.6;
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent binary {index}");
+            }
+        }
+        assert_eq!(gauge_products, 15_323);
+        println!("frontier15_gauge_products={gauge_products} prior_per_term_products=40981");
     }
 
     #[test]
