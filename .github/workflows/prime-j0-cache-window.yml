@@ -1,0 +1,79 @@
+name: prime-j0-cache-window
+
+# Correctness on Linux x86-64; performance ratios use the separate isolated
+# benchmark service and its host-level preflight.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/prime-j0-cache-window.yml"
+      - "experiments/prime-j0-cache-window-20261010/**"
+      - "experiments/prime-j0-secp256k1-native/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  native:
+    name: Linux x86-64 correctness
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: experiments/prime-j0-secp256k1-native
+
+      - name: Verify frozen scalar panel
+        run: |
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0, "experiments/prime-j0-cache-window-20261010")
+          from verify_candidate import verify_inputs
+          record = verify_inputs()
+          print("fresh panel", record["count"], record["scalar_sha256"])
+          PY
+
+      - name: Release suite
+        run: |
+          cargo test --locked --release \
+            --manifest-path experiments/prime-j0-secp256k1-native/Cargo.toml \
+            --bin eisenstein_fixed -- --test-threads=2 \
+            > "$RUNNER_TEMP/native-tests.log" 2>&1 || {
+              tail -40 "$RUNNER_TEMP/native-tests.log"
+              exit 1
+            }
+          grep -F 'test result: ok. 90 passed; 0 failed;' "$RUNNER_TEMP/native-tests.log"
+
+      - name: Build executable and replay all fixture points
+        run: |
+          cargo build --locked --release \
+            --manifest-path experiments/prime-j0-secp256k1-native/Cargo.toml \
+            --bin eisenstein_fixed
+          binary=experiments/prime-j0-secp256k1-native/target/release/eisenstein_fixed
+          fixture=experiments/prime-j0-secp256k1-native/tau6-comb13-bench-fixture.json
+          for flag in u256-sector u256-sector15 u256-sector16; do
+            "$binary" "--check-scalar-unit-orbit-${flag}-fixed-fixture" "$fixture" \
+              > "$RUNNER_TEMP/${flag}.stdout" 2> "$RUNNER_TEMP/${flag}.stderr"
+            test "$(wc -l < "$RUNNER_TEMP/${flag}.stdout")" -eq 129
+          done
+
+      - name: Preserve raw Linux outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prime-j0-cache-window-linux
+          path: |
+            ${{ runner.temp }}/native-tests.log
+            ${{ runner.temp }}/u256-sector*.stdout
+            ${{ runner.temp }}/u256-sector*.stderr
+          if-no-files-found: warn
