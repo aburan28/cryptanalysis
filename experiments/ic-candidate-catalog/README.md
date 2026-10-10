@@ -209,6 +209,16 @@ so novel rank stays `null` and `candidate_id` remains `null`. Next freeze a
 matched selector/x/inverse release ladder on the six-distinct-leaf control
 at early and late S3 positions to locate the free-selector bottleneck before
 expanding ordinary-query volume.
+The [ternary-XOR CNF bridge](../ecc2k130-xcnf-kissat-bridge-20261010/RESULT.md)
+reconstructs those exact source and descendant `wz_only` Q1420 inputs for
+Kissat without auxiliary variables. Both fixed z0 controls returned SAT and
+passed complete original-XCNF model replay; both ordinary Q0 cells entered
+search and ended `BOUNDED_UNKNOWN` at the 120-second internal limit. The
+ordinary formulas contain 1,332,136 and 1,351,844 CNF clauses respectively.
+Their process CPU exposure was 19.077 and 10.084 seconds within roughly 120
+wall seconds on the contended host, so the statuses are solver-stage evidence
+and do not rank Kissat against the archived native-XOR CryptoMiniSat cells.
+The equal-B held-out yield and rank gate remains open.
 The [functional W24/m6 solver gate](../ecc2k130-w24-functional-s3-20261006/RESULT.md)
 removed free inverse and S3-intermediate witnesses but enlarged the planted
 XCNF 20.448-fold; CryptoMiniSat timed out at 30 seconds while an independent
