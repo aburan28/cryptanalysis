@@ -24,7 +24,9 @@ def digest(raw):
 
 
 def main():
-    assert len(sys.argv) == 2, "usage: materialize_native.py OUTPUT_DIRECTORY"
+    assert len(sys.argv) in (2, 3), "usage: materialize_native.py OUTPUT_DIRECTORY [--diagnostic]"
+    diagnostic = len(sys.argv) == 3
+    assert not diagnostic or sys.argv[2] == "--diagnostic"
     output = Path(sys.argv[1]).resolve()
     assert not output.exists(), "output directory already exists"
     for relative, expected in HASHES.items():
@@ -36,6 +38,10 @@ def main():
     patch = HERE / "native-candidate.patch"
     subprocess.run(["patch", "-p1", "-i", str(patch)], cwd=output,
                    check=True, capture_output=True)
+    diagnostic_patch = HERE / "ops-diagnostic.patch"
+    if diagnostic:
+        subprocess.run(["patch", "-p1", "-i", str(diagnostic_patch)], cwd=output,
+                       check=True, capture_output=True)
 
     main_source = output / "src/bin/eisenstein_fixed.rs"
     module_source = output / "src/bin/eisenstein_fixed/unit_orbit_windows.rs"
@@ -60,6 +66,8 @@ def main():
         "generated_sha256": {name: digest((output / name).read_bytes()) for name in HASHES},
         "asset_root": str(ROOT),
     }
+    if diagnostic:
+        receipt["diagnostic_patch_sha256"] = digest(diagnostic_patch.read_bytes())
     (output / "materialization.json").write_text(json.dumps(receipt, indent=2,
                                                           sort_keys=True) + "\n")
     print(json.dumps(receipt, sort_keys=True))
