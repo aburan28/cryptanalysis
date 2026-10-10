@@ -55,6 +55,19 @@ is still **1.58 bits above `2^61` in multiplication calls alone**.
 Inversions, base construction, query generation, relation checks,
 final matrix work, target descent, and replay add further work.
 
+The batch-inversion loop gives a code-specific floor without carrying
+the N83 root ratio to N131. A window of `L` nonzero denominators uses
+exactly `3(L-1)` field multiplications to form and unwind its prefix
+products, plus one inversion. At N131 W≤6, the 4,096-window schedule
+has **1,601,407 windows** for `D=6,559,349,863` masks, hence
+`3(D-1,601,407)=19,673,245,368` batch-inversion multiplications per
+complete scan. Charging Q1414's 209,828,278-query minimum gives
+**`2^61.84` multiplications from batching alone**, 0.84 bits above
+`2^61`. This floor applies to the measured Montgomery batch-inversion
+collector under the stated uniform-query and full-scan conditions;
+it is not a lower bound for a different inversion algorithm or a
+guided collector.
+
 The separate uniform *fixed-field-output* screen retains its
 `2^122.89` root-call requirement for this complete-scan collector
 under that stronger output-law assumption. The two ordinary outputs
