@@ -313,17 +313,20 @@ admitted 8,262-by-13,084 components and recorded active elimination, while
 peak RSS rose 3.6–3.9-fold and all four guarded searches remained
 `BOUNDED_UNKNOWN`. The first sandboxed launch is preserved as four
 `PRODUCER_FAILURE` rows; the corrected R2 launch and independent raw-log
-audit are linked from the result. The next bounded solver gate cuts the
-five selected large matrices to two before sampling additional ordinary
-queries. `candidate_id` remains `null` pending verified relations and rank.
+audit are linked from the result. That observation motivated the controlled
+two-versus-five matrix-count gate below. `candidate_id` remains `null`
+pending verified relations and rank.
 
-The [frozen Gaussian matrix-count gate](../ecc2k130-equalb-gauss-count-20261010/PROTOCOL.md)
-keeps those two exact XCNFs, the four raw lifts of public query zero, large
-row/column limits, solver binary, and resource caps fixed. It pairs two and
-five selected matrices on each formula and audits active elimination, peak
-RSS, and terminal status before deciding whether a longer one-query attempt
-is warranted. The held-out 16/256-query screen remains gated on a verified
-ordinary relation or an independently justified solver-policy change.
+The [two-repeat Gaussian matrix-count result](../ecc2k130-equalb-gauss-count-20261010/RESULT.md)
+kept those exact XCNFs, four raw lifts of public query zero, large
+row/column limits, solver binary, and resource caps fixed. Two/five paired
+sampled-RSS ratios were 0.695 and 0.473 for normal4, and 0.614 and 0.525
+for W24. All eight cells reached the external guard with `BOUNDED_UNKNOWN`;
+W24/two printed positive elimination calls once, while normal4/two had no
+elimination summary, leaving the full activity gate unresolved. The next
+separately frozen gate is a longer single-Q0 normal4/two run with a complete
+five-matrix control. The held-out 16/256-query screen remains gated on a
+verified ordinary relation or an independently justified solver-policy change.
 
 The [preregistered cold full-rank one-target control](../ecc2k130-cold-fullrank-20261006/RESULT.md)
 assigns canonical `IC1`/workload/run IDs to independently replayed n37 and n41
