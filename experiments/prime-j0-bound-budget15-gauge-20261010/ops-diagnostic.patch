@@ -1,0 +1,101 @@
+diff --git a/experiments/prime-j0-secp256k1-native/src/bin/eisenstein_fixed/unit_orbit_windows.rs b/experiments/prime-j0-secp256k1-native/src/bin/eisenstein_fixed/unit_orbit_windows.rs
+index a968558fb..1b52a130a 100644
+--- a/experiments/prime-j0-secp256k1-native/src/bin/eisenstein_fixed/unit_orbit_windows.rs
++++ b/experiments/prime-j0-secp256k1-native/src/bin/eisenstein_fixed/unit_orbit_windows.rs
+@@ -893,22 +893,35 @@ impl U256XYZZ {
+ }
+ 
+ fn u256_add(a: super::U256, b: super::U256) -> super::U256 {
++    FIELD_OPS.with(|counter| { let mut c = counter.get(); c.add += 1; counter.set(c); });
+     a.add_mod(&b, &super::HYBRID_FIELD.0.n)
+ }
+ 
+ fn u256_sub(a: super::U256, b: super::U256) -> super::U256 {
++    FIELD_OPS.with(|counter| { let mut c = counter.get(); c.sub += 1; counter.set(c); });
+     a.sub_mod(&b, &super::HYBRID_FIELD.0.n)
+ }
+ 
+ fn u256_mul(a: super::U256, b: super::U256) -> super::U256 {
++    FIELD_OPS.with(|counter| { let mut c = counter.get(); c.mul += 1; counter.set(c); });
+     super::HYBRID_FIELD.0.mont_mul(&a, &b)
+ }
+ 
++#[derive(Clone, Copy, Default)]
++struct FieldOpCounts { add: u64, sub: u64, mul: u64, square: u64, solinas: u64 }
++thread_local! {
++    static FIELD_OPS: std::cell::Cell<FieldOpCounts> =
++        const { std::cell::Cell::new(FieldOpCounts { add: 0, sub: 0, mul: 0, square: 0, solinas: 0 }) };
++}
++fn reset_field_ops() { FIELD_OPS.with(|counter| counter.set(FieldOpCounts::default())); }
++fn field_ops() -> FieldOpCounts { FIELD_OPS.with(|counter| counter.get()) }
++
+ // For p=2^256-c, c=2^32+977, fold the high half of a 512-bit product
+ // back into the low half. Inputs and result are canonical field residues.
+ // The first fold leaves at most one high bit; after any second overflow the
+ // low half is below c, so the third fixed fold cannot overflow.
+ fn u256_mul_const_solinas(value: super::U256, constant: super::U256) -> super::U256 {
++    FIELD_OPS.with(|counter| { let mut c = counter.get(); c.solinas += 1; counter.set(c); });
+     const C: u128 = (1u128 << 32) + 977;
+     let (low, high) = super::U256::mul_wide(&value, &constant);
+     let mut limbs = [0u64; 5];
+@@ -939,6 +952,7 @@ fn u256_mul_const_solinas(value: super::U256, constant: super::U256) -> super::U
+ }
+ 
+ fn u256_square(a: super::U256) -> super::U256 {
++    FIELD_OPS.with(|counter| { let mut c = counter.get(); c.square += 1; counter.set(c); });
+     super::HYBRID_FIELD.0.mont_sqr(&a)
+ }
+ 
+@@ -5408,6 +5422,52 @@ mod tests {
+         println!("frontier15_gauge_products={gauge_products} prior_per_term_products=40981");
+     }
+ 
++    #[test]
++    fn frontier15_gauge_source_product_operations() {
++        let panel: serde_json::Value = serde_json::from_str(include_str!(
++            "../../../../prime-j0-bound-budget15-gauge-20261010/fresh-inputs.json"
++        )).unwrap();
++        let scalars = panel["scalars_hex"].as_array().unwrap();
++        assert_eq!(scalars.len(), 4096);
++        std::sync::LazyLock::force(&FRONTIER15_BUDGET_AFFINE_TABLES);
++        std::sync::LazyLock::force(&U256_BETA_CANONICAL);
++        let functions: [fn([u64; 4]) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize); 3] = [
++            multiply_u256_tau_frontier15_budget_affine_solinas_gauge_xyzz_tau,
++            multiply_u256_tau_frontier15_budget_affine_solinas_xyzz_tau,
++            multiply_u256_tau_frontier16_bucket_affine_solinas_xyzz_tau,
++        ];
++        let mut totals = [FieldOpCounts::default(); 3];
++        let mut mixed_additions = [0u64; 3];
++        let mut gauge_products = 0u64;
++        for (index, text) in scalars.iter().enumerate() {
++            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
++            let words = super::super::scalar_words_256(&scalar).unwrap();
++            let mut expected = None;
++            for (mode, function) in functions.iter().enumerate() {
++                reset_field_ops();
++                let result = function(words);
++                let count = field_ops();
++                if let Some(ref point) = expected { assert_eq!(&result.0, point, "point {index}"); }
++                else { expected = Some(result.0); }
++                mixed_additions[mode] += result.2 as u64;
++                if mode == 0 { gauge_products += result.6 as u64; }
++                totals[mode].add += count.add;
++                totals[mode].sub += count.sub;
++                totals[mode].mul += count.mul;
++                totals[mode].square += count.square;
++                totals[mode].solinas += count.solinas;
++            }
++        }
++        assert_eq!(gauge_products, totals[0].solinas);
++        for (mode, name) in ["frontier15_budget_gauge", "frontier15_bound_budget",
++                             "frontier16_beta_solinas"].iter().enumerate() {
++            let c = totals[mode];
++            let source_products = 36 * (c.mul + c.square) + 23 * c.solinas;
++            println!("mode={name} cases=4096 mixed_additions={} point_kernel_add={} point_kernel_sub={} point_kernel_generic_mul={} point_kernel_square={} point_kernel_solinas_mul={} source_limb_products={}",
++                     mixed_additions[mode], c.add, c.sub, c.mul, c.square, c.solinas, source_products);
++        }
++    }
++
+     #[test]
+     fn frontier16_bucket_all_points_match_independent_group_sums() {
+         fn multiply_small(base: Jacobian, multiplier: i32) -> Jacobian {
