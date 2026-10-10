@@ -113,6 +113,20 @@ binds exact formulas, solver transcripts, resource receipts, and source/input
 hashes. The next gate is chart-complete point/sign decoding on the same
 public point before opening more target queries. Q1420 remains a proposal
 with `candidate_id: null` and no measured relation rank.
+The [projective-S3 Q1420 gate](../ecc2k130-263-projective-s3-20261010/RESULT.md)
+now supplies that chart extension for identity intermediates. Its homogeneous
+equation matches the rational group law on 497,084 exhaustively checked
+small-field x-class triples, and checked Sage plus independent Boolean
+evaluation certify cancellation branches on both N131 curves. Exact paired
+projective source/descendant XCNFs add 26,129/26,630 variables over the
+finite parent formulas; guarded 120-second CryptoMiniSat cells ended
+`BOUNDED_UNKNOWN` after 148,225/303,145 conflicts. The
+[independent audit](../ecc2k130-263-projective-s3-20261010/runs/R1/audit.json)
+binds lossless formulas, controls, raw solver transcripts, failures, and
+resource receipts. The next gate is a full SAT solve of the archived
+cancellation witness with sign decoding and group replay, followed by a
+matched ordinary-query chart comparison. Q1420 remains a proposal with
+natural relation yield and rank unset.
 The [functional W24/m6 solver gate](../ecc2k130-w24-functional-s3-20261006/RESULT.md)
 removed free inverse and S3-intermediate witnesses but enlarged the planted
 XCNF 20.448-fold; CryptoMiniSat timed out at 30 seconds while an independent
