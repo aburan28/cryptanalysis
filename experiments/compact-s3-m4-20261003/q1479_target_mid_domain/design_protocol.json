@@ -1,0 +1,48 @@
+{
+  "kind": "q1479_target_conditioned_free_midpoint_design",
+  "proposal_id": "Q1479",
+  "candidate_id": null,
+  "run_id": null,
+  "isogeny": "none",
+  "question": "Can an exact target-conditioned domain rule over an unfixed first pair and the second midpoint reach an unpinned four-point relation at N53 or N83?",
+  "parent": "Q1476",
+  "exact_inputs": "reuse the six Q1476 ordered-leaf, trace-syndrome CNFs, variables, public targets, curve/base records, workload IDs, and frozen run order byte for byte",
+  "method": {
+    "summands_m": 4,
+    "solver_family": "hybrid",
+    "field_equations": "the same three compact S3 links as Q1476; never expand S5",
+    "partial_left_pair_cap": 4096,
+    "rule": "When the target selector is fixed and the unfinished first leaf pair has at most 4096 normal-basis weight-valid completions, enumerate its two S3 midpoint roots for each completion, then map each midpoint through the selected target S3 link to every possible second midpoint. The right midpoint must lie in this exact overapproximate set. A partial right-midpoint assignment with no compatible value receives a guarded rejection clause; unanimous unassigned bits receive guarded implication clauses.",
+    "soundness_boundary": "The left completion set includes all nonzero weight-valid completions and does not filter curve lifts; the generated right-midpoint set is therefore an overapproximation of every satisfying chain. Guards include every fixed selector, left-leaf, and right-midpoint bit used by the test. Cache keys preserve the target choice and partial masks.",
+    "decision_order": "target selector, then left leaves until their completion product is at most 4096, then right-midpoint bits, then right leaves, then remaining left leaves and midpoints",
+    "joint_exact_pair_cap": 250000,
+    "prior_solver_source": "experiments/compact-s3-m4-20261003/q1472_sat_work_meter/native_solver.cpp"
+  },
+  "run_order": [
+    "n53_pinned_sorted",
+    "n83_pinned_sorted",
+    "n53_full_coset",
+    "n83_planted_unpinned",
+    "n53_ordinary",
+    "n83_ordinary"
+  ],
+  "limits": {
+    "native_wall_seconds_per_case": 60,
+    "external_safeguard_seconds_per_case": 75,
+    "sat_conflicts_per_case": 1000000,
+    "domain_cache_entries": 64
+  },
+  "measurements": [
+    "exact native field mul/sqr/inv and S3 root calls",
+    "exact CaDiCaL propagations, decisions, conflicts, domain constructions, guarded rejections and implications",
+    "native and external wall time and peak child RSS",
+    "all failures, censored runs, SAT models and independently replayed four-point witnesses"
+  ],
+  "controls": [
+    "an independent small-field exhaustive check of domain-rule soundness and guard construction",
+    "both Q1476 pinned sorted witness controls remain SAT and replay exactly",
+    "known-representable unpinned N53 and N83 controls are reported separately from natural yield"
+  ],
+  "claim_limit": "One ordinary query per degree cannot estimate relation yield; a timeout is censored work, not evidence of impossibility. Even a successful stage is not a complete IC1 pipeline or N131 work projection.",
+  "promotion_gate": "Commit and push a frozen source/input/binary/runtime protocol before the six runs, independently audit any model, and retain the full N131 exponent as null until all phases are measured or bounded"
+}

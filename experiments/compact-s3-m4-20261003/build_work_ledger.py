@@ -6983,6 +6983,31 @@ def main():
     assert q1478_audit["control_result_sha256"] == sha(
         q1478_dir / "control_result.json")
     assert q1478_audit["complete_n131_log2_work"] is None
+    q1479_dir = HERE / "q1479_target_mid_domain"
+    q1479_protocol_path = q1479_dir / "protocol.json"
+    q1479_audit_path = q1479_dir / "archive_audit.json"
+    q1479_protocol = json.loads(q1479_protocol_path.read_text())
+    q1479_audit = json.loads(q1479_audit_path.read_text())
+    assert q1479_protocol["proposal_id"] == q1479_audit[
+        "proposal_id"] == "Q1479"
+    assert q1479_protocol["candidate_id"] is q1479_protocol[
+        "run_id"] is None
+    assert q1479_protocol["isogeny"] == "none"
+    assert q1479_audit["status"] == "passed"
+    assert q1479_audit["protocol_sha256"] == sha(q1479_protocol_path)
+    assert q1479_audit["domain_validation_sha256"] == sha(
+        q1479_dir / "domain_validation.json")
+    assert q1479_protocol["parent_q1476_protocol_sha256"] == sha(
+        q1476_protocol_path)
+    assert q1479_protocol["solver_binary_sha256"] == sha(
+        q1479_dir / "native_solver")
+    assert [row["case"] for row in q1479_audit["rows"]] == (
+        q1479_protocol["run_order"])
+    assert [row["status"] for row in q1479_audit["rows"]] == [
+        "sat", "sat", "censored", "censored", "censored", "censored"]
+    assert [row["verified_relation_count"] for row in q1479_audit[
+        "rows"]] == [1, 1, 0, 0, 0, 0]
+    assert q1479_audit["complete_n131_log2_work"] is None
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -9510,6 +9535,42 @@ def main():
             "protocol_sha256": sha(q1478_protocol_path),
             "audit_result_sha256": sha(q1478_audit_path),
         },
+        "q1479_target_midpoint_domain_compact_stage": {
+            "proposal_id": "Q1479", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "stage_config_ids": {
+                str(n): q1479_protocol["stages"][str(n)]["stage_config_id"]
+                for n in (53, 83)},
+            "measurement_scope": q1479_protocol["measurement_scope"],
+            "measurement_units": q1479_protocol["measurement_units"],
+            "pinned_correctness_controls_passed": True,
+            "matched_free_leaf_attempts": 4,
+            "matched_free_leaf_verified_relations": 0,
+            "rows": q1479_audit["rows"],
+            "successful_unpinned_N53_cost": None,
+            "successful_unpinned_N83_cost": None,
+            "natural_relation_yield_estimate": None,
+            "complete_n131_log2_work": None,
+            "challenge_run_admitted": False,
+            "decision": (
+                "Q1479's target-conditioned partial-left-pair domain passes "
+                "an exhaustive F8 guard check and both pinned controls. "
+                "All four unpinned and ordinary cells still censor after "
+                "60 seconds with no verified relation. The N53 ordinary "
+                "cell uses 14000197 S3 roots and fills the root cache; "
+                "the N83 ordinary cell emits 1599 guarded implications "
+                "but reaches no exact joint check. These fixed-cap counts "
+                "do not estimate successful solve cost, natural yield, "
+                "controlled speedup, or full N131 work."
+            ),
+            "design_protocol_sha256": q1479_protocol[
+                "design_protocol_sha256"],
+            "domain_validation_sha256": q1479_protocol[
+                "domain_validation_sha256"],
+            "protocol_sha256": sha(q1479_protocol_path),
+            "archive_audit_sha256": sha(q1479_audit_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -10055,6 +10116,12 @@ def main():
                 "10732337 walk steps, but unisolated timings and the "
                 "missing strict IC denominator prohibit a controlled "
                 "online speedup ratio; "
+                "Q1479's target-conditioned partial midpoint domains "
+                "pass exhaustive F8 guards and both pinned controls, "
+                "but the four free-leaf cases still censor without a "
+                "relation; N53 exact joins consume roughly fourteen "
+                "million S3 roots on the ordinary case while N83 midpoint "
+                "implications do not produce a verified row; "
                 "censored N83 ordinary runs still do not measure N83 "
                 "useful-row or late-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
