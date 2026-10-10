@@ -4,7 +4,8 @@ name: fb-refs
 # committed result under experiments/ or
 # ecc2k130/research/ must be archived in experiments/fb-archive (index.csv) or
 # listed in experiments/fb-archive/unarchived.csv, the closed list of known
-# debt. The list is exact both ways, so it can only shrink. See
+# debt. The list is exact both ways, so it can only shrink. The archive itself is
+# append-only: no archived row or file may be removed or rewritten. See
 # experiments/fb-archive/README.md ("Citation guard").
 on:
   pull_request:
@@ -34,8 +35,19 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Check citations against the archive
         run: python experiments/fb-archive/refs.py check
+      - name: Archive is append-only
+        # nothing archived may be removed or rewritten; see experiments/fb-archive/appendonly.py
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then base="origin/$BASE_REF"; else base="$BEFORE"; fi
+          python experiments/fb-archive/appendonly.py --base "$base"

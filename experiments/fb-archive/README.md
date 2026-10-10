@@ -225,3 +225,73 @@ Nothing is hardcoded. Without a URI or credentials, it prints why and exits 0;
 `<prefix>/factor-bases/<curve-id>/<file>` with `sha256` metadata, and unchanged
 objects are skipped when boto3 can read that metadata. CI uploads only on pushes
 where `IC_ARCHIVE_S3_URI` and AWS secrets are configured.
+
+## Keeping the archive forever
+
+"Archive" here means a reproducible, hash-checked copy, and the intent is that
+nothing in it is ever deleted. Three layers keep it:
+
+1. **Git.** `bases/`, `index.csv`, `aliases.csv`, `unarchived.csv`, `sweeps/` and
+   `sweeps.csv` are committed. CI fails if an indexed archive goes missing or if a
+   cited base is not archived. The archive is **append-only**: `appendonly.py`
+   (CI workflow `fb-refs`) compares every change with the base branch and fails if
+   any row of `index.csv`, `aliases.csv`, `sweeps.csv` or `sweeps/*.points.csv` is
+   removed or changed, or if any archived file is deleted or rewritten. Adding is
+   always allowed, and a correction is a new entry. `unarchived.csv`, the debt
+   list, is the one file meant to shrink.
+2. **The default branch's history cannot be rewritten.** Set this in GitHub, not in
+   code: **Settings → Rules → Rulesets → New branch ruleset**, enforcement
+   *Active*, target *Default branch*, with **Restrict deletions** and **Block force
+   pushes** on and no bypass list. Every archive ever merged then stays reachable
+   in history, even if a later commit removes it.
+3. **An offsite copy that cannot be deleted.** `.github/workflows/fb-archive-offsite.yml`
+   uploads everything above to `$IC_ARCHIVE_S3_URI` on every merge to the default
+   branch, weekly, and on demand. It also uploads every sweep's materialized
+   bases (below). Set it up once:
+   - Create an S3 bucket with **Object Lock enabled** at creation, which also turns
+     on versioning. Set a default retention in **compliance mode**; the longest
+     period you are willing to pay for, for example 100 years. In compliance mode
+     no one, including the root account, can delete or shorten a locked object
+     version. A re-upload of a changed file (`index.csv`) adds a new locked
+     version; the old one stays.
+   - Create an IAM user whose policy allows only `s3:PutObject`, `s3:GetObject`
+     and `s3:ListBucket` on that bucket (no delete).
+   - Add the repository secrets `IC_ARCHIVE_S3_URI` (`s3://bucket/prefix`),
+     `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_DEFAULT_REGION`.
+   - Run the workflow once by hand (**Actions → fb-archive-offsite → Run workflow**).
+
+   Large archives are kept in git as `.json.xz` or, past the git size limit, as
+   bounded `git-chunks` parts. If an index row ever has `storage=s3` (kept only in
+   the git-ignored `large/`), the upload job's `upload --rebuild-missing`
+   regenerates it from its recipe, checks it against the indexed
+   `content_sha256`, and only then uploads it.
+
+   Until the secrets exist, every job says in its summary that nothing was copied.
+
+   `setup_permanent_archive.sh` does all of the above and the ruleset in item 2 in
+   one go (`BUCKET=<new-bucket-name> ./setup_permanent_archive.sh`, with the `aws`
+   CLI, `gh` as a repository admin, and `jq`). It asks for confirmation before
+   creating the irreversible compliance retention.
+
+### Sweep bases, materialized: `sweep_points.py`
+
+The sweep manifests are recipes. `sweep_points.py` turns each one into the bases
+themselves: one shard per curve (`fbsweep-points/1`, documented in the module).
+Each shard holds every family's base at its largest dimension as `(c, x)` records,
+and the base at a smaller k is the prefix `c < 2^k`. Each `x` is the abscissa of
+both rational points over it, so the x list is the exact point set.
+
+`sweeps/<name>.points.csv` commits each shard's x count, length and content
+SHA-256 to git. The shards go only to S3 because they are too large for git.
+
+| sweep | shards | x values | uncompressed |
+|---|--:|--:|--:|
+| `volcano-m83` | 6,475 | 212,378,266 | 3.21 GB |
+| `ecc2k130-isogeny-class` | 789 | 413,653,551 | 8.69 GB |
+| `volcano-ic` | 457 | 234,955 | 0.00 GB |
+
+`points NAME --check` regenerates every shard, compares it with the committed
+digest and with every count the experiment recorded, and `--upload` puts it at
+`<prefix>/factor-base-sweeps/<name>/points/<label>.bin.gz`. Generating
+`--write-index` here recomputed every recorded count of all three sweeps from
+the shards with no mismatch.

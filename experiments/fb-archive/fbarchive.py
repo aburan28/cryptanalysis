@@ -466,7 +466,33 @@ def s3_client():
     return "cli", None
 
 
-def upload(dry_run: bool, require: bool) -> int:
+def rebuild_missing(rows: list[dict]) -> list[str]:
+    """Rebuild each `storage=s3` archive absent here (too large for git) from its recipe.
+
+    The rebuilt content must match the indexed content_sha256; the compressed bytes are
+    written to the row's path so the upload below can carry them. Returns the problems."""
+    import external
+
+    errors = []
+    for r in rows:
+        path = HERE / r["path"]
+        if r["storage"] != "s3" or path.exists():
+            continue
+        if r["family"] in external.FAMILIES:
+            errors.append(f"{r['path']}: external family; rebuild needs its extra recipe parameters")
+            continue
+        doc = build(int(r["n"]), r["family"], int(r["l"]), int(r["seed"]), r["points_included"] == "True")
+        content = canonical(doc).encode()
+        if hashlib.sha256(content).hexdigest() != r["content_sha256"]:
+            errors.append(f"{r['path']}: rebuilt content differs from the index")
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(compress(content, "xz" if path.suffix == ".xz" else "gz"))
+        print(f"rebuilt {r['path']}", flush=True)
+    return errors
+
+
+def upload(dry_run: bool, require: bool, rebuild: bool = False) -> int:
     target = s3_target()
     rows = read_index()
     if target is None:
@@ -475,6 +501,12 @@ def upload(dry_run: bool, require: bool) -> int:
         return 1 if require else 0
     bucket, prefix = target
     base = f"{prefix}/factor-bases" if prefix else "factor-bases"
+    if rebuild:
+        errors = rebuild_missing(rows)
+        for err in errors:
+            print(err, file=sys.stderr)
+        if errors:
+            return 1
     plan = []
     for row in rows:
         path = HERE / row["path"]
@@ -485,6 +517,10 @@ def upload(dry_run: bool, require: bool) -> int:
                 **row, "file_sha256": hashlib.sha256(item.read_bytes()).hexdigest()}
             plan.append((item, f"{base}/{row['curve_id']}/{item.name}", physical))
     plan.append((INDEX, f"{base}/index.csv", None))
+    # the alias and debt lists and the sweep recipes and shard digests travel with the archive
+    extra = [HERE / "aliases.csv", HERE / "unarchived.csv", HERE / "sweeps.csv"]
+    extra += sorted((HERE / "sweeps").glob("*.json.gz")) + sorted((HERE / "sweeps").glob("*.points.csv"))
+    plan += [(p, f"{base}/{p.relative_to(HERE)}", None) for p in extra if p.exists()]
     if dry_run:
         for path, key, _ in plan:
             print(f"would upload {path.relative_to(HERE)} -> s3://{bucket}/{key}")
@@ -540,6 +576,8 @@ def main() -> None:
     u = sub.add_parser("upload", help="upload the archives and index to $IC_ARCHIVE_S3_URI")
     u.add_argument("--dry-run", action="store_true")
     u.add_argument("--require", action="store_true", help="fail instead of skipping when S3 is unavailable")
+    u.add_argument("--rebuild-missing", action="store_true",
+                   help="first rebuild storage=s3 archives absent here from their recipes (checked by content digest)")
     args = ap.parse_args()
     if args.cmd == "export":
         extra = {k: int(v) for k, v in (kv.split("=", 1) for kv in args.extra)}
@@ -576,7 +614,7 @@ def main() -> None:
         print(f"{len(rows)} archives, {len(errors)} problems")
         sys.exit(1 if errors else 0)
     elif args.cmd == "upload":
-        sys.exit(upload(args.dry_run, args.require))
+        sys.exit(upload(args.dry_run, args.require, args.rebuild_missing))
 
 
 if __name__ == "__main__":
