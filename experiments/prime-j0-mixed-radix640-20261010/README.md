@@ -29,7 +29,11 @@ generic field operation, and 23 per Solinas rotation gives **1,480,471
 fewer point-kernel limb products**. This model excludes the extra
 radix-640 integer division, table construction, and all host timing.
 `verify.py` checks the source freeze, disjoint inputs, group replay
-receipt, binary atlas hashes, and same-input control counts.
+receipt, binary atlas hashes, same-input control counts, and the
+[exact radix-640 quotient routine](FAST_DIVISION.md). That routine
+replaces generic long division by two constant divisions by five for
+each nonbinary coordinate update; it passed 100,000 deterministic
+129-bit inputs and signed boundary cases.
 
 The shared native evaluator source is reserved by an earlier Conductor
 task. Native operation accounting and controlled CPU timing are subsequent

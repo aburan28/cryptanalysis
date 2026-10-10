@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 from make_inputs import SOURCES
+from fast_division import main as verify_fast_division
 from verify_inputs import main as verify_inputs
 
 HERE = Path(__file__).resolve().parent
@@ -26,6 +27,7 @@ def digest(raw):
 
 def main():
     verify_inputs()
+    verify_fast_division()
     source_hashes = {}
     for name in FROZEN:
         relative = f"experiments/prime-j0-mixed-radix640-20261010/{name}"
