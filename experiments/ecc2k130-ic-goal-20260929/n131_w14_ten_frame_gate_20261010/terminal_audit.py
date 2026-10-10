@@ -63,8 +63,12 @@ record = {"status": "PASS_FROZEN_N131_FRAME_CONTROL_AND_PUBLIC_QUERY_AUDIT",
                             "construction": sha(HERE / "profile.json"),
                             "sage": sha(HERE / "sage_audit.json"),
                             "result": sha(folder / "result.json")}}
-with (HERE / "terminal_audit.json").open("x") as out:
-    json.dump(record, out, indent=2, sort_keys=True)
-    out.write("\n")
+receipt = HERE / "terminal_audit.json"
+if receipt.exists():
+    assert json.loads(receipt.read_text()) == record
+else:
+    with receipt.open("x") as out:
+        json.dump(record, out, indent=2, sort_keys=True)
+        out.write("\n")
 print(json.dumps({"status": record["status"],
                   "query_status": record["query_status"]}))
