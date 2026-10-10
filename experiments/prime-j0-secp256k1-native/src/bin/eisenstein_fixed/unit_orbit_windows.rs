@@ -104,6 +104,37 @@ impl Signed192 {
         (quotient, signed_rem, signed_rem.rem_euclid(radix as i32) as usize)
     }
 
+    fn div_rem_radix384_fast(self) -> (Self, i32, usize) {
+        // The certified representative has norm <= n/3, so each coordinate
+        // is below 2^129 in magnitude. Subsequent digits preserve this bound.
+        assert!(self.limbs[2] <= 1);
+        let low_seven = self.limbs[0] & 127;
+        let y_low = (self.limbs[0] >> 7) | (self.limbs[1] << 57);
+        let y_high = (self.limbs[1] >> 7) | (self.limbs[2] << 57);
+        // x = 128*y + low_seven, and 384 = 128*3. Since 2^64 = 3*K+1,
+        // the two word quotients are independent constant divisions by 3.
+        const K: u64 = u64::MAX / 3;
+        let high_quotient = y_high / 3;
+        let high_remainder = y_high - 3 * high_quotient;
+        let low_quotient = y_low / 3;
+        let low_remainder = y_low - 3 * low_quotient;
+        let carry = u64::from(high_remainder + low_remainder >= 3);
+        let remainder = low_seven
+            + 128 * (high_remainder + low_remainder - 3 * carry);
+        let low_word = high_remainder * K + low_quotient + carry;
+        let quotient = Self {
+            negative: self.negative && (low_word != 0 || high_quotient != 0),
+            limbs: [low_word, high_quotient, 0],
+        };
+        let signed_remainder = if self.negative {
+            -(remainder as i32)
+        } else {
+            remainder as i32
+        };
+        (quotient, signed_remainder,
+         signed_remainder.rem_euclid(RADIX384 as i32) as usize)
+    }
+
     fn div_rem_radix13(self) -> (Self, i32, usize) {
         self.div_rem_small_radix(RADIX13 as u64)
     }
@@ -1134,7 +1165,7 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
-    if format == 33 {
+    if format == 33 || format == 34 {
         std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
         std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
         std::sync::LazyLock::force(&U256_BETA_UNITS);
@@ -1520,6 +1551,37 @@ pub(super) fn multiply_u256_radix384(
         nonidentity += usize::from(orbit_id != 0);
     }
     assert!(a.is_zero() && b.is_zero(), "radix-384 recoding did not terminate");
+    let (point, gauge_products) = evaluate_u256_gauge(&choices, &tables.windows);
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes, fallback, corner, gauge_products)
+}
+
+pub(super) fn multiply_u256_radix384_fast(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*RADIX384_TABLES;
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize); RADIX384_WINDOWS];
+    let mut nonidentity = 0usize;
+    for choice in &mut choices {
+        let (quotient_a, rem_a, residue_a) = a.div_rem_radix384_fast();
+        let (quotient_b, rem_b, residue_b) = b.div_rem_radix384_fast();
+        let (digit, orbit_id, unit_code) =
+            tables.atlas.digit_word_small_radix(residue_a, residue_b);
+        a = quotient_a.adjust_small_radix_quotient(rem_a, digit.0, RADIX384 as i32);
+        b = quotient_b.adjust_small_radix_quotient(rem_b, digit.1, RADIX384 as i32);
+        *choice = (orbit_id, unit_code);
+        nonidentity += usize::from(orbit_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "fast radix-384 recoding did not terminate");
     let (point, gauge_products) = evaluate_u256_gauge(&choices, &tables.windows);
     (point, representative, nonidentity.saturating_sub(1),
      tables.retained_bytes, fallback, corner, gauge_products)
@@ -2901,6 +2963,73 @@ mod tests {
         }
         println!("radix384_panel_cases={} retained_bytes={} addition_histogram={histogram:?}",
                  scalars.len(), tables.retained_bytes);
+    }
+
+    #[test]
+    fn two_limb_radix384_division_matches_generic_at_boundaries() {
+        let high_words = [0u64, 1, 2, 3, (1u64 << 57) - 1,
+                          1u64 << 57, (1u64 << 58) - 3,
+                          (1u64 << 58) - 2, (1u64 << 58) - 1];
+        let low_words = [0u64, 1, 2, 3, 383, 384, 385,
+                         u64::MAX - 3, u64::MAX - 2,
+                         u64::MAX - 1, u64::MAX];
+        let mut cases = 0usize;
+        for high in high_words {
+            for low in low_words {
+                for low_seven in [0u8, 1, 127] {
+                    let magnitude: BigInt = ((BigInt::from(high) << 64usize)
+                        + BigInt::from(low)) * BigInt::from(128u32)
+                        + BigInt::from(low_seven);
+                    for value in [magnitude.clone(), -magnitude] {
+                        let word = Signed192::from_bigint(&value);
+                        assert_eq!(word.div_rem_radix384_fast(),
+                                   word.div_rem_small_radix(RADIX384 as u64),
+                                   "high={high} low={low} low_seven={low_seven}");
+                        cases += 1;
+                    }
+                }
+            }
+        }
+        for value in -5000..=5000 {
+            let word = Signed192::from_i32(value);
+            assert_eq!(word.div_rem_radix384_fast(),
+                       word.div_rem_small_radix(RADIX384 as u64));
+            cases += 1;
+        }
+        println!("fast_radix384_division_cases={cases}");
+    }
+
+    #[test]
+    fn two_limb_radix384_recoder_matches_prior_panel() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-radix384-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let tables = &*RADIX384_TABLES;
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_radix384(words);
+            let candidate = multiply_u256_radix384_fast(words);
+            assert_eq!(candidate, reference, "whole scalar {index}");
+            let (mut a, mut b) = candidate.1;
+            for window in 0..RADIX384_WINDOWS {
+                let old_a = a.div_rem_small_radix(RADIX384 as u64);
+                let old_b = b.div_rem_small_radix(RADIX384 as u64);
+                assert_eq!(a.div_rem_radix384_fast(), old_a,
+                           "coordinate a {index}/{window}");
+                assert_eq!(b.div_rem_radix384_fast(), old_b,
+                           "coordinate b {index}/{window}");
+                let (digit, _, _) = tables.atlas.digit_residue(old_a.2, old_b.2);
+                a = old_a.0.adjust_small_radix_quotient(old_a.1, digit.0,
+                                                         RADIX384 as i32);
+                b = old_b.0.adjust_small_radix_quotient(old_b.1, digit.1,
+                                                         RADIX384 as i32);
+            }
+            assert!(a.is_zero() && b.is_zero());
+        }
+        println!("fast_radix384_prior_panel_cases={}", scalars.len());
     }
 
     #[test]
