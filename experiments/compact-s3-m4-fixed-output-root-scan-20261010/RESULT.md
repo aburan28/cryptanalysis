@@ -56,6 +56,21 @@ wall-time speedup result.
 
 ## Conditional N131 work screen
 
+The existing [Q1414 uniform subgroup-query bound](../compact-s3-m4-20261003/runs/n131_q1414_exact_uniform_query_bound.json)
+requires at least 209,828,278 ordinary queries for a 95% chance of K
+independent rows, even if every representation is returned and every
+row is novel. If this complete-scan collector performs just one full
+W≤6 output scan per query, it already spends at least
+`209,828,278 × 6,559,349,863 = 2^60.26` S3 root calls. A `2^61`
+total-work budget allows only **1.675 work units per root call** at
+that query minimum, leaving no charge for any other phase. The measured
+N83 4,096-window kernel used 10.499 field multiplications per root
+call; carrying that operation ratio to N131 gives an exploratory
+`2^63.65` field-multiplication count, **2.65 bits over `2^61`**, before
+inversions, query generation, base construction, relation checks,
+matrix work, and target descent. The uniform-query premise and
+one-full-scan-per-query premise define this affordability screen.
+
 The [analysis receipt](analysis.json) uses the exact Q1413 N131 W≤6
 raw mask count `D=6,559,349,863` and folded columns `K=25,036,774`.
 Each unordered raw x pair has at most two S3 output roots. If each
@@ -69,8 +84,9 @@ specified collector and output law, before base construction, outer
 query generation, relation checks, matrix work, and target descent.
 
 The N53/N83 fixed outputs do not establish a uniform law for ordinary
-N131 outer roots. The screen therefore guides the next algorithm
-choice and is separate from a complete N131 solve projection. The
+N131 outer roots. The two screens therefore span materially different
+output-law assumptions and guide the next algorithm choice; neither is
+a complete N131 solve projection. The
 full cold and one-target online `2^x` values remain null in the
 [analysis receipt](analysis.json). A useful next experiment is a
 collector that avoids a complete raw x scan for every outer root,
