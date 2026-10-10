@@ -134,13 +134,23 @@ def reconstruct(stem: str, out: Path, control: dict) -> tuple[dict, dict | None,
 
 
 def progress(output: str) -> dict:
-    restarts = sum(line.startswith("c rst ") for line in output.splitlines())
+    lines = output.splitlines()
+    restarts = sum(line.startswith("c rst ") for line in lines)
     conflicts = re.findall(r"^c conflicts\s*:\s*(\d+)", output, re.MULTILINE)
-    good = re.findall(r"\bGood\s+matrix\s+\d+\s+(\d+)\s*x\s*(\d+)", output)
+    good = []
+    for index, line in enumerate(lines):
+        if not re.search(r"\bGood\s+matrix\s+\d+", line):
+            continue
+        dimensions = re.search(r"(\d+)\s*x\s*(\d+)", line)
+        if dimensions is None and index + 1 < len(lines):
+            dimensions = re.search(r"(\d+)\s*x\s*(\d+)", lines[index + 1])
+        if dimensions is None:
+            raise ValueError("accepted matrix has no printed dimensions")
+        good.append([int(dimensions.group(1)), int(dimensions.group(2))])
     rejected = re.findall(r"Too many rows in matrix:\s*(\d+)", output)
     return {"restart_rows": restarts,
             "final_conflicts": int(conflicts[-1]) if conflicts else None,
-            "accepted_matrix_dimensions": [[int(a), int(b)] for a, b in good],
+            "accepted_matrix_dimensions": good,
             "rejected_large_matrix_rows": [int(value) for value in rejected],
             "search_started": restarts > 0 or bool(conflicts and int(conflicts[-1]) > 0)}
 
@@ -202,7 +212,8 @@ def main():
                     or solver["stdout_raw_bytes"] != len(raw)
                     or solver["stdout_archive_sha256"] != file_digest(archive)
                     or solver["stderr_sha256"] != file_digest(stderr)
-                    or solver["peak_sampled_rss_bytes"] > cfg["peak_rss_cap_bytes"] + 10000000
+                    or (solver["peak_sampled_rss_bytes"] > cfg["peak_rss_cap_bytes"]
+                        and solver["guard"] != "RSS_CAP")
                     or solver["wall_seconds"] > cap + 3):
                 raise ValueError("solver evidence differs or exceeds frozen guard")
             status = solver["status"]
