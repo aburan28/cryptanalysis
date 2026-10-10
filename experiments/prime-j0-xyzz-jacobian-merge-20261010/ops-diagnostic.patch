@@ -1,0 +1,84 @@
+diff --git a/experiments/prime-j0-secp256k1-native/src/bin/eisenstein_fixed/unit_orbit_windows.rs b/experiments/prime-j0-secp256k1-native/src/bin/eisenstein_fixed/unit_orbit_windows.rs
+index 6b3be4428..21cc371f4 100644
+--- a/experiments/prime-j0-secp256k1-native/src/bin/eisenstein_fixed/unit_orbit_windows.rs
++++ b/experiments/prime-j0-secp256k1-native/src/bin/eisenstein_fixed/unit_orbit_windows.rs
+@@ -817,19 +817,32 @@ impl U256XYZZ {
+     }
+ }
+ 
++#[derive(Clone, Copy, Default)]
++struct FieldOpCounts { add: u64, sub: u64, mul: u64, square: u64 }
++thread_local! {
++    static FIELD_OPS: std::cell::Cell<FieldOpCounts> =
++        const { std::cell::Cell::new(FieldOpCounts { add: 0, sub: 0, mul: 0, square: 0 }) };
++}
++fn reset_field_ops() { FIELD_OPS.with(|counter| counter.set(FieldOpCounts::default())); }
++fn field_ops() -> FieldOpCounts { FIELD_OPS.with(|counter| counter.get()) }
++
+ fn u256_add(a: super::U256, b: super::U256) -> super::U256 {
++    FIELD_OPS.with(|counter| { let mut c = counter.get(); c.add += 1; counter.set(c); });
+     a.add_mod(&b, &super::HYBRID_FIELD.0.n)
+ }
+ 
+ fn u256_sub(a: super::U256, b: super::U256) -> super::U256 {
++    FIELD_OPS.with(|counter| { let mut c = counter.get(); c.sub += 1; counter.set(c); });
+     a.sub_mod(&b, &super::HYBRID_FIELD.0.n)
+ }
+ 
+ fn u256_mul(a: super::U256, b: super::U256) -> super::U256 {
++    FIELD_OPS.with(|counter| { let mut c = counter.get(); c.mul += 1; counter.set(c); });
+     super::HYBRID_FIELD.0.mont_mul(&a, &b)
+ }
+ 
+ fn u256_square(a: super::U256) -> super::U256 {
++    FIELD_OPS.with(|counter| { let mut c = counter.get(); c.square += 1; counter.set(c); });
+     super::HYBRID_FIELD.0.mont_sqr(&a)
+ }
+ 
+@@ -4753,6 +4766,46 @@ mod tests {
+         }
+     }
+ 
++    #[test]
++    fn direct_bucket_merge_point_kernel_operations() {
++        let panel: serde_json::Value = serde_json::from_str(include_str!(
++            "../../../../prime-j0-tau-bucket-two-x-20261010/fresh-inputs.json"
++        )).unwrap();
++        let scalars = panel["scalars_hex"].as_array().unwrap();
++        assert_eq!(scalars.len(), 4096);
++        std::sync::LazyLock::force(&FRONTIER17_BUCKET_TWO_X_TABLES);
++        std::sync::LazyLock::force(&FRONTIER18_BUCKET_TWO_X_TABLES);
++        let functions: [fn([u64; 4]) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize); 4] = [
++            multiply_u256_tau_frontier17_bucket_two_x,
++            multiply_u256_tau_frontier17_bucket_two_x_direct,
++            multiply_u256_tau_frontier18_bucket_two_x,
++            multiply_u256_tau_frontier18_bucket_two_x_direct,
++        ];
++        let mut totals = [FieldOpCounts::default(); 4];
++        for (index, text) in scalars.iter().enumerate() {
++            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
++            let words = super::super::scalar_words_256(&scalar).unwrap();
++            let mut expected = None;
++            for (mode, function) in functions.iter().enumerate() {
++                reset_field_ops();
++                let result = function(words);
++                let count = field_ops();
++                if let Some(ref point) = expected { assert_eq!(&result.0, point, "point {index}"); }
++                else { expected = Some(result.0); }
++                totals[mode].add += count.add;
++                totals[mode].sub += count.sub;
++                totals[mode].mul += count.mul;
++                totals[mode].square += count.square;
++            }
++        }
++        for (mode, name) in ["frontier17_old", "frontier17_direct",
++                             "frontier18_old", "frontier18_direct"].iter().enumerate() {
++            let c = totals[mode];
++            println!("mode={name} cases=4096 point_kernel_add={} point_kernel_sub={} point_kernel_mul={} point_kernel_square={}",
++                     c.add, c.sub, c.mul, c.square);
++        }
++    }
++
+     #[test]
+     fn tau384_all_window_points_match_independent_group_sums() {
+         fn multiply_small(base: Jacobian, multiplier: i32) -> Jacobian {
