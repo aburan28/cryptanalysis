@@ -117,6 +117,11 @@ restricts the full source Frobenius partition to the separately frozen
 `j != j²`, so direct coordinate Frobenius is not its endomorphism; any
 transport-induced quotient still needs a priced implementation. This is
 matrix geometry for proposal `Q1420`, not a PDP or IC speed result.
+An [independent W24 intersection certificate](../ecc2k130-w24-orbit-occupancy-20261009/RESULT.md)
+replays all 130 Frobenius powers with integer and checked-Sage arithmetic;
+the prior 8,384,348-column exact source count remains the decision input.
+It freezes an independent full reciprocal-overlap replay to close the
+remaining verification gap in that count.
 
 The [exact W24/m6 tuple-capacity screen](../ecc2k130-263-w24-mitm-capacity-20261005/RESULT.md)
 parks a **full materialized raw-point** 2+4 pair index and 3+3 triple index
