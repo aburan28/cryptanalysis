@@ -3,13 +3,14 @@
 ## Contribution
 
 Q1425 retains four variable factor-base leaves in a balanced S3 tree. It
-keeps the right-pair and outer S3 links as native-XOR SAT constraints and
-defers the left-pair link to an exact field root oracle. CryptoMiniSat's
-incremental C API keeps learned clauses across calls. When SAT returns a
-complete candidate, the oracle computes all roots of
-`S3(x0,x1,u0)=0`; a conditional CNF lemma restricts that precise leaf pair
-to its zero, one, or two valid `u0` roots. The model is accepted only after
-all three S3 links and the exact four-point group sum replay.
+keeps the outer S3 link as a native-XOR SAT constraint and defers one or
+both pair links to an exact field root oracle. CryptoMiniSat's incremental
+C API keeps learned clauses across calls. When SAT returns a complete
+candidate, the oracle computes all roots of each deferred
+`S3(x2j,x2j+1,uj)=0`; a conditional CNF lemma restricts that precise leaf
+pair to its zero, one, or two valid roots. The model is accepted only after
+all three S3 links and the exact four-point group sum replay. The
+`ordinary_left_lazy` cell retains the right-pair SAT link as a comparator.
 
 This is a bounded, model-triggered refinement of a full four-leaf system.
 The oracle fires on complete SAT models rather than partial assignments;
@@ -31,8 +32,8 @@ hashes, and CryptoMiniSat library hash are frozen in `freeze.json`.
 The N53 known-solution control reuses Q1419's pinned Q1410 ordinary
 representation. The N83 control reuses Q1419's pinned Q1408 planted
 representation. Both controls pin only the four raw leaf x coordinates and
-target-preimage selector; the pair intermediates remain free. An exact root
-lemma for the fixed left pair is inserted before the first SAT call. Ordinary
+target-preimage selector; the pair intermediates remain free. Exact root
+lemmas for both fixed pairs are inserted before the first SAT call. Ordinary
 queries have all four leaves and both pair intermediates free and insert
 root lemmas only for candidate models returned by SAT.
 
@@ -65,6 +66,12 @@ does not expose exact per-call conflict counters; those stay null rather
 than being inferred from the cap. Inversions are counted as one field API
 call and are not expanded into a common field-operation unit. Formula build,
 solver load, root work, search, and relation check have separate clocks.
+
+The `pilot_v1` archive retains the first left-only control attempt: N53
+stopped after 100,000 conflicts and 5.032 seconds with one preseed lemma.
+That pilot's runner then asserted because it incorrectly required every
+control to succeed. Its trace and original freeze are preserved; it is not
+one of the v2 result cells. The v2 runner records bounded controls normally.
 
 `BOUNDED_UNKNOWN` means the stopped search remains unresolved. Locked
 controls measure correctness and search behavior, not ordinary yield. CPU

@@ -1,4 +1,4 @@
-"""Balanced four-leaf S3 system with a lazy exact left-pair root link."""
+"""Balanced four-leaf S3 system with selected exact external pair links."""
 
 from __future__ import annotations
 
@@ -16,8 +16,9 @@ from chain_s3_multitarget import choose_target_x  # noqa: E402
 from s3_root_oracle import s3_roots  # noqa: E402
 
 
-def build_hybrid(n, weight, raw_target_xs):
-    """Retain four leaves and the right/outer S3 links; defer the left link."""
+def build_hybrid(n, weight, raw_target_xs, deferred_pairs=(0,)):
+    """Retain four leaves and the outer link; defer selected inner links."""
+    assert set(deferred_pairs) <= {0, 1}
     onb = field.Onb(n)
     table = multiplication_table(onb)
     destinations = square_destinations(onb)
@@ -28,8 +29,12 @@ def build_hybrid(n, weight, raw_target_xs):
         formula.at_most(leaf, weight)
         formula.clauses.append(leaf[:])
     target, selector = choose_target_x(formula, n, raw_target_xs)
-    s3_link_factored(formula, leaves[2], leaves[3], mids[1], table,
-                     destinations)
+    if 0 not in deferred_pairs:
+        s3_link_factored(formula, leaves[0], leaves[1], mids[0], table,
+                         destinations)
+    if 1 not in deferred_pairs:
+        s3_link_factored(formula, leaves[2], leaves[3], mids[1], table,
+                         destinations)
     s3_link_factored(formula, mids[0], mids[1], target, table,
                      destinations)
     return formula, leaves, mids, target, selector
