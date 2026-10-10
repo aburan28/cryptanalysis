@@ -236,8 +236,16 @@ costs were 556.629 ms (n37) and 28,308.249 ms (n41), while the n41 support
 index alone cost 25,902.961 ms. The pinned producer's published online timer
 double-counted final solving and solution validation; the archived verifier
 recomputes exclusive phase costs. These are stage diagnostics, not controlled
-speedups or evidence for n131. Next test a compact-orbit n53 support index with
-streaming setup receipts and corrected producer timers before any cold claim.
+speedups or evidence for n131. A separate merged `crypto` compact-orbit
+[n41/n53 cold panel](https://github.com/aburan28/crypto/pull/1338) and
+[base-size panel](https://github.com/aburan28/crypto/pull/1353) now supply
+independently replayed full-rank n53 controls on different source-curve bases.
+The [retrospective trace audit](../ecc2k130-n53-compact-evidence-20261010/RESULT.md)
+pins those inputs and shows that the n53 K220 collector's 22 most costly
+rank rows used 34.8261% of its 18,413,613 probes. Its six timing repeats
+share one byte-identical rank stream. The next frozen comparison holds that
+exact base and public point fixed while testing bounded rank-query restarts;
+the signed-expanded n53 timeout remains a separate, censored configuration.
 
 Screen the 1,000 proposals in stages rather than launch 1,000 complete DLPs.
 First materialize and replay factor bases, then benchmark PDPs on identical
