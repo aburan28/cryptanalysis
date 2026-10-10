@@ -45,6 +45,8 @@ A controlled wall-time comparison awaits a physical host passing the
 repository's isolation and noise gates. The existing serial RunPod queue
 can provide x86 correctness replay while its containerized host fails the
 strict CPU-isolation preflight.
+The x86 replay is queued through that serial runner; completion remains
+pending.
 The local manifest structure check emitted nine cases and five repetitions
 with digest `1698f44f0c504d21c940aeb006d4dd4519af4883ddf37b51eea2e52d02964fa5`;
 its CPU and NUMA identifiers were placeholders.
