@@ -89,7 +89,8 @@ def audit_cell(config: dict, directory: Path, name: str,
     good = [(int(rows), int(cols)) for rows, cols in re.findall(
         r"Good\s+matrix\s+\d+.*?(\d{3,5}) x\s*(\d{3,5})", output, re.S)]
     calls = re.findall(r"elim called\s*:\s*(\d+[KM]?)", output)
-    active = any(value not in ("0", "0K", "0M") for value in calls)
+    active = (any(value not in ("0", "0K", "0M") for value in calls)
+              if calls else None)
     if receipt["status"] != "PRODUCER_FAILURE":
         require(bool(restarts) and bool(recovered), f"search not entered: {stem}")
     return {
