@@ -113,7 +113,8 @@ def analyze(policy: str) -> dict:
 
     xor_counts = Counter(find(rep) for rep in representatives)
     input_counts: dict[int, Counter] = defaultdict(Counter)
-    for name, var in named.items():
+    for name, literal in named.items():
+        var = abs(literal)
         if not 1 <= var <= variables:
             raise ValueError("named input outside XCNF header")
         input_counts[find(var)][kind(name)] += 1
@@ -127,7 +128,7 @@ def analyze(policy: str) -> dict:
                 "variables": size[root], "native_xor_lines": xor_counts[root],
                 "named_inputs": dict(sorted(input_counts[root].items()))}
 
-    selector_roots = {find(named[f"s{leaf}:{bit}"])
+    selector_roots = {find(abs(named[f"s{leaf}:{bit}"]))
                       for leaf in range(6) for bit in range(24)}
     if len(selector_roots) != 1:
         raise ValueError("selectors do not share the observed raw XOR component")
