@@ -1091,15 +1091,8 @@ static EXACT_RECIPROCAL_CHECK: LazyLock<()> = LazyLock::new(|| {
                ((BigInt::from(1) << 512) * -w1) / &lattice.n);
 });
 
-fn reciprocal_cell_512(scalar: &BigInt, reciprocal: &[u64; 7]) -> (BigInt, u64) {
-    let (sign, bytes) = scalar.to_bytes_le();
-    assert!(sign != Sign::Minus && bytes.len() <= 32);
-    let mut k = [0u64; 4];
-    for (index, chunk) in bytes.chunks(8).enumerate() {
-        let mut word = [0u8; 8];
-        word[..chunk.len()].copy_from_slice(chunk);
-        k[index] = u64::from_le_bytes(word);
-    }
+fn reciprocal_cell_limbs_from_words_512(k: [u64; 4], reciprocal: &[u64; 7])
+    -> ([u64; 3], u64) {
     let mut product = [0u64; 11];
     for (i, &ki) in k.iter().enumerate() {
         let mut carry = 0u128;
@@ -1118,11 +1111,20 @@ fn reciprocal_cell_512(scalar: &BigInt, reciprocal: &[u64; 7]) -> (BigInt, u64) 
             index += 1;
         }
     }
+    ([product[8], product[9], product[10]], product[7])
+}
+
+fn reciprocal_cell_limbs_512(scalar: &BigInt, reciprocal: &[u64; 7]) -> ([u64; 3], u64) {
+    reciprocal_cell_limbs_from_words_512(positive_limbs::<4>(scalar), reciprocal)
+}
+
+fn reciprocal_cell_512(scalar: &BigInt, reciprocal: &[u64; 7]) -> (BigInt, u64) {
+    let (limbs, fraction) = reciprocal_cell_limbs_512(scalar, reciprocal);
     let mut quotient_bytes = [0u8; 24];
-    for (index, limb) in product[8..].iter().enumerate() {
+    for (index, limb) in limbs.iter().enumerate() {
         quotient_bytes[index * 8..(index + 1) * 8].copy_from_slice(&limb.to_le_bytes());
     }
-    (BigInt::from_bytes_le(Sign::Plus, &quotient_bytes), product[7])
+    (BigInt::from_bytes_le(Sign::Plus, &quotient_bytes), fraction)
 }
 
 fn reciprocal_floor_512(scalar: &BigInt, reciprocal: &[u64; 7]) -> BigInt {
@@ -1182,6 +1184,123 @@ fn hexagonal_certified_corner_choice(scalar: &BigInt) -> ((BigInt, BigInt), bool
     ((a, b), false, corner)
 }
 
+fn positive_limbs<const N: usize>(value: &BigInt) -> [u64; N] {
+    let (sign, bytes) = value.to_bytes_le();
+    assert!(sign != Sign::Minus && bytes.len() <= 8 * N);
+    let mut limbs = [0u64; N];
+    for (index, chunk) in bytes.chunks(8).enumerate() {
+        let mut word = [0u8; 8];
+        word[..chunk.len()].copy_from_slice(chunk);
+        limbs[index] = u64::from_le_bytes(word);
+    }
+    limbs
+}
+
+struct FixedScalarLattice {
+    u1: [u64; 3],
+    w0: [u64; 3],
+    minus_w1: [u64; 3],
+    v1: [u64; 3],
+}
+
+static FIXED_SCALAR_LATTICE: LazyLock<FixedScalarLattice> = LazyLock::new(|| {
+    let lattice = &*SCALAR_LATTICE;
+    let w0: BigInt = &lattice.u0 - BigInt::from(2) * &lattice.v0;
+    let minus_w1: BigInt = BigInt::from(2) * &lattice.v1 - &lattice.u1;
+    FixedScalarLattice {
+        u1: positive_limbs(&lattice.u1),
+        w0: positive_limbs(&w0),
+        minus_w1: positive_limbs(&minus_w1),
+        v1: positive_limbs(&lattice.v1),
+    }
+});
+
+fn add_one_192(mut value: [u64; 3], bit: i32) -> [u64; 3] {
+    assert!((0..=1).contains(&bit));
+    let mut carry = bit as u64;
+    for limb in &mut value {
+        let (sum, next) = limb.overflowing_add(carry);
+        *limb = sum;
+        carry = u64::from(next);
+    }
+    assert_eq!(carry, 0);
+    value
+}
+
+fn mul_192(a: [u64; 3], b: [u64; 3]) -> [u64; 6] {
+    let mut product = [0u64; 6];
+    for (i, &ai) in a.iter().enumerate() {
+        let mut carry = 0u128;
+        for (j, &bj) in b.iter().enumerate() {
+            let sum = u128::from(ai) * u128::from(bj)
+                + u128::from(product[i + j]) + carry;
+            product[i + j] = sum as u64;
+            carry = sum >> 64;
+        }
+        assert_eq!(product[i + 3], 0);
+        product[i + 3] = carry as u64;
+    }
+    product
+}
+
+fn add_384(mut left: [u64; 6], right: [u64; 6]) -> [u64; 6] {
+    let mut carry = 0u128;
+    for i in 0..6 {
+        let sum = u128::from(left[i]) + u128::from(right[i]) + carry;
+        left[i] = sum as u64;
+        carry = sum >> 64;
+    }
+    assert_eq!(carry, 0);
+    left
+}
+
+fn sub_384(mut left: [u64; 6], right: [u64; 6]) -> [u64; 6] {
+    let mut borrow = 0u128;
+    for i in 0..6 {
+        let rhs = u128::from(right[i]) + borrow;
+        let lhs = u128::from(left[i]);
+        left[i] = lhs.wrapping_sub(rhs) as u64;
+        borrow = u128::from(lhs < rhs);
+    }
+    left
+}
+
+fn signed_192_from_twos_complement(mut limbs: [u64; 6]) -> Signed192 {
+    let negative = limbs[5] >> 63 == 1;
+    if negative {
+        let mut carry = 1u64;
+        for limb in &mut limbs {
+            let (sum, next) = (!*limb).overflowing_add(carry);
+            *limb = sum;
+            carry = u64::from(next);
+        }
+    }
+    assert_eq!(&limbs[3..], &[0, 0, 0], "scalar representative exceeds 192 bits");
+    let magnitude = [limbs[0], limbs[1], limbs[2]];
+    Signed192 { negative: negative && magnitude != [0; 3], limbs: magnitude }
+}
+
+fn hexagonal_certified_fixed_choice(scalar: &BigInt) -> ((Signed192, Signed192), bool, usize) {
+    LazyLock::force(&EXACT_RECIPROCAL_CHECK);
+    let lattice = &*SCALAR_LATTICE;
+    assert!(scalar >= &BigInt::ZERO && scalar < &lattice.n);
+    let k = positive_limbs::<4>(scalar);
+    let (qw, hw) = reciprocal_cell_limbs_from_words_512(k, &RECIP_V1);
+    let (qv, hv) = reciprocal_cell_limbs_from_words_512(k, &RECIP_MINUS_W1);
+    let Some(corner) = certified_corner_from_fraction_limb(hw, hv) else {
+        let (a, b) = hexagonal_four_corner_choices(scalar).remove(0);
+        return ((Signed192::from_bigint(&a), Signed192::from_bigint(&b)), true, usize::MAX);
+    };
+    let (dw, dv) = [(0i32, 0i32), (1, 0), (0, 1), (1, 1)][corner];
+    let qw = add_one_192(qw, dw);
+    let qv = add_one_192(qv, dv);
+    let basis = &*FIXED_SCALAR_LATTICE;
+    let a = add_384([k[0], k[1], k[2], k[3], 0, 0], mul_192(qv, basis.u1));
+    let a = sub_384(a, mul_192(qw, basis.w0));
+    let b = sub_384(mul_192(qw, basis.minus_w1), mul_192(qv, basis.v1));
+    ((signed_192_from_twos_complement(a), signed_192_from_twos_complement(b)), false, corner)
+}
+
 // Nearby lattice representatives occupy at most 130 bits per coordinate.
 // Keep each tau recoding in three stack limbs instead of repeated BigInt division.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1201,6 +1320,14 @@ impl Signed192 {
             limbs[index] = u64::from_le_bytes(word);
         }
         Self { negative: sign == Sign::Minus && limbs != [0; 3], limbs }
+    }
+
+    fn to_bigint(self) -> BigInt {
+        let mut bytes = [0u8; 24];
+        for (index, limb) in self.limbs.iter().enumerate() {
+            bytes[8 * index..8 * (index + 1)].copy_from_slice(&limb.to_le_bytes());
+        }
+        BigInt::from_bytes_le(if self.negative { Sign::Minus } else { Sign::Plus }, &bytes)
     }
 
     fn from_i8(value: i8) -> Self {
@@ -3385,7 +3512,9 @@ fn check_generator_case(
     let actual = point.affine_hex();
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if unit_orbit_format == 121 {
+    let mode = if unit_orbit_format == 122 {
+        "unit_orbit_fixed_limb14_fixed"
+    } else if unit_orbit_format == 121 {
         "unit_orbit_certified14_fixed"
     } else if unit_orbit_format == 120 {
         "unit_orbit_reciprocal14_fixed"
@@ -3495,11 +3624,15 @@ fn main() {
             || args[0].starts_with("--benchmark-scalar-unit-orbit-reciprocal")
             || args[0].starts_with("--check-scalar-unit-orbit-certified")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-certified")
+            || args[0].starts_with("--check-scalar-unit-orbit-fixed-limb")
+            || args[0].starts_with("--benchmark-scalar-unit-orbit-fixed-limb")
             || args[0].starts_with("--check-scalar-unit-orbit-radix943")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-radix943"))
         && args[0].ends_with("-fixed-fixture")
     {
-        let format = if args[0].contains("unit-orbit-certified-fixed-fixture") {
+        let format = if args[0].contains("unit-orbit-fixed-limb-fixed-fixture") {
+            122
+        } else if args[0].contains("unit-orbit-certified-fixed-fixture") {
             121
         } else if args[0].contains("unit-orbit-reciprocal-fixed-fixture") {
             120
@@ -3646,6 +3779,8 @@ fn main() {
             || args[0] == "--check-scalar-unit-orbit-reciprocal-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-certified-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-certified-fixed-case"
+            || args[0] == "--benchmark-scalar-unit-orbit-fixed-limb-fixed-case"
+            || args[0] == "--check-scalar-unit-orbit-fixed-limb-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-radix943-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-radix943-fixed-case")
     {
@@ -3687,7 +3822,9 @@ fn main() {
             args[0].contains("w6-comb13-hex9-radius2"),
             args[0].contains("w6-comb13-hex9-graph33"),
             args[0].contains("w6-comb13-hex9-graphaware33"),
-            if args[0].contains("unit-orbit-certified") {
+            if args[0].contains("unit-orbit-fixed-limb") {
+                122
+            } else if args[0].contains("unit-orbit-certified") {
                 121
             } else if args[0].contains("unit-orbit-reciprocal") {
                 120
