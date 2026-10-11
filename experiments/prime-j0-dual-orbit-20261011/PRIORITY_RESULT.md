@@ -6,9 +6,10 @@ the available non-`rho` map first, then to the smallest mapped-digit norm,
 reduces `rho` assignments from 36,735 to 19,001 without changing any seed or
 the native retained table. On a newly frozen 4,096-scalar panel, the native
 evaluator used 20,579 gauge rotations, compared with 22,039 for the original
-assignment: 1,460 fewer rotations (6.62%). Both used 49,152 mixed additions
-and retained 54,339,936 bytes. All 4,096 points matched the direct-index and
-fused evaluators; the first 128 also matched independent binary multiplication.
+assignment: 1,460 fewer rotations (6.62%). Both recorded 49,152 for the
+recoding counter and retained 54,339,936 bytes. All 4,096 points matched
+the direct-index and fused evaluators; the first 128 also matched independent
+binary multiplication.
 
 ## Method and checks
 
@@ -23,7 +24,7 @@ both native variants used those exact points and identical generated Rust
 source. The priority atlas SHA-256 is
 `73dd615b65686ca51c866e28968d0f1c79c7367982730c5c3d115f11b72337c7`.
 
-| Format on the fresh panel | Retained bytes | Mixed additions | Gauge rotations |
+| Format on the fresh panel | Retained bytes | Recoding counter | Gauge rotations |
 | --- | ---: | ---: | ---: |
 | Fused prior format | 66,470,376 | 49,152 | 16,477 |
 | Exact three-image `tau` format | 64,991,220 | 49,152 | 17,505 |
@@ -35,6 +36,8 @@ priority format and 3,074 fewer gauge rotations on this panel. The two
 norm-seven rows isolate assignment cost because the seeds, retained bytes,
 scalar panel, and native evaluator source are the same. The three-image
 control was checked against the priority points in the same native test.
+The recoding counter is the sum of `max(0, nonidentity terms - 1)`; it is
+not an instrumented count of mixed point additions or final bucket merges.
 
 The complete priority native suite passed 141/141 tests locally. Ten
 edge-fixture outputs were independently verified. The local host is contended;
