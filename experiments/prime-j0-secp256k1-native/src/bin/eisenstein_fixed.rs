@@ -1302,7 +1302,7 @@ fn batch_to_affine(points: &[Jacobian]) -> Vec<Jacobian> {
     affine
 }
 
-fn width_six_affine_tables(bases: &[Jacobian]) -> Vec<[[Jacobian; 3]; 81]> {
+fn width_six_affine_seed_rows(bases: &[Jacobian]) -> Vec<[Jacobian; 81]> {
     let projective: Vec<Jacobian> = bases
         .iter()
         .copied()
@@ -1310,16 +1310,11 @@ fn width_six_affine_tables(bases: &[Jacobian]) -> Vec<[[Jacobian; 3]; 81]> {
         .collect();
     batch_to_affine(&projective)
         .chunks_exact(81)
-        .map(|chunk| {
-            std::array::from_fn(|index| {
-                let point = chunk[index];
-                [point, point.omega(), point.omega().omega()]
-            })
-        })
+        .map(|chunk| std::array::from_fn(|index| chunk[index]))
         .collect()
 }
 
-fn width_six_comb_tables(rows: usize, width: usize) -> Vec<[[Jacobian; 3]; 81]> {
+fn width_six_comb_tables(rows: usize, width: usize) -> Vec<[Jacobian; 81]> {
     let mut bases = Vec::with_capacity(rows);
     let mut point = Jacobian::generator();
     for row in 0..rows {
@@ -1330,20 +1325,52 @@ fn width_six_comb_tables(rows: usize, width: usize) -> Vec<[[Jacobian; 3]; 81]> 
             }
         }
     }
-    width_six_affine_tables(&batch_to_affine(&bases))
+    width_six_affine_seed_rows(&batch_to_affine(&bases))
 }
 
 static WIDTH_SIX_POINTS: LazyLock<[[Jacobian; 3]; 81]> = LazyLock::new(|| {
-    width_six_affine_tables(&[Jacobian::generator()])
+    width_six_affine_seed_rows(&[Jacobian::generator()])
         .pop()
         .expect("one width-six row")
+        .map(|point| [point, point.omega(), point.omega().omega()])
 });
 
-static WIDTH_SIX_COMB4_POINTS: LazyLock<Vec<[[Jacobian; 3]; 81]>> =
+static WIDTH_SIX_COMB4_POINTS: LazyLock<Vec<[Jacobian; 81]>> =
     LazyLock::new(|| width_six_comb_tables(4, 43));
 
-static WIDTH_SIX_COMB8_POINTS: LazyLock<Vec<[[Jacobian; 3]; 81]>> =
+static WIDTH_SIX_COMB8_POINTS: LazyLock<Vec<[Jacobian; 81]>> =
     LazyLock::new(|| width_six_comb_tables(8, 22));
+
+fn glv_comb_table(rows: usize, width: usize) -> Vec<Jacobian> {
+    let mut bases = Vec::with_capacity(rows);
+    let mut point = Jacobian::generator();
+    for row in 0..rows {
+        bases.push(point);
+        if row + 1 < rows {
+            for _ in 0..width {
+                point = point.double();
+            }
+        }
+    }
+    let bases = batch_to_affine(&bases);
+    let mut projective = vec![Jacobian::identity(); 1 << rows];
+    for mask in 1usize..(1 << rows) {
+        let bit = mask.trailing_zeros() as usize;
+        let rest = mask & (mask - 1);
+        projective[mask] = if rest == 0 {
+            bases[bit]
+        } else {
+            projective[rest].add_mixed(bases[bit])
+        };
+    }
+    let affine = batch_to_affine(&projective[1..]);
+    projective[1..].copy_from_slice(&affine);
+    projective
+}
+
+static GLV_COMB8_POINTS: LazyLock<Vec<Jacobian>> = LazyLock::new(|| glv_comb_table(8, 16));
+
+static GLV_COMB10_POINTS: LazyLock<Vec<Jacobian>> = LazyLock::new(|| glv_comb_table(10, 13));
 
 fn unit(a: &BigInt, b: &BigInt) -> Option<Unit> {
     match (a.to_i64(), b.to_i64()) {
@@ -2033,7 +2060,10 @@ fn scalar_multiply_width_six_comb(
         }
         for row in 0..rows {
             if let Some(Some(digit)) = digits.get(row * width + column) {
-                let mut addend = tables[row][digit.orbit][digit.unit.omega_power];
+                let mut addend = tables[row][digit.orbit];
+                for _ in 0..digit.unit.omega_power {
+                    addend = addend.omega();
+                }
                 if digit.unit.sign < 0 {
                     addend = addend.neg();
                 }
@@ -2050,6 +2080,72 @@ fn scalar_multiply_width_six_comb(
     (point, a, b, tau_steps, orbit_counts)
 }
 
+fn scalar_multiply_glv_comb(
+    scalar: &BigInt,
+    rows: usize,
+) -> (Jacobian, BigInt, BigInt, usize, usize) {
+    let width = match rows {
+        8 => 16,
+        10 => 13,
+        _ => panic!("unsupported GLV comb row count"),
+    };
+    let table = if rows == 8 {
+        &*GLV_COMB8_POINTS
+    } else {
+        &*GLV_COMB10_POINTS
+    };
+    let lattice = &*SCALAR_LATTICE;
+    let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
+    let (a, b) = short_representative(&residue);
+    // tau = 1 - omega, hence a + b*tau = (a+b) - b*omega.
+    let components = [&a + &b, -&b];
+    let magnitudes: [u128; 2] = std::array::from_fn(|index| {
+        let component = &components[index];
+        component
+            .abs()
+            .to_u128()
+            .expect("GLV components fit 128 bits")
+    });
+    let negative: [bool; 2] = std::array::from_fn(|index| components[index].is_negative());
+    let mut point = Jacobian::identity();
+    let mut started = false;
+    let mut doublings = 0;
+    let mut additions = 0;
+    for column in (0..width).rev() {
+        if started {
+            point = point.double();
+            doublings += 1;
+        }
+        for component in 0..2 {
+            let mut mask = 0usize;
+            for row in 0..rows {
+                let position = row * width + column;
+                if position < 128 && (magnitudes[component] >> position) & 1 != 0 {
+                    mask |= 1 << row;
+                }
+            }
+            if mask == 0 {
+                continue;
+            }
+            let mut addend = table[mask];
+            if component == 1 {
+                addend = addend.omega();
+            }
+            if negative[component] {
+                addend = addend.neg();
+            }
+            if started {
+                point = point.add_mixed(addend);
+                additions += 1;
+            } else {
+                point = addend;
+                started = true;
+            }
+        }
+    }
+    (point, a, b, doublings, additions)
+}
+
 fn check_generator_case(
     fixture_path: &str,
     index: usize,
@@ -2060,6 +2156,7 @@ fn check_generator_case(
     coalescent_four: bool,
     width_six: bool,
     comb_rows: usize,
+    glv_rows: usize,
 ) {
     let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("read fixture"))
         .expect("parse fixture");
@@ -2097,9 +2194,16 @@ fn check_generator_case(
             LazyLock::force(&WIDTH_SIX_COMB8_POINTS);
         }
     }
+    if glv_rows == 8 {
+        LazyLock::force(&GLV_COMB8_POINTS);
+    } else if glv_rows == 10 {
+        LazyLock::force(&GLV_COMB10_POINTS);
+    }
     let scalar = scalar_from_hex(scalar_hex);
     let start = Instant::now();
-    let point = if comb_rows != 0 {
+    let point = if glv_rows != 0 {
+        scalar_multiply_glv_comb(&scalar, glv_rows).0
+    } else if comb_rows != 0 {
         scalar_multiply_width_six_comb(&scalar, comb_rows).0
     } else if width_six {
         scalar_multiply_width_six(&scalar).0
@@ -2113,7 +2217,11 @@ fn check_generator_case(
     let actual = point.affine_hex();
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if comb_rows == 4 {
+    let mode = if glv_rows == 8 {
+        "glv_comb8_fixed"
+    } else if glv_rows == 10 {
+        "glv_comb10_fixed"
+    } else if comb_rows == 4 {
         "eisenstein_w6_comb4_fixed"
     } else if comb_rows == 8 {
         "eisenstein_w6_comb8_fixed"
@@ -2155,7 +2263,11 @@ fn main() {
             || args[0] == "--benchmark-scalar-w6-comb4-fixed-case"
             || args[0] == "--check-scalar-w6-comb4-fixed-case"
             || args[0] == "--benchmark-scalar-w6-comb8-fixed-case"
-            || args[0] == "--check-scalar-w6-comb8-fixed-case")
+            || args[0] == "--check-scalar-w6-comb8-fixed-case"
+            || args[0] == "--benchmark-scalar-glv-comb8-fixed-case"
+            || args[0] == "--check-scalar-glv-comb8-fixed-case"
+            || args[0] == "--benchmark-scalar-glv-comb10-fixed-case"
+            || args[0] == "--check-scalar-glv-comb10-fixed-case")
     {
         let index = args[2].parse::<usize>().expect("case index");
         check_generator_case(
@@ -2174,6 +2286,13 @@ fn main() {
             } else {
                 0
             },
+            if args[0].contains("glv-comb8") {
+                8
+            } else if args[0].contains("glv-comb10") {
+                10
+            } else {
+                0
+            },
         );
         return;
     }
@@ -2188,8 +2307,10 @@ fn main() {
             || args == ["--scalar-w4-coalescent"]
             || args == ["--scalar-w6-fixed"]
             || args == ["--scalar-w6-comb4-fixed"]
-            || args == ["--scalar-w6-comb8-fixed"],
-        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2|--scalar-w3|--scalar-w3-fixed|--scalar-w4-redundant|--scalar-w4-coalescent|--scalar-w6-fixed|--scalar-w6-comb4-fixed|--scalar-w6-comb8-fixed]"
+            || args == ["--scalar-w6-comb8-fixed"]
+            || args == ["--scalar-glv-comb8-fixed"]
+            || args == ["--scalar-glv-comb10-fixed"],
+        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2|--scalar-w3|--scalar-w3-fixed|--scalar-w4-redundant|--scalar-w4-coalescent|--scalar-w6-fixed|--scalar-w6-comb4-fixed|--scalar-w6-comb8-fixed|--scalar-glv-comb8-fixed|--scalar-glv-comb10-fixed]"
     );
     let tau_mode = args == ["--tau"];
     let scalar_mode = args == ["--scalar"]
@@ -2200,7 +2321,9 @@ fn main() {
         || args == ["--scalar-w4-coalescent"]
         || args == ["--scalar-w6-fixed"]
         || args == ["--scalar-w6-comb4-fixed"]
-        || args == ["--scalar-w6-comb8-fixed"];
+        || args == ["--scalar-w6-comb8-fixed"]
+        || args == ["--scalar-glv-comb8-fixed"]
+        || args == ["--scalar-glv-comb10-fixed"];
     let width_two = args == ["--scalar-w2"];
     let affine_fixed = args == ["--scalar-w3-fixed"];
     let width_three = args == ["--scalar-w3"] || affine_fixed;
@@ -2214,6 +2337,13 @@ fn main() {
     } else {
         0
     };
+    let glv_rows = if args == ["--scalar-glv-comb8-fixed"] {
+        8
+    } else if args == ["--scalar-glv-comb10-fixed"] {
+        10
+    } else {
+        0
+    };
     for line in io::stdin().lock().lines() {
         let line = line.expect("input line");
         if line.trim().is_empty() {
@@ -2223,6 +2353,23 @@ fn main() {
         if scalar_mode {
             assert_eq!(fields.len(), 1, "expected one hexadecimal scalar");
             let scalar = scalar_from_hex(fields[0]);
+            if glv_rows != 0 {
+                let (point, a, b, doublings, additions) =
+                    scalar_multiply_glv_comb(&scalar, glv_rows);
+                println!(
+                    "{}",
+                    json!({
+                        "point": if point.is_identity() { None } else { Some(point.strings()) },
+                        "representative": [a.to_string(), b.to_string()],
+                        "glv_components": [(&a + &b).to_string(), (-&b).to_string()],
+                        "doublings": doublings,
+                        "tau_steps": 0,
+                        "nonzero_digits": additions,
+                        "radix": if glv_rows == 8 { "glv-comb8-fixed" } else { "glv-comb10-fixed" },
+                    })
+                );
+                continue;
+            }
             let (
                 point,
                 a,
@@ -2810,10 +2957,27 @@ mod eisenstein_tau_tests {
                         expected = expected.tau();
                     }
                     assert!(
-                        same_point(tables[row][seed][0], expected),
+                        same_point(tables[row][seed], expected),
                         "rows={rows} row={row} seed={seed}"
                     );
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn glv_comb_subset_tables_match_independent_scalar_path() {
+        for (rows, width, table) in [(8, 16, &*GLV_COMB8_POINTS), (10, 13, &*GLV_COMB10_POINTS)] {
+            assert_eq!(table.len(), 1 << rows);
+            assert!(table[0].is_identity());
+            for mask in [1usize, 2, 3, 1 << (rows - 1), (1 << rows) - 1] {
+                let scalar = (0..rows)
+                    .filter(|&bit| (mask >> bit) & 1 != 0)
+                    .fold(0u128, |sum, bit| sum + (1u128 << (bit * width)));
+                assert!(same_point(
+                    table[mask],
+                    scalar_multiply(&BigInt::from(scalar)).0
+                ));
             }
         }
     }
