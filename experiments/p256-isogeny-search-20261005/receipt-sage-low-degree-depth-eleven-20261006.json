@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "protocol_id": "p256-isogeny-search-exploratory-v1",
+  "status": "verified_exploratory_low_degree_depth_eleven",
+  "claim": "Resuming the low-degree frontier through depth eleven added 304 explicit curves with no overlap against the prior 626-curve union. All additions received a CPU-separated matched-native screen; all eight exploratory hits failed an independent holdout.",
+  "run_completed_at": "2026-10-06T21:15:37Z",
+  "source": {
+    "pr_parent_remote_commit": "f6e0e9404717291e76bd8dd35bf3e54647096f98",
+    "local_parent_commit": "8437afcb4b72921d9529c55be810508aa98e41c6",
+    "manifest": "source-sage-low-degree-depth-eleven-20261006.sha256",
+    "manifest_sha256": "6734b4d1977322765bd50faf8c1f815f5e42c503b2551cff8890a6b0edd803b9"
+  },
+  "runtime": {
+    "sage_image": "sagemath/sagemath:10.6",
+    "sage_image_digest": "sha256:19995db6194f4a4bab18ce9a88556fd15b9ed5e916b4504fefe618a7796ddbdb",
+    "native_release_binary_sha256": "768fb614af10bcd3990b8373194713b5406051149ea9b627c01b5e1e4f0a9e5d",
+    "cpu_affinity": {
+      "native_screen_and_holdout": "CPU 0 via taskset -c 0; inherited by child benchmark processes",
+      "concurrent_default_class_group_process": "CPU 4 via taskset inside the Sage container",
+      "sage_frontier_extension": "CPU 2 via Docker exec and taskset",
+      "frequency_stability": "not independently verified"
+    },
+    "host_isolation": "unverified; all wall-time comparisons remain exploratory under repository policy"
+  },
+  "commands": {
+    "search": "sage -python scripts/extend_sage_low_degree.py --input results/sage-low-degree-depth-nine-20261006/candidates-delta.json --ells 3,5,11,13 --target-depth 11 --max-new-nodes 1500 --output results/sage-low-degree-depth-eleven-20261006/candidates-delta.json",
+    "assemble": "python3 scripts/assemble_sage_low_degree_depth_eleven.py",
+    "native_screen": "taskset -c 0 python3 scripts/run_native_screen.py --binary NATIVE_BINARY --candidates results/sage-low-degree-depth-eleven-20261006/candidates-delta.json --block-size 6 --seconds 0.5 --rotations 1 --warmup-seconds 0.05 --output-dir results/sage-low-degree-depth-eleven-20261006/native-screen",
+    "holdout": "taskset -c 0 p256_isogeny_native_bench --candidates DELTA_REGISTRY --candidate-id EIGHT_SCREENING_HITS --seconds 2 --trials 30 --warmup-seconds 0.2 --output results/sage-low-degree-depth-eleven-20261006/holdout.json",
+    "verify": "python3 scripts/verify_sage_low_degree_depth_eleven.py"
+  },
+  "artifacts": {
+    "results/sage-low-degree-depth-nine-20261006/retained-union.json": "af1cd0c48594dc1caa0eb22de3803793f7943d097e80d360051e363d0689beb8",
+    "results/sage-low-degree-depth-eleven-20261006/candidates-delta.json": "e43cbcd2e5279a56efafb970d49bed483173ae6f1b5dfc89210da69133665fca",
+    "results/sage-low-degree-depth-eleven-20261006/native-screen/screening-summary.json": "05cb4fd130c8ffc2ececaf502f06d9004c8053814e63606edcca5b9033752d19",
+    "results/sage-low-degree-depth-eleven-20261006/holdout.json": "f0a1db9a93e430558dd9c8e4a67a26550e988662c04470d882c9e964d6e749a9",
+    "results/sage-low-degree-depth-eleven-20261006/retained-union.json": "b6471aab1135a87fed1e2999a5aa90abc3b6d5010950bd623dfbaf97626ac0b5",
+    "results/sage-low-degree-depth-eleven-20261006/transfer-assessment.json": "fe118b1cf685859b74e7f571201e2943841d6f78045807b8a92efca8ec4a853f",
+    "results/sage-low-degree-depth-eleven-20261006/summary.md": "68a452ebd210df20576afe88d84f0a5d85f3f06e21720dbb3ae788389189c4cc",
+    "results/sage-class-group-20261006/attempts.json": "3801bb2a13939ff7b152a5292869b9880e9a7852bc8c60eab518c8a3d125da60"
+  },
+  "search": {
+    "ells": [3, 5, 11, 13],
+    "input_depth": 9,
+    "target_depth": 11,
+    "new_depth_counts": {"10": 144, "11": 160},
+    "new_non_root_curves": 304,
+    "overlap_with_prior_union": 0,
+    "combined_unique_curves_including_p256": 930,
+    "explicit_paths_verified": true,
+    "exceptional_automorphisms_found": false
+  },
+  "screening": {
+    "new_neighbors": 304,
+    "blocks": 51,
+    "seconds_per_trial": 0.5,
+    "complete_position_rotations_per_block": 1,
+    "candidate_trials": 2120,
+    "all_linear_relations_verified": true,
+    "unadjusted_screening_hits": 8,
+    "screening_point_estimate_range": [1.026048201282661, 1.152540564535894]
+  },
+  "holdout": {
+    "candidates": 8,
+    "seconds_per_trial": 2.0,
+    "trials_per_candidate": 30,
+    "all_linear_relations_verified": true,
+    "reproduced_speedups": 0,
+    "largest_point_estimate": {
+      "candidate_id": "p256-j-5a8b0b051e5c5d67856dd719e7b59011d87d72acbc0068c663460b8357bea2a6",
+      "paired_relative_iteration_speed": 1.022018791628006,
+      "paired_relative_iteration_speed_95_percent_ci": [0.9918120789397689, 1.0531454825165538]
+    }
+  },
+  "combined_native_coverage": {
+    "explicit_curves_including_p256": 930,
+    "non_root_curves_with_matched_native_measurement": 929,
+    "reproducible_speedups": 0
+  },
+  "cost_accounting": {
+    "discovery_and_reusable_precomputation_seconds": 125.92792451501009,
+    "native_screen_block_wall_seconds_total": 1376.895011273,
+    "holdout_wall_seconds": 555.26033973,
+    "preempted_independent_class_group_attempt_seconds": 15918,
+    "default_exact_class_group_attempt": "still running separately; no result counted",
+    "per_instance_mapping": "explicit formulas retained for P and Q; evaluation was not timed for the 304 additions",
+    "amortization": "no end-to-end estimate because per-key mapping for the added paths was not measured"
+  },
+  "class_group_attempts": {
+    "default_quadclassunit": "running; conditional-on-GRH result pending",
+    "tech_6_quadclassunit": "preempted after 15,918 seconds for disk recovery; no result",
+    "qfbclassno": "precision diagnostics failed; not used as evidence"
+  },
+  "limitations": [
+    "the traversal stops at depth eleven and uses only edge degrees 3, 5, 11, and 13",
+    "the 930-curve explicit registry is not the entire P-256 isogeny class",
+    "there are infinitely many composed isogeny maps even though the F_p-isomorphism class orbit is finite",
+    "CPU affinity was separated but the repository host-isolation gate and frequency stability were not independently verified",
+    "the screens measure generic rho iteration cost rather than completing a full P-256 collision",
+    "per-key mapping cost was not measured for the 304 additions",
+    "the exact class-number computation had not completed when this bounded result was frozen"
+  ],
+  "decision": "No candidate advances. All eight unadjusted screening hits failed the fresh 30-trial holdout; all 929 retained non-root curves have matched native measurements and zero reproducible iteration-rate improvements."
+}
