@@ -4,16 +4,27 @@
 import hashlib
 import json
 from pathlib import Path
+import subprocess
 
 from check_tau3_atlas_panel import fields
 from check_tau3_sparse_panel import MODES, ORDERS, pair_result
 
 
 ROOT = Path(__file__).resolve().parent
+SPARSE_PANEL_COMMIT = "d952227e91e67a50516eb63fbe56a09ff6aeb7f2"
 
 
 def sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def sparse_source_sha256(path):
+    repository = ROOT.parents[1]
+    subprocess.run(["git", "merge-base", "--is-ancestor", SPARSE_PANEL_COMMIT, "HEAD"],
+                   cwd=repository, check=True, capture_output=True)
+    content = subprocess.check_output(["git", "show", f"{SPARSE_PANEL_COMMIT}:{path}"],
+                                      cwd=repository)
+    return hashlib.sha256(content).hexdigest()
 
 
 def audit():
@@ -26,8 +37,9 @@ def audit():
     assert panel["runner_sha256"] == sha256(ROOT / "check_tau3_sparse_panel.py")
     assert panel["arm_runner_sha256"] == sha256(ROOT / "check_tau3_atlas_panel.py")
     assert panel["fixture_sha256"] == sha256(fixture_path)
-    assert panel["bench_source_sha256"] == sha256(ROOT / "bench.c")
-    assert panel["ec_tau_source_sha256"] == sha256(ROOT.parents[1] / "src/ec_tau.c")
+    assert panel["bench_source_sha256"] == sparse_source_sha256(
+        "experiments/prime-j0-cost-aware-chain/bench.c")
+    assert panel["ec_tau_source_sha256"] == sparse_source_sha256("src/ec_tau.c")
     assert panel["atlas_header_sha256"] == sha256(
         ROOT.parents[1] / "src/generated/tau3_atlas.h")
     assert panel["sparse_header_sha256"] == sha256(

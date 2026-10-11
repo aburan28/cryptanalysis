@@ -4,15 +4,26 @@
 import hashlib
 import json
 from pathlib import Path
+import subprocess
 
 from check_tau3_atlas_panel import fields, int_field
 
 
 ROOT = Path(__file__).resolve().parent
+SPARSE_PANEL_COMMIT = "d952227e91e67a50516eb63fbe56a09ff6aeb7f2"
 
 
 def sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def sparse_source_sha256(path):
+    repository = ROOT.parents[1]
+    subprocess.run(["git", "merge-base", "--is-ancestor", SPARSE_PANEL_COMMIT, "HEAD"],
+                   cwd=repository, check=True, capture_output=True)
+    content = subprocess.check_output(["git", "show", f"{SPARSE_PANEL_COMMIT}:{path}"],
+                                      cwd=repository)
+    return hashlib.sha256(content).hexdigest()
 
 
 def main():
@@ -25,7 +36,7 @@ def main():
     assert receipt["runner_sha256"] == sha256(ROOT / "check_tau3_sparse_native_design.py")
     assert receipt["fixture_sha256"] == sha256(ROOT / "compact-pos-inputs.json")
     assert receipt["screen_sha256"] == sha256(ROOT / "tau3-sparse-screen.json")
-    assert receipt["ec_tau_source_sha256"] == sha256(ROOT.parents[1] / "src/ec_tau.c")
+    assert receipt["ec_tau_source_sha256"] == sparse_source_sha256("src/ec_tau.c")
     assert receipt["header_sha256"] == sha256(ROOT.parents[1] / "src/generated/tau3_sparse.h")
     assert len(receipt["rows"]) == 16 and len(receipt["pairs"]) == 8
     rows = {(row["case_id"], row["mode"]): row for row in receipt["rows"]}
