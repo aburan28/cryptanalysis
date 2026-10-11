@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Archive factor bases that committed results cite but index.csv lacks.
 
+For every cited `factor_base_sha256` (see refs.py) in the named experiments that
+is not yet archived, find the recipe recorded beside it -- a `cell` object with
+n, family, l and seed, on the citing row or an ancestor -- rebuild the base with
+fbarchive.build, and store it only if the rebuilt `factor_base_sha256` equals the
+cited one. A digest whose recipe is missing, or whose rebuild differs, is
 For every cited `factor_base_sha256` or point-set digest (see refs.py KEYS) in
 the named experiments that is not yet archived, find the recipe recorded beside
 it -- a `cell` object with n, family, l and seed, on the citing row or an
@@ -37,6 +42,9 @@ def recipe_of(cell) -> tuple | None:
 def collect(obj, inherited: tuple | None, out: dict[str, set[tuple]]) -> None:
     if isinstance(obj, dict):
         here = recipe_of(obj.get("cell")) or recipe_of(obj.get("recipe")) or inherited
+        d = obj.get(refs.KEY)
+        if isinstance(d, str) and refs.HEX64.fullmatch(d) and here is not None:
+            out.setdefault(d, set()).add(here)
         if here is not None:
             for k in refs.KEYS:
                 d = obj.get(k)
@@ -53,6 +61,7 @@ def collect(obj, inherited: tuple | None, out: dict[str, set[tuple]]) -> None:
 def recipes_in(rel: str) -> dict[str, set[tuple]]:
     text = refs.read_text(refs.ROOT / rel)
     out: dict[str, set[tuple]] = {}
+    if refs.KEY not in text:
     if not any(k in text for k in refs.KEYS):
         return out
     try:
@@ -115,6 +124,15 @@ def main() -> int:
         except Exception as exc:  # noqa: BLE001 -- report and keep going
             print(f"  build failed {r}: {exc}", flush=True)
             continue
+        got = doc["factor_base_sha256"]
+        if got in ds:
+            if not args.dry_run:
+                fbarchive.store(doc)
+            done.add(got)
+            stored += 1
+        else:
+            mismatched += 1
+            print(f"  rebuild of {r} gives {got[:12]}, cited {sorted(x[:12] for x in ds)}", flush=True)
         got = doc_digests(doc)
         hit = got & ds
         if hit:
