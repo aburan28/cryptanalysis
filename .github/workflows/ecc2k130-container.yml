@@ -30,6 +30,11 @@ on:
         required: true
         default: true
         type: boolean
+      runpod_smoke:
+        description: "Launch one temporary RTX PRO 6000 pod and run one CUDA launch"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -98,3 +103,112 @@ jobs:
             echo "Published: \`${image}:sha-${GITHUB_SHA}\`"
             echo "CUDA SMs: \`${ECC_CUDA_ARCHES}\`"
           } >> "${GITHUB_STEP_SUMMARY}"
+
+  runpod-smoke:
+    name: RunPod RTX PRO 6000 CUDA smoke test
+    needs: image
+    # The branch clause is a one-time validation lane for this isolated branch;
+    # normal users opt in with workflow_dispatch instead of paying for every push.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.runpod_smoke) ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/codex/ecc2k130-gpu-container-20261011')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: read
+    env:
+      RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+      RUNPOD_SSH_PRIVATE_KEY: ${{ secrets.RUNPOD_SSH_PRIVATE_KEY }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install runpodctl
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 \
+            https://github.com/runpod/runpodctl/releases/latest/download/runpodctl-linux-amd64 \
+            -o "${RUNNER_TEMP}/runpodctl"
+          chmod +x "${RUNNER_TEMP}/runpodctl"
+          echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
+
+      - name: Prepare credentials
+        run: |
+          set -euo pipefail
+          [[ -n "${RUNPOD_API_KEY:-}" ]] || {
+            echo "RUNPOD_API_KEY repository secret is required for runpod_smoke" >&2
+            exit 1
+          }
+          [[ -n "${RUNPOD_SSH_PRIVATE_KEY:-}" ]] || {
+            echo "RUNPOD_SSH_PRIVATE_KEY repository secret is required for runpod_smoke" >&2
+            exit 1
+          }
+          export HOME="${RUNNER_TEMP}/home"
+          mkdir -p "${HOME}/.ssh"
+          printf '%s\n' "${RUNPOD_SSH_PRIVATE_KEY}" > "${HOME}/.ssh/id_ed25519"
+          chmod 600 "${HOME}/.ssh/id_ed25519"
+          ssh-keygen -y -f "${HOME}/.ssh/id_ed25519" > "${HOME}/.ssh/id_ed25519.pub"
+          echo "HOME=${HOME}" >> "${GITHUB_ENV}"
+
+      - name: Register temporary GHCR credential with RunPod
+        id: registry
+        run: |
+          set -euo pipefail
+          registry_json="$(printf '%s' "${GH_TOKEN}" | runpodctl registry create \
+            --name "ecc2k130-ghcr-${GITHUB_RUN_ID}" \
+            --username "${GITHUB_ACTOR}" --password-stdin -o json)"
+          registry_id="$(REGISTRY_JSON="${registry_json}" python3 -c \
+            'import json, os; print(json.loads(os.environ["REGISTRY_JSON"])["id"])')"
+          echo "registry_id=${registry_id}" >> "${GITHUB_OUTPUT}"
+
+      - name: Launch and verify the exact image on RTX PRO 6000
+        id: pod
+        env:
+          REGISTRY_ID: ${{ steps.registry.outputs.registry_id }}
+        run: |
+          set -euo pipefail
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          image="ghcr.io/${owner}/ecc2k130-runner:sha-${GITHUB_SHA}"
+          pod_json="$(runpodctl pod create \
+            --image "${image}" \
+            --gpu-id "NVIDIA RTX PRO 6000 Blackwell Server Edition" \
+            --name "ecc2k130-container-smoke-${GITHUB_RUN_ID}" \
+            --container-disk-in-gb 30 --ports "22/tcp" \
+            --registry-auth-id "${REGISTRY_ID}" \
+            --env '{"ECC_START_COMMAND":"sleep 900"}' \
+            --wait --wait-timeout 10m -o json)"
+          pod_id="$(POD_JSON="${pod_json}" python3 -c \
+            'import json, os; print(json.loads(os.environ["POD_JSON"])["id"])')"
+          echo "pod_id=${pod_id}" >> "${GITHUB_OUTPUT}"
+
+          info_json="$(runpodctl ssh info "${pod_id}" -o json)"
+          eval "$(INFO_JSON="${info_json}" python3 -c '
+          import json, os, shlex
+          d = json.loads(os.environ["INFO_JSON"])
+          print("SSH_HOST=" + shlex.quote(str(d["ip"])))
+          print("SSH_PORT=" + shlex.quote(str(d.get("port", 22))))
+          print("SSH_USER=" + shlex.quote(str(d.get("user", "root"))))
+          ')"
+
+          ssh_opts=(
+            -i "${HOME}/.ssh/id_ed25519" -p "${SSH_PORT}"
+            -o StrictHostKeyChecking=accept-new
+            -o UserKnownHostsFile="${HOME}/.ssh/known_hosts_runpod"
+            -o IdentitiesOnly=yes -o BatchMode=yes
+          )
+          ssh "${ssh_opts[@]}" "${SSH_USER}@${SSH_HOST}" 'set -euo pipefail
+            nvidia-smi --query-gpu=name,compute_cap --format=csv,noheader
+            /opt/ecc2k130/deploy/entrypoint.sh \
+              /opt/ecc2k130/ecc2k130 --curve 131 --packed --bench \
+              --launches 1 --steps 1 --device 0'
+
+      - name: Tear down temporary RunPod resources
+        if: always()
+        env:
+          POD_ID: ${{ steps.pod.outputs.pod_id }}
+          REGISTRY_ID: ${{ steps.registry.outputs.registry_id }}
+        run: |
+          set +e
+          [[ -n "${POD_ID:-}" ]] && runpodctl pod delete "${POD_ID}"
+          [[ -n "${REGISTRY_ID:-}" ]] && runpodctl registry delete "${REGISTRY_ID}"
