@@ -1,0 +1,68 @@
+name: Row map Metal RREF
+
+on:
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/round30/**'
+      - 'experiments/groebner-perf-20260924/round29/active*'
+      - 'experiments/groebner-perf-20260924/round7/local*'
+      - '.github/workflows/row-map-rref.yml'
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/round30/**'
+      - 'experiments/groebner-perf-20260924/round29/active*'
+      - 'experiments/groebner-perf-20260924/round7/local*'
+      - '.github/workflows/row-map-rref.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Independent row-map algebra model
+        run: python experiments/groebner-perf-20260924/round30/test_model.py
+      - name: Corruption controls for retained measurements
+        run: python experiments/groebner-perf-20260924/round30/test_audit.py
+
+  metal:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        threads: [256, 512, 1024]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install native M4RI
+        run: brew install m4ri
+      - name: Build and execute exact Metal controls
+        env:
+          THREADS: ${{ matrix.threads }}
+        run: |
+          python experiments/groebner-perf-20260924/round30/run.py \
+            --output "$RUNNER_TEMP/row-map-rref" \
+            --m4ri-prefix "$(brew --prefix m4ri)" \
+            --threads "$THREADS" --mode correctness
+      - name: Audit native receipt and reject corrupted evidence
+        run: |
+          python experiments/groebner-perf-20260924/round30/audit.py "$RUNNER_TEMP/row-map-rref" > "$RUNNER_TEMP/row-map-rref/audit.json"
+          python experiments/groebner-perf-20260924/round30/test_audit.py --bundle "$RUNNER_TEMP/row-map-rref"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: row-map-rref-${{ matrix.threads }}
+          path: ${{ runner.temp }}/row-map-rref
+          if-no-files-found: error

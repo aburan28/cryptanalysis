@@ -32,6 +32,13 @@ subgroup/generator transport, and any scalar conversion. Keep run costs
 in a run receipt. Proposed links retain `target_curve_uid: null` and
 `status: proposed`; they are not verified transport. The crypto repo
 mirrors only small manifests and references bulky proofs in cryptanalysis.
+For schema version 1, the filename digest input is exactly
+`{schema_version,kind,source_curve_uid,target_curve_uid,map_sha256,details}`.
+`details` contains `generator_relation` for a same-field isomorphism,
+`twist_kind`, `twist_parameter`, and `extension_degree` for a twist, or
+`extension_degree` for a base change. The metadata validator recomputes this
+digest and requires both endpoint inventories to list the manifest. Proof
+status, artifact paths and run costs stay outside that identity.
 
 A twist can share a j-invariant with its source while having a different
 trace, group order and usable DLP subgroup. In characteristic two, a
