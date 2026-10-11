@@ -38,8 +38,8 @@ def main():
         differences[rotations["budget_optimal"] - rotations["phase_optimal"]] += 1
     result = {"schema": 1, "status": "phase_occupancy_screen",
               "cases": screen["cases"],
-              "tau_exact": dict(counts["tau_exact"]),
               "phase_optimal": dict(counts["phase_optimal"]),
+              "budget_optimal": dict(counts["budget_optimal"]),
               "rotation_difference_histogram": dict(sorted(differences.items())),
               "terminal_sha256": digest(terminal),
               "certificate_sha256": digest(certificate),
