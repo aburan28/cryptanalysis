@@ -42,3 +42,11 @@ no visible isolated CPU partition, and no `nohz_full` CPUs. A separate
 CryptoMiniSat solve was active on the pod during inspection. The scalar
 benchmark was therefore not submitted there; the prospective fixture remains
 unused for performance tuning.
+
+The existing solver predates the shared-lock protocol. The remote serial
+daemon is consequently supervised by [runpod-legacy-guard.sh](runpod-legacy-guard.sh),
+which waits for that exact solver process to exit before starting the
+source-pinned service. The [launch receipt](runpod-launch-receipt.json) records
+the live guard PID, hashes, queue state, and host-probe status. The service
+continues to reject controlled CPU timing on the pod until host preflight
+qualifies; the guard prevents concurrent work during the legacy solve.
