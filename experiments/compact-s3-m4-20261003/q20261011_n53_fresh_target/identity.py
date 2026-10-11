@@ -52,7 +52,11 @@ def main() -> None:
     assert stage["factor_base"]["enumerated_set_sha256"] == protocol["factor_base_enumerated_set_sha256"]
     source = {
         "base_export": sha(PAIR / "export.py"),
-        "base_export_frozen_sources": sha(PAIR / "freeze.json"),
+        "base_export_indexcalc": sha(PAIR / "indexcalc.py"),
+        "base_enumerator": sha(PARENT / "enumerate_weight_base.py"),
+        "base_chain": sha(PARENT / "chain_s3.py"),
+        "base_probe": sha(HERE.parents[2] / "experiments/koblitz-pair-claw-20260929/probe_n53_relation.py"),
+        "base_run_probe": sha(PARENT / "run_probe.py"),
         "native_field53": sha(PAIR / "native_field53.hpp"),
         "python_curve": sha(HERE.parents[2] / "ecc2k130/codegen/curves.py"),
         "python_field": sha(HERE.parents[2] / "ecc2k130/codegen/field.py"),
@@ -69,7 +73,6 @@ def main() -> None:
                          "volcano_levels": None,
                          "status": "not_used"},
         "factor_base": {**stage["factor_base"],
-                        "archive_sha256": sha(PARENT / "bases/n53_weight3_orbits.json.gz"),
                         "base_export_source_sha256": source["base_export"]},
         "point_decomposition": {
             "m": 4, "solver_family": "mitm", "stage_code": "PDP4mitm",
@@ -80,7 +83,6 @@ def main() -> None:
             "encoding": "native ONB group arithmetic, no Weil-descent polynomial",
             "equation_order": "none", "monomial_order": "none",
             "internal_matrix_kernel": "none", "cache_policy": "target-independent pair table",
-            "setup_query_cap": 30000000, "target_query_cap": 5000000,
             "setup_native_source_sha256": source["setup_native"],
             "target_native_source_sha256": source["target_native"],
             "native_field_source_sha256": source["native_field53"]},
@@ -89,7 +91,7 @@ def main() -> None:
             "sample_rule": "uniform with replacement over actual base-point pairs",
             "verification": "four-point group sum and exact base membership",
             "duplicate_handling": "retain all occurrences; rank distinct equations",
-            "stop_criterion": "frozen 30000000-query setup cap and full 227-column rank",
+            "stop_criterion": "accept factor-base logs only at full 227-column rank; query cap is run data",
             "source_sha256": source["setup_replay_and_LA"]},
         "relation_linear_algebra": {
             "stage_code": "LAgauss", "modulus": protocol["subgroup_order"],

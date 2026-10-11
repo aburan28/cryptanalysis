@@ -9,9 +9,9 @@ log substitution, and group scalar replay recovered
 | Identity or measurement | Value |
 | --- | --- |
 | Curve | `EC1N53Ckb1hf77aab617904` |
-| Candidate | `IC1N53Ckb1fb24062PDP4mitmRCenumLAgaussTDdirectISO0h8f4dc459c89c` |
+| Candidate | `IC1N53Ckb1fb24062PDP4mitmRCenumLAgaussTDdirectISO0h8ec5895c4d78` |
 | Workload | `71e0ca65effe`, exactly one target |
-| Run | `IC1N53Ckb1fb24062PDP4mitmRCenumLAgaussTDdirectISO0h8f4dc459c89cW71e0ca65effeR1` |
+| Run | `IC1N53Ckb1fb24062PDP4mitmRCenumLAgaussTDdirectISO0h8ec5895c4d78W71e0ca65effeR1` |
 | Actual factor base and folded columns | 24,062; 227 |
 | Setup rank and replayed logs | 227/227; 227 |
 | Fresh-target first match | query 174,935; one verified relation |
