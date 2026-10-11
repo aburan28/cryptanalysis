@@ -70,10 +70,21 @@ target retains scalar inversion for 385,024-worker populations. Measurements and
 checkpoint compatibility receipts are in
 [the reconciliation report](research/DP-RECONCILIATION.md).
 
-The 2026-09-25 rollout resumes runs 12,000–12,003 from their S3 checkpoints on
+The current rollout runs eight RTX PRO 6000 workers in
+[Modal app ap-BfNPp3WMk8aVi0GYaDdkbw](https://modal.com/apps/a-buran28/main/ap-BfNPp3WMk8aVi0GYaDdkbw)
+from 23:57 UTC on 2026-09-25 until 22:57 UTC on 2026-09-26. Runs 12,000–12,004
+resumed from their S3 checkpoints and runs 12,005–12,007 started fresh. It replaced
+a rollout that had shrunk to one worker. Its two-hour check measured 16.8–17.7 billion
+updates/s per worker, 138.9 billion in total, with no restarts and seed-matching
+RDS samples. See the [deployment receipt](research/production/2026-09-25-8worker-deployment.json)
+and the [validation receipt](research/production/2026-09-25-8worker-deployment-validation.json)
+for the rebuilt binary.
+
+The earlier 2026-09-25 rollout resumed runs 12,000–12,003 from their S3 checkpoints on
 four RTX PRO 6000 workers in
-[Modal app ap-OZBcIVgzRNv4khVa0Hojt3](https://modal.com/apps/a-buran28/main/ap-OZBcIVgzRNv4khVa0Hojt3),
-until 2026-09-26 03:36 UTC. It is the first rollout of the fused Frobenius build
+[Modal app ap-OZBcIVgzRNv4khVa0Hojt3](https://modal.com/apps/a-buran28/main/ap-OZBcIVgzRNv4khVa0Hojt3).
+It was stopped before its 03:36 UTC deadline to make way for the eight-worker
+rollout. It was the first rollout of the fused Frobenius build
 (profile v2). That exact image passed the legacy compatibility gate in
 [its validation receipt](research/production/2026-09-25-fused-deployment-validation.json).
 The first launch reserved four CPU cores per worker. At 04:35 UTC the fleet was
@@ -92,16 +103,40 @@ See the [deployment receipt](research/production/2026-09-21-120k-deployment.json
 for runtime identities, validation and live storage/database checks.
 
 The existing [public crypto dashboard](https://aburan28.github.io/crypto/status/)
-currently reports `ecc2k-130` at DP weight **32**. It reads root-level `ckpt/`
-objects and the legacy ingester's RDS counters. This fleet shares its actual
-collision table, but the page still needs support for namespaced checkpoints
-and direct reporting to account for this fleet's contribution accurately.
+reports `ecc2k-130` at DP weight **32**. Its feed comes from `dp_ingest.py` on the
+legacy Runpod ingest pod. Since 2026-09-25 the deployed copy also counts this
+fleet: checkpoints from namespaced campaigns that share the collision table, and
+points that workers report directly through `report_dp`. It also measures
+"walking now" over about an hour instead of an ever-growing window. The
+deployed file (`s3://…/aws/dp_ingest.py`, sha256 `58460b7a…`) is ahead of the
+`crypto` repository; the change is in
+[the dashboard patch](research/production/2026-09-25-dp-ingest-namespaced.patch)
+and its [receipt](research/production/2026-09-25-dp-ingest-namespaced.json).
 Its "GPUs running" count means a checkpoint was uploaded within 30 minutes;
 copying an old checkpoint can refresh that timestamp after a worker stops.
 Use the Modal app's worker logs and this campaign's S3 leases/RDS rows to check
 the new fleet. Archived `ecc2k130-table8-22b-v1` records have a different walk
 identity and must remain separate; they are not relabeled or merged by this
 production switch.
+
+The ingest pod is also the Runpod CPU walker. When it stops, the page freezes at
+its last publish, as it did when every Runpod pod went silent at 23:04 UTC on
+2026-09-25. `modal_ingest.py` runs the same deployed `aws/dp_ingest.py`, with the
+pod's arguments, in a one-core Modal container for at most 23 hours:
+
+```sh
+export ECC_RDS_SECURITY_GROUP=YOUR_RDS_SECURITY_GROUP
+modal run --detach ecc2k130/runner/modal_ingest.py --seconds 82800
+```
+
+It downloads the S3 copy at start and logs its sha256. It connects with the
+Modal secret's `RHO_DP_DSN`, the same `rho` role as the pod's `rho/dp-rds` secret.
+It opens its own `/32` rule and removes it when it ends; `modal app stop` skips
+that cleanup, as it does for the fleet. Running it alongside a restarted pod is
+safe: point inserts are `ON CONFLICT DO NOTHING`, and the direct-report sweep
+row-locks its counters and watermark, so a concurrent sweep waits and continues
+from the new mark. The [first Modal run's receipt](research/production/2026-09-26-modal-dp-ingest.json)
+records the Runpod silence and the page's recovery.
 
 DP weight is a Hamming-weight cutoff, not a different record size: both cutoffs
 use the same 32-byte record. For two corpora with the **same walk identity**,
@@ -214,16 +249,27 @@ modal run ecc2k130/runner/modal_worker.py --command smoke
 
 # Four concurrent workers, each collecting for 23 hours.
 modal run --detach ecc2k130/runner/modal_worker.py --command run --count 4 --seconds 82800
+
+# A larger fleet: raise the per-app cap, then ask for that many workers.
+ECC_MODAL_MAX_WORKERS=8 modal run --detach ecc2k130/runner/modal_worker.py --command run --count 8 --seconds 82800
 ```
 
 `preflight` and `smoke` execute in a CPU container. Image construction may still
 build the shared CUDA image, but these checks do not start GPU workers. `run`
-first requires a successful S3/RDS smoke check, then submits all four GPU calls
-before waiting for any result. `--count` accepts 1 through 4 (default 4), and the
-GPU function has a maximum of four concurrent containers per app. Avoid launching
-multiple copies of the app if you intend to keep the total fleet at four GPUs.
-The remote CPU coordinator prints the submitted call IDs and waits for completion,
-so closing the local terminal after a detached launch does not end the fleet.
+first requires a successful S3/RDS smoke check, then submits every GPU call
+before waiting for any result. `--count` accepts 1 through `ECC_MODAL_MAX_WORKERS`
+(default 4, at most 32), which is also the app's cap on concurrent GPU containers.
+Each worker adds one `/32` rule to the RDS security group, and AWS allows 60
+inbound rules per group by default. Launch one app per fleet rather than several
+copies, so the whole fleet shares one rollout, deadline and cleanup. Modal
+retries a failed worker up to three times. A heartbeat whose conditional S3 write
+conflicts with its own retried request re-reads the lease rather than give it up.
+The launcher spawns a remote CPU coordinator, which prints the submitted call IDs
+and waits for the workers. After a detached launch, closing the local terminal
+ends neither the fleet nor the coordinator's network cleanup. The coordinator is
+spawned because Modal cancels a `.remote()` call about a minute after its
+launcher disconnects; the workers would keep running with their ingress rules
+left open.
 Submission is not proof of startup,
 so check the logs for four distinct claimed slots and progress reports.
 

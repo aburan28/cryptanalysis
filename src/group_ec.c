@@ -189,6 +189,107 @@ static const ca_group_vtable ec_vt = {
     ec_batch_op, ec_encode, ec_decode, ec_is_valid, ec_canonicalize,
 };
 
+/*
+ * Scalar multiplication in Jacobian coordinates (X : Y : Z), affine
+ * (X/Z^2, Y/Z^3), all in Montgomery form.  An affine step costs a field
+ * inversion (an extended gcd, ~660 of an affine add's ~880 instructions);
+ * a Jacobian step costs a dozen multiplications, and one inversion at the
+ * end returns the same canonical affine point.  The special cases match
+ * ec_op/ec_dbl: Y = 0 doubles to the identity, and P + Q with equal
+ * abscissae is a double or the identity.
+ */
+typedef struct ec_jac {
+    uint64_t x, y, z;
+    int inf;
+} ec_jac;
+
+/* 2P (dbl-2007-bl, general a). */
+static void ec_jac_dbl(const ca_group *g, ec_jac *r)
+{
+    if (r->inf) return;
+    if (r->y == 0) {
+        r->inf = 1;
+        return;
+    }
+    uint64_t xx = fsqr(g, r->x), yy = fsqr(g, r->y), yyyy = fsqr(g, yy), zz = fsqr(g, r->z);
+    uint64_t t = fadd(g, r->x, yy);
+    uint64_t s = fsub(g, fsub(g, fsqr(g, t), xx), yyyy);
+    s = fadd(g, s, s);
+    uint64_t m = fadd(g, fadd(g, fadd(g, xx, xx), xx), fmul(g, g->a_mont, fsqr(g, zz)));
+    uint64_t x3 = fsub(g, fsub(g, fsqr(g, m), s), s);
+    uint64_t y8 = fadd(g, yyyy, yyyy);
+    y8 = fadd(g, y8, y8);
+    y8 = fadd(g, y8, y8);
+    uint64_t y3 = fsub(g, fmul(g, m, fsub(g, s, x3)), y8);
+    uint64_t yz = fadd(g, r->y, r->z);
+    uint64_t z3 = fsub(g, fsub(g, fsqr(g, yz), yy), zz);
+    r->x = x3;
+    r->y = y3;
+    r->z = z3;
+}
+
+/* P + (x2, y2) for a finite affine (x2, y2) (madd-2007-bl). */
+static void ec_jac_add_affine(const ca_group *g, ec_jac *r, uint64_t x2, uint64_t y2)
+{
+    if (r->inf) {
+        r->x = x2;
+        r->y = y2;
+        r->z = g->mont.r1;
+        r->inf = 0;
+        return;
+    }
+    uint64_t z1z1 = fsqr(g, r->z);
+    uint64_t u2 = fmul(g, x2, z1z1);
+    uint64_t s2 = fmul(g, fmul(g, y2, r->z), z1z1);
+    uint64_t h = fsub(g, u2, r->x);
+    uint64_t rr = fsub(g, s2, r->y);
+    if (h == 0) {
+        if (rr == 0)
+            ec_jac_dbl(g, r);
+        else
+            r->inf = 1;
+        return;
+    }
+    rr = fadd(g, rr, rr);
+    uint64_t hh = fsqr(g, h);
+    uint64_t i = fadd(g, hh, hh);
+    i = fadd(g, i, i);
+    uint64_t j = fmul(g, h, i);
+    uint64_t v = fmul(g, r->x, i);
+    uint64_t x3 = fsub(g, fsub(g, fsub(g, fsqr(g, rr), j), v), v);
+    uint64_t y1j = fmul(g, r->y, j);
+    uint64_t y3 = fsub(g, fsub(g, fmul(g, rr, fsub(g, v, x3)), y1j), y1j);
+    uint64_t zh = fadd(g, r->z, h);
+    uint64_t z3 = fsub(g, fsub(g, fsqr(g, zh), z1z1), hh);
+    r->x = x3;
+    r->y = y3;
+    r->z = z3;
+}
+
+int ca_ec_group_mul(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k)
+{
+    if (g->vt != &ec_vt) return 0; /* a caller's own vtable: use it */
+    const uint64_t ax = FX(a), ay = FY(a);
+    const int ainf = FINF(a) != 0;
+    ec_jac acc = {0, 0, 0, 1};
+    if (!ainf) {
+        for (int bit = 63 - (k ? __builtin_clzll(k) : 63); k && bit >= 0; bit--) {
+            ec_jac_dbl(g, &acc);
+            if ((k >> bit) & 1) ec_jac_add_affine(g, &acc, ax, ay);
+        }
+    }
+    if (acc.inf) {
+        ec_identity(g, r);
+        return 1;
+    }
+    uint64_t zi = finv(g, acc.z), zi2 = fsqr(g, zi);
+    FX(r) = fmul(g, acc.x, zi2);
+    FY(r) = fmul(g, acc.y, fmul(g, zi2, zi));
+    FINF(r) = 0;
+    r->w[3] = 0;
+    return 1;
+}
+
 ca_status ca_group_ec_init(ca_group *g, uint64_t p, uint64_t a, uint64_t b, uint64_t order)
 {
     memset(g, 0, sizeof(*g));
@@ -270,20 +371,41 @@ static size_t ec_interval_all(const ca_group *g, const ca_elem *P, const ca_elem
                               uint64_t width, uint64_t *out, size_t cap, ca_stats *st)
 {
     uint64_t m = ca_isqrt(width) + 1;
-    ca_htab tab;
-    if (ca_htab_init(&tab, (size_t)m) != CA_OK) return 0;
+    ca_htab1 tab;
+    if (ca_htab1_init(&tab, (size_t)m) != CA_OK) return 0;
+    /* Baby and giant steps go EC_LANES at a time through ec_batch_op, one
+     * field inversion per block; hashing, insertion, lookup and every
+     * count follow the one-step loops, and elements a block computes past
+     * the last one used are not charged. */
+    enum { EC_LANES = 64 };
+    ca_elem lane[EC_LANES], stride[EC_LANES];
+    uint64_t scratch[2 * EC_LANES];
     ca_elem cur;
-    ec_identity(g, &cur);
     uint64_t small_order = 0;
-    for (uint64_t j = 0; j < m; j++) {
-        uint64_t old;
-        if (ca_htab_insert(&tab, ec_hash(g, &cur), j, 0, &old, NULL) == 1) {
-            /* cur == old*P: P has small order j - old */
-            small_order = j - old;
-            break;
+    {
+        const uint64_t first = m < EC_LANES ? m : EC_LANES;
+        ec_identity(g, &lane[0]);
+        for (uint64_t c = 1; c < first; c++) ec_op(g, &lane[c], &lane[c - 1], P);
+        ca_group_mul(g, &stride[0], P, EC_LANES, NULL);
+        for (int c = 1; c < EC_LANES; c++) stride[c] = stride[0];
+        uint64_t steps_done = m;
+        for (uint64_t j0 = 0; j0 < m && !small_order; j0 += EC_LANES) {
+            const uint64_t n = m - j0 < EC_LANES ? m - j0 : EC_LANES;
+            for (uint64_t c = 0; c < n; c++) {
+                uint64_t old;
+                if (ca_htab1_insert(&tab, ec_hash(g, &lane[c]), j0 + c, &old) == 1) {
+                    /* (j0 + c) P == old P: P has small order j0 + c - old */
+                    small_order = j0 + c - old;
+                    steps_done = j0 + c;
+                    break;
+                }
+            }
+            if (!small_order && j0 + EC_LANES < m) {
+                const uint64_t next = m - j0 - EC_LANES;
+                ec_batch_op(g, lane, lane, stride, next < EC_LANES ? next : EC_LANES, scratch);
+            }
         }
-        ec_op(g, &cur, &cur, P);
-        if (st) st->group_ops++;
+        if (st) st->group_ops += steps_done;
     }
     size_t found = 0;
     if (small_order) {
@@ -306,7 +428,7 @@ static size_t ec_interval_all(const ca_group *g, const ca_elem *P, const ca_elem
                 found++;
             }
         }
-        ca_htab_free(&tab);
+        ca_htab1_free(&tab);
         return found;
     }
     /* giant steps: R = T - (lo + i m) P; if R == jP then k = lo + i m + j */
@@ -318,24 +440,35 @@ static size_t ec_interval_all(const ca_group *g, const ca_elem *P, const ca_elem
     ec_inv(g, &base, &base);
     ec_op(g, &R, T, &base); /* T - lo P */
     uint64_t steps = m ? width / m + 1 : 1;
-    for (uint64_t i = 0; i < steps; i++) {
-        uint64_t j;
-        if (ca_htab_find(&tab, ec_hash(g, &R), &j, NULL)) {
-            /* verify */
-            ca_elem chk;
-            ca_group_mul(g, &chk, P, j, NULL);
-            if (ec_equal(g, &chk, &R)) {
-                ca_u128 k = (ca_u128)lo + (ca_u128)i * m + j;
-                if (k < (ca_u128)lo + width) {
-                    if (found < cap) out[found] = (uint64_t)k;
-                    found++;
+    /* giant[k] = k (-m P); a block is R + giant[k] for k < EC_LANES */
+    ca_elem giant[EC_LANES], block_step, Rrep[EC_LANES];
+    ec_identity(g, &giant[0]);
+    for (int k = 1; k < EC_LANES; k++) ec_op(g, &giant[k], &giant[k - 1], &negmP);
+    ec_op(g, &block_step, &giant[EC_LANES - 1], &negmP);
+    for (uint64_t i0 = 0; i0 < steps; i0 += EC_LANES) {
+        const uint64_t n = steps - i0 < EC_LANES ? steps - i0 : EC_LANES;
+        for (uint64_t k = 0; k < n; k++) Rrep[k] = R;
+        ec_batch_op(g, lane, Rrep, giant, n, scratch);
+        for (uint64_t k = 0; k < n; k++) {
+            const uint64_t i = i0 + k;
+            uint64_t j;
+            if (ca_htab1_find(&tab, ec_hash(g, &lane[k]), &j)) {
+                /* verify */
+                ca_elem chk;
+                ca_group_mul(g, &chk, P, j, NULL);
+                if (ec_equal(g, &chk, &lane[k])) {
+                    ca_u128 kk = (ca_u128)lo + (ca_u128)i * m + j;
+                    if (kk < (ca_u128)lo + width) {
+                        if (found < cap) out[found] = (uint64_t)kk;
+                        found++;
+                    }
                 }
             }
         }
-        ec_op(g, &R, &R, &negmP);
-        if (st) st->group_ops++;
+        if (st) st->group_ops += n;
+        if (n == EC_LANES) ec_op(g, &R, &R, &block_step);
     }
-    ca_htab_free(&tab);
+    ca_htab1_free(&tab);
     return found;
 }
 
