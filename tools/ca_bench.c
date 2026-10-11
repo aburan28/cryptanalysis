@@ -29,6 +29,11 @@
  *   ca_bench gpu      [--bits 24,28,32] [--reps 3] [--group zp|ec|both]
  *       CPU rho vs the GPU rho kernel (CUDA when a device is present,
  *       otherwise the host emulator) in S = group ops / sqrt(n).
+ *
+ *   --json FILE (generic and complexity): besides the table, write one JSON
+ *       object per solved instance with the raw ca_stats counters, after a
+ *       header object naming the binary, commit, command line and host
+ *       (JSON Lines).  experiments/bounds/emit_bounds.py reads it.
  */
 #include "cryptanalysis/cryptanalysis.h"
 #include "ca_internal.h"
@@ -39,6 +44,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/utsname.h>
 
 static int argc_g;
 static char **argv_g;
@@ -60,6 +66,247 @@ static int parse_list(const char *s, unsigned *out, int cap)
         while (*s == ',' || *s == ' ') s++;
     }
     return n;
+}
+
+/* ---- --json FILE: raw per-instance counters --------------------------- */
+/* generic and complexity write one JSON object per solved instance (JSON
+ * Lines, a header object first), so that a sweep can be re-read by
+ * experiments/bounds/emit_bounds.py without parsing the human tables.  The
+ * header names the exact binary (SHA-256 of the executable), the commit the
+ * build was configured at, the command line and the host; a row carries the
+ * ca_stats counters as the solver reported them.  The tables are unchanged. */
+
+static FILE *json_g; /* NULL unless --json FILE was given */
+
+/* SHA-256 (FIPS 180-4), used only to hash the running executable. */
+typedef struct sha256_ctx {
+    uint32_t h[8];
+    uint64_t len;
+    uint8_t buf[64];
+    size_t n;
+} sha256_ctx;
+
+static const uint32_t sha256_k[64] = {
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
+
+static uint32_t rotr32(uint32_t x, unsigned k) { return (x >> k) | (x << (32 - k)); }
+
+static void sha256_init(sha256_ctx *c)
+{
+    static const uint32_t iv[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+                                   0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
+    memcpy(c->h, iv, sizeof iv);
+    c->len = 0;
+    c->n = 0;
+}
+
+static void sha256_block(sha256_ctx *c, const uint8_t *p)
+{
+    uint32_t w[64];
+    for (size_t i = 0; i < 16; i++)
+        w[i] = (uint32_t)p[4 * i] << 24 | (uint32_t)p[4 * i + 1] << 16 |
+               (uint32_t)p[4 * i + 2] << 8 | (uint32_t)p[4 * i + 3];
+    for (int i = 16; i < 64; i++) {
+        const uint32_t s0 = rotr32(w[i - 15], 7) ^ rotr32(w[i - 15], 18) ^ (w[i - 15] >> 3);
+        const uint32_t s1 = rotr32(w[i - 2], 17) ^ rotr32(w[i - 2], 19) ^ (w[i - 2] >> 10);
+        w[i] = w[i - 16] + s0 + w[i - 7] + s1;
+    }
+    uint32_t a = c->h[0], b = c->h[1], cc = c->h[2], d = c->h[3];
+    uint32_t e = c->h[4], f = c->h[5], g = c->h[6], h = c->h[7];
+    for (int i = 0; i < 64; i++) {
+        const uint32_t t1 = h + (rotr32(e, 6) ^ rotr32(e, 11) ^ rotr32(e, 25)) +
+                            ((e & f) ^ (~e & g)) + sha256_k[i] + w[i];
+        const uint32_t t2 =
+            (rotr32(a, 2) ^ rotr32(a, 13) ^ rotr32(a, 22)) + ((a & b) ^ (a & cc) ^ (b & cc));
+        h = g;
+        g = f;
+        f = e;
+        e = d + t1;
+        d = cc;
+        cc = b;
+        b = a;
+        a = t1 + t2;
+    }
+    c->h[0] += a;
+    c->h[1] += b;
+    c->h[2] += cc;
+    c->h[3] += d;
+    c->h[4] += e;
+    c->h[5] += f;
+    c->h[6] += g;
+    c->h[7] += h;
+}
+
+static void sha256_update(sha256_ctx *c, const uint8_t *data, size_t len)
+{
+    c->len += len;
+    while (len > 0) {
+        size_t take = sizeof c->buf - c->n;
+        if (take > len) take = len;
+        memcpy(c->buf + c->n, data, take);
+        c->n += take;
+        data += take;
+        len -= take;
+        if (c->n == sizeof c->buf) {
+            sha256_block(c, c->buf);
+            c->n = 0;
+        }
+    }
+}
+
+static void sha256_final(sha256_ctx *c, char hex[65])
+{
+    static const uint8_t one = 0x80, zero = 0;
+    const uint64_t bits = c->len * 8;
+    sha256_update(c, &one, 1);
+    while (c->n != 56) sha256_update(c, &zero, 1);
+    uint8_t lenb[8];
+    for (int i = 0; i < 8; i++) lenb[i] = (uint8_t)(bits >> (56 - 8 * i));
+    sha256_update(c, lenb, sizeof lenb);
+    for (size_t i = 0; i < 8; i++) snprintf(hex + 8 * i, 9, "%08" PRIx32, c->h[i]);
+}
+
+/* 0 and the lowercase digest of the file at path in hex; -1 if unreadable. */
+static int sha256_file(const char *path, char hex[65])
+{
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    sha256_ctx c;
+    sha256_init(&c);
+    uint8_t buf[1 << 16];
+    size_t got;
+    while ((got = fread(buf, 1, sizeof buf, f)) > 0) sha256_update(&c, buf, got);
+    const int err = ferror(f);
+    fclose(f);
+    if (err) return -1;
+    sha256_final(&c, hex);
+    return 0;
+}
+
+/* A JSON string: quotes, backslashes and control characters escaped, every
+ * other byte written as it is (the strings here are ASCII or UTF-8). */
+static void json_str(FILE *f, const char *s)
+{
+    fputc('"', f);
+    for (; *s; s++) {
+        const unsigned char ch = (unsigned char)*s;
+        switch (ch) {
+        case '"': fputs("\\\"", f); break;
+        case '\\': fputs("\\\\", f); break;
+        case '\n': fputs("\\n", f); break;
+        case '\r': fputs("\\r", f); break;
+        case '\t': fputs("\\t", f); break;
+        default:
+            if (ch < 0x20)
+                fprintf(f, "\\u%04x", ch);
+            else
+                fputc(ch, f);
+        }
+    }
+    fputc('"', f);
+}
+
+static void json_str_or_null(FILE *f, const char *s)
+{
+    if (s)
+        json_str(f, s);
+    else
+        fputs("null", f);
+}
+
+/* The header line: what produced the rows that follow. */
+static void json_header(const char *mode)
+{
+    char hex[65];
+    const char *digest = NULL;
+    if (sha256_file("/proc/self/exe", hex) == 0 || sha256_file(argv_g[0], hex) == 0) digest = hex;
+    /* uname(2) fields in `uname -a` order: sysname nodename release version machine. */
+    char host[1024] = "";
+    struct utsname u;
+    if (uname(&u) == 0)
+        snprintf(host, sizeof host, "%s %s %s %s %s", u.sysname, u.nodename, u.release, u.version,
+                 u.machine);
+    /* argv joined by single spaces: what the shell passed, less its quoting. */
+    size_t len = 0;
+    for (int i = 0; i < argc_g; i++) len += strlen(argv_g[i]) + 1;
+    char *cmdline = malloc(len + 1);
+    if (cmdline) {
+        size_t at = 0;
+        for (int i = 0; i < argc_g; i++) {
+            const size_t l = strlen(argv_g[i]);
+            if (i) cmdline[at++] = ' ';
+            memcpy(cmdline + at, argv_g[i], l);
+            at += l;
+        }
+        cmdline[at] = '\0';
+    }
+    FILE *f = json_g;
+    fputs("{\"record\":\"header\",\"schema\":\"ca_bench.sweep/v1\",\"mode\":", f);
+    json_str(f, mode);
+    fputs(",\"library_version\":", f);
+    json_str(f, ca_version());
+    fputs(",\"binary_sha256\":", f);
+    json_str_or_null(f, digest);
+    fputs(",\"git_commit\":", f);
+#ifdef CA_GIT_COMMIT
+    json_str(f, CA_GIT_COMMIT);
+#else
+    fputs("null", f);
+#endif
+    fputs(",\"command_line\":", f);
+    json_str_or_null(f, cmdline);
+    fputs(",\"host\":", f);
+    json_str_or_null(f, host[0] ? host : NULL);
+    fputs("}\n", f);
+    free(cmdline);
+}
+
+typedef struct json_group {
+    int ec;
+    unsigned bits;
+    uint64_t n, p, a, b; /* a, b: the curve coefficients, 0 in Z_p^* */
+} json_group;
+
+/* One solved instance.  seed is NULL for the deterministic solvers; extra is
+ * an optional pre-formatted ",\"key\":value" tail. */
+static void json_row(const json_group *jg, const char *alg, unsigned instance, uint64_t x,
+                     const uint64_t *seed, const ca_stats *st, ca_status rc, uint64_t got,
+                     const char *extra)
+{
+    FILE *f = json_g;
+    if (!f) return;
+    const int ok = rc == CA_OK && got == x;
+    const char *status = rc != CA_OK ? ca_status_string(rc) : ok ? "ok" : "wrong answer";
+    fputs("{\"record\":\"instance\",\"algorithm\":", f);
+    json_str(f, alg);
+    fprintf(f, ",\"group\":\"%s\",\"bits\":%u,\"n\":\"%" PRIu64 "\",\"p\":\"%" PRIu64 "\"",
+            jg->ec ? "ec" : "zp", jg->bits, jg->n, jg->p);
+    if (jg->ec)
+        fprintf(f, ",\"a\":\"%" PRIu64 "\",\"b\":\"%" PRIu64 "\"", jg->a, jg->b);
+    else
+        fputs(",\"a\":null,\"b\":null", f);
+    fprintf(f, ",\"instance\":%u,\"x\":\"%" PRIu64 "\",\"seed\":", instance, x);
+    if (seed)
+        fprintf(f, "%" PRIu64, *seed);
+    else
+        fputs("null", f);
+    fputs(",\"status\":", f);
+    json_str(f, status);
+    fprintf(f,
+            ",\"ok\":%s,\"group_ops\":%" PRIu64 ",\"iterations\":%" PRIu64
+            ",\"table_entries\":%" PRIu64 ",\"collisions\":%" PRIu64 ",\"bytes_peak\":%" PRIu64
+            ",\"seconds\":%.9g,\"threads\":%" PRIu32,
+            ok ? "true" : "false", st->group_ops, st->iterations, st->table_entries, st->collisions,
+            st->bytes_peak, st->seconds, st->threads ? st->threads : 1U);
+    if (extra) fputs(extra, f);
+    fputs("}\n", f);
 }
 
 /* safe prime p = 2q+1 with p of the given bit length; returns q */
@@ -121,18 +368,17 @@ static void run_generic(const unsigned *bits, int nb, unsigned reps, unsigned th
     for (int si = 0; si < nb; si++) {
         ca_group g;
         ca_elem gen;
-        uint64_t n;
+        uint64_t n, p, ea = 0, eb = 0;
         if (!ec) {
-            uint64_t p;
             n = find_safe_prime(bits[si], &p);
             ca_group_zp_init(&g, p, n);
         } else {
-            uint64_t p, a, b;
-            find_prime_order_curve(bits[si], &p, &a, &b, &n);
-            ca_group_ec_init(&g, p, a, b, n);
+            find_prime_order_curve(bits[si], &p, &ea, &eb, &n);
+            ca_group_ec_init(&g, p, ea, eb, n);
             g.cofactor = 1;
         }
         ca_group_find_generator(&g, &gen, 1);
+        const json_group jg = {ec, bits[si], n, p, ea, eb};
         Nv[si] = (double)n;
         double sq = sqrt((double)n);
         double ops[NALG] = {0}, secs[NALG] = {0};
@@ -161,6 +407,9 @@ static void run_generic(const unsigned *bits, int nb, unsigned reps, unsigned th
                 case 3: rc = ca_kangaroo_solve(&g, &gen, &h, 0, 0, &dp.kangaroo, &got, &st); break;
                 default: rc = ca_grumpy_solve(&g, &gen, &h, 0, 0, &dp.grumpy, &got, &st); break;
                 }
+                const uint64_t seed = 100 + r;
+                json_row(&jg, names[a], r, x, (a == 1 || a == 2) ? &seed : NULL, &st, rc, got,
+                         NULL);
                 ops[a] += (double)st.group_ops;
                 secs[a] += st.seconds;
                 ok[a] += (rc == CA_OK && got == x);
@@ -509,18 +758,17 @@ static void run_complexity(const unsigned *bits, int nb, unsigned reps, int ec)
     for (int si = 0; si < nb; si++) {
         ca_group g;
         ca_elem gen;
-        uint64_t n;
+        uint64_t n, p, ea = 0, eb = 0;
         if (!ec) {
-            uint64_t p;
             n = find_safe_prime(bits[si], &p);
             ca_group_zp_init(&g, p, n);
         } else {
-            uint64_t p, a, b;
-            find_prime_order_curve(bits[si], &p, &a, &b, &n);
-            ca_group_ec_init(&g, p, a, b, n);
+            find_prime_order_curve(bits[si], &p, &ea, &eb, &n);
+            ca_group_ec_init(&g, p, ea, eb, n);
             g.cofactor = 1;
         }
         ca_group_find_generator(&g, &gen, 1);
+        const json_group jg = {ec, bits[si], n, p, ea, eb};
         Nv[si] = (double)n;
 
         ca_precomp_params pp;
@@ -530,6 +778,18 @@ static void run_complexity(const unsigned *bits, int nb, unsigned reps, int ec)
         ca_precomp_table *tab = NULL;
         ca_precomp_table_new(&g, &gen, &pp, &tab, &pbuild);
         cost[CX_PBUILD][si] = (double)pbuild.group_ops;
+        /* The online rows carry the table they were solved against. */
+        char precomp_extra[160] = "";
+        if (tab) {
+            int32_t dpb = 0;
+            uint64_t chains = 0, pops = 0;
+            uint32_t rr = 0;
+            ca_precomp_table_info(tab, &dpb, &chains, &rr, &pops);
+            snprintf(precomp_extra, sizeof precomp_extra,
+                     ",\"precomp\":{\"build_group_ops\":%" PRIu64 ",\"chains\":%" PRIu64
+                     ",\"dp_bits\":%" PRId32 ",\"table_seed\":%" PRIu64 "}",
+                     pops, chains, dpb, (uint64_t)pp.seed);
+        }
 
         double acc[CX_NALG] = {0};
         ca_rng rng;
@@ -541,22 +801,36 @@ static void run_complexity(const unsigned *bits, int nb, unsigned reps, int ec)
             ca_dlog_params dp;
             ca_dlog_params_default(&dp);
             dp.rho.seed = dp.kangaroo.seed = 100 + r;
+            const uint64_t seed = 100 + r;
             ca_stats st;
+            ca_status rc;
             st = (ca_stats){0};
-            if (ca_bsgs_solve(&g, &gen, &h, 0, 0, &dp.bsgs, &got, &st) == CA_OK)
-                acc[CX_BSGS] += (double)st.group_ops;
+            got = 0;
+            rc = ca_bsgs_solve(&g, &gen, &h, 0, 0, &dp.bsgs, &got, &st);
+            if (rc == CA_OK) acc[CX_BSGS] += (double)st.group_ops;
+            json_row(&jg, names[CX_BSGS], r, x, NULL, &st, rc, got, NULL);
             st = (ca_stats){0};
-            if (ca_rho_solve(&g, &gen, &h, &dp.rho, &got, &st) == CA_OK)
-                acc[CX_RHO] += (double)st.group_ops;
+            got = 0;
+            rc = ca_rho_solve(&g, &gen, &h, &dp.rho, &got, &st);
+            if (rc == CA_OK) acc[CX_RHO] += (double)st.group_ops;
+            json_row(&jg, names[CX_RHO], r, x, &seed, &st, rc, got, NULL);
             st = (ca_stats){0};
-            if (ca_kangaroo_solve(&g, &gen, &h, 0, 0, &dp.kangaroo, &got, &st) == CA_OK)
-                acc[CX_KANG] += (double)st.group_ops;
+            got = 0;
+            rc = ca_kangaroo_solve(&g, &gen, &h, 0, 0, &dp.kangaroo, &got, &st);
+            if (rc == CA_OK) acc[CX_KANG] += (double)st.group_ops;
+            json_row(&jg, names[CX_KANG], r, x, &seed, &st, rc, got, NULL);
             st = (ca_stats){0};
-            if (ca_grumpy_solve(&g, &gen, &h, 0, 0, &dp.grumpy, &got, &st) == CA_OK)
-                acc[CX_GRUMPY] += (double)st.group_ops;
-            st = (ca_stats){0};
-            if (tab && ca_precomp_table_solve(tab, &h, &got, &st) == CA_OK)
-                acc[CX_PONLINE] += (double)st.group_ops;
+            got = 0;
+            rc = ca_grumpy_solve(&g, &gen, &h, 0, 0, &dp.grumpy, &got, &st);
+            if (rc == CA_OK) acc[CX_GRUMPY] += (double)st.group_ops;
+            json_row(&jg, names[CX_GRUMPY], r, x, NULL, &st, rc, got, NULL);
+            if (tab) {
+                st = (ca_stats){0};
+                got = 0;
+                rc = ca_precomp_table_solve(tab, &h, &got, &st);
+                if (rc == CA_OK) acc[CX_PONLINE] += (double)st.group_ops;
+                json_row(&jg, "precomp-online", r, x, NULL, &st, rc, got, precomp_extra);
+            }
         }
         cost[CX_BSGS][si] = acc[CX_BSGS] / reps;
         cost[CX_RHO][si] = acc[CX_RHO] / reps;
@@ -685,6 +959,18 @@ int main(int argc, char **argv)
     unsigned reps = (unsigned)strtoul(opt("--reps", strcmp(cmd, "gpu") ? "5" : "3"), NULL, 10);
     unsigned threads = (unsigned)strtoul(opt("--threads", "4"), NULL, 10);
     const char *group = opt("--group", "both");
+    const char *json_path = opt("--json", NULL);
+    if (json_path) {
+        json_g = fopen(json_path, "w");
+        if (!json_g) {
+            fprintf(stderr, "cannot open %s for writing\n", json_path);
+            return 2;
+        }
+        if (strcmp(cmd, "generic") && strcmp(cmd, "complexity"))
+            fprintf(stderr,
+                    "note: --json writes per-instance rows for generic and complexity only\n");
+        json_header(cmd);
+    }
     printf("libcryptanalysis %s benchmark: %s\n\n", ca_version(), cmd);
     if (!strcmp(cmd, "generic")) {
         int nb = parse_list(opt("--bits", "24,28,32,36"), bits, 16);
@@ -763,6 +1049,10 @@ int main(int argc, char **argv)
         run_ops();
     } else {
         fprintf(stderr, "unknown benchmark %s\n", cmd);
+        return 2;
+    }
+    if (json_g && fclose(json_g) != 0) {
+        fprintf(stderr, "error writing %s\n", json_path);
         return 2;
     }
     return 0;
