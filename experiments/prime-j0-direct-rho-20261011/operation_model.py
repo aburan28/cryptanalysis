@@ -27,7 +27,7 @@ def main() -> None:
     raw = path.read_bytes()
     source = raw.decode()
     add = section(source, "    fn add_xyzz(self, q: Self) -> Self {",
-                  "    // Apply degree-three endomorphism")
+                  "    // Apply the degree-three endomorphism")
     rho = section(source, "    fn rho_direct(self) -> Self {",
                   "    fn double(self) -> Self {")
     evaluator = section(source, "    let point = if direct_rho {",
