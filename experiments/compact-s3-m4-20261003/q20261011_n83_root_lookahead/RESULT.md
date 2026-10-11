@@ -45,14 +45,17 @@ conditional N131 weight-seven pair-index model remains `2^86.1847`
 counted pair additions, 25.1847 bits above an abstract `2^61`
 pair-addition reference in its different unit.
 
-This result redirects method work to the existing exact balanced-\(S_3\)
-root oracle: when leaf x coordinates become fixed, compute and constrain
-the possible pair-intermediate roots without expanding the full Boolean
-root circuit or building the complete quotient-pair table. The first gates
-are the archived N53/N83 `free_mids` controls, followed by ordinary N53
-and N83 relations with independent group and rank replay. Further static
-selector tuning needs a precommitted target panel and a charged
-distribution-level result.
+The exact balanced-\(S_3\) root callback has already been implemented in
+Q1430–Q1435, including in-search leaf-pair roots, short guards, early
+target-coset support, and final-link checks. Those bounded ordinary N53/N83
+runs did not complete a decomposition. The next solver experiment should
+combine that callback's exact field-root pruning with Q1460–Q1477's
+native-XOR WDSat search on the same frozen N53/N83 inputs, while charging
+root calls, solver propagation, and all failed attempts. Its first method
+gate is an independently checked ordinary N53 relation from the known
+relation-bearing public point, followed by an ordinary N83 relation and
+rank measurements. Further static selector tuning needs a precommitted
+target panel and a charged distribution-level result.
 
 Revalidate locally with:
 
