@@ -36,6 +36,46 @@ def right(prefix, shift, word):
     return '(' + ' | '.join(parts) + ')' if parts else None
 
 
+def raw_reduce(h):
+    z = h >> 128
+    r = z ^ (z >> 2) ^ (z >> 6)
+    t = z ^ (z >> 7) ^ (r >> 9) ^ (r >> 25) ^ (r >> 57) ^ (r >> 121)
+    v = z ^ (z >> 8) ^ (z >> 24) ^ (z >> 56) ^ (z >> 120)
+    q = (z >> 3) ^ (v >> 4) ^ (v >> 5) ^ (v >> 7)
+    t = (t & ~7) | ((q ^ (q << 2)) & 7)
+    return (h ^ t ^ (t << 64) ^ (t << 96) ^ (t << 112) ^ (t << 120) ^ (t << 128) ^ ((q & 127) << 124)) & ((1 << 131)-1)
+
+
+def rawRight(prefix, shift, word):
+    offset,bits = divmod(shift,32)
+    i = word+offset
+    if i>4:return None
+    if not bits:return f'{prefix}{i}'
+    parts=[] if i==4 and bits>=5 else [f'({prefix}{i} >> {bits})']
+    if i<4:parts.append(f'({prefix}{i+1} << {32-bits})')
+    return '('+' | '.join(parts)+')' if parts else None
+
+
+def emitRaw():
+    lines=['ECC_HD P131 reducePolynomial131(const uint32_t *h) {']
+    lines += [f'    const uint32_t z{i}=h[{i+4}]'+(' & 31u' if i==4 else '')+';' for i in range(5)]
+    for i in range(5):
+        parts=[f'z{i}']+[rawRight('z',s,i) for s in (2,6)]
+        lines.append(f'    const uint32_t r{i}='+' ^ '.join(p for p in parts if p)+';')
+    for i in range(5):
+        parts=[f'z{i}',rawRight('z',7,i)]+[rawRight('r',s,i) for s in (9,25,57,121)]
+        lines.append(f'    uint32_t t{i}='+' ^ '.join(p for p in parts if p)+';')
+    lines += ['    const uint32_t v=z0 ^ (z0 >> 8) ^ ((z0 ^ z1 ^ z3) >> 24) ^ ((z1 ^ z2 ^ z4) << 8);',
+              '    const uint32_t q=(z0 >> 3) ^ (v >> 4) ^ (v >> 5) ^ (v >> 7);',
+              '    t0=(t0 & ~7u) | ((q ^ (q << 2)) & 7u);', '    P131 out;',
+              '    out.v[0]=h[0] ^ t0;', '    out.v[1]=h[1] ^ t1;',
+              '    out.v[2]=h[2] ^ t2 ^ t0;',
+              '    out.v[3]=h[3] ^ t3 ^ t1 ^ t0 ^ (t0 << 16) ^ (t0 << 24) ^ (q << 28);',
+              '    out.v[4]=(h[4] ^ t4 ^ t2 ^ t1 ^ ((t1 << 16) | (t0 >> 16)) ^ ((t1 << 24) | (t0 >> 8)) ^ t0 ^ (q >> 4)) & 7u;',
+              '    return out;', '}']
+    return lines
+
+
 def check():
     f = polynomial()
     if f != 0xd1d0d000d0000000d000000000000000d:
@@ -44,7 +84,7 @@ def check():
     cases = [0, (1 << 261) - 1] + [1 << i for i in range(261)]
     cases += [rng.getrandbits(261) for _ in range(10000)]
     for x in cases:
-        if direct(x) != reference(x, f):
+        if direct(x) != reference(x, f) or raw_reduce(x) != reference(x, f):
             raise ValueError(('direct reduction mismatch', x))
 
 
@@ -73,7 +113,7 @@ def generate():
         if i == 4:
             expr = '(' + expr + ')&7u'
         lines.append('    out.v[%d]=%s;' % (i, expr))
-    return '\n'.join(lines + ['    return out;', '}']) + '\n'
+    return '\n'.join(lines[:2] + ['#if ECC_FROBENIUS_FUSED'] + emitRaw() + ['#else'] + lines[2:] + ['    return out;', '}', '#endif']) + '\n'
 
 
 if __name__ == '__main__':

@@ -104,7 +104,45 @@ void pairedFrobeniusProbe(const P131 *a, const P131 *b, const int *powers,
     }
 }
 
-static bool pairedFrobeniusChecks() {
+static P131 polynomialDifferenceReference(P131 a, int power) {
+    P131 sigma=a;
+    for (int step=0;step<power;++step) {
+        RawPolynomial square{};
+        for (int bit=0;bit<131;++bit) if ((sigma.v[bit/32]>>(bit%32))&1u)
+            square.v[(2*bit)/32] |= 1u<<((2*bit)%32);
+        sigma=reduceReference(square);
+    }
+    for (int word=0;word<5;++word) sigma.v[word]^=a.v[word];
+    return sigma;
+}
+
+#if ECC_FROBENIUS_FUSED
+__global__ __launch_bounds__(ECC_THREADS, ECC_MINBLOCKS)
+void shiftedFrobeniusProbe(const P131 *a, const P131 *b, const int *powers,
+                          P131 *first, P131 *second, int n) {
+    using namespace eccPacked131;
+    initShiftedSigmaWalk131();
+    const int i=blockIdx.x*blockDim.x+threadIdx.x;
+    if (i<n) {
+        const P131 x=expandedPolynomial131(a[i]), y=expandedPolynomial131(b[i]);
+        const auto pair=sigmaShiftedWalkPair131(x,y,powers[i]-3);
+        first[i]=polynomialFromShiftedDifference131(add131(x,pair.first));
+        second[i]=polynomialFromShiftedDifference131(add131(y,pair.second));
+        // Check the complement-dependent weight and the reporting conversion
+        // against the separate full-product basis transform.
+        const uint32_t h[9]={a[i].v[0],a[i].v[1],a[i].v[2],a[i].v[3],a[i].v[4],0,0,0,0};
+        const P131 normal=fromPolynomialProduct131(h), recovered=normalFromExpanded131(x);
+        int expandedWeight=0, normalWeight=0;
+        for (int word=0;word<5;++word) {
+            expandedWeight+=__popc(x.v[word]); normalWeight+=__popc(normal.v[word]);
+            if (normal.v[word]!=recovered.v[word]) first[i].v[4]|=8u;
+        }
+        if (((x.v[0]&1u)?132-expandedWeight:expandedWeight)!=normalWeight) first[i].v[4]|=8u;
+    }
+}
+#endif
+
+static bool pairedFrobeniusChecks(bool shifted=false) {
     std::vector<P131> a,b;
     std::vector<int> powers;
     auto append=[&](P131 x,P131 y,int power) {
@@ -139,7 +177,8 @@ static bool pairedFrobeniusChecks() {
     const P131 guardSecond{{0x8e3165a7u,0xf4029c68u,0x271db593u,0xb68a30e4u,0x5ad7c219u}};
     std::vector<P131> first(padded+2,guardFirst),second(padded+2,guardSecond),wantFirst(n),wantSecond(n);
     for (int i=0;i<n;i++) {
-        wantFirst[i]=expected(a[i],powers[i]);wantSecond[i]=expected(b[i],powers[i]);
+        wantFirst[i]=shifted?polynomialDifferenceReference(a[i],powers[i]):expected(a[i],powers[i]);
+        wantSecond[i]=shifted?polynomialDifferenceReference(b[i],powers[i]):expected(b[i],powers[i]);
         // A missing store must fail even when the expected result is zero.
         for (int word=0;word<5;word++) {
             first[i+1].v[word]=~wantFirst[i].v[word];
@@ -157,7 +196,12 @@ static bool pairedFrobeniusChecks() {
     checked(cudaMemcpy(devicePowers,powers.data(),size_t(padded)*sizeof(int),cudaMemcpyHostToDevice));
     checked(cudaMemcpy(deviceFirst,first.data(),outputBytes,cudaMemcpyHostToDevice));
     checked(cudaMemcpy(deviceSecond,second.data(),outputBytes,cudaMemcpyHostToDevice));
-    pairedFrobeniusProbe<<<padded/ECC_THREADS,ECC_THREADS>>>(deviceA,deviceB,devicePowers,deviceFirst+1,deviceSecond+1,n);
+#if ECC_FROBENIUS_FUSED
+    if (shifted)
+        shiftedFrobeniusProbe<<<padded/ECC_THREADS+1,ECC_THREADS>>>(deviceA,deviceB,devicePowers,deviceFirst+1,deviceSecond+1,n);
+    else
+#endif
+        pairedFrobeniusProbe<<<padded/ECC_THREADS,ECC_THREADS>>>(deviceA,deviceB,devicePowers,deviceFirst+1,deviceSecond+1,n);
     checked(cudaGetLastError());checked(cudaDeviceSynchronize());
     checked(cudaMemcpy(first.data(),deviceFirst,outputBytes,cudaMemcpyDeviceToHost));
     checked(cudaMemcpy(second.data(),deviceSecond,outputBytes,cudaMemcpyDeviceToHost));
@@ -171,7 +215,9 @@ static bool pairedFrobeniusChecks() {
             fprintf(stderr,"GPU paired Frobenius output guard mismatch at %d, word %d\n",i,word);return false;
         }
     }
-    printf("PASS: 6240 GPU paired Frobenius vectors, both inputs against independent routing\n");
+    printf("PASS: 6240 GPU %s vectors, both inputs against independent %s\n",
+           shifted?"shifted Frobenius difference":"paired Frobenius",
+           shifted?"polynomial squaring and long division":"routing");
     return true;
 }
 
@@ -333,6 +379,9 @@ int main() {
         }
     }
     printf("PASS: %d GPU Frobenius vectors, every field basis vector for all selected powers plus dense cases\n",n);
-    return polynomialChecks() && squareChecks() && pairedFrobeniusChecks()?0:1;
+    return polynomialChecks() && squareChecks() && pairedFrobeniusChecks()
+#if ECC_FROBENIUS_FUSED
+        && pairedFrobeniusChecks(true)
+#endif
+        ?0:1;
 }
-

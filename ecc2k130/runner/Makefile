@@ -170,8 +170,9 @@ ARCH    ?= -gencode arch=compute_80,code=sm_80 \
 CLANGARCH ?= sm_90
 SMARCH  ?= sm_90
 
-HDRS = include/durable.h include/bitslice.h include/fieldbs.h include/fieldpb.h include/walk.h \
+HDRS = include/durable.h include/bitslice.h include/fieldbs.h include/fieldpb.h include/walk.h include/canonical131.h \
        include/packedfrobeniusfused.cuh \
+       include/collective_inverse.cuh include/packedshiftedsigma131.h include/packedsquareraw131.h \
        include/kernel.h include/ref.h include/solver.h include/bigmod.h include/tablewalk.h \
        include/curveparams.h include/packed131.h include/packedtransform131.h include/packedsigma131.h include/packedpolyreduce131.h include/packeddirectreduce131.h include/packedgeneratedproduct131.h include/packedcompactstate.cuh include/packedkernels.cuh include/packedengine.cuh
 GEN  = generated/eccF131.h generated/eccF83.h generated/eccF41.h generated/eccF23.h \
@@ -237,6 +238,8 @@ generate:
 	cd codegen && python3 gen.py --out ../generated --regs $(REGS)
 	cd codegen && python3 genpacked.py
 	cd codegen && python3 gensigma.py
+	cd codegen && python3 genshiftedsigma.py
+	cd codegen && python3 gensquareraw.py
 	cd codegen && python3 genpolyreduce.py
 	cd codegen && python3 gendirectreduce.py
 	python3 codegen/genpackedproduct.py
@@ -269,6 +272,8 @@ ecc2k130: src/main.cu $(HDRS) $(GEN)
 check-cli:
 	python3 codegen/genpacked.py --check --out include/packedtransform131.h
 	python3 codegen/gensigma.py --check --out include/packedsigma131.h
+	python3 codegen/genshiftedsigma.py --check --out include/packedshiftedsigma131.h
+	python3 codegen/gensquareraw.py --check --out include/packedsquareraw131.h
 	python3 codegen/genpolyreduce.py --check --out include/packedpolyreduce131.h
 	python3 codegen/gendirectreduce.py --check --out include/packeddirectreduce131.h
 	python3 codegen/checkcli.py modal_app.py
@@ -322,17 +327,18 @@ build/trailforest: src/trailforest.cpp $(HDRS) $(GEN)
 
 trailforest: build/trailforest
 
-test-production: ecc2k130-cpu build/test-production
+build/test-canonical131: src/testcanonical131.cpp $(HDRS) $(GEN)
+	@mkdir -p build
+	$(CXX) -O2 -std=c++17 -Wno-unknown-pragmas src/testcanonical131.cpp -o $@
+
+.PHONY: test-canonical131
+test-canonical131: build/test-canonical131
+	./build/test-canonical131
+
+test-production: ecc2k130-cpu build/test-production build/test-canonical131
 	./build/test-production
-	python3 -m unittest discover -s aws -p test_certification.py -v
-	python3 -m unittest discover -s aws -p test_bootstrap_contract.py -v
-	python3 -m unittest discover -s aws -p test_worker_family.py -v
-	python3 -m unittest discover -s aws -p test_status_walks.py -v
-	python3 -m unittest discover -s aws -p test_fleet_roll.py -v
-	python3 -m unittest discover -s aws -p test_rollout.py -v
-	python3 -m unittest discover -s aws -p test_dp_ingest.py -v
-	python3 -m unittest discover -s aws -p test_worker_spool.py -v
-	python3 -m unittest discover -s aws -p test_controlplane.py -v
+	./build/test-canonical131
+	$(MAKE) check-cloud
 
 # The control plane against real Postgres, Redis and S3 rather than SQLite, a
 # fake and a directory.  `services.sh` brings the three up (docker compose
@@ -809,14 +815,26 @@ FROBENIUS_FAST_FLAGS = $(LEGACY_PRODUCTION_FLAGS) PACKED_FROM_REDUCED=1 \
 FROBENIUS_120K_FLAGS = $(filter-out THREADS=% MINBLOCKS=% COLLECTIVE_WARPS=%,$(LEGACY_PRODUCTION_FLAGS)) \
     THREADS=640 MINBLOCKS=1 COLLECTIVE_WARPS=4 PACKED_FROM_REDUCED=1 \
     PACKED_INLINE_POLY=3 PACKED_L2_PERSIST=1 PACKED_ALU_SQUARE=1 PACKED_CHAIN_FIRST=1 \
-    FROBENIUS_FUSED=1 PACKED_INLINE_SIGMA=1
+    FROBENIUS_FUSED=1 PACKED_INLINE_SIGMA=1 PACKED_ONB_INV=1 PACKED_TOP_HOIST=1
 
-.PHONY: gpu-frobenius32-fast gpu-frobenius32-120k check-frobenius32-fast-gpu
+# CUDA 13.4.92 produced the confirmed >20 B/s build. Keep the compiler explicit
+# so this target cannot silently benchmark the older compiler on PATH.
+FROBENIUS_20B_NVCC ?= /usr/local/cuda-13.4/bin/nvcc
+
+.PHONY: gpu-frobenius32-fast gpu-frobenius32-120k check-frobenius32-fast-gpu gpu-frobenius32-20b check-frobenius32-20b-gpu
 gpu-frobenius32-fast:
 	$(MAKE) -B ecc2k130 'ARCH=-gencode arch=compute_120,code=sm_120' $(FROBENIUS_FAST_FLAGS)
 
 gpu-frobenius32-120k:
 	$(MAKE) -B ecc2k130 'ARCH=-gencode arch=compute_120,code=sm_120' $(FROBENIUS_120K_FLAGS)
+
+gpu-frobenius32-20b:
+	$(MAKE) -B ecc2k130 'NVCC=$(FROBENIUS_20B_NVCC)' 'ARCH=-gencode arch=compute_120,code=sm_120' $(FROBENIUS_120K_FLAGS)
+
+check-frobenius32-20b-gpu: gpu-frobenius32-20b
+	$(MAKE) -B test-packed-cuda test-packed-storage-cuda test-shared-sigma-cuda \
+	    'NVCC=$(FROBENIUS_20B_NVCC)' 'ARCH=-gencode arch=compute_120,code=sm_120' $(FROBENIUS_120K_FLAGS)
+	python3 codegen/testpackedclient.py ./ecc2k130
 
 check-frobenius32-fast-gpu: gpu-frobenius32-fast
 	$(MAKE) test-packed-cuda test-packed-storage-cuda test-shared-sigma-cuda \

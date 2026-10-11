@@ -234,6 +234,26 @@ ECC_HD void clmul128(uint32_t r[8], const uint32_t a[4], const uint32_t b[4]) {
     asm("clmad.hi.u64 %0, %1, %2, 0;" : "=l"(h1) : "l"(a1), "l"(b1));
     asm("clmad.hi.u64 %0, %1, %2, 0;" : "=l"(m1) : "l"(as), "l"(bs));
     foldKarat128(r, l0, l1, h0, h1, m0, m1);
+#elif ECC_USE_CLMAD_INSN && ECC_FROBENIUS_FUSED
+    // Fold the middle Karatsuba terms into the native instruction's XOR
+    // addend. Both outputs retain the same unreduced polynomial product.
+    const uint64_t a0 = uint64_t(a[0]) | (uint64_t(a[1]) << 32);
+    const uint64_t a1 = uint64_t(a[2]) | (uint64_t(a[3]) << 32);
+    const uint64_t b0 = uint64_t(b[0]) | (uint64_t(b[1]) << 32);
+    const uint64_t b1 = uint64_t(b[2]) | (uint64_t(b[3]) << 32);
+    uint64_t l0, l1, h0, h1, c1, c2;
+    asm("clmad.lo.u64 %0, %1, %2, 0;" : "=l"(l0) : "l"(a0), "l"(b0));
+    asm("clmad.hi.u64 %0, %1, %2, 0;" : "=l"(l1) : "l"(a0), "l"(b0));
+    asm("clmad.lo.u64 %0, %1, %2, 0;" : "=l"(h0) : "l"(a1), "l"(b1));
+    asm("clmad.hi.u64 %0, %1, %2, 0;" : "=l"(h1) : "l"(a1), "l"(b1));
+    const uint64_t as = a0 ^ a1, bs = b0 ^ b1;
+    const uint64_t add1 = l1 ^ l0 ^ h0, add2 = h0 ^ l1 ^ h1;
+    asm("clmad.lo.u64 %0, %1, %2, %3;" : "=l"(c1) : "l"(as), "l"(bs), "l"(add1));
+    asm("clmad.hi.u64 %0, %1, %2, %3;" : "=l"(c2) : "l"(as), "l"(bs), "l"(add2));
+    r[0] = uint32_t(l0); r[1] = uint32_t(l0 >> 32);
+    r[2] = uint32_t(c1); r[3] = uint32_t(c1 >> 32);
+    r[4] = uint32_t(c2); r[5] = uint32_t(c2 >> 32);
+    r[6] = uint32_t(h1); r[7] = uint32_t(h1 >> 32);
 #else
     uint32_t lo[4], hi[4], mid[4], as[2], bs[2];
     clmul64(lo, a, b);
@@ -396,7 +416,29 @@ ECC_HD void topCrossHoist131(const P131 &a, const P131 &b, uint32_t *c) {
     for (int i = 0; i < 5; ++i) c[4 + i] ^= extra[i];
 }
 ECC_HD void product131(const P131 &a,const P131 &b,uint32_t *c) {
-#if ECC_PACKED_KARAT3
+#if ECC_FROBENIUS_FUSED && ECC_USE_CLMAD_INSN && ECC_PACKED_TOP_HOIST && !ECC_PACKED_KARAT3
+    const uint64_t a0=uint64_t(a.v[0])|(uint64_t(a.v[1])<<32), a1=uint64_t(a.v[2])|(uint64_t(a.v[3])<<32);
+    const uint64_t b0=uint64_t(b.v[0])|(uint64_t(b.v[1])<<32), b1=uint64_t(b.v[2])|(uint64_t(b.v[3])<<32);
+    uint64_t l0,l1,h0,h1,c1,c2;
+    asm("clmad.lo.u64 %0,%1,%2,0;" : "=l"(l0) : "l"(a0),"l"(b0));
+    asm("clmad.hi.u64 %0,%1,%2,0;" : "=l"(l1) : "l"(a0),"l"(b0));
+    asm("clmad.lo.u64 %0,%1,%2,0;" : "=l"(h0) : "l"(a1),"l"(b1));
+    uint32_t extra[5]; topCrossInto131(a,b,extra);
+    const uint64_t el=uint64_t(extra[0])|(uint64_t(extra[1])<<32);
+    const uint64_t eh=uint64_t(extra[2])|(uint64_t(extra[3])<<32);
+    // Fold the lower correction into the high diagonal product. It then
+    // enters c2 through the Karatsuba sum; c3 cancels it and adds eh.
+    // This shortens the dependency chain feeding the modular reducer.
+    asm("clmad.hi.u64 %0,%1,%2,%3;" : "=l"(h1) : "l"(a1),"l"(b1),"l"(el));
+    const uint64_t as=a0^a1, bs=b0^b1;
+    const uint64_t add1=l1^l0^h0, add2=h0^l1^h1;
+    asm("clmad.lo.u64 %0,%1,%2,%3;" : "=l"(c1) : "l"(as),"l"(bs),"l"(add1));
+    asm("clmad.hi.u64 %0,%1,%2,%3;" : "=l"(c2) : "l"(as),"l"(bs),"l"(add2));
+    c[0]=uint32_t(l0); c[1]=uint32_t(l0>>32);
+    c[2]=uint32_t(c1); c[3]=uint32_t(c1>>32);
+    c[4]=uint32_t(c2); c[5]=uint32_t(c2>>32);
+    c[6]=uint32_t(h1^el^eh); c[7]=uint32_t((h1^el^eh)>>32); c[8]=extra[4];
+#elif ECC_PACKED_KARAT3
     product131Karat3(a, b, c);
 #else
 #if ECC_PACKED_TOP_HOIST
@@ -495,6 +537,8 @@ ECC_HD P131 add131(const P131 &a,const P131 &b) {
 }
 // The generated linear transforms convert to/from the polynomial basis used
 // by codegen/build.py, allowing a single product while retaining ONB storage.
+// The implementation is shared with the square's byte permutations below.
+ECC_HD uint32_t goal22BytePerm(uint32_t, uint32_t, unsigned);
 #include "packedtransform131.h"
 #ifndef ECC_PACKED_DIRECT_REDUCE
 #define ECC_PACKED_DIRECT_REDUCE 0
@@ -741,7 +785,11 @@ ECC_HD uint64_t spread32p(uint32_t x){
 }
 // Polynomial coefficients square into the even positions of a degree-260
 // product. This is distinct from sqr131's normal-basis permutation.
+#if ECC_FROBENIUS_FUSED
+#include "packedsquareraw131.h"
+#else
 #include "square_reduce.h"
+#endif
 ECC_HD P131 squarePolynomial131(P131 a) { return goal22SquareReduced(a); }
 ECC_HD P131 sqr131(const P131 &a){
  P131 rev=reverse131(a),r;
@@ -768,6 +816,9 @@ ECC_HD P131 sqr131(const P131 &a){
 #endif
 #if ECC_PACKED_PERM_SIGMA
 #include "packedsigma131.h"
+#if ECC_FROBENIUS_FUSED
+#include "packedshiftedsigma131.h"
+#endif
 #endif
 ECC_HD P131 sigma131(P131 a,int k){
 #if ECC_PACKED_PERM_SIGMA & 1
@@ -790,16 +841,22 @@ ECC_HD P131 inv131(P131 a){
 #define ECC_INV_MUL mul131
 #endif
 #if ECC_PACKED_UNROLL_INV
+#if ECC_FROBENIUS_FUSED && ECC_PACKED_PERM_SIGMA == 3
+#define ECC_INV_SIGMA(a,k) sigmaInverseFixed131<k>(a)
+#else
+#define ECC_INV_SIGMA(a,k) sigma131(a,k)
+#endif
  // The same Itoh–Tsujii chain with explicit powers: beta_2,4,8,16,32,64,65,130.
  P131 acc=ECC_INV_MUL(sqr131(a),a);
  acc=ECC_INV_MUL(sqr131(sqr131(acc)),acc);
- acc=ECC_INV_MUL(sigma131(acc,4),acc);
- acc=ECC_INV_MUL(sigma131(acc,8),acc);
- acc=ECC_INV_MUL(sigma131(acc,16),acc);
- acc=ECC_INV_MUL(sigma131(acc,32),acc);
+ acc=ECC_INV_MUL(ECC_INV_SIGMA(acc,4),acc);
+ acc=ECC_INV_MUL(ECC_INV_SIGMA(acc,8),acc);
+ acc=ECC_INV_MUL(ECC_INV_SIGMA(acc,16),acc);
+ acc=ECC_INV_MUL(ECC_INV_SIGMA(acc,32),acc);
  acc=ECC_INV_MUL(sqr131(acc),a);
- acc=ECC_INV_MUL(sigma131(acc,65),acc);
+ acc=ECC_INV_MUL(ECC_INV_SIGMA(acc,65),acc);
  return sqr131(acc);
+#undef ECC_INV_SIGMA
 #else
  P131 acc=a;int k=1;
 #pragma unroll 1

@@ -13,9 +13,10 @@ __device__ __forceinline__ void frobeniusSelect(
     const P131 &xp, const P131 &yp, int slot, int tid,
     unsigned long long now, bool guard, bool first, P131 *prod) {
     const size_t id = size_t(slot) * p.threads + tid;
-    const P131 x = fromPolynomial131(xp), y = fromPolynomial131(yp);
-    const int hw = weight(x);
-    if (!goal22ReadDead(stateDead, id)) {
+    const P131 x = expandedPolynomial131(xp), y = expandedPolynomial131(yp);
+    const int unsignedWeight = weight(x) - (x.v[0] & 1u);
+    const int hw = (x.v[0] & 1u) ? 131 - unsignedWeight : unsignedWeight;
+    if ((hw <= p.dpWeight || guard) && !goal22ReadDead(stateDead, id)) {
         if (hw <= p.dpWeight) {
             if ((stateSeed[id] & 0xffffull) == 0xffffull) atomicAdd(reportCounts + 2, 1u);
             const unsigned dest = atomicAdd(reportCounts, 1u);
@@ -23,8 +24,8 @@ __device__ __forceinline__ void frobeniusSelect(
                 DpRecord rec;
                 rec.seed = stateSeed[id];
                 rec.iters = now - stateStart[id];
-                toLimbs(x, rec.x);
-                toLimbs(y, rec.y);
+                toLimbs(normalFromExpanded131(x), rec.x);
+                toLimbs(normalFromExpanded131(y), rec.y);
                 reports[dest] = rec;
             }
             goal22WriteDead(stateDead, id, 1);
@@ -35,9 +36,11 @@ __device__ __forceinline__ void frobeniusSelect(
         }
     }
     const int jump = (hw >> 1) & 7;
-    const SigmaWalkPair131 sigmas = sigmaWalkNetworkPairShared131(x, y, jump);
-    const P131 dp = toPolynomial131(add131(x, sigmas.first));
-    const P131 ep = toPolynomial131(add131(y, sigmas.second));
+    // The normal-basis complement is the field unit, fixed by Frobenius.
+    // It cancels in each difference, so keep coefficients shifted here.
+    const SigmaWalkPair131 sigmas = sigmaShiftedWalkPair131(x, y, jump);
+    const P131 dp = polynomialFromShiftedDifference131(add131(x, sigmas.first));
+    const P131 ep = polynomialFromShiftedDifference131(add131(y, sigmas.second));
     if (first) {
         *prod = dp;
         store(statePrefix, slot, tid, p.threads, ep);
@@ -61,7 +64,7 @@ static __global__ void ECC_BOUNDS walk(
     unsigned *__restrict__ reportCounts, const unsigned *__restrict__ walkConstants,
     unsigned *__restrict__ denominators) {
     const int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    initSigmaWalkShared131();
+    initShiftedSigmaWalk131();
     if (tid >= p.threads || p.steps <= 0) return;
     (void)stateHistory;
     (void)walkConstants;
@@ -80,7 +83,7 @@ static __global__ void ECC_BOUNDS walk(
         const bool last = step + 1 == p.steps;
         const unsigned long long now = p.iterBase + step + 1;
         const bool guard = p.maxIters && now % ECC_GUARD_PERIOD == 0;
-        P131 inv = batchInverse131(prod, p.threads);
+        P131 inv = batchInverse131(prod, p.threads, step);
         P131 next = {};
 #pragma unroll 1
         for (int i = 0; i < ECC_BATCH; ++i) {

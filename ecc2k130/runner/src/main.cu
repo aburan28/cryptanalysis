@@ -1145,8 +1145,8 @@ static int runSearch(const Options &o, Engine &eng, Solver<Cfg> &sol, const U192
                 }
                 ++verified;
             }
+            const typename R::Elem cx = R::canonical(R::fromLimbs(rec.x));
             if (dpOut) {
-                const typename R::Elem cx = R::canonical(R::fromLimbs(rec.x));
                 DpFileRecord fr;
                 fr.seed = rec.seed;
                 fr.canon[0] = cx.v[0];
@@ -1158,7 +1158,7 @@ static int runSearch(const Options &o, Engine &eng, Solver<Cfg> &sol, const U192
                 }
             }
             typename Solver<Cfg>::Entry other;
-            if (!sol.insert(rec, &other)) continue;
+            if (!sol.insertKey(Solver<Cfg>::keyOf(cx), rec.seed, rec.iters, &other)) continue;
             printf("collision: seeds %016llx and %016llx meet after %llu and %llu steps\n",
                    (unsigned long long)rec.seed, (unsigned long long)other.seed,
                    (unsigned long long)rec.iters, (unsigned long long)other.iters);
