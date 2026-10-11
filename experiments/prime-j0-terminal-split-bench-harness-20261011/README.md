@@ -29,6 +29,13 @@ source, executable, runner, fixture, expected inputs and outputs, complete
 online boundary, resource partition, and allocation receipt into one immutable
 paired manifest. It supports the host-isolated and instance-observed tiers in
 [the runner protocol](../../docs/ISOLATED_BENCHMARKS.md).
+For the optimized shared-corner implementation in
+[`prime-j0-terminal-split-selector-20261011`](../prime-j0-terminal-split-selector-20261011/),
+materialize its patch on top of this benchmark crate and pass
+`--native-receipt-name selector-materialization.json` to `make_manifest.py`.
+The builder checks the exact checked-in selector receipt, source, patch,
+materializer, input panel, and path certificate before writing the manifest.
+Both modes use the same prospective nine-scalar fixture and CLI timing boundary.
 
 The preexisting 4,096-scalar panel is a path and correctness control. The
 prospective fixture and matched complete-operation run are the performance
