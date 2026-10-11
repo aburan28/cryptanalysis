@@ -21,7 +21,6 @@ MAIN_SOURCE = prior.MAIN_SOURCE
 WINDOW_SOURCE = prior.WINDOW_SOURCE
 FULL_ASSET = "atlas-r1024-full-adic-orbit.bin"
 PANEL_ASSET = "adic-orbit-fresh-inputs.json"
-LEGACY_ROOT = "/Volumes/SSD990/llm/tmp/prime-j0-r944-persistent"
 
 
 def digest(path):
@@ -36,8 +35,9 @@ def replace_once(source, old, new):
 def package_includes(output, main_source, window_source):
     """Replace inherited absolute includes with byte-identical crate assets."""
     repository = HERE.parent.parent.resolve()
+    source_root = str(repository)
     expression = re.compile(
-        r'include_(bytes|str)!\(\s*"' + re.escape(LEGACY_ROOT)
+        r'include_(bytes|str)!\(\s*"' + re.escape(source_root)
         + r'/([^"]+)"\s*\)'
     )
     included = {}
@@ -59,7 +59,7 @@ def package_includes(output, main_source, window_source):
 
         return expression.sub(substitute, source)
 
-    path_attribute = f'#[path = "{LEGACY_ROOT}/suite/src/ct_bignum.rs"]'
+    path_attribute = f'#[path = "{source_root}/suite/src/ct_bignum.rs"]'
     main_source = replace_once(main_source, path_attribute,
                                '#[path = "ct_bignum.rs"]')
     ct_source = repository / "suite/src/ct_bignum.rs"
@@ -69,7 +69,7 @@ def package_includes(output, main_source, window_source):
     included["src/bin/ct_bignum.rs"] = digest(ct_target)
     main_source = rewrite(main_source)
     window_source = rewrite(window_source)
-    assert LEGACY_ROOT not in main_source and LEGACY_ROOT not in window_source
+    assert source_root not in main_source and source_root not in window_source
     assert len(included) >= 40
     return main_source, window_source, dict(sorted(included.items()))
 
