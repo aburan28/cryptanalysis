@@ -28,6 +28,7 @@
 #include "generated/tau3_sparse.h"
 #include "generated/tau3_radix27.h"
 #include "generated/tau3_scatter.h"
+#include "generated/tau3_scatter_atlas.h"
 #include "generated/tau8_orbit_map.h"
 #include "generated/tau8_hot_map.h"
 #include "generated/tau8_pair_map.h"
@@ -2827,6 +2828,14 @@ size_t ca_ec_tau3_scatter_static_bytes(void)
            sizeof(ca_tau3_scatter_canonical) + sizeof(ca_tau3_scatter_canonical_unit);
 }
 
+size_t ca_ec_tau3_scatter_atlas_static_bytes(void)
+{
+    return ca_ec_tau3_scatter_static_bytes() + sizeof(ca_tau3_scatter_atlas_rep) +
+           sizeof(ca_tau3_scatter_atlas_code) + sizeof(ca_tau3_scatter_atlas_small_pair) +
+           sizeof(ca_tau3_scatter_atlas_small_slot) + sizeof(ca_tau3_scatter_atlas_large_pair) +
+           sizeof(ca_tau3_scatter_atlas_large_slot);
+}
+
 static int tau3_scatter_entry_cmp(ca_tau3_scatter_entry a, ca_tau3_scatter_entry b)
 {
     if (a.i != b.i) return a.i < b.i ? -1 : 1;
@@ -2893,6 +2902,64 @@ int ca_ec_tau3_scatter_verify_map(void)
     return 1;
 }
 
+static int tau3_scatter_atlas_verify_entries(const uint8_t pair_map[400], const uint16_t *slots,
+                                             unsigned pair_count,
+                                             const ca_tau3_scatter_entry *entry, size_t entry_count)
+{
+    uint8_t seen[CA_TAU3_SCATTER_ATLAS_LARGE_PAIRS] = {0};
+    if (pair_count > sizeof(seen)) return 0;
+    for (unsigned key = 0; key < 400; key++) {
+        unsigned pair = pair_map[key];
+        if (pair == 255) continue;
+        if (pair >= pair_count || seen[pair]++) return 0;
+        for (unsigned orbit = 0; orbit < CA_TAU3_SCATTER_ATLAS_ORBITS; orbit++) {
+            unsigned slot = slots[(size_t)pair * CA_TAU3_SCATTER_ATLAS_ORBITS + orbit];
+            if (slot == UINT16_MAX) continue;
+            if (slot >= entry_count) return 0;
+            ca_tau3_scatter_entry item = entry[slot];
+            if (20u * item.i + item.j != key ||
+                55u * item.u + item.v != ca_tau3_scatter_atlas_rep[orbit])
+                return 0;
+        }
+    }
+    for (unsigned pair = 0; pair < pair_count; pair++)
+        if (!seen[pair]) return 0;
+    for (size_t slot = 0; slot < entry_count; slot++) {
+        ca_tau3_scatter_entry item = entry[slot];
+        unsigned key = 20u * item.i + item.j;
+        if (key >= 400 || pair_map[key] == 255) return 0;
+        unsigned packed = ca_tau3_scatter_atlas_code[(size_t)55 * item.u + item.v];
+        unsigned orbit = packed & 511u;
+        unsigned pair = pair_map[key];
+        if (orbit >= CA_TAU3_SCATTER_ATLAS_ORBITS ||
+            (size_t)slots[(size_t)pair * CA_TAU3_SCATTER_ATLAS_ORBITS + orbit] != slot)
+            return 0;
+    }
+    return 1;
+}
+
+int ca_ec_tau3_scatter_atlas_verify_map(void)
+{
+    if (!ca_ec_tau3_scatter_verify_map()) return 0;
+    for (unsigned index = 0; index < 3025; index++) {
+        unsigned packed = ca_tau3_scatter_atlas_code[index];
+        unsigned orbit = packed & 511u;
+        unsigned code = packed >> 9;
+        if (orbit >= CA_TAU3_SCATTER_ATLAS_ORBITS || code >= 6 ||
+            ca_tau3_scatter_atlas_rep[orbit] != ca_tau3_scatter_canonical[index] ||
+            code != ca_tau3_scatter_canonical_unit[index])
+            return 0;
+    }
+    return tau3_scatter_atlas_verify_entries(ca_tau3_scatter_atlas_small_pair,
+                                             ca_tau3_scatter_atlas_small_slot,
+                                             CA_TAU3_SCATTER_ATLAS_SMALL_PAIRS,
+                                             ca_tau3_scatter_small, CA_TAU3_SCATTER_SMALL_COUNT) &&
+           tau3_scatter_atlas_verify_entries(ca_tau3_scatter_atlas_large_pair,
+                                             ca_tau3_scatter_atlas_large_slot,
+                                             CA_TAU3_SCATTER_ATLAS_LARGE_PAIRS,
+                                             ca_tau3_scatter_large, CA_TAU3_SCATTER_LARGE_COUNT);
+}
+
 static int tau3_scatter_single(const ca_group *g, const ca_tau3_fused_precomp *pre, unsigned block,
                                unsigned pattern, ca_elem *out, uint64_t *rotations)
 {
@@ -2922,6 +2989,13 @@ int ca_ec_tau3_scatter_prepare(const ca_group *g, const ca_elem *point,
                                   rotations, inversions))
         return 0;
     tau3_scatter_select(g, &pre.entry, &pre.offsets, &pre.extra_count);
+    if (pre.entry == ca_tau3_scatter_small) {
+        pre.atlas_pair = ca_tau3_scatter_atlas_small_pair;
+        pre.atlas_slot = ca_tau3_scatter_atlas_small_slot;
+    } else if (pre.entry == ca_tau3_scatter_large) {
+        pre.atlas_pair = ca_tau3_scatter_atlas_large_pair;
+        pre.atlas_slot = ca_tau3_scatter_atlas_large_slot;
+    }
     if (!pre.extra_count || pre.full.base.identity) {
         *out = pre;
         return 1;
@@ -2970,7 +3044,9 @@ int ca_ec_tau3_scatter_prepare_verify(const ca_tau3_scatter_precomp *pre)
 {
     if (!pre || !ca_ec_tau3_fused_prepare_verify(&pre->full)) return 0;
     if (pre->full.base.identity) return pre->extra == NULL;
-    if (pre->extra_count && (!pre->entry || !pre->extra || !pre->offsets)) return 0;
+    if (pre->extra_count &&
+        (!pre->entry || !pre->extra || !pre->offsets || !pre->atlas_pair || !pre->atlas_slot))
+        return 0;
     const ca_group *g = pre->full.base.g;
     for (size_t n = 0; n < pre->extra_count; n++) {
         ca_tau3_scatter_entry item = pre->entry[n];
@@ -3017,6 +3093,30 @@ static int tau3_scatter_edge(const ca_tau3_scatter_precomp *pre, unsigned i, uns
     if (*slot == SIZE_MAX) return 0;
     *unit = ca_tau3_scatter_canonical_unit[index];
     return *unit < 6;
+}
+
+static int tau3_scatter_atlas_edge(const ca_tau3_scatter_precomp *pre, unsigned i, unsigned j,
+                                   unsigned u, unsigned v, size_t *slot, unsigned *unit)
+{
+    if (i / 2 == j / 2) return tau3_scatter_edge(pre, i, j, u, v, slot, unit);
+    if (!pre->atlas_pair || !pre->atlas_slot || i >= 20 || j >= 20 || i >= j) return 0;
+    unsigned pair = pre->atlas_pair[(size_t)20 * i + j];
+    if (pair == 255) return 0;
+    unsigned packed = ca_tau3_scatter_atlas_code[(size_t)55 * u + v];
+    unsigned orbit = packed & 511u;
+    if (orbit >= CA_TAU3_SCATTER_ATLAS_ORBITS) return 0;
+    unsigned found = pre->atlas_slot[(size_t)pair * CA_TAU3_SCATTER_ATLAS_ORBITS + orbit];
+    if (found == UINT16_MAX || found >= pre->extra_count) return 0;
+    *slot = found;
+    *unit = packed >> 9;
+    return *unit < 6;
+}
+
+static int tau3_scatter_edge_policy(const ca_tau3_scatter_precomp *pre, unsigned i, unsigned j,
+                                    unsigned u, unsigned v, size_t *slot, unsigned *unit, int atlas)
+{
+    return atlas ? tau3_scatter_atlas_edge(pre, i, j, u, v, slot, unit)
+                 : tau3_scatter_edge(pre, i, j, u, v, slot, unit);
 }
 
 /* Exhaustively explore simple alternating paths. For this bounded graph it
@@ -3066,10 +3166,10 @@ static ca_elem tau3_scatter_unit_affine(const ca_group *g, const ca_tau3_scatter
     return point;
 }
 
-int ca_ec_tau3_scatter_mul_profile(const ca_group *g, const ca_tau3_scatter_precomp *pre,
+static int tau3_scatter_mul_policy(const ca_group *g, const ca_tau3_scatter_precomp *pre,
                                    ca_elem *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
                                    uint64_t *fallbacks, uint64_t *matched_pairs,
-                                   size_t *scratch_bytes)
+                                   size_t *scratch_bytes, int rematch, int atlas)
 {
     if (!g || !pre || !out || pre->full.base.g != g || !pre->full.blocks) return 0;
     if (adds) *adds = 0;
@@ -3114,8 +3214,8 @@ int ca_ec_tau3_scatter_mul_profile(const ca_group *g, const ca_tau3_scatter_prec
             if (mate[j] >= 0) continue;
             size_t slot;
             unsigned unit;
-            if (tau3_scatter_edge(pre, positions[i], positions[j], patterns[i], patterns[j], &slot,
-                                  &unit)) {
+            if (tau3_scatter_edge_policy(pre, positions[i], positions[j], patterns[i], patterns[j],
+                                         &slot, &unit, atlas)) {
                 mate[i] = (int8_t)j;
                 mate[j] = (int8_t)i;
                 baseline_pairs++;
@@ -3123,7 +3223,7 @@ int ca_ec_tau3_scatter_mul_profile(const ca_group *g, const ca_tau3_scatter_prec
             }
         }
     }
-    if (baseline_pairs < count / 2) {
+    if (rematch && baseline_pairs < count / 2) {
         uint32_t edge[20] = {0};
         for (unsigned i = 0; i < count; i++)
             for (unsigned j = i + 1; j < count; j++) {
@@ -3149,8 +3249,8 @@ int ca_ec_tau3_scatter_mul_profile(const ca_group *g, const ca_tau3_scatter_prec
         if (partner < count) {
             size_t slot;
             unsigned code;
-            if (!tau3_scatter_edge(pre, positions[i], positions[partner], patterns[i],
-                                   patterns[partner], &slot, &code)) {
+            if (!tau3_scatter_edge_policy(pre, positions[i], positions[partner], patterns[i],
+                                          patterns[partner], &slot, &code, atlas)) {
                 return 0;
             }
             if (slot == SIZE_MAX) {
@@ -3182,6 +3282,33 @@ fallback:
     if (fallbacks) *fallbacks = 1;
     ca_group_mul(g, out, &pre->full.base_point, k, NULL);
     return 1;
+}
+
+int ca_ec_tau3_scatter_mul_profile(const ca_group *g, const ca_tau3_scatter_precomp *pre,
+                                   ca_elem *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
+                                   uint64_t *fallbacks, uint64_t *matched_pairs,
+                                   size_t *scratch_bytes)
+{
+    return tau3_scatter_mul_policy(g, pre, out, k, adds, rotations, fallbacks, matched_pairs,
+                                   scratch_bytes, 1, 0);
+}
+
+int ca_ec_tau3_scatter_direct_mul_profile(const ca_group *g, const ca_tau3_scatter_precomp *pre,
+                                          ca_elem *out, uint64_t k, uint64_t *adds,
+                                          uint64_t *rotations, uint64_t *fallbacks,
+                                          uint64_t *matched_pairs, size_t *scratch_bytes)
+{
+    return tau3_scatter_mul_policy(g, pre, out, k, adds, rotations, fallbacks, matched_pairs,
+                                   scratch_bytes, 0, 0);
+}
+
+int ca_ec_tau3_scatter_atlas_mul_profile(const ca_group *g, const ca_tau3_scatter_precomp *pre,
+                                         ca_elem *out, uint64_t k, uint64_t *adds,
+                                         uint64_t *rotations, uint64_t *fallbacks,
+                                         uint64_t *matched_pairs, size_t *scratch_bytes)
+{
+    return tau3_scatter_mul_policy(g, pre, out, k, adds, rotations, fallbacks, matched_pairs,
+                                   scratch_bytes, 0, 1);
 }
 
 void ca_ec_tau3_scatter_clear(ca_tau3_scatter_precomp *pre)
