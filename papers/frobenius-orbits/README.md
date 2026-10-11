@@ -13,7 +13,7 @@ rho and says so.
 
 **Status**: research draft, not peer-reviewed, not submitted, not posted.
 Anonymized for double-blind review; restore authors with `make deanonymize`
-after creating an `AUTHORS` file (see `../AUTHORS.example`).
+after creating an `AUTHORS` file (see `../ecdlp-constant/AUTHORS.example`).
 
 Every number is footnoted to a committed artefact in this library (paths
 without a prefix), the sibling [aburan28/crypto](https://github.com/aburan28/crypto)
@@ -23,7 +23,7 @@ without a prefix), the sibling [aburan28/crypto](https://github.com/aburan28/cry
 
 ## Building
 
-Same toolchain as the companion paper in `../`: `pdflatex`, `bibtex`, and the
+Same toolchain as the companion paper in `../ecdlp-constant/`: `pdflatex`, `bibtex`, and the
 packages `amsmath`, `amssymb`, `amsthm`, `mathtools`, `hyperref`, `booktabs`,
 `tabularx`, `graphicx`, `xcolor`, `microtype`, `enumitem`, `caption`,
 `algorithm`, `algpseudocode`, `natbib`, `url`.
