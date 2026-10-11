@@ -129,6 +129,31 @@ def validate_profiles(profiles: list[dict], routes: dict[str, dict]) -> None:
             assert len(slots) == profile["summands"]
             assert all(slots[i].isdisjoint(slots[j]) for i in range(len(slots)) for j in range(i))
 
+    onb_path = HERE / "measurements/2026-09-25/n131_onb_hw2_hw3_usable_points.json"
+    onb_receipt = json.loads(onb_path.read_text())
+    onb_points = onb_receipt["points"]
+    assert len(onb_points) == onb_receipt["point_count"] == 3668
+    assert len({tuple(point) for point in onb_points}) == len(onb_points)
+    assert hashlib.sha256(canonical(onb_points).encode()).hexdigest() == onb_receipt["point_set_sha256"]
+    for profile_id in ("n131_onb_hw2_m4", "n131_onb_hw3_m5"):
+        profile = by_id[profile_id]
+        assert hashlib.sha256(onb_path.read_bytes()).hexdigest() == profile["receipt_sha256"]
+        assert profile["base_digest"] == onb_receipt["point_set_sha256"]
+        assert profile["actual_factor_base_points"] == len(onb_points)
+        assert profile["effective_columns"] == onb_receipt["signed_frobenius_orbit_count"]
+
+    for profile_id, dimension in (("n131_poly_d24_m6", 24), ("n131_poly_d28_m5", 28)):
+        profile = by_id[profile_id]
+        sample_path = HERE / f"measurements/2026-09-25/n131_poly_d{dimension}_sample.json"
+        sample = json.loads(sample_path.read_text())
+        assert hashlib.sha256(sample_path.read_bytes()).hexdigest() == profile["density_sample_sha256"]
+        assert sample["profile_id"] == profile_id
+        assert sample["dimension"] == dimension
+        assert sample["sample_count"] == len(sample["records"]) == 1024
+        assert sample["exact_actual_base_points"] is None
+        assert profile["actual_factor_base_points"] is None
+        assert profile["base_digest"] is None
+
     n131 = next(p for p in profiles if p["id"] == "n131_poly_d7_m4")
     n131_receipt = evidence_path("experiments/nonfrobenius-ic/results/ecc2k130-run01.json")
     if n131_receipt.is_file():
@@ -138,6 +163,8 @@ def validate_profiles(profiles: list[dict], routes: dict[str, dict]) -> None:
         assert hashlib.sha256(canonical(receipt["factor_base"]["points"]).encode()).hexdigest() == n131["base_digest"]
     n53 = next(p for p in profiles if p["id"] == "n53_retained_m5")
     n53_receipt = evidence_path(n53["evidence"][0])
+    if not n53_receipt.is_file():
+        n53_receipt = HERE / "measurements/2026-09-25/n53_prior_receipt.json"
     if n53_receipt.is_file():
         assert hashlib.sha256(n53_receipt.read_bytes()).hexdigest() == n53["receipt_sha256"]
         receipt = json.loads(n53_receipt.read_text())

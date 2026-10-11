@@ -64,14 +64,21 @@ typedef struct ca_mont {
 
 CA_API int ca_mont_init(ca_mont *m, uint64_t p);
 
+/* t * R^{-1} mod p, canonical, for t < p * 2^64 (which holds whenever t is
+ * a product of two residues < p, or a single word).
+ *
+ * Subtraction form: with u = t * p^{-1} mod 2^64, t - u*p is divisible by
+ * 2^64 and (t - u*p) / 2^64 = hi(t) - hi(u*p) lies in (-p, p), so one
+ * conditional add of p finishes it.  That is the same residue the addition
+ * form t + u'*p (u' = -u) reaches, without its 128-bit add, carry test and
+ * final compare.  p^{-1} is -pinv, so the struct is unchanged. */
 static inline uint64_t ca_mont_redc(const ca_mont *m, ca_u128 t)
 {
-    uint64_t u = (uint64_t)t * m->pinv;
-    ca_u128 s = t + (ca_u128)u * m->p;
-    uint64_t r = (uint64_t)(s >> 64);
-    /* carry out of the 128-bit add means the true result is r + 2^64 */
-    if (s < t) r += (uint64_t)0 - m->p; /* r - p mod 2^64 == r + 2^64 - p */
-    if (r >= m->p) r -= m->p;
+    uint64_t u = (uint64_t)t * ((uint64_t)0 - m->pinv);
+    uint64_t hi = (uint64_t)(t >> 64);
+    uint64_t mh = (uint64_t)(((ca_u128)u * m->p) >> 64);
+    uint64_t r = hi - mh;
+    if (hi < mh) r += m->p;
     return r;
 }
 
