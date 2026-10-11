@@ -62,7 +62,13 @@ pair equation's linearity in its reciprocal output for each fixed product
 `L_p(z)=p*z+H(z^2)`. On N41, precomputing the linear-map solver for each
 of the 2,048 product-span elements permits direct enumeration of relaxed
 pair-output lists and an exact two-list target join, avoiding repeated SAT
-search. The charged construction, list sizes, query yield, and independent
+search. The [exact rank preflight](rank_preflight.json) found 524 maps of
+rank 41, 1,269 of rank 40, and 255 of rank 39. With 63 nonzero source sums
+and two branch values, this bounds the raw linear-system output count by
+`126*(524+2*1269+4*255)=514,332` per rotation before deduplication and
+curve checks. Its 2,048-map rank census took 1.56 s in an exploratory
+Python run with reusable halftrace columns. The charged construction,
+list sizes, query yield, and independent
 replay will determine whether this over-approximation is selective enough
 to justify a symbolic or batched N131 version. `candidate_id` remains
 `null` while the full IC pipeline is unresolved.
