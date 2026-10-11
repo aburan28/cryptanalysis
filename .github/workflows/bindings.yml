@@ -175,7 +175,7 @@ jobs:
         working-directory: bindings/go
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go }}
           # The module has no third-party dependencies and therefore no
@@ -184,7 +184,7 @@ jobs:
           # by the actions/cache step below.
           cache: false
       - name: Cache the Go build cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/go-build
@@ -211,7 +211,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           # Pinned to the Go that golangci-lint 2.5.0 was built with.  A
           # linter cannot read export data from a newer toolchain than its
@@ -317,7 +317,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Cache the pip download cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: pip-lint-ruff${{ env.RUFF_VERSION }}-mypy${{ env.MYPY_VERSION }}

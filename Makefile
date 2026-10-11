@@ -12,7 +12,8 @@ JOBS ?= $(shell nproc 2>/dev/null || echo 4)
         modal-sync-loop runpod-start runpod-status runpod-stop \
         fanout-start fanout-status fanout-stop \
         modal-sync-ensure modal-sync-status \
-        ingest-start ingest-status ingest-stop
+        ingest-start ingest-status ingest-stop \
+        ecc2k130-usecase ecc2k130-helm
 
 all: lib
 
@@ -74,6 +75,14 @@ fpga-lint:
 
 fpga-synth:
 	$(MAKE) -C fpga synth CORES=1 DIGIT=4
+
+# The live ECC2K-130 S3/Redis/RDS integration. Its unit tests use only the
+# standard library; boto3 and psycopg are deployment dependencies loaded lazily.
+ecc2k130-usecase:
+	python3 -m unittest discover -s usecases/ecc2k130/tests -v
+
+ecc2k130-helm:
+	usecases/ecc2k130/deploy/helm/check.sh
 
 # ---- the ECC2K-130 GPU client (ecc2k130/) ----------------------------------
 # The packed GF(2^131) table walk for CUDA devices with a carry-less

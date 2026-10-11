@@ -1,0 +1,46 @@
+name: Sparse F4 reusable input timing
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/**'
+      - '.github/workflows/sparse-f4-input-buffers.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/**'
+      - '.github/workflows/sparse-f4-input-buffers.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sparse-f4-input-buffers-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  correctness-and-timing:
+    name: Sparse F4 reusable input query (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Rebuild, preflight, measure and independently audit the frozen panel
+        run: python -u experiments/groebner-perf-20260924/round60/run_validation.py --output input-buffer-evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sparse-f4-input-buffers-${{ matrix.os }}
+          path: input-buffer-evidence/
+          if-no-files-found: error
+          retention-days: 14
