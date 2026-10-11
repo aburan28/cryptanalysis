@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "protocol_id": "p256-isogeny-depth-twenty-seven-20261007-v1",
+  "publication_status": "prospective_extension_frozen_before_candidate_generation",
+  "frozen_at": "2026-10-07T08:17:04Z",
+  "objective": "Continue the explicit P-256 horizontal isogeny search and test every newly retained depth-26/27 curve for a reproducible Pollard-rho iteration-rate advantage.",
+  "user_acceptance_language": "find a dramatic speed up",
+  "acceptance_interpretation": {
+    "user_numeric_threshold_supplied": false,
+    "reporting_rule": "Report measured ratios and confidence intervals without independently labeling a ratio dramatic.",
+    "screening_trigger": "An unadjusted paired 95% interval whose lower bound exceeds 1.0 selects a candidate for fresh holdout only.",
+    "reproduction_gate": "A fresh 30-trial, two-second holdout paired against P-256 must also have a 95% interval whose lower bound exceeds 1.0.",
+    "end_to_end_gate": "Any reproduced advantage must retain exact log transport, separately measure complete-path evaluation on P and Q, charge per-key mapping, and pass the repository CPU-isolation gate.",
+    "full_p256_collision": "not required; correctness uses native scalar-relation invariants and existing completed toy collisions"
+  },
+  "prior_positive_followup": {
+    "candidate_id": "p256-j-87c73c5bb6ad5e615b663e67c797ec104211c306604664c723168bd1b5441d6f",
+    "depth": 25,
+    "exploratory_holdout_ratio": 1.0198221209781326,
+    "exploratory_holdout_95_percent_ci": [1.003468468713117, 1.036442290777823],
+    "per_key_p_q_mapping_mean_seconds": 0.011433021724,
+    "status": "open; local isolation probe failed",
+    "required_next_evidence": "replay through the repository isolated benchmark service on a qualifying host",
+    "separation_rule": "deeper candidate discovery does not supersede or resolve this follow-up"
+  },
+  "frozen_inputs": {
+    "frontier": {
+      "path": "results/sage-low-degree-depth-twenty-five-20261007/candidates-delta.json",
+      "published_archive": "results/sage-low-degree-depth-twenty-five-20261007/candidates-delta.json.gz",
+      "sha256": "73127ba27c7752b48cac689f1c544e0838a37afe6082ff0a3334a03b8b6bd3c9",
+      "maximum_depth": 25
+    },
+    "prior_retained_union": {
+      "path": "results/sage-low-degree-depth-twenty-five-20261007/retained-union.json",
+      "sha256": "e3cf5faf9cccdf914387b3a5d0d72c7239c2ccafefc03d3801d5cc61a26d28cb",
+      "curves_including_p256": 4850
+    },
+    "native_binary": {
+      "path": "suite/target/release/examples/p256_isogeny_native_bench",
+      "sha256": "768fb614af10bcd3990b8373194713b5406051149ea9b627c01b5e1e4f0a9e5d"
+    },
+    "scripts": {
+      "extend_sage_low_degree.py": "ba9ae1343f4141b6cb9dcdae6871f8054d1a8cf9194911c284e89068280736a3",
+      "freeze_large_json.py": "47886a3d5a7544c5d4f6785595a38b27141b0ed22b1460c00fc6f0b5da78cbe3",
+      "run_native_screen.py": "0410e05cd45fa22bce35f84b780c12a2edd36919917309248be0835dc611814e",
+      "run_native_holdout.py": "e818bc8577fcc0f4f3798fc8638b51c7ee1d41e98ce4282a4e7ed27678aa985d"
+    }
+  },
+  "search": {
+    "algorithm": "resumed breadth-first rational prime-degree isogenies",
+    "edge_degrees": [3, 5, 11, 13],
+    "input_depth": 25,
+    "target_depth": 27,
+    "maximum_new_nodes": 2000,
+    "deduplication": "j-invariant within the frontier run and candidate ID against the frozen prior retained union",
+    "required_candidate_evidence": [
+      "ordered path from P-256",
+      "kernel polynomial and rational map for every edge",
+      "short-model isomorphisms",
+      "transported P-256 generator and prime-order check",
+      "endomorphism conductor 1 and volcano level 0 from the class-wide certificate"
+    ]
+  },
+  "native_screen": {
+    "implementation": "same fixed-limb Montgomery-field rho binary for P-256 and every candidate",
+    "block_size": 6,
+    "seconds_per_trial": 0.5,
+    "complete_position_rotations_per_block": 1,
+    "warmup_seconds_per_candidate": 0.05,
+    "baseline": "fresh P-256 row in every block",
+    "correctness": "tracked scalar relation verified after every timed trial",
+    "multiplicity": "unadjusted intervals are selection triggers, never final evidence"
+  },
+  "fresh_holdout": {
+    "population": "every unadjusted screening hit, with no discretionary pruning",
+    "seconds_per_trial": 2.0,
+    "trials_per_candidate": 30,
+    "warmup_seconds_per_candidate": 0.2,
+    "baseline": "P-256 in the same complete timing-position rotations",
+    "correctness": "tracked scalar relation verified after every timed trial"
+  },
+  "typed_transfer": {
+    "source": "E_0(F_p)[n] for NIST P-256",
+    "destination": "E_i(F_p)[n] in short-Weierstrass form",
+    "map": "composition of explicit F_p-rational separable isogenies and recorded model isomorphisms",
+    "kernel_intersection": "trivial because n is prime and differs from every edge degree",
+    "log_transport": "Q = kP implies phi(Q) = k phi(P); destination logarithm is the same k modulo n",
+    "recovery": "no inverse point map is needed to recover k"
+  },
+  "cost_accounting": {
+    "reusable": [
+      "frontier discovery",
+      "path construction and verification",
+      "candidate compilation and preprocessing",
+      "exact class-group computation"
+    ],
+    "per_key": [
+      "evaluation of the complete retained path on P",
+      "evaluation of the complete retained path on Q"
+    ],
+    "per_iteration": "matched native Pollard-rho iterations per second",
+    "unsuccessful_attempts": "retain failures, timeouts, zero-yield runs, and nonreproducing hits",
+    "amortization": "report reusable discovery separately and never hide per-key mapping"
+  },
+  "publication_storage": {
+    "working_registry": "results/sage-low-degree-depth-twenty-seven-20261007/candidates-delta.json",
+    "published_archive": "results/sage-low-degree-depth-twenty-seven-20261007/candidates-delta.json.gz",
+    "published_manifest": "results/sage-low-degree-depth-twenty-seven-20261007/candidates-delta.freeze.json",
+    "format": "deterministic gzip, level 9, empty filename, mtime 0",
+    "required_evidence": [
+      "compressed SHA-256 and byte count",
+      "uncompressed SHA-256 and byte count",
+      "byte-identical deterministic repack",
+      "exact materialization before any later frontier extension"
+    ],
+    "publication_rule": "Publish the archive and manifest, not the oversized working JSON; retain every explicit path byte-for-byte through decompression."
+  },
+  "resources": {
+    "sage_frontier_cpu": 2,
+    "native_screen_and_holdout_cpu": 0,
+    "deterministic_audits_cpu": 1,
+    "concurrent_exact_class_group_cpu": 4,
+    "host_isolation": "unverified; timing remains exploratory unless rerun through the repository isolation service",
+    "sage_image": "sagemath/sagemath:10.6",
+    "sage_image_digest": "sha256:19995db6194f4a4bab18ce9a88556fd15b9ed5e916b4504fefe618a7796ddbdb"
+  },
+  "commands": {
+    "search": "docker exec --workdir /repo/experiments/p256-isogeny-search-20261005 p256-classgroup-default taskset -c 2 sage -python scripts/extend_sage_low_degree.py --input results/sage-low-degree-depth-twenty-five-20261007/candidates-delta.json --ells 3,5,11,13 --target-depth 27 --max-new-nodes 2000 --output results/sage-low-degree-depth-twenty-seven-20261007/candidates-delta.json",
+    "freeze_registry": "python3 scripts/freeze_large_json.py pack --source results/sage-low-degree-depth-twenty-seven-20261007/candidates-delta.json --archive results/sage-low-degree-depth-twenty-seven-20261007/candidates-delta.json.gz --manifest results/sage-low-degree-depth-twenty-seven-20261007/candidates-delta.freeze.json",
+    "native_screen": "taskset -c 0 python3 experiments/p256-isogeny-search-20261005/scripts/run_native_screen.py --binary suite/target/release/examples/p256_isogeny_native_bench --candidates experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-twenty-seven-20261007/candidates-delta.json --block-size 6 --seconds 0.5 --rotations 1 --warmup-seconds 0.05 --output-dir results/sage-low-degree-depth-twenty-seven-20261007/native-screen",
+    "holdout": "taskset -c 0 python3 experiments/p256-isogeny-search-20261005/scripts/run_native_holdout.py --binary suite/target/release/examples/p256_isogeny_native_bench --candidates experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-twenty-seven-20261007/candidates-delta.json --screening experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-twenty-seven-20261007/native-screen/screening-summary.json --seconds 2 --trials 30 --warmup-seconds 0.2 --output experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-twenty-seven-20261007/holdout.json"
+  },
+  "claim_boundary": "A null result means not found within prime degrees 3, 5, 11, and 13 through depth 27. It is not a complete class-group enumeration and does not refute unknown algorithms or formula families. The depth-25 exploratory positive remains a separate open isolation follow-up."
+}

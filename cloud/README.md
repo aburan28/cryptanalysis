@@ -26,6 +26,9 @@ cloud agent receives them as environment variables:
 | `RUNPOD_API_KEY` | `fleet.py`, `runpod_pod.py`, `cairn_queue.py` | [Runpod console -> Settings -> API keys](https://console.runpod.io/user/settings) |
 | `CURSOR_API_KEY` (optional) | `fleet.py up`, `rekey`, `agent`; without it workers wait for a sign-in link | [cursor.com/dashboard -> API keys](https://cursor.com/dashboard) (a *user* key) |
 | `RUNPOD_SSH_PRIVATE_KEY` | `fleet.py ssh`, `logs`, `run`, `jobs`; optional for `runpod_pod.py` and `cairn_queue.py`, which otherwise use a key of their own and reach only pods made from the same machine | the private half of an SSH key registered in the Runpod console |
+| `RUNPOD_API_KEY` | `fleet.py` | [Runpod console -> Settings -> API keys](https://console.runpod.io/user/settings) |
+| `CURSOR_API_KEY` (optional) | `fleet.py up`, `rekey`, `agent`; without it workers wait for a sign-in link | [cursor.com/dashboard -> API keys](https://cursor.com/dashboard) (a *user* key) |
+| `RUNPOD_SSH_PRIVATE_KEY` | `fleet.py ssh`, `logs`, `run`, `jobs` | the private half of an SSH key registered in the Runpod console |
 | `GITHUB_TOKEN` (optional) | lets agents on the pods push branches | a fine-grained token with contents and pull-request write on this repo |
 
 Install the Modal client with `pip install modal`.

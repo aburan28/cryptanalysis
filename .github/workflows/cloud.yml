@@ -4,11 +4,19 @@ name: cloud
 # tests run the job runner locally and the queue's jobs through a cairn agent
 # and node on the runner, and the Modal client is installed only so its
 # definitions import.
+# The Runpod worker fleet, the Modal job runner and the Modal workers (cloud/).
+# Nothing here talks to Runpod, Modal or Cursor; the tests run the job runner
+# locally, and the Modal client is installed only so its definitions import.
 on:
   push:
     paths: ['cloud/**', 'ecc2k130/scripts/fetch_cuda.sh', '.github/workflows/cloud.yml']
   pull_request:
     paths: ['cloud/**', 'ecc2k130/scripts/fetch_cuda.sh', '.github/workflows/cloud.yml']
+# A new commit supersedes runs for this PR or branch; manual runs stay independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
 permissions:
   contents: read
 jobs:
@@ -32,6 +40,12 @@ jobs:
           sha256sum -c "$t.sha256"
           tar -xzf "$t"
           echo "CAIRN_BIN=$RUNNER_TEMP/cairn" >> "$GITHUB_ENV"
+      - name: Install the taskq client
+        # For the example-spec schema tests in cloud/tests/test_taskq_job.py.
+        # They skip (and nothing else changes) if the install fails.
+        run: |
+          python -m pip install "taskq @ git+https://github.com/aburan28/crypto.git#subdirectory=taskq" \
+            || echo "::warning::taskq could not be installed; the example-spec schema tests will skip"
       - name: Unit tests
         run: python -m unittest discover -s cloud/tests -v
       - name: shellcheck
