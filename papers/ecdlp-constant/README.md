@@ -5,7 +5,7 @@ library and in the sibling study repository
 [aburan28/crypto](https://github.com/aburan28/crypto).
 
 **Status**: anonymized for double-blind review. Restore real authors via
-`make deanonymize` after creating an `AUTHORS` file (see `AUTHORS.example`).
+`make deanonymize` after creating an `AUTHORS` file (see `../AUTHORS.example`).
 
 ## Building
 
