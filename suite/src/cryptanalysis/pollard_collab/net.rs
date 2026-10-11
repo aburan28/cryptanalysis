@@ -32,6 +32,14 @@ use super::state::{now_secs, CheckIn, SharedState};
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Message {
+    /// First message on a connection when a shared token is configured
+    /// (finding 5).  A peer must present the job's token before any of its
+    /// `pull`/`push` messages are served; the field is omitted on the wire
+    /// when empty, so a tokenless deployment sends and expects nothing.
+    Hello {
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        token: String,
+    },
     Pull {
         job_id: String,
         known: BTreeMap<String, u64>,
@@ -58,6 +66,21 @@ const MAX_LINE: usize = 64 << 20;
 
 /// Connections served at once; further connections are closed on accept.
 const MAX_CONNECTIONS: usize = 64;
+
+/// Constant-time byte comparison, so a wrong token cannot be recovered by
+/// timing the reply.  Length is not secret here (it is the operator's own
+/// choice), so an early length mismatch is fine.
+fn ct_eq(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
 
 fn send(stream: &mut TcpStream, m: &Message) -> std::io::Result<()> {
     let mut line = serde_json::to_vec(m)?;
@@ -90,11 +113,52 @@ fn recv<R: BufRead>(reader: &mut R) -> std::io::Result<Option<Message>> {
 }
 
 /// Serve one connection until the peer hangs up.
-fn handle(stream: TcpStream, ctx: &JobContext, state: &Mutex<SharedState>) -> std::io::Result<()> {
+///
+/// When `token` is set, the connection is unauthenticated until the peer
+/// sends a `Hello` carrying the matching token; any `pull`/`push` before
+/// that is refused and the connection is dropped (finding 5).  A tokenless
+/// listener (`token` empty) serves as before and treats a `Hello` as a
+/// no-op ack, so a token-bearing client can still talk to it.
+fn handle(
+    stream: TcpStream,
+    ctx: &JobContext,
+    state: &Mutex<SharedState>,
+    token: &str,
+) -> std::io::Result<()> {
     stream.set_read_timeout(Some(Duration::from_secs(30)))?;
     let mut writer = stream.try_clone()?;
     let mut reader = BufReader::new(stream);
+    let mut authed = token.is_empty();
     while let Some(msg) = recv(&mut reader)? {
+        if let Message::Hello { token: got } = &msg {
+            if token.is_empty() || ct_eq(got, token) {
+                authed = true;
+                send(
+                    &mut writer,
+                    &Message::Ack {
+                        accepted: 0,
+                        rejected: 0,
+                    },
+                )?;
+                continue;
+            }
+            send(
+                &mut writer,
+                &Message::Error {
+                    message: "bad peer token".into(),
+                },
+            )?;
+            return Ok(());
+        }
+        if !authed {
+            send(
+                &mut writer,
+                &Message::Error {
+                    message: "authentication required".into(),
+                },
+            )?;
+            return Ok(());
+        }
         let reply = match msg {
             Message::Pull { job_id, known } => {
                 if job_id != ctx.job_id {
@@ -144,13 +208,30 @@ pub struct PeerServer {
 }
 
 impl PeerServer {
-    /// Bind `addr` (use port 0 for an ephemeral port) and serve
-    /// `state` in a background thread.
+    /// Bind `addr` (use port 0 for an ephemeral port) and serve `state` in a
+    /// background thread, unauthenticated.  Prefer [`start_with_token`] on
+    /// any untrusted network.
+    ///
+    /// [`start_with_token`]: Self::start_with_token
     pub fn start(
         addr: impl ToSocketAddrs,
         ctx: Arc<JobContext>,
         state: Arc<Mutex<SharedState>>,
     ) -> std::io::Result<Self> {
+        Self::start_with_token(addr, ctx, state, String::new())
+    }
+
+    /// Bind `addr` and serve `state`, requiring every connecting peer to
+    /// present `token` before its messages are accepted (finding 5).  An
+    /// empty `token` disables the check, which is [`start`](Self::start).
+    /// The read bound and connection cap are unchanged.
+    pub fn start_with_token(
+        addr: impl ToSocketAddrs,
+        ctx: Arc<JobContext>,
+        state: Arc<Mutex<SharedState>>,
+        token: String,
+    ) -> std::io::Result<Self> {
+        let token = Arc::new(token);
         let listener = TcpListener::bind(addr)?;
         listener.set_nonblocking(true)?;
         let local = listener.local_addr()?;
@@ -172,8 +253,9 @@ impl PeerServer {
                         let ctx = Arc::clone(&ctx);
                         let state = Arc::clone(&state);
                         let live = Arc::clone(&live);
+                        let token = Arc::clone(&token);
                         std::thread::spawn(move || {
-                            let _ = handle(stream, &ctx, &state);
+                            let _ = handle(stream, &ctx, &state, &token);
                             live.fetch_sub(1, Ordering::AcqRel);
                         });
                     }
@@ -218,11 +300,23 @@ pub struct SyncReport {
     pub rejected_there: usize,
 }
 
-/// Exchange logs with the node at `addr` (pull, then push).
+/// Exchange logs with the node at `addr` (pull, then push), unauthenticated.
 pub fn sync_with_peer(
     addr: impl ToSocketAddrs,
     ctx: &JobContext,
     state: &Mutex<SharedState>,
+) -> std::io::Result<SyncReport> {
+    sync_with_peer_auth(addr, ctx, state, "")
+}
+
+/// Exchange logs with the node at `addr`, presenting `token` first when it is
+/// non-empty (finding 5).  A peer that requires a token rejects the exchange
+/// unless the presented one matches.
+pub fn sync_with_peer_auth(
+    addr: impl ToSocketAddrs,
+    ctx: &JobContext,
+    state: &Mutex<SharedState>,
+    token: &str,
 ) -> std::io::Result<SyncReport> {
     let addr = addr
         .to_socket_addrs()?
@@ -233,6 +327,25 @@ pub fn sync_with_peer(
     let mut writer = stream.try_clone()?;
     let mut reader = BufReader::new(stream);
     let mut rep = SyncReport::default();
+
+    if !token.is_empty() {
+        send(
+            &mut writer,
+            &Message::Hello {
+                token: token.to_string(),
+            },
+        )?;
+        match recv(&mut reader)? {
+            Some(Message::Ack { .. }) => {}
+            Some(Message::Error { message }) => return Err(std::io::Error::other(message)),
+            _ => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "expected hello ack",
+                ))
+            }
+        }
+    }
 
     let known = state.lock().unwrap().version_vector();
     send(
@@ -378,6 +491,53 @@ mod tests {
             assert_eq!(st.rejected_dps, 0);
         }
         drop(servers);
+    }
+
+    /// Finding 5: a token-protected listener rejects a peer that presents
+    /// the wrong token or none, and accepts the one that presents the right
+    /// token.
+    #[test]
+    fn peer_token_is_required() {
+        let ctx = job(3);
+        let state = Arc::new(Mutex::new(SharedState::new(&ctx)));
+        let server = PeerServer::start_with_token(
+            "127.0.0.1:0",
+            Arc::clone(&ctx),
+            Arc::clone(&state),
+            "s3cret".to_string(),
+        )
+        .unwrap();
+        let addr = server.local_addr();
+        let mine = Mutex::new(SharedState::new(&ctx));
+
+        // No token: the plain sync sends Pull first and is refused.
+        let err = sync_with_peer(addr, &ctx, &mine).unwrap_err();
+        assert!(
+            err.to_string().contains("authentication required"),
+            "unauthenticated peer should be refused, got: {err}"
+        );
+
+        // Wrong token: the Hello is rejected.
+        let err = sync_with_peer_auth(addr, &ctx, &mine, "wrong").unwrap_err();
+        assert!(
+            err.to_string().contains("bad peer token"),
+            "wrong token should be refused, got: {err}"
+        );
+
+        // Right token: the exchange completes.
+        sync_with_peer_auth(addr, &ctx, &mine, "s3cret").unwrap();
+    }
+
+    /// A token-bearing client can still talk to a tokenless listener: the
+    /// Hello is answered and the exchange proceeds.
+    #[test]
+    fn hello_is_tolerated_by_a_tokenless_listener() {
+        let ctx = job(4);
+        let state = Arc::new(Mutex::new(SharedState::new(&ctx)));
+        let server =
+            PeerServer::start("127.0.0.1:0", Arc::clone(&ctx), Arc::clone(&state)).unwrap();
+        let mine = Mutex::new(SharedState::new(&ctx));
+        sync_with_peer_auth(server.local_addr(), &ctx, &mine, "ignored").unwrap();
     }
 
     #[test]

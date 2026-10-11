@@ -1,0 +1,111 @@
+name: Tiled independent Boolean transform
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/**'
+      - 'experiments/pdp-degree-heuristics/**'
+      - '.github/workflows/tiled-independent-checker.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/**'
+      - 'experiments/pdp-degree-heuristics/**'
+      - '.github/workflows/tiled-independent-checker.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tiled-independent-checker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  correctness:
+    name: Tiled independent checker (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install numerical dependency
+        run: python -m pip install numpy==2.4.0
+      - name: Build portable dependencies and selected backend
+        shell: bash
+        run: |
+          mkdir -p tiled-checker-evidence
+          for version in 20 23 31 32 33 34 35 36 37 38; do
+            python "experiments/groebner-perf-20260924/round${version}/build.py" > "tiled-checker-evidence/build-${version}.log" 2>&1
+          done
+          flags=()
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            flags+=(--metal)
+          fi
+          for version in 44; do
+            python "experiments/groebner-perf-20260924/round${version}/build.py" "${flags[@]}" > "tiled-checker-evidence/build-${version}.log" 2>&1
+          done
+          python experiments/groebner-perf-20260924/round45/build.py > tiled-checker-evidence/build-45.log 2>&1
+          python experiments/groebner-perf-20260924/round47/build.py > tiled-checker-evidence/build-47.log 2>&1
+      - name: Detect actual Metal availability
+        shell: bash
+        run: |
+          cd experiments/groebner-perf-20260924/round44
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            # Hosted Metal availability is explicit; compilation alone is not a device pass.
+            python - <<'PY'
+          import os
+          from normalized import Producer
+          try:
+              with Producer(2, 3, 3, backend='metal') as probe:
+                  print('METAL_AVAILABLE', probe.device)
+          except ValueError as error:
+              if str(error) != 'requested Metal device unavailable':
+                  raise
+              print('METAL_UNAVAILABLE', error)
+          else:
+              with open(os.environ['GITHUB_ENV'], 'a') as output:
+                  output.write('QUADRATIC_TEST_METAL=1\n')
+          PY
+          fi
+      - name: Exercise proof semantics and charged failure boundaries
+        working-directory: experiments/groebner-perf-20260924/round47
+        run: python -u run_tests.py > ../../../tiled-checker-evidence/unit-tests.log 2>&1
+      - name: Validate frozen systems and complete-query ablation
+        shell: bash
+        run: |
+          flags=()
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            flags+=(--metal)
+          fi
+          python -u experiments/groebner-perf-20260924/round47/validate_native.py "${flags[@]}" --output tiled-checker-evidence/correctness.json.gz > tiled-checker-evidence/validation.log 2>&1
+      - name: Independently audit complete proofs from original equations
+        run: python -u experiments/groebner-perf-20260924/round47/audit_queries.py --input tiled-checker-evidence/correctness.json.gz --output tiled-checker-evidence/independent-audit.json > tiled-checker-evidence/independent-audit.log 2>&1
+      - name: Retain actual native binaries and runner identity
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, platform, shutil
+          out = pathlib.Path('tiled-checker-evidence')
+          out.mkdir(exist_ok=True)
+          metadata = {k: os.environ.get(k) for k in ('GITHUB_SHA', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'RUNNER_OS', 'RUNNER_ARCH')}
+          metadata.update(platform=platform.platform(), architecture=platform.machine())
+          (out / 'runner.json').write_text(json.dumps(metadata, indent=2)+'\n')
+          for build in pathlib.Path('experiments/groebner-perf-20260924').glob('round*/build'):
+              shutil.copytree(build, out / 'native' / build.parent.name, dirs_exist_ok=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tiled-checker-${{ matrix.os }}
+          path: tiled-checker-evidence/
+          if-no-files-found: error
+          retention-days: 14
