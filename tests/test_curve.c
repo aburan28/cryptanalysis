@@ -64,6 +64,16 @@ static void tau_cost_checks(const ca_group *g, const ca_elem *point, int samples
 {
     ca_tau4_precomp pre;
     CHECK(ca_ec_tau4_prepare(g, point, &pre, NULL));
+    ca_tau_pair_fused_precomp pair_pre;
+    uint64_t pair_seed_ops = 0, pair_prep_adds = 0, pair_prep_rotations = 0;
+    uint64_t pair_prep_inversions = 0;
+    CHECK(ca_ec_tau_pair_fused_prepare(g, point, &pair_pre, &pair_seed_ops, &pair_prep_adds,
+                                       &pair_prep_rotations, &pair_prep_inversions));
+    CHECK(ca_ec_tau_pair_fused_prepare_verify(&pair_pre));
+    CHECK_EQ_U64(sizeof(pair_pre.orbit), 3872);
+    CHECK_EQ_U64(ca_ec_tau_pair_fused_static_bytes(), 33289);
+    CHECK(pair_seed_ops > 0 && pair_prep_adds > 0 && pair_prep_rotations > 0);
+    CHECK_EQ_U64(pair_prep_inversions, 2);
     ca_tau4_pos_precomp positional_pre;
     ca_tau4_pos_precomp global_pre;
     uint64_t prep_triples = 0;
@@ -110,6 +120,7 @@ static void tau_cost_checks(const ca_group *g, const ca_elem *point, int samples
         ca_elem expected, baseline = *point, selected = *point, atlas = *point, tail = *point;
         ca_elem gated = *point, double_pair = *point, folded_pair = *point;
         ca_elem residue_pair = *point;
+        ca_elem fused_pair = *point;
         ca_elem positional = *point, global = *point;
         uint64_t base_triples = UINT64_MAX, base_adds = UINT64_MAX;
         uint64_t cost_triples = UINT64_MAX, cost_adds = UINT64_MAX;
@@ -125,6 +136,8 @@ static void tau_cost_checks(const ca_group *g, const ca_elem *point, int samples
         uint64_t fold_rotations = UINT64_MAX;
         uint64_t residue_triples = UINT64_MAX, residue_adds = UINT64_MAX;
         uint64_t residue_rotations = UINT64_MAX;
+        uint64_t fused_triples = UINT64_MAX, fused_adds = UINT64_MAX;
+        uint64_t fused_rotations = UINT64_MAX;
         ca_group_mul(g, &expected, point, k % g->order, NULL);
         CHECK(ca_ec_tau4_mul_prepared_profile(g, &pre, &baseline, k, 0, &base_triples, &base_adds,
                                               &base_rotations));
@@ -145,6 +158,9 @@ static void tau_cost_checks(const ca_group *g, const ca_elem *point, int samples
         CHECK(ca_ec_tau4_double_recode_verify_scalar(&pre, k));
         CHECK(ca_ec_tau4_fold_recode_verify_scalar(&pre, k));
         CHECK(ca_ec_tau4_residue_recode_verify_scalar(&pre, k));
+        CHECK(ca_ec_tau_pair_fused_mul_profile(g, &pair_pre, &fused_pair, k, &fused_triples,
+                                               &fused_adds, &fused_rotations));
+        CHECK(ca_ec_tau_pair_fused_recode_verify_scalar(&pair_pre, k));
         uint64_t positional_adds = UINT64_MAX, positional_rotations = UINT64_MAX;
         CHECK(ca_ec_tau4_pos_mul(g, &positional_pre, &positional, k, &positional_adds,
                                  &positional_rotations));
@@ -157,6 +173,9 @@ static void tau_cost_checks(const ca_group *g, const ca_elem *point, int samples
         CHECK(ca_group_equal(g, &double_pair, &expected));
         CHECK(ca_group_equal(g, &folded_pair, &expected));
         CHECK(ca_group_equal(g, &residue_pair, &expected));
+        CHECK(ca_group_equal(g, &fused_pair, &expected));
+        CHECK(10 * fused_triples + 16 * fused_adds + fused_rotations <=
+              10 * residue_triples + 16 * residue_adds + residue_rotations);
         CHECK_EQ_U64(10 * fold_triples + 16 * fold_adds + fold_rotations,
                      10 * double_triples + 16 * double_adds + double_rotations);
         CHECK_EQ_U64(10 * residue_triples + 16 * residue_adds + residue_rotations,
@@ -208,6 +227,9 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     const uint64_t scalars[] = {0, 1, 2, 3, 17, g->order - 1, UINT64_MAX};
     ca_tau4_precomp pre;
     CHECK(ca_ec_tau4_prepare(g, point, &pre, NULL));
+    ca_tau_pair_fused_precomp pair_pre;
+    CHECK(ca_ec_tau_pair_fused_prepare(g, point, &pair_pre, NULL, NULL, NULL, NULL));
+    CHECK(ca_ec_tau_pair_fused_prepare_verify(&pair_pre));
     for (size_t i = 0; i < sizeof(scalars) / sizeof(scalars[0]); i++) {
         uint64_t k = scalars[i], steps, adds, triples;
         ca_elem expected, got;
@@ -224,6 +246,9 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
                                                   &rotations));
             CHECK(ca_group_equal(g, &got, &expected));
         }
+        CHECK(ca_ec_tau_pair_fused_mul_profile(g, &pair_pre, &got, k, &triples, &adds, NULL));
+        CHECK(ca_group_equal(g, &got, &expected));
+        CHECK(ca_ec_tau_pair_fused_recode_verify_scalar(&pair_pre, k));
     }
     ca_elem identity, got;
     ca_group_identity(g, &identity);
@@ -231,6 +256,10 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     CHECK(ca_ec_tau4_prepare(g, &identity, &pre, &setup_ops));
     CHECK_EQ_U64(setup_ops, 0);
     CHECK(ca_ec_tau4_mul_prepared_cost(g, &pre, &got, 17, NULL, NULL));
+    CHECK(ca_group_is_identity(g, &got));
+    CHECK(ca_ec_tau_pair_fused_prepare(g, &identity, &pair_pre, NULL, NULL, NULL, NULL));
+    CHECK(ca_ec_tau_pair_fused_prepare_verify(&pair_pre));
+    CHECK(ca_ec_tau_pair_fused_mul_profile(g, &pair_pre, &got, 17, NULL, NULL, NULL));
     CHECK(ca_group_is_identity(g, &got));
     CHECK(!ca_ec_tau4_mul_prepared_profile(g, &pre, &got, 17, 8, NULL, NULL, NULL));
 }

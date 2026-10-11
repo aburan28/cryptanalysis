@@ -225,3 +225,11 @@ An [8-bit residue-local encoding](TAIL_DOUBLE_FOLD.md#residue-local-byte-format)
 of the same sign-folded policy brings active data to 31,660 bytes. It keeps
 the same modeled evaluation score; the extra residue calculation leaves the
 CPU wall-time ordering unresolved until isolated paired measurement.
+
+The [orbit-pair point dictionary experiment](TAIL_PAIR_FUSED.md) goes further:
+the 727 exact two-digit pair contributions form 121 sign/unit orbits. One
+prepared affine point per orbit evaluates a two-digit pair with one mixed
+addition. Its disjoint 32,768-output panel lowers modeled evaluation cost
+5.49%–5.66% on `glv-j0-32` and 2.17%–2.23% on `j0-56` beyond the two-digit
+arm, with point setup reported separately. Isolated CPU speed and rho impact
+remain unmeasured.
