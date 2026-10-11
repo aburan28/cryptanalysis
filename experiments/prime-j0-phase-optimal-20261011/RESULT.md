@@ -45,3 +45,11 @@ the frozen paths. The source-pinned native release replay passed all
 bind the source, inputs, atlas, executable and result. CPU wall-time
 comparison requires the host-isolation and noise gates in
 `../../docs/ISOLATED_BENCHMARKS.md`.
+
+The complete release-mode Rust suite passed **143/143 tests** on the same
+materialized source. Its [full-suite receipt](native-full-check.json)
+binds the generated source, assets, executable and
+[raw log](native-full.log.gz). The earlier partial full-suite run is
+preserved in `native-full-superseded.json` and its archived log; its
+obsolete compressed-cover fixture was replaced by the new frozen-panel
+fixture before the complete replay.
