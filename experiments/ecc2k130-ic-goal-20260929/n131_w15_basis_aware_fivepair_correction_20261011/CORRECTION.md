@@ -1,0 +1,7 @@
+# Correct factor-base count for the N131 five-pair quartic run
+
+The frozen [basis-aware five-pair protocol](../n131_w15_basis_aware_fivepair_20261011/protocol.json) labels `factor_base_B: 16441`. That number is the **rational mask count per source window**, not the actual factor-base point count required by the project naming and measurement contract. The audited W15 six-window source has **B=197,292 distinct subgroup-usable points before signed-Frobenius folding** and **K=16,381 folded columns**. Use those values in every comparison of this run. The query formula, public point, solver limit, and result are unchanged.
+
+The [correction receipt](correction.json) binds the original protocol and query hashes to the W15 [source support receipt](../n131_w15_coupled_sixpair_20261010/support_receipt.json), [Sage group audit](../n131_w15_coupled_sixpair_20261010/sage_group_audit.json), and source protocol. The original frozen protocol remains byte-for-byte intact so its source and query hash chain can be reproduced. Run `python3 experiments/ecc2k130-ic-goal-20260929/n131_w15_basis_aware_fivepair_correction_20261011/verify.py` to regenerate the correction.
+
+For the public query, the recorded status remains `BOUNDED_UNKNOWN` at 594.086664042 seconds of charged construction and search, with 854,540,288 bytes sampled combined RSS. The corrected factor-base count does not change that censored result or establish an ordinary relation. `candidate_id` remains `null`.
