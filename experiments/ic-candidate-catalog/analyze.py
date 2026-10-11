@@ -27,7 +27,13 @@ def require(condition: bool, message: str) -> None:
 
 
 def validate_run(run: dict) -> dict:
+    if run.get("schema_version") == 2:
+        import analyze_v2
+        return analyze_v2.validate_run(run)
     require(run.get("schema_version") == CONTRACT["schema_version"], "wrong schema version")
+    mode = run.get("accounting_mode", "calibrated_operations")
+    require(mode in CONTRACT["accounting_modes"], "unknown accounting mode")
+    wall_only = mode == "verified_online_wall"
     require(run.get("kind") in CONTRACT["run_kinds"], "unknown run kind")
     require(run.get("status") in CONTRACT["run_statuses"], "unknown run status")
     for key in ("run_id", "workload_id", "pair_block_id", "source_curve_ref", "profile_id",
@@ -83,6 +89,16 @@ def validate_run(run: dict) -> dict:
     require(isinstance(run.get("subgroup_order"), str) and run["subgroup_order"].isdigit()
             and int(run["subgroup_order"]) > 1, "invalid subgroup order")
     total = run.get("total_operations")
+    if wall_only:
+        require(run["kind"] == "full_dlp", "online wall mode requires a full-DLP attempt")
+        require(total is None and all(value is None for value in phases.values())
+                and run.get("rho_operations") is None and run.get("operation_unit") is None,
+                "unmeasured operations must remain unknown")
+        require(isinstance(run.get("unknown_operation_reason"), str)
+                and bool(run["unknown_operation_reason"]), "missing unmeasured-operation explanation")
+        require(run.get("warm") is None and all(run.get(key) is None for key in (
+            "ratio_to_rho", "ratio_to_floor", "S_rps", "S_ec_add", "rho_floor_operations")),
+            "online wall mode cannot claim operation ratios or amortization")
     all_priced = all(value is not None for value in phases.values())
     if total is not None:
         require(all_priced and type(total) is int and total == sum(phases.values()),
@@ -98,9 +114,13 @@ def validate_run(run: dict) -> dict:
             require(run["isogeny_route_ref"] == "none", "ISO0 candidate names a route")
         require(run.get("verified_scalar") is True and run.get("scalar_certificate_ref"),
                 "full DLP lacks scalar certificate")
-        require(total is not None and run.get("rho_operations") is not None,
-                "full DLP lacks complete cost or rho reference")
-        require(total > 0, "full DLP total cost must be positive")
+        if wall_only:
+            require(run.get("online") is not None and run["online"].get("speedup") is not None,
+                    "online wall completion lacks paired verified timing")
+        else:
+            require(total is not None and run.get("rho_operations") is not None,
+                    "full DLP lacks complete cost or rho reference")
+            require(total > 0, "full DLP total cost must be positive")
         require(all(value is not None for value in phase_wall.values()),
                 "full DLP lacks phase wall times")
     else:
@@ -108,6 +128,98 @@ def validate_run(run: dict) -> dict:
         require(run.get("verified_scalar") is not True, "stage or censored run claims scalar")
     rho = run.get("rho_operations")
     require(rho is None or (type(rho) is int and rho > 0), "invalid rho cost")
+    warm = run.get("warm")
+    if warm is not None:
+        per_target = warm.get("per_target_operations")
+        require(isinstance(per_target, list)
+                and all(type(v) is int and v >= 0 for v in per_target),
+                "invalid per-target operation ledger")
+        require(len(per_target) == counts["targets"],
+                "per-target operation ledger length differs from target count")
+        require(warm.get("target_operations") == sum(per_target),
+                "target operation total differs from per-target ledger")
+        shared = warm.get("shared_operations")
+        require(shared is None or (type(shared) is int and shared >= 0),
+                "invalid shared operation count")
+        if total is not None:
+            require(shared is not None and shared + sum(per_target) == total,
+                    "shared plus target operations must equal total")
+        prefixes = warm.get("prefixes")
+        require(isinstance(prefixes, list), "invalid amortization prefix list")
+        previous = 0
+        for prefix in prefixes:
+            k = prefix.get("targets")
+            require(type(k) is int and previous < k <= len(per_target),
+                    "invalid amortization prefix target count")
+            previous = k
+            if total is not None:
+                require(prefix.get("ic_operations") == shared + sum(per_target[:k]),
+                        "prefix IC operations do not match shared plus marginal ledger")
+                require(prefix.get("independent_rho_operations") == k * rho,
+                        "prefix independent-rho operations are inconsistent")
+                for key in ("batch_rho_operations", "folded_batch_rho_operations"):
+                    require(type(prefix.get(key)) is int and prefix[key] > 0,
+                            f"invalid prefix {key}")
+        if per_target:
+            require(prefixes and prefixes[-1]["targets"] == len(per_target),
+                    "amortization prefixes do not include the full batch")
+        series = run.get("workload_series_id")
+        require(series is None or (isinstance(series, str) and series.startswith("ICBW1h")),
+                "invalid workload series ID")
+
+    if run["source_curve_ref"].startswith("EC1P"):
+        require(run["candidate_id"] is not None and run["candidate_id"].startswith("IC1P"),
+                "prime-field curve must use the IC1P candidate namespace")
+        require(run.get("operation_unit") == "prime_group_operation",
+                "prime-field normalized receipt has the wrong operation unit")
+        require(isinstance(run.get("native_prime_report"), dict)
+                and run["native_prime_report"].get("operation") == "prime",
+                "prime-field normalized receipt must retain the native ca-ic report")
+        require(run["provenance"].get("binary_blake3"),
+                "prime-field receipt lacks executable digest")
+        batch = run.get("rho_batch") or {}
+        require(type(batch.get("shared_dp_expected_operations")) is int
+                and batch["shared_dp_expected_operations"] > 0,
+                "prime-field receipt lacks batch-rho control")
+        require(type(batch.get("folded_shared_dp_expected_operations")) is int
+                and batch["folded_shared_dp_expected_operations"] > 0,
+                "prime-field receipt lacks folded batch-rho control")
+
+    online = run.get("online")
+    if online is not None:
+        require(counts["targets"] == 1, "primary online receipt needs exactly one target")
+        charged = online.get("phase_wall_ns", {})
+        required = {"target_query", "target_pdp", "target_relation_check", "target_descent",
+                    "target_recovery_check"}
+        require(set(charged) == required and all(type(v) is int and v >= 0 for v in charged.values()),
+                "invalid primary online phase accounting")
+        ic_ns = online.get("ic_online_ns")
+        require(type(ic_ns) is int and ic_ns > 0 and sum(charged.values()) == ic_ns,
+                "primary online phases must sum to the target interval")
+        measured = run.get("rho_measured") or {}
+        rho_ns = measured.get("online_wall_ns")
+        require(type(rho_ns) is int and rho_ns > 0 and rho_ns == online.get("rho_online_ns"),
+                "missing paired measured rho interval")
+        if online.get("speedup") is not None:
+            require(run.get("verified_scalar") is True and measured.get("verified") is True,
+                    "unverified target claims online speedup")
+            require(math.isclose(online["speedup"], rho_ns / ic_ns, rel_tol=1e-12),
+                    "incorrect online speedup")
+        if wall_only:
+            target = online.get("public_target")
+            require(isinstance(target, dict) and target.get("inf") is False
+                    and all(type(target.get(k)) is int and target[k] >= 0 for k in ("x", "y")),
+                    "online wall receipt lacks a finite public target")
+            require(measured.get("target") == target, "rho was not paired on the same public point")
+            if run["status"] == "complete":
+                certificate = run.get("scalar_certificate") or {}
+                require(certificate.get("target") == target and certificate.get("replayed_point") == target
+                        and measured.get("replayed_point") == target,
+                        "online wall completion lacks same-point scalar replay")
+                require(type(certificate.get("scalar")) is int
+                        and 0 <= certificate["scalar"] < int(run["subgroup_order"])
+                        and certificate["scalar"] == measured.get("scalar"),
+                        "IC and rho recovered different scalars")
     return run
 
 
@@ -146,6 +258,7 @@ def summarize(runs: list[dict]) -> dict:
         collection_ops = sum(run["phase_operations"][phase] for run in group
                              for phase in collection_phases) if collection_priced else None
         full = [run for run in group if run["kind"] == "full_dlp" and run["status"] == "complete"]
+        priced_full = [run for run in full if run["total_operations"] is not None]
         result.setdefault(config, {})[workload] = {
             "runs": len(group),
             "statuses": dict(sorted(counts.items())),
@@ -164,7 +277,22 @@ def summarize(runs: list[dict]) -> dict:
             "novel_rows_per_ordinary_query": novel / ordinary if ordinary else None,
             "complete_dlp_runs": len(full),
             "median_complete_total_operations": statistics.median(
-                run["total_operations"] for run in full) if full else None,
+                run["total_operations"] for run in priced_full) if priced_full else None,
+            "median_verified_ic_online_ns": statistics.median(
+                run["online"]["ic_online_ns"] for run in full
+                if run.get("online") and run["online"].get("speedup") is not None)
+            if any(run.get("online") and run["online"].get("speedup") is not None for run in full) else None,
+            "median_shared_operations": statistics.median(
+                run["warm"]["shared_operations"] for run in full if run.get("warm"))
+            if any(run.get("warm") for run in full) else None,
+            "median_marginal_target_operations": statistics.median(
+                run["warm"]["mean_target_operations"] for run in full if run.get("warm"))
+            if any(run.get("warm") for run in full) else None,
+            "median_ic_over_folded_batch_rho": statistics.median(
+                run["warm"]["ic_over_folded_batch_rho"] for run in full
+                if run.get("warm") and run["warm"].get("ic_over_folded_batch_rho") is not None)
+            if any(run.get("warm") and run["warm"].get("ic_over_folded_batch_rho") is not None
+                   for run in full) else None,
         }
     return result
 
@@ -197,14 +325,24 @@ def paired_compare(runs: list[dict], baseline: str, candidate: str) -> dict:
         for field in ("workload_fixture_sha256", "resource_envelope_id", "calibration_id"):
             require(a["provenance"][field] == b["provenance"][field],
                     f"mismatched provenance {field} in {key}")
+        require(bool(a.get("online")) == bool(b.get("online")),
+                f"mismatched online accounting in {key}")
         if a["kind"] != "full_dlp" or b["kind"] != "full_dlp" or a["status"] != "complete" or b["status"] != "complete":
             incomplete.append({"block": key, "reason": "incomplete_dlp"})
             continue
-        ratios.append(a["total_operations"] / b["total_operations"])
+        if a.get("online") and b.get("online"):
+            if a["online"].get("speedup") is None or b["online"].get("speedup") is None:
+                incomplete.append({"block": key, "reason": "unverified_online_control"})
+                continue
+            ratios.append(a["online"]["ic_online_ns"] / b["online"]["ic_online_ns"])
+        else:
+            ratios.append(a["total_operations"] / b["total_operations"])
     outcome = {"baseline": baseline, "candidate": candidate,
                "paired_blocks": len(keys), "complete_pairs": len(ratios),
                "incomplete_pairs": incomplete, "speedup": None,
                "speedup_ci95": None, "confidence_unit": "independent_pair_block"}
+    outcome["metric"] = "one_target_online_wall_ns" if all(
+        run.get("online") is not None for pair in selected.values() for run in pair.values()) else "cold_operations"
     if incomplete or not ratios:
         return outcome
     logs = [math.log(ratio) for ratio in ratios]
@@ -224,12 +362,20 @@ def main() -> None:
     parser.add_argument("--candidate")
     args = parser.parse_args()
     require(bool(args.baseline) == bool(args.candidate), "supply both comparison IDs")
-    runs = [validate_run(json.loads(line)) for line in args.runs.read_text().splitlines() if line.strip()]
+    raw_runs = [json.loads(line) for line in args.runs.read_text().splitlines() if line.strip()]
+    versions = {run.get("schema_version") for run in raw_runs}
+    require(len(versions) <= 1, "mixed receipt schema versions")
+    if versions == {2}:
+        import analyze_v2
+        implementation = analyze_v2
+    else:
+        implementation = __import__(__name__)
+    runs = [implementation.validate_run(run) for run in raw_runs]
     ids = [run["run_id"] for run in runs]
     require(len(set(ids)) == len(ids), "duplicate run IDs")
-    report = {"run_count": len(runs), "configurations": summarize(runs)}
+    report = {"run_count": len(runs), "configurations": implementation.summarize(runs)}
     if args.baseline:
-        report["comparison"] = paired_compare(runs, args.baseline, args.candidate)
+        report["comparison"] = implementation.paired_compare(runs, args.baseline, args.candidate)
     print(json.dumps(report, indent=2))
 
 

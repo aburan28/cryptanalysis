@@ -1,0 +1,98 @@
+{
+ "script": "run_pairing_c3.py",
+ "t1_gp": {
+  "path": "verify/pairing-transfer/C3-audit/t1.gp",
+  "sha256": "d117d21abcd5a825a2a2b93986212eb533acf18dcfb65206d1cf0738f2f4c1ad",
+  "returncode": 0,
+  "seconds": 12.4,
+  "stdout_lines": [
+   "***   at top-level: rr=polrootsmod(fq,w);print(#rr)",
+   "  ***                    ^----------------------------",
+   "  *** polrootsmod: the PARI stack overflows !",
+   "  current stack size: 8000000 (7.629 Mbytes)",
+   "  [hint] set 'parisizemax' to a nonzero value in your GPRC",
+   "",
+   "... skipping file '/Volumes/SSD990/ecdlp-hardness-work/verify/pairing-transfer/C3-audit/t1.gp'",
+   "  ***   at top-level: r=rr[1];print(subst(fq,x,r)==0)",
+   "  ***                     ^---------------------------",
+   "  ***   incorrect type in _[_] OCcompo1 [not a vector] (t_POL).",
+   "0 0 time 13",
+   "E0 card 1 time 1",
+   "  ***   at top-level: ...e();g=ellgroup(E0);print(factor(g[1]),\" | \",fa",
+   "  ***                                             ^---------------------",
+   "  *** factor: the PARI stack overflows !",
+   "  current stack size: 8000000 (7.629 Mbytes)",
+   "  [hint] set 'parisizemax' to a nonzero value in your GPRC"
+  ],
+  "assessment": "incomplete: builds F_{2^262}, embeds F_q, point-counts one unrelated curve [1,0,0,0,w^5+1] and E0 over F_{q^2} and prints E0's ellgroup; it never evaluates a Tate pairing, so it cannot test t_263(P,Q_N) = 1"
+ },
+ "pairing_c3_check_gp": {
+  "returncode": 0,
+  "seconds": 0.4,
+  "results": {
+   "global": {
+    "N_is_prime": true,
+    "v263_CL": 2,
+    "QL_minus_1_div_263": true,
+    "gcd_N_263": 1,
+    "fq_irreducible_mod2": true,
+    "embedding_root_ok": true,
+    "embedding_ring_hom_20_pairs": true,
+    "done": true
+   },
+   "E0": {
+    "j_matches_ground_truth": true,
+    "b_times_j_is_1": true,
+    "card_L_equals_(q+1-t)(q+1+t)": true,
+    "QN_order_N": true,
+    "sylow263": "(Z/263)^2",
+    "P_order_263": true,
+    "frobenius_acts_as_minus1_on_P": true,
+    "tate_P_QN_all_1": true,
+    "nondegenerate_witness_found": true,
+    "tate_P_T_ne_1": true,
+    "tate_value_is_263rd_root_of_unity": true,
+    "shift_invariant_T_plus_QN": true,
+    "bilinear_second_slot": true,
+    "bilinear_first_slot": true,
+    "seconds": 0.141
+   },
+   "A000": {
+    "j_matches_ground_truth": true,
+    "b_times_j_is_1": true,
+    "card_L_equals_(q+1-t)(q+1+t)": true,
+    "QN_order_N": true,
+    "sylow263": "Z/263^2_cyclic",
+    "P_order_263": true,
+    "frobenius_acts_as_minus1_on_P": true,
+    "tate_P_QN_all_1": true,
+    "nondegenerate_witness_found": true,
+    "tate_P_T_ne_1": true,
+    "tate_value_is_263rd_root_of_unity": true,
+    "shift_invariant_T_plus_QN": true,
+    "bilinear_second_slot": true,
+    "bilinear_first_slot": true,
+    "seconds": 0.032
+   },
+   "B000": {
+    "j_matches_ground_truth": true,
+    "b_times_j_is_1": true,
+    "card_L_equals_(q+1-t)(q+1+t)": true,
+    "QN_order_N": true,
+    "sylow263": "Z/263^2_cyclic",
+    "P_order_263": true,
+    "frobenius_acts_as_minus1_on_P": true,
+    "tate_P_QN_all_1": true,
+    "nondegenerate_witness_found": true,
+    "tate_P_T_ne_1": true,
+    "tate_value_is_263rd_root_of_unity": true,
+    "shift_invariant_T_plus_QN": true,
+    "bilinear_second_slot": true,
+    "bilinear_first_slot": true,
+    "seconds": 0.038
+   }
+  }
+ },
+ "verdict": "CONFIRMED: t_263(P, Q_N) = 1 on E0, A000, B000 (PARI, own embedding), with non-degenerate, shift-invariant, bilinear controls",
+ "all_checks_pass": true
+}

@@ -1,0 +1,55 @@
+{
+  "schema": "sparse-f4-complete-query-plan/1",
+  "fixture_sha256": "618bd6d141a06ce55fdeb3e6fc72f4903fc83e3d2ee317dfbcde5b25a78548cf",
+  "arms": [
+    "baseline",
+    "squares",
+    "packed"
+  ],
+  "primary": "packed",
+  "confirmatory_comparators": [
+    "baseline"
+  ],
+  "primary_cases": [
+    "pdp-6-seed-1",
+    "pdp-6-seed-2",
+    "pdp-6-seed-3",
+    "pdp-6-seed-4",
+    "pdp-6-seed-5"
+  ],
+  "case_order": "primary_cases in listed order, then remaining frozen fixture order",
+  "primary_trials": 3,
+  "primary_pairs": 7,
+  "secondary_trials": 1,
+  "secondary_pairs": 3,
+  "warmups": 1,
+  "order_seed": 202610036404,
+  "bootstrap_seed": 202610036405,
+  "bootstrap_samples": 20000,
+  "max_load_per_logical_cpu": 1,
+  "max_rejected_admissions": 2,
+  "limits": {
+    "max_work": 20000000,
+    "max_nodes": 500000,
+    "max_rows": 4096,
+    "batch": 64,
+    "max_check_work": 20000000,
+    "max_retained_terms": 2000000
+  },
+  "boundary": "PDP: supplied full public point through fresh target-dependent descent, packed F4 solve, independent algebraic certificate, root extraction, curve witness production, independent multiplication-only witness and equation checks, and independent replay against frozen equations. Field validation, fixture construction and ring-only layouts stay outside both arms. Four exclusive phases sum to the full query wall interval.",
+  "cache_policy": "Ring-only field validation, immutable squaring/reduction tables, bit-permutation masks, symbolic layouts and input allocations persist. Every target has fresh coefficients, solving, algebraic proof, lifts, signs, curve witness and independent checking. No target values, field products, numerical pivots or answers are cached.",
+  "resource_envelope": "One process, one sequential query at a time, one CPU query thread. No GPU, target batching or cross-target answer cache. Native work/node/row limits, not a hard wall timeout.",
+  "primary_acceptance": "All three qualified trials on all five primary cases must contain seven verified measured pairs, with the lower paired-bootstrap median-ratio 95% bound above one for baseline/packed. No routing promotion follows a partial panel.",
+  "two_times_target": "A target only: report whether every primary lower bound for baseline/packed reaches two, separately from measured central ratios.",
+  "uncertainty": "Per-case/trial descriptive paired bootstrap intervals. No familywise or population guarantee. Repeated fixtures do not constitute natural-yield observations.",
+  "candidate_id": null,
+  "online_speedup": null,
+  "comparison": "All arms use the unchanged round62 packed F4 and round63 native curve-witness producer. Baseline independently checks with the original Python GF2n arithmetic; squares adds prepared linear squaring tables; packed adds exact base-256 integer polynomial multiplication and linear reduction tables. All curve witness identities and fresh/frozen equation checks remain unchanged. Only field-dependent tables and packing masks persist. Conversion, parity extraction, reduction and checking are included in each complete query.",
+  "public_targets_sha256": "3cf21cde33631fc534111ba140e3e9f428a80176cb3ec44383cf457bc231f66f",
+  "arithmetic_parameters": {
+    "packed_input_degree_max": 255,
+    "coefficient_slot_bits": 8,
+    "small_multiplier_bits_max": 4,
+    "table_input_byte_bits": 8
+  }
+}
