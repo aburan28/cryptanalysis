@@ -9,9 +9,14 @@ residues. Its retained affine-entry count is 817,344, matching the parent
 cover at the same seed budget.
 
 The [native materializer](materialize_native.py) binds this atlas and the
-fresh 4,096-scalar panel to the direct-XYZZ evaluator. Its focused Rust test
-checks every point against the adic path, the certified digit path, and 128
-independent binary point results. The [Linux workflow](../../.github/workflows/prime-j0-cycle-redundant-native.yml)
-also runs the full native suite and ten boundary fixtures. Native replay is
-pending a terminal CI receipt. Any CPU wall-time comparison must pass the
+fresh 4,096-scalar panel to the direct-XYZZ evaluator. Its focused release
+Rust test passed locally: every point matched the adic path and certified
+digit path, and the first 128 points matched independent binary multiplication.
+The [receipt](local-targeted-check.json) binds the terminal test log, generated
+Rust source, atlas, panel, and binary hashes. A verified parent crate was used
+as the local materialization base because this sparse checkout lacked inherited
+source assets; the [Linux workflow](../../.github/workflows/prime-j0-cycle-redundant-native.yml)
+materializes from a full checkout and runs the complete native suite and ten
+boundary fixtures. Its terminal result is pending. The local test's elapsed
+time is a correctness observation. CPU wall-time comparisons must pass the
 host-level isolation gate in `docs/ISOLATED_BENCHMARKS.md`.
