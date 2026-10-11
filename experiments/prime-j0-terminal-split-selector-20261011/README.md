@@ -17,6 +17,13 @@ parts decide the rank directly. Different-representative ties keep the exact
 original rank. The selected scalar path, table, and online timing boundary are
 unchanged by this source transformation.
 
+The focused release test compares all four incremental corners with the
+independently computed direct four-product formula on the frozen 4,096-scalar
+panel and the edge inputs `0`, `1`, and `2^256-1`. It also compares the shared
+baseline with the original certified routine; it passed with raw output in
+[corner-equivalence.log](corner-equivalence.log). The complete native selector
+and point replay for this final patch is running as a separate check.
+
 The [patch](native.patch) applies to the exact benchmark crate identified by
 [base-tree-sha256.txt](base-tree-sha256.txt). [materialize.py](materialize.py)
 recreates the source and [selector-materialization.json](selector-materialization.json)
