@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "status": "draft_evidence_assessment",
+  "template_provenance": "The transfer skill's linked JSON template was unavailable from the skill package; this local draft preserves its required obligations, costs, controls, and boundaries.",
+  "question": "Do explicit low-degree isogeny transfers from P-256 expose a reproducible Pollard-rho iteration-rate advantage?",
+  "source": {
+    "curve": "NIST P-256 / secp256r1",
+    "field": "F_p",
+    "ambient_group": "E_0(F_p)",
+    "subgroup": "the full prime-order group of order n",
+    "cofactor": 1
+  },
+  "typed_correspondence": {
+    "nodes": "short-Weierstrass elliptic curves over the same F_p with order n",
+    "edges": "explicit F_p-rational separable isogenies",
+    "edge_degrees": [3, 5, 11, 13],
+    "path_depths_added": [10, 11],
+    "map_type": "composition of curve morphisms inducing group homomorphisms",
+    "kernel_intersection": "trivial on the order-n subgroup because n is prime and differs from every edge degree",
+    "log_transport": "Q = kP implies phi(Q) = k phi(P); transported generators and timed scalar relations are checked",
+    "representations": "stored rational maps plus short-model isomorphisms",
+    "recovery": "a destination logarithm is the same scalar modulo n"
+  },
+  "artifacts": {
+    "candidates": {
+      "path": "results/sage-low-degree-depth-eleven-20261006/candidates-delta.json",
+      "sha256": "e43cbcd2e5279a56efafb970d49bed483173ae6f1b5dfc89210da69133665fca"
+    },
+    "retained_union": {
+      "path": "results/sage-low-degree-depth-eleven-20261006/retained-union.json",
+      "sha256": "b6471aab1135a87fed1e2999a5aa90abc3b6d5010950bd623dfbaf97626ac0b5"
+    },
+    "native_screen": {
+      "path": "results/sage-low-degree-depth-eleven-20261006/native-screen/screening-summary.json",
+      "sha256": "05cb4fd130c8ffc2ececaf502f06d9004c8053814e63606edcca5b9033752d19"
+    },
+    "holdout": {
+      "path": "results/sage-low-degree-depth-eleven-20261006/holdout.json",
+      "sha256": "f0a1db9a93e430558dd9c8e4a67a26550e988662c04470d882c9e964d6e749a9"
+    }
+  },
+  "obligations": [
+    {
+      "name": "existence",
+      "status": "supported",
+      "scope": "304 new explicit candidates"
+    },
+    {
+      "name": "executable_construction",
+      "status": "supported",
+      "scope": "all edge kernels, maps, isomorphisms, and transported generators retained"
+    },
+    {
+      "name": "map_correctness",
+      "status": "supported",
+      "scope": "Sage construction checks plus explicit path continuity and degree-product verification"
+    },
+    {
+      "name": "subgroup_preservation",
+      "status": "supported",
+      "scope": "same prime order n, trivial kernel intersection, transported generator, scalar-relation checks"
+    },
+    {
+      "name": "measured_iteration_rate_advantage",
+      "status": "refuted",
+      "scope": "eight unadjusted screen hits; zero reproduced in the fresh 30-trial holdout"
+    },
+    {
+      "name": "host_isolated_speedup",
+      "status": "unknown",
+      "scope": "CPU affinity was separated but the repository host-isolation gate was not satisfied"
+    },
+    {
+      "name": "per_key_transfer_cost",
+      "status": "unknown",
+      "scope": "formulas exist but evaluation on both ECDLP points was not timed for the 304 additions"
+    },
+    {
+      "name": "end_to_end_attack_advantage",
+      "status": "unknown",
+      "scope": "no full P-256 collision and no charged per-key transfer timing"
+    },
+    {
+      "name": "full_class_coverage",
+      "status": "unknown",
+      "scope": "930 explicit curves are a bounded subset; exact class-number computation is still running"
+    },
+    {
+      "name": "exceptional_automorphism",
+      "status": "refuted",
+      "scope": "exact CM-field exclusion applies to the class; all new candidates have geometric automorphism order two"
+    },
+    {
+      "name": "low_norm_non_scalar_endomorphism",
+      "status": "refuted",
+      "scope": "exact fundamental-discriminant norm bound excludes a useful low-degree GLV-style endomorphism"
+    }
+  ],
+  "controls": [
+    "fresh P-256 baseline in every screening block",
+    "identical native field and group implementation for baseline and candidate",
+    "complete execution-position rotation within every block",
+    "tracked scalar relation verified after every timed trial",
+    "fresh 30-by-2-second holdout containing every unadjusted screening hit",
+    "candidate IDs deduplicated against the prior 626-curve union",
+    "generic small-curve planted-log collision retained in the initial frozen result"
+  ],
+  "costs": {
+    "measured_seconds": {
+      "reusable_depth_10_11_discovery": 125.92792451501009,
+      "native_screen_blocks": 1376.895011273,
+      "fresh_holdout": 555.26033973,
+      "preempted_quadclassunit_tech_6": 15918
+    },
+    "per_key_mapping": null,
+    "default_exact_class_group": "running",
+    "modeled_costs": null
+  },
+  "finding": "No reproducible iteration-rate advantage was found within depths 10 and 11 using edge degrees 3, 5, 11, and 13.",
+  "exploration_boundary": {
+    "new_curves": 304,
+    "combined_curves_including_p256": 930,
+    "combined_non_root_curves_with_native_measurements": 929,
+    "edge_degrees": [3, 5, 11, 13],
+    "maximum_depth": 11,
+    "claim": "not found within this family and boundary"
+  },
+  "open_obligations": [
+    "finish and independently check the exact class-number calculation",
+    "measure evaluation of each retained path on both ECDLP points before any end-to-end claim",
+    "rerun any future timing candidate under the repository host-isolation service",
+    "explore deeper paths or additional class-group generators without treating the current bounded null result as universal"
+  ]
+}

@@ -58,4 +58,8 @@ static inline uint32_t ca_j0_factored_hash_class_reduce(const ca_group *g, ca_el
     return best_k;
 }
 
+/* Private sixfold j=0 orbit representative.  Returns k such that the
+ * resulting point is psi^k of its input. */
+uint32_t ca_ec_j0_coord_canonicalize(const ca_group *g, ca_elem *Y);
+
 #endif

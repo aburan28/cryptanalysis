@@ -7,8 +7,10 @@
 //! determines `End(E) ⊗ Q` — if its squarefree part is unusually
 //! small, the curve has small-discriminant CM with exploitable
 //! structure (CSIDH-style isogeny graphs become tractable).  The
-//! agent's literature search did not find a published factorisation
-//! of this number for P-256 specifically.
+//! The repository now also carries a complete, Pocklington-certified
+//! factorisation and endomorphism-order classification in
+//! `experiments/p256-isogeny-search-20261005/`. This Rust module retains
+//! the broader twist and extension-field profiler.
 //!
 //! This module computes:
 //!
@@ -1618,9 +1620,9 @@ mod tests {
 
     /// **Deep factoring of P-256's CM discriminant** — extends the
     /// trial-division pass with Pollard rho on the composite
-    /// cofactor and a perfect-square check.  This is the most
-    /// thorough machine-checkable analysis of P-256's `|D|` I
-    /// can find in any public codebase.
+    /// cofactor and a perfect-square check. This remains a bounded Rust
+    /// cross-check of P-256's `|D|`. The complete certified
+    /// factorisation is frozen in `experiments/p256-isogeny-search-20261005/`.
     #[test]
     #[ignore = "slow: ~2 min of Pollard rho; --ignored to opt in"]
     fn cm_discriminant_deep_factor() {
