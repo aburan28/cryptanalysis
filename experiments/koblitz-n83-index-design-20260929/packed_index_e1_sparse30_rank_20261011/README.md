@@ -45,7 +45,7 @@ source/input hashes, memory cap, and interrupted reference are verified by
 `c563a232b0d456250b59d3e239fc7039957196a5fe7ced1d36626998bb1b1c60`.
 The pinned public crypto source is restored by `restore_crypto_source.py`.
 
-## Frozen isolated-host comparison
+## Frozen Tier 0 host comparison
 
 The [protocol](protocol.json) fixes four counterbalanced sparse29/sparse30
 pairs on the same target and a 900-second cap per arm. `benchmark_stage.py`
@@ -78,6 +78,50 @@ sudo taskset -c 0-62 python3 /workspace/cryptanalysis/scripts/isolated_bench.py 
 ```
 
 CPU and NUMA values are examples until verified against the host topology.
-The service accepts a stage wall-time comparison only after all four exact
-pairs and strict host/noise gates pass. A complete IC one-target comparison
-uses the repository's separate relation and recovery accounting.
+The service accepts a Tier 0 stage wall-time comparison only after all four
+exact pairs and strict host/noise gates pass. A complete IC one-target
+comparison uses the repository's separate relation and recovery accounting.
+
+## Frozen Tier 1 instance comparison
+
+The [Tier 1 protocol](tier1_protocol.json) binds the earlier stage protocol
+by SHA-256 and keeps the same public target, source, modes, pair certificate,
+and 29.9-million-state cap. It freezes eight alternating pairs and a
+300-second limit per arm. The [Tier 1 generator](make_tier1_manifest.py)
+checks both frozen arm receipts, restores the pinned source, verifies the
+candidate screen, and writes the benchmark runner's exact expected-field and
+expected-result contract. The output records the allocation receipt as a
+hashed artifact. A dry-run manifest using a placeholder executable passed
+`require_manifest` against the Tier 1 runner; it is a schema check, not a
+timing receipt.
+
+Run this protocol from a checkout containing both the sparse30 experiment
+and the merged Tier 1 runner from [PR #759](https://github.com/aburan28/cryptanalysis/pull/759).
+On a separate, otherwise idle Linux Pod, first save an operator allocation
+receipt as JSON with `provider` and `instance_id` fields matching the
+arguments below. Include the provider's image, CPU and memory allocation,
+and creation time when available; omit API credentials. Choose a CPU from
+`probe-host` that is present in the Pod affinity mask. After building the
+same release binary described above, run:
+
+```sh
+python3 /workspace/cryptanalysis/experiments/koblitz-n83-index-design-20260929/packed_index_e1_sparse30_rank_20261011/make_tier1_manifest.py \
+  --workdir /workspace/cryptanalysis \
+  --binary /workspace/build/n83-e1-sparse30-rank/release/native_packed_index \
+  --provider runpod --instance-id POD_ID \
+  --allocation-receipt /workspace/receipts/runpod-allocation.json \
+  --cpus SELECTED_CPU --execution-cpu SELECTED_CPU \
+  --output /workspace/sparse30-rank-tier1-manifest.json
+python3 /workspace/cryptanalysis/scripts/isolated_bench.py probe /workspace/sparse30-rank-tier1-manifest.json
+timeout 6600 python3 /workspace/cryptanalysis/scripts/isolated_bench.py \
+  run /workspace/sparse30-rank-tier1-manifest.json
+```
+
+The wrapper reports verified bounded-stage work. Preserve all eight pair
+records, source and input hashes, native phase timings, process CPU and
+memory observations, and any timeout or invalid row. A Tier 1 stage speedup
+requires complete exact pairs, stable artifacts, no observed cgroup throttle
+or memory-failure event, and the runner's 95% paired bootstrap lower bound
+above 1. Report its provider and instance ID with the ratio. The separate
+one-target IC comparison retains the relation and recovery accounting in
+`AGENTS.md`.
