@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "attempts": [
+    {
+      "attempt_id": "depth-35-prospective-command",
+      "command": "docker exec --workdir /repo/experiments/p256-isogeny-search-20261005 p256-classgroup-default taskset -c 2 sage -python scripts/extend_sage_low_degree.py --input results/sage-low-degree-depth-thirty-three-20261007/candidates-delta.json --ells 3,5,11,13 --target-depth 35 --max-new-nodes 2000 --output results/sage-low-degree-depth-thirty-five-20261008/candidates-delta.json",
+      "elapsed_seconds": 460.68224502299563,
+      "exit_code": 0,
+      "generated_candidates": 1072,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "deterministic-registry-freeze",
+      "command": "python3 scripts/freeze_large_json.py pack --source results/sage-low-degree-depth-thirty-five-20261008/candidates-delta.json --archive results/sage-low-degree-depth-thirty-five-20261008/candidates-delta.json.gz --manifest results/sage-low-degree-depth-thirty-five-20261008/candidates-delta.freeze.json",
+      "archive_bytes": 93239950,
+      "archive_sha256": "0c8121bf2522d21d9fee08bd3c34bad7f5fc8c573cf0cb01c085e8ac2ac351c9",
+      "exit_code": 0,
+      "status": "completed",
+      "uncompressed_bytes": 234925716,
+      "uncompressed_sha256": "a5594b9163ef8758b3143200090a45a0ccb5c773dd750f673a81c871b6d463c9"
+    },
+    {
+      "attempt_id": "deterministic-registry-repack-verification",
+      "command": "python3 scripts/freeze_large_json.py verify --archive results/sage-low-degree-depth-thirty-five-20261008/candidates-delta.json.gz --manifest results/sage-low-degree-depth-thirty-five-20261008/candidates-delta.freeze.json --source results/sage-low-degree-depth-thirty-five-20261008/candidates-delta.json --repack",
+      "byte_identical_repack": true,
+      "exit_code": 0,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "candidate-model-audit",
+      "command": "taskset -c 1 python3 scripts/audit_candidate_models.py --candidates results/sage-low-degree-depth-thirty-five-20261008/candidates-delta.json --output results/sage-low-degree-depth-thirty-five-20261008/candidate-model-audit.json",
+      "curves_including_p256": 1073,
+      "exit_code": 0,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "coefficient-audit-depth-label-correction",
+      "command": "taskset -c 1 python3 scripts/audit_candidate_coefficients_depth_thirty_five.py --candidates results/sage-low-degree-depth-thirty-five-20261008/candidates-delta.json --output results/sage-low-degree-depth-thirty-five-20261008/coefficient-audit.json",
+      "correction_scope": "Replayed the generic audit and corrected only its hard-coded depth-nineteen publication_status and finding labels.",
+      "exit_code": 0,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "conductor-audit-depth-label-correction",
+      "command": "taskset -c 1 python3 scripts/audit_candidate_conductors_depth_thirty_five.py --candidates results/sage-low-degree-depth-thirty-five-20261008/candidates-delta.json --output results/sage-low-degree-depth-thirty-five-20261008/conductor-audit.json",
+      "correction_scope": "Replayed the generic audit and corrected only its hard-coded depth-nineteen publication_status label.",
+      "exit_code": 0,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "native-screen-depth-35-interrupted-environment-offline",
+      "command": "taskset -c 0 python3 experiments/p256-isogeny-search-20261005/scripts/run_native_screen.py --binary suite/target/release/examples/p256_isogeny_native_bench --candidates experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-thirty-five-20261008/candidates-delta.json --block-size 6 --seconds 0.5 --rotations 1 --warmup-seconds 0.05 --output-dir results/sage-low-degree-depth-thirty-five-20261008/native-screen",
+      "completed_blocks_before_interruption": 155,
+      "exit_code": 255,
+      "failure": "The managed execution environment disconnected and restarted. The wrapper and current child process were lost; completed blocks were preserved separately and excluded from accepted evidence.",
+      "preserved_artifacts": "results/sage-low-degree-depth-thirty-five-20261008/native-screen-interrupted-environment-offline",
+      "status": "failed"
+    },
+    {
+      "attempt_id": "native-screen-depth-35",
+      "command": "taskset -c 0 python3 experiments/p256-isogeny-search-20261005/scripts/run_native_screen.py --binary suite/target/release/examples/p256_isogeny_native_bench --candidates experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-thirty-five-20261008/candidates-delta.json --block-size 6 --seconds 0.5 --rotations 1 --warmup-seconds 0.05 --output-dir results/sage-low-degree-depth-thirty-five-20261008/native-screen",
+      "block_artifact_hashes_verified": true,
+      "blocks": 179,
+      "candidate_trials": 7496,
+      "elapsed_wall_seconds_sum": 4842.2123599569995,
+      "exit_code": 0,
+      "linear_relations_verified_every_trial": true,
+      "screened_candidates": 1072,
+      "status": "completed",
+      "unadjusted_hits": 16,
+      "working_directory": "."
+    },
+    {
+      "attempt_id": "native-holdout-depth-35",
+      "command": "taskset -c 0 python3 experiments/p256-isogeny-search-20261005/scripts/run_native_holdout.py --binary suite/target/release/examples/p256_isogeny_native_bench --candidates experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-thirty-five-20261008/candidates-delta.json --screening experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-thirty-five-20261008/native-screen/screening-summary.json --seconds 2 --trials 30 --warmup-seconds 0.2 --output experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-thirty-five-20261008/holdout.json",
+      "all_linear_relations_verified": true,
+      "curve_trials": 510,
+      "elapsed_wall_seconds": 1047.335050394,
+      "exit_code": 0,
+      "holdout_candidates_excluding_root": 16,
+      "reproduced_speedups": 1,
+      "status": "completed",
+      "working_directory": "."
+    },
+    {
+      "attempt_id": "mapping-holdout-positive-invalid-cpu",
+      "command": "docker exec --workdir /repo/experiments/p256-isogeny-search-20261005 p256-classgroup-default taskset -c 3 sage -python scripts/benchmark_mapping_sage.py --candidates results/sage-low-degree-depth-thirty-five-20261008/candidates-delta.json --candidate-id p256-j-69e859f64c02e0aa8ece57d94d98bf388a9824498546bd3050ef821c063d189e --samples 25 --repeats 50 --warmup 10 --output results/sage-low-degree-depth-thirty-five-20261008/mapping-holdout-positive.json",
+      "exit_code": 1,
+      "failure": "CPU 3 was outside the Sage container's allowed CPU set; taskset failed before Sage started and no measurements were produced.",
+      "status": "failed"
+    },
+    {
+      "attempt_id": "mapping-holdout-positive",
+      "command": "docker exec --workdir /repo/experiments/p256-isogeny-search-20261005 p256-classgroup-default taskset -c 2 sage -python scripts/benchmark_mapping_sage.py --candidates results/sage-low-degree-depth-thirty-five-20261008/candidates-delta.json --candidate-id p256-j-69e859f64c02e0aa8ece57d94d98bf388a9824498546bd3050ef821c063d189e --samples 25 --repeats 50 --warmup 10 --output results/sage-low-degree-depth-thirty-five-20261008/mapping-holdout-positive.json",
+      "elapsed_wall_seconds": 18.499939441680908,
+      "exit_code": 0,
+      "per_key_mapping_mean_seconds": 0.0142460489848,
+      "reusable_map_parsing_seconds": 0.533396022,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "local-isolation-probe",
+      "command": "python3 scripts/isolated_bench.py probe-host",
+      "exit_code": 0,
+      "qualification": "not_qualified",
+      "reasons": [
+        "no isolated cgroup CPU partition",
+        "no nohz_full CPUs",
+        "numactl unavailable",
+        "CPU quota is 400000/100000 rather than unlimited",
+        "container virtualization does not establish physical-host exclusivity"
+      ],
+      "status": "completed"
+    },
+    {
+      "attempt_id": "exact-class-group-infrastructure-interruption",
+      "elapsed_lower_bound_seconds": 128200.207058,
+      "exit_code": 255,
+      "failure": "The managed environment restart stopped the container. PARI had emitted no result or checkpoint; the interruption was not an OOM.",
+      "output_present": false,
+      "status": "failed"
+    },
+    {
+      "attempt_id": "exact-class-group-restart",
+      "command": "docker start p256-classgroup-default",
+      "exit_code": 0,
+      "status": "running"
+    },
+    {
+      "attempt_id": "exact-class-group-status-checkpoint",
+      "command": "python3 experiments/p256-isogeny-search-20261005/scripts/record_class_group_status.py --result results/sage-class-group-20261006/class-group.json --output results/sage-class-group-20261006/status-depth-thirty-five.json",
+      "elapsed_lower_bound_seconds": 6225.224897,
+      "exit_code": 0,
+      "output_present": false,
+      "status": "running"
+    },
+    {
+      "attempt_id": "depth-35-finalizer-wrong-relative-path",
+      "command": "python3 experiments/p256-isogeny-search-20261005/scripts/finalize_sage_low_degree_depth_thirty_five.py --pr-parent-remote-commit 21599026ea4e3144b4bb6077813aae2dc97ae5da",
+      "exit_code": 2,
+      "failure": "The command was invoked from the experiment directory with a repository-relative script path; Python exited before loading evidence.",
+      "status": "failed"
+    },
+    {
+      "attempt_id": "full-verifier-suite-after-status-recorder-edit",
+      "commands": [
+        "for script in scripts/verify_*.py; do python3 $script; done",
+        "PYTHONPATH=src python3 -m unittest discover -s tests -p test_*.py"
+      ],
+      "exit_code": 1,
+      "failure": "An older frozen receipt detected that record_class_group_status.py had been edited. The change was reverted byte-for-byte before rerunning the suite; unit tests were not reached.",
+      "frozen_result_verifiers_passed_before_failure": 10,
+      "status": "failed"
+    },
+    {
+      "attempt_id": "full-verifier-and-unit-suite-final",
+      "commands": [
+        "for script in scripts/verify_*.py; do python3 $script; done",
+        "PYTHONPATH=src python3 -m unittest discover -s tests -p test_*.py"
+      ],
+      "exit_code": 0,
+      "frozen_result_verifiers_passed": 26,
+      "status": "completed",
+      "unit_tests_passed": 12
+    }
+  ]
+}
