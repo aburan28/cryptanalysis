@@ -10,6 +10,7 @@ if [[ -n "${PUBLIC_KEY:-}" ]]; then
 fi
 
 ssh-keygen -A >/dev/null 2>&1
+install -d -m 755 /run/sshd
 /usr/sbin/sshd
 if [[ -n "${ECC_START_COMMAND:-}" ]]; then
     exec /opt/ecc2k130/deploy/entrypoint.sh bash -lc "${ECC_START_COMMAND}"
