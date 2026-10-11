@@ -19,6 +19,7 @@
 #include "generated/tau_tail_double_fold.h"
 #include "generated/tau_tail_double_residue.h"
 #include "generated/tau_pair_fused.h"
+#include "generated/tau_pair_periodic.h"
 #include "generated/tau8_orbit_map.h"
 #include "generated/tau8_hot_map.h"
 #include "generated/tau8_pair_map.h"
@@ -1449,6 +1450,215 @@ int ca_ec_tau_pair_complete_mul_profile(const ca_group *g, const ca_tau_pair_com
     tau_jac acc = {0, g->mont.r1, 0};
     uint64_t na = 0, n3 = 0;
     for (size_t i = pairs; i-- > 0;) {
+        if (acc.z) {
+            acc = jac_triple(g, acc);
+            n3++;
+        }
+        uint16_t word = words[i];
+        if (word == CA_TAU_PAIR_FUSED_ZERO) continue;
+        unsigned orbit = word & 127u, power = (word >> 7) & 3u;
+        if (orbit >= CA_TAU_PAIR_FUSED_REPS || power >= 3) return 0;
+        unsigned negative = ((word & 512u) != 0) ^ ((i & 1) != 0);
+        size_t index = 6 * orbit + 3 * negative + (power + (unsigned)(i % 3)) % 3;
+        const ca_elem *point = &pre->exact[index];
+        if (point->w[2]) continue;
+        acc = jac_add_mixed(g, acc, point);
+        na++;
+    }
+    jac_to_affine(g, out, acc);
+    if (triples) *triples = n3;
+    if (adds) *adds = na;
+    return 1;
+}
+
+static int tau_pair_periodic_bounded(ca_i128 a, ca_i128 b)
+{
+    return a >= -CA_TAU_PAIR_PERIODIC_BOUND && a <= CA_TAU_PAIR_PERIODIC_BOUND &&
+           b >= -CA_TAU_PAIR_PERIODIC_BOUND && b <= CA_TAU_PAIR_PERIODIC_BOUND;
+}
+
+static size_t tau_pair_periodic_tail_index(ca_i128 a, ca_i128 b)
+{
+    return (size_t)(a + CA_TAU_PAIR_PERIODIC_BOUND) * CA_TAU_PAIR_PERIODIC_SIDE +
+           (size_t)(b + CA_TAU_PAIR_PERIODIC_BOUND);
+}
+
+static size_t tau_pair_periodic_atlas_index(ca_i128 a, ca_i128 b)
+{
+    int ra = (int)((a % 27 + 27) % 27), rb = (int)((b % 27 + 27) % 27);
+    if (ra > 13) ra -= 27;
+    if (rb > 13) rb -= 27;
+    return (size_t)(ra + 13) * CA_TAU_PAIR_PERIODIC_MODULUS + (size_t)(rb + 13);
+}
+
+static int tau_pair_periodic_quotient(ca_i128 a, ca_i128 b, ca_i128 da, ca_i128 db,
+                                      ca_i128 *qa, ca_i128 *qb)
+{
+    ca_i128 ax = a - da, by = b - db;
+    if (ax % 3 || by % 3) return 0;
+    *qa = 2 * (ax / 3) + by;
+    *qb = -(ax + by) / 3;
+    return 1;
+}
+
+static int tau_pair_periodic_canonical_step(ca_i128 *a, ca_i128 *b,
+                                             const ca_tau4_digit digit[81], uint16_t *word)
+{
+    uint8_t slots[2] = {255, 255};
+    for (size_t j = 0; j < 2; j++) {
+        if (residue3(*a)) {
+            int slot = 9 * (int)((*a % 9 + 9) % 9) + (int)((*b % 9 + 9) % 9);
+            if (digit[slot].seed < 0) return 0;
+            slots[j] = (uint8_t)slot;
+            *a -= digit[slot].a;
+            *b -= digit[slot].b;
+        }
+        ca_i128 old_a = *a;
+        if (old_a % 3) return 0;
+        *a += *b;
+        *b = -old_a / 3;
+    }
+    *word = tau_pair_single_word(slots[0], slots[1]);
+    return *word != CA_TAU_PAIR_FUSED_UNREACHABLE;
+}
+
+/* Returns 2 only for the specified 128-word periodic fallback. */
+static int tau_pair_periodic_plan(ca_i128 a, ca_i128 b, const ca_tau4_digit digit[81],
+                                  int periodic, uint16_t words[128], size_t *count,
+                                  uint64_t *lookups)
+{
+    size_t length = 0;
+    while (a || b) {
+        if (length == 128) return periodic ? 2 : 0;
+        uint16_t word = CA_TAU_PAIR_FUSED_UNREACHABLE;
+        if (tau_pair_periodic_bounded(a, b))
+            word = ca_tau_pair_periodic_tail[tau_pair_periodic_tail_index(a, b)];
+        if (word == CA_TAU_PAIR_FUSED_UNREACHABLE && periodic) {
+            word = ca_tau_pair_periodic_atlas[tau_pair_periodic_atlas_index(a, b)];
+            if (lookups) (*lookups)++;
+        }
+        if (word == CA_TAU_PAIR_FUSED_UNREACHABLE) {
+            if (!tau_pair_periodic_canonical_step(&a, &b, digit, &word)) return 0;
+        } else {
+            ca_i128 da, db, qa, qb;
+            if (!tau_pair_contribution(word, &da, &db) ||
+                !tau_pair_periodic_quotient(a, b, da, db, &qa, &qb))
+                return 0;
+            if (tau_pair_periodic_bounded(a, b) &&
+                ca_tau_pair_periodic_tail[tau_pair_periodic_tail_index(a, b)] == word &&
+                !tau_pair_periodic_bounded(qa, qb))
+                return 0;
+            a = qa;
+            b = qb;
+        }
+        words[length++] = word;
+    }
+    while (length && words[length - 1] == CA_TAU_PAIR_FUSED_ZERO) length--;
+    *count = length;
+    return 1;
+}
+
+static unsigned tau_pair_periodic_score(const uint16_t words[128], size_t count)
+{
+    if (!count) return 0;
+    unsigned nonzero = 0;
+    for (size_t i = 0; i < count; i++) nonzero += words[i] != CA_TAU_PAIR_FUSED_ZERO;
+    return 10 * (unsigned)(count - 1) + 16 * nonzero;
+}
+
+int ca_ec_tau_pair_periodic_recode_words(const ca_tau_pair_complete_precomp *pre, uint64_t k,
+                                         int gated, uint16_t words[128], size_t *count,
+                                         uint64_t *lookups, uint64_t *accepted,
+                                         uint64_t *fallbacks)
+{
+    if (!pre || !pre->base.g || !words || !count || (gated != 0 && gated != 1)) return 0;
+    if (lookups) *lookups = 0;
+    if (accepted) *accepted = 0;
+    if (fallbacks) *fallbacks = 0;
+    *count = 0;
+    const ca_group *g = pre->base.g;
+    if (k % g->order == 0) return 1;
+    ca_i128 x, y;
+    reduce_with_lattice((tau_vec){pre->base.v1x, pre->base.v1y},
+                        (tau_vec){pre->base.v2x, pre->base.v2y}, pre->base.det, k % g->order,
+                        &x, &y);
+    const ca_i128 limit = (ca_i128)1 << 55;
+    if (x <= -limit || x >= limit || y <= -limit || y >= limit) {
+        *count = tau_pair_canonical_words(x, y, pre->base.digit, words);
+        return *count != 0;
+    }
+    int status = tau_pair_periodic_plan(x, y, pre->base.digit, 0, words, count, NULL);
+    if (status != 1) return 0;
+    if (!gated) return 1;
+    uint16_t periodic_words[128];
+    size_t periodic_count = 0;
+    status = tau_pair_periodic_plan(x, y, pre->base.digit, 1, periodic_words, &periodic_count,
+                                    lookups);
+    if (status == 2) {
+        if (fallbacks) *fallbacks = 1;
+        return 1;
+    }
+    if (status != 1) return 0;
+    if (tau_pair_periodic_score(periodic_words, periodic_count) <
+        tau_pair_periodic_score(words, *count)) {
+        memcpy(words, periodic_words, periodic_count * sizeof(*words));
+        *count = periodic_count;
+        if (accepted) *accepted = 1;
+    }
+    return 1;
+}
+
+int ca_ec_tau_pair_periodic_recode_verify_scalar(const ca_tau_pair_complete_precomp *pre,
+                                                 uint64_t k, int gated)
+{
+    if (!pre || !pre->base.g) return 0;
+    uint16_t words[128];
+    size_t count = 0;
+    if (!ca_ec_tau_pair_periodic_recode_words(pre, k, gated, words, &count, NULL, NULL, NULL))
+        return 0;
+    ca_i128 a = 0, b = 0, da, db;
+    for (size_t i = count; i-- > 0;) {
+        ca_i128 next_a = -3 * a - 9 * b, next_b = 3 * a + 6 * b;
+        if (!tau_pair_contribution(words[i], &da, &db)) return 0;
+        a = next_a + da;
+        b = next_b + db;
+    }
+    ca_i128 x, y;
+    reduce_with_lattice((tau_vec){pre->base.v1x, pre->base.v1y},
+                        (tau_vec){pre->base.v2x, pre->base.v2y}, pre->base.det,
+                        k % pre->base.g->order, &x, &y);
+    return a == x && b == y;
+}
+
+size_t ca_ec_tau_pair_periodic_static_bytes(void)
+{
+    return ca_ec_tau_pair_complete_static_bytes() + sizeof(ca_tau_pair_periodic_tail) +
+           sizeof(ca_tau_pair_periodic_atlas);
+}
+
+int ca_ec_tau_pair_periodic_mul_profile(const ca_group *g, const ca_tau_pair_complete_precomp *pre,
+                                        ca_elem *out, uint64_t k, int gated, uint64_t *triples,
+                                        uint64_t *adds, uint64_t *lookups,
+                                        uint64_t *accepted, uint64_t *fallbacks)
+{
+    if (!g || !pre || !out || pre->base.g != g) return 0;
+    if (triples) *triples = 0;
+    if (adds) *adds = 0;
+    if (lookups) *lookups = 0;
+    if (accepted) *accepted = 0;
+    if (fallbacks) *fallbacks = 0;
+    if (pre->base.identity || k % g->order == 0) {
+        *out = (ca_elem){{0, 0, 1, 0}};
+        return 1;
+    }
+    uint16_t words[128];
+    size_t count = 0;
+    if (!ca_ec_tau_pair_periodic_recode_words(pre, k, gated, words, &count, lookups, accepted,
+                                               fallbacks) || !count)
+        return 0;
+    tau_jac acc = {0, g->mont.r1, 0};
+    uint64_t na = 0, n3 = 0;
+    for (size_t i = count; i-- > 0;) {
         if (acc.z) {
             acc = jac_triple(g, acc);
             n3++;

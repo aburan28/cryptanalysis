@@ -9,7 +9,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef SCALARS
 #define SCALARS    4096
+#endif
 #define FNV_OFFSET UINT64_C(14695981039346656037)
 #define FNV_PRIME  UINT64_C(1099511628211)
 
@@ -96,7 +98,9 @@ static int select_mode(const char *name)
                                   "tail-double-fold",
                                   "tail-double-residue",
                                   "tail-pair-fused",
-                                  "tail-pair-complete"};
+                                  "tail-pair-complete",
+                                  "tail-pair-periodic-canonical",
+                                  "tail-pair-periodic-gated27"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -118,7 +122,8 @@ int main(int argc, char **argv)
                 "tapered-residue-orbit-batch128|tapered-residue-graph-batch128|"
                 "tapered-residue-packed-batch128|tapered-residue-wavefront-batch128|"
                 "tail-oracle|tail-oracle-gated|tail-double|tail-double-fold|"
-                "tail-double-residue|tail-pair-fused|tail-pair-complete "
+                "tail-double-residue|tail-pair-fused|tail-pair-complete|"
+                "tail-pair-periodic-canonical|tail-pair-periodic-gated27 "
                 "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
@@ -139,7 +144,8 @@ int main(int argc, char **argv)
     int packed = mode == 21;
     int wavefront = mode == 22;
     int pair_fused = mode == 28;
-    int pair_complete = mode == 29;
+    int pair_periodic = mode == 30 || mode == 31;
+    int pair_complete = mode == 29 || pair_periodic;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
     size_t block_size = mode >= 7 && mode <= 10 ? (size_t[]){32, 128, 512, 4096}[mode - 7] : 1;
     uint64_t scalars[SCALARS], input_digest;
@@ -283,8 +289,10 @@ int main(int argc, char **argv)
         prep_ms = 1000 * (ca_now() - t0);
     }
     uint64_t triples = 0, adds = 0, rotations = 0, output_inversions = 0;
+    uint64_t periodic_lookups = 0, periodic_accepted = 0, periodic_fallbacks = 0;
     uint64_t fallbacks = 0, second_recodes = 0, steered_blocks = 0;
-    size_t static_map_bytes = pair_complete           ? ca_ec_tau_pair_complete_static_bytes()
+    size_t static_map_bytes = pair_periodic           ? ca_ec_tau_pair_periodic_static_bytes()
+                              : pair_complete         ? ca_ec_tau_pair_complete_static_bytes()
                               : pair_fused            ? ca_ec_tau_pair_fused_static_bytes()
                               : mode == 27            ? ca_ec_tau4_residue_static_bytes()
                               : mode == 26            ? ca_ec_tau4_fold_static_bytes()
@@ -297,7 +305,8 @@ int main(int argc, char **argv)
     size_t recipe_bytes = packed || wavefront ? ca_ec_tau_wide_packed_recipe_bytes(wide_schedule)
                           : graph             ? ca_ec_tau_wide_graph_recipe_bytes(wide_schedule)
                                               : 0;
-    size_t online_scratch_bytes = pair_complete || pair_fused ? 512
+    size_t online_scratch_bytes = pair_periodic ? 1024
+                                  : pair_complete || pair_fused ? 512
                                   : fused || tapered          ? 128 * 32
                                   : mode >= 7 && mode <= 10   ? block_size * 32
                                                               : 0;
@@ -340,6 +349,21 @@ int main(int argc, char **argv)
                 adds += a;
                 rotations += r;
                 output_inversions += !outputs[i].w[2];
+            } else if (pair_periodic) {
+                uint64_t t = 0, a = 0, lookups = 0, accepted = 0, fallbacks_local = 0;
+                if (!ca_ec_tau_pair_periodic_mul_profile(&group, &complete_pre, &outputs[i],
+                                                          scalars[i], mode == 31, &t, &a,
+                                                          &lookups, &accepted,
+                                                          &fallbacks_local)) {
+                    fprintf(stderr, "periodic pair evaluation failed at index %zu\n", i);
+                    free(outputs);
+                    return 1;
+                }
+                triples += t;
+                adds += a;
+                periodic_lookups += lookups;
+                periodic_accepted += accepted;
+                periodic_fallbacks += fallbacks_local;
             } else if (pair_complete) {
                 uint64_t t = 0, a = 0, r = 0;
                 if (!ca_ec_tau_pair_complete_mul_profile(&group, &complete_pre, &outputs[i],
@@ -409,6 +433,7 @@ int main(int argc, char **argv)
     uint64_t tail_double_checks = 0;
     uint64_t tail_pair_checks = 0;
     uint64_t tail_complete_checks = 0;
+    uint64_t periodic_checks = 0, periodic_word_digest = FNV_OFFSET;
     for (size_t i = 0; i < SCALARS; i++) {
         if (mode != 0) {
             if (mode == 11 && !ca_ec_tau4_recode_compare_scalar(&pre, scalars[i])) {
@@ -446,13 +471,36 @@ int main(int argc, char **argv)
                 return 1;
             }
             tail_pair_checks += pair_fused;
-            if (pair_complete &&
+            if (pair_periodic) {
+                uint16_t pair_words[128];
+                size_t pair_count = 0;
+                if (!ca_ec_tau_pair_periodic_recode_verify_scalar(&complete_pre, scalars[i],
+                                                                   mode == 31) ||
+                    !ca_ec_tau_pair_periodic_recode_words(&complete_pre, scalars[i], mode == 31,
+                                                           pair_words, &pair_count, NULL, NULL,
+                                                           NULL)) {
+                    fprintf(stderr, "periodic pair recode mismatch at index %zu\n", i);
+                    free(outputs);
+                    return 1;
+                }
+                periodic_word_digest = digest_word(periodic_word_digest, pair_count);
+                for (size_t j = 0; j < pair_count; j++)
+                    periodic_word_digest = digest_word(periodic_word_digest, pair_words[j]);
+                if (SCALARS == 64 && getenv("CA_PAIR_TRACE_WORDS")) {
+                    fprintf(stderr, "trace_words=%zu:%zu", i, pair_count);
+                    for (size_t j = 0; j < pair_count; j++)
+                        fprintf(stderr, ":%u", (unsigned)pair_words[j]);
+                    fputc('\n', stderr);
+                }
+                periodic_checks++;
+            }
+            if (pair_complete && !pair_periodic &&
                 !ca_ec_tau_pair_complete_recode_verify_scalar(&complete_pre, scalars[i])) {
                 fprintf(stderr, "phase-complete pair recode mismatch at index %zu\n", i);
                 free(outputs);
                 return 1;
             }
-            tail_complete_checks += pair_complete;
+            tail_complete_checks += pair_complete && !pair_periodic;
             ca_elem expected;
             ca_group_mul(&group, &expected, &point, scalars[i], NULL);
             if (!ca_group_equal(&group, &outputs[i], &expected)) {
@@ -487,7 +535,10 @@ int main(int argc, char **argv)
         " prep_affine_edge_squarings_model=%" PRIu64 " online_scratch_bytes=%zu"
         " tail_stream_checks=%" PRIu64 " tail_double_checks=%" PRIu64 " tail_pair_checks=%" PRIu64
         " tail_pair_preparation_checks=%" PRIu64 " tail_complete_checks=%" PRIu64
-        " tail_complete_preparation_checks=%" PRIu64 " verified=1\n",
+        " tail_complete_preparation_checks=%" PRIu64
+        " periodic_lookups=%" PRIu64 " periodic_accepted=%" PRIu64
+        " periodic_fallbacks=%" PRIu64 " periodic_checks=%" PRIu64
+        " periodic_word_digest=%016" PRIx64 " verified=1\n",
         argv[2], argv[3], SCALARS, point_words[0], point_words[1], group.endo_lambda, input_digest,
         output_digest, online_ms, prep_ms, verify_ms, prep_triples, prep_adds, prep_rotations,
         prep_seed_ops, prep_layer_inversions, prep_bytes, prep_temp_heap_bytes, prep_repeats,
@@ -497,6 +548,7 @@ int main(int argc, char **argv)
         wavefront_stats.doubling_edges, 5 * wavefront_stats.denominators,
         wavefront_stats.denominators + wavefront_stats.doubling_edges, online_scratch_bytes,
         tail_stream_checks, tail_double_checks, tail_pair_checks, tail_pair_preparation_checks,
-        tail_complete_checks, tail_complete_preparation_checks);
+        tail_complete_checks, tail_complete_preparation_checks, periodic_lookups,
+        periodic_accepted, periodic_fallbacks, periodic_checks, periodic_word_digest);
     return 0;
 }
