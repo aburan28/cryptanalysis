@@ -9,6 +9,31 @@ the crypto repository at
 `docs/curves/ic/curves.yaml`; cryptanalysis owns the source record and crypto
 uses the mirror as a crosswalk to its ICV1 registry.
 
+## Semantic metadata gate
+
+Run `python3 experiments/ic-candidate-catalog/validate_semantics.py` from the
+repository root. The `ic-semantic-metadata` CI job runs it for changes to the
+registry, graph, archived IC1 candidates/workloads, or factor-base index. It
+validates the JSON Schemas, recomputes full curve UIDs and compact EC1/IC1
+hashes, checks actual `fb<B>` counts against the archive index, and checks
+curve traits, link inventories, graph endpoints, ordered routes and proved
+volcano directions. Historical multi-target workload files retain their
+original IDs; the separate measurement contract governs new primary runs.
+
+`mirror-lock.json` pins the bytes of `curves.yaml`, `curves.schema.json`, and
+`curve-links/link.schema.json`. Change it only with a reviewed edit to those
+files and copy the same files and lock into crypto's `docs/curves/ic/`. With
+both checkouts available, pass `--peer /path/to/crypto` to compare the three
+source files byte for byte. Crypto CI also checks its mirror against this
+repository's `main` branch, including the validator implementation itself.
+Keep its negative tests mirrored as well. Merge a source update here before
+its mirror PR.
+
+This gate checks metadata integrity and evidence references. It does not
+replay a map, prove a point order, certify a factor-base orbit, or measure a
+DLP. Those claims still need the corresponding mathematical verifier and
+run receipt.
+
 | Object | Authoritative path | Identity and rule |
 | --- | --- | --- |
 | Exact curve representation | `curves.yaml` | `EC1...` and full `curve_uid` hash only `field` and `curve`. A change of basis, model, subgroup, or generator gets a new identity. |
