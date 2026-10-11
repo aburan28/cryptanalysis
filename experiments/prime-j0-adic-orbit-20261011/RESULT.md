@@ -44,3 +44,9 @@ current checkout and emits crate-relative includes, so it can run on
 Linux without this Mac's filesystem path. The serial Linux correctness
 replay remains a separate gate; no controlled wall-time ratio is
 reported here.
+
+The [Linux dispatch receipt](remote-dispatch.json) pins source commit
+`38bb34b7aa09cf33203fcf5b68393dbd7053f2d2` and the staged script
+hash. Job `20261011T031406Z_prime-j0-adic-orbit-linux-38bb34b_XNwlQE`
+is queued in the serial RunPod runner behind its existing active job.
+This records dispatch, not a completed Linux result.
