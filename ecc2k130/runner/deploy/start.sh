@@ -11,4 +11,7 @@ fi
 
 ssh-keygen -A >/dev/null 2>&1
 /usr/sbin/sshd
+if [[ -n "${ECC_START_COMMAND:-}" ]]; then
+    exec /opt/ecc2k130/deploy/entrypoint.sh bash -lc "${ECC_START_COMMAND}"
+fi
 exec /opt/ecc2k130/deploy/entrypoint.sh "$@"
