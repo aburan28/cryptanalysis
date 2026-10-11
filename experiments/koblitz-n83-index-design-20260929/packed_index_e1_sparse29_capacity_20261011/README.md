@@ -58,3 +58,37 @@ Cargo-manifest hashes embedded as `NATIVE_S3_SOURCE_SHA256` and
 overwrite receipts and records the new host's binary hash before timing.
 The repository [CPU isolation gate](../../../docs/ISOLATED_BENCHMARKS.md)
 governs any controlled wall-time comparison.
+
+## Isolated physical-host comparison
+
+`benchmark_stage.py` replays either arm and checks its exact raw-result fields
+against the frozen completed rows. It emits the native target-stage interval,
+the paired correctness certificate, and base64-encoded raw JSON. The wrapper
+checks and process startup are outside that interval. `make_manifest.py`
+verifies the partial local receipts, frozen source and inputs, first-witness
+sample, and paired certificate before producing four counterbalanced pairs for
+the isolated benchmark service.
+
+On a Linux host with this experiment and the shared input directory under
+`/workspace/cryptanalysis`, build from the pinned source before timing:
+
+```sh
+cd /workspace/cryptanalysis/experiments/koblitz-n83-index-design-20260929/packed_index_e1_sparse29_capacity_20261011
+python3 restore_crypto_source.py
+python3 verify_partial.py
+NATIVE_S3_SOURCE_SHA256=d9cbef74955d120b0c8051da30a3d391a802ebd342d2bb289ccfbcfe1230bfe5 \
+NATIVE_S3_BUILD_MANIFEST_SHA256=7f3282483caf608a23850e33d845faf825a960263ea22c84ded567425860cd88 \
+cargo build --release --locked --target-dir /workspace/build/n83-e1-sparse29-capacity
+python3 make_manifest.py \
+  --workdir /workspace/cryptanalysis \
+  --binary /workspace/build/n83-e1-sparse29-capacity/release/native_packed_index \
+  --cgroup /sys/fs/cgroup/benchmark-isolated \
+  --cpus 63 --execution-cpu 63 --mem-nodes VERIFIED_NODE \
+  --output /workspace/sparse29-capacity-paired-manifest.json
+sudo taskset -c 0-62 python3 /workspace/cryptanalysis/scripts/isolated_bench.py probe /workspace/sparse29-capacity-paired-manifest.json
+```
+
+The CPU and NUMA values are examples and must come from the physical host's
+verified topology. Submit or run the manifest only after `probe` passes.
+Each replay preserves raw failures and host counters; a completed, clean
+four-pair receipt is needed to resolve the wall-time comparison.
