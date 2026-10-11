@@ -47,6 +47,34 @@ and `aburan28/ml-cryptanalysis`:
 - `make check` must pass (references and citations resolved, no LaTeX errors,
   no overfull boxes) before a PDF is recommitted.
 
+## Mathematical results should include Lean proofs
+
+**Standing owner instruction, 2026-10-11:** For every new or substantially
+revised mathematical result, include a faithful Lean 4 theorem and checked
+proof whenever formalization is feasible. Treat the formalization attempt as
+part of the requested work, prioritize the central theorem and its
+dependencies, and keep a readable mathematical proof in the report.
+
+- Maintain a proof map from each result to its Lean declaration, exact
+  hypotheses and verification status. Preserve the statement's quantifiers,
+  exceptional cases, field, curve, subgroup and endomorphism-order assumptions.
+- Pin the Lean toolchain and dependency revisions. Build the actual theorem
+  modules, retain the command and output, and audit every reported theorem
+  with `#print axioms`. Use `lean4checker --fresh` when available.
+- A reported Lean proof must contain no `sorry`, `admit`, `sorryAx`, custom
+  axioms encoding the research claim, kernel-check bypasses or unverified
+  native evaluation. Record the standard Lean foundations used.
+- Prove structural implications as well as polynomial identities. Expose
+  conditional assumptions and any missing bridge to the actual mathematical
+  objects. Do not substitute a weaker statement, assumed conclusion, circular
+  hypothesis or arithmetic certificate for the full theorem.
+- When full formalization remains unfinished, preserve the original result
+  and written proof, complete the feasible Lean lemmas, and record the exact
+  missing definition, dependency, proof obligation or failed build. Label the
+  formalization partial and keep the full theorem open.
+- Add reproducible proof checks to CI where practical, and preserve frozen
+  evidence through versioned formalization additions.
+
 ## Index-calculus candidate names and measurements
 
 Use this convention for new elliptic-curve index-calculus (IC) candidate
