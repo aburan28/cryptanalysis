@@ -1,13 +1,12 @@
 # Compact tau-six and fixed-base GLV comb comparison
 
-The compact eight-row tau-six comb uses **648 stored affine seed points** and
-46,737 source field-product units across 128 frozen holdout scalars. A paired
-GLV comb uses 512 stored subset entries and 53,266 units at nine rows, or
-1,024 entries and 45,908 units at ten rows. This identifies a concrete
-table-budget frontier: the tau path has the lower formula count within a
-648-entry budget, while the 1,024-entry GLV path has the lower formula count
-with a larger table. The four-row tau path uses 324 entries and 59,222 units;
-the 256-entry, eight-row GLV path uses 56,989 units.
+The compact 12-row tau-six comb uses **972 stored affine seed points** and
+**42,417** source field-product units across 128 frozen holdout scalars.
+The paired 10-row GLV comb uses 1,024 stored subset entries and 45,908
+units. Tau reduces this source proxy by 3,491 units (7.6%) while storing
+52 fewer entries; its count is lower on all 128 paired scalars. The 8-row
+tau path uses 648 entries and 46,737 units, versus 53,266 units for the
+512-entry, 9-row GLV source screen.
 
 ## Matched mathematical input
 
@@ -39,7 +38,7 @@ comparison counts allocated entries, including GLV's identity slot.
 ## Paired holdout operation counts
 
 GLV row 9 is an algebraically checked source-operation screen. Native
-point replay covers GLV rows 8 and 10 and tau rows 4 and 8.
+point replay covers GLV rows 8 and 10 and tau rows 4, 8, and 12.
 
 | Method | Rows | Stored entries | Shifted-base setup | Table addition calls | Online maps | Online mixed additions | Source proxy |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -48,6 +47,7 @@ point replay covers GLV rows 8 and 10 and tau rows 4 and 8.
 | GLV comb | 9 | 512 | 120 doubles | 502 | 1,792 doubles | 3,702 | 53,266 |
 | Tau-six comb | 8 | 648 | 147 tau maps | 640 | 2,512 tau maps | 3,107 | 46,737 |
 | GLV comb | 10 | 1,024 | 117 doubles | 1,013 | 1,536 doubles | 3,196 | 45,908 |
+| Tau-six comb | 12 | 972 | 154 tau maps | 960 | 1,648 tau maps | 3,107 | 42,417 |
 
 The source proxy charges seven field products per native Jacobian double,
 five per tau map, and eleven per mixed addition. It counts the
@@ -62,7 +62,7 @@ implementations. Complete wall-time comparisons need a passing
 ## Verification and reproduction
 
 The saved comparison checks 214 paired scalars. Both native GLV modes
-(8 and 10 rows) and both compact tau modes (4 and 8 rows) match an
+(8 and 10 rows) and all three compact tau modes (4, 8, and 12 rows) match an
 independent affine secp256k1 reference on every point; the GLV component
 congruence and all native operation counts match the screen. A second
 seeded check verifies 521 scalars per mode, including negative values and
@@ -80,11 +80,11 @@ PYTHONDONTWRITEBYTECODE=1 python3 glv_comb_comparison.py \
 ```
 
 The frozen comparison JSON SHA-256 is
-`80c347f04d7729a9e0001154afb840031593cf08f6443eeb845218bd1fd88bbc`.
+`8f19966af31c573887a60168c2dbc91e19635c7120d3f31342878f840600208b`.
 The binary SHA-256 is
-`834dc6202261916bb9817b1c92e78fe620e66e262bac23487b268e4dd3ff78b2`;
+`b0d1e7245baa68b1856c7799c88501f8721207ff8d2c48b8a38cfaf7c77ab4d9`;
 the native source SHA-256 is
-`bc8ebfec00f722001caf96fd27e2a2e8eeef068770b141ecc3c0da102df852f2`.
+`a1aaa5aff061c650376c21f2e42d411e3153aa3e9bf404fe9a7aa5267baea663`.
 
 The next experiment should compare the complete online operations on an
 isolated host, including both recoders and on-demand `omega` work, then

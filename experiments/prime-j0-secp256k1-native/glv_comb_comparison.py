@@ -17,7 +17,7 @@ from check_eisenstein_scalar_fixed import (
 
 HERE = Path(__file__).resolve().parent
 GLV_ROWS = (4, 8, 9, 10, 11)
-TAU_ROWS = (4, 8)
+TAU_ROWS = (4, 8, 12)
 U = (193508920647619669885755136084601127231,
      238911465918039986966665730306072050094)
 V = (-U[1], 303414439467246543595250775667605759171)
@@ -80,13 +80,14 @@ def check_random(binary, count):
     scalars.extend(rng.randrange(-2 * order, 2 * order) for _ in range(count))
     reference = [curve.point_multiply(scalar % order) for scalar in scalars]
     for mode in ("--scalar-glv-comb8-fixed", "--scalar-glv-comb10-fixed",
-                 "--scalar-w6-comb4-fixed", "--scalar-w6-comb8-fixed"):
+                 "--scalar-w6-comb4-fixed", "--scalar-w6-comb8-fixed",
+                 "--scalar-w6-comb12-fixed"):
         rows = native_rows(binary, mode, scalars)
         for index, (row, point) in enumerate(zip(rows, reference)):
             assert affine_from_native(row["point"]) == point, (mode, index)
     print(json.dumps({"schema": 1, "status": "passed", "seed": 20261009,
                       "random_scalars": count, "scalar_cases_per_mode": len(scalars),
-                      "native_modes": ["glv8", "glv10", "tau4", "tau8"],
+                      "native_modes": ["glv8", "glv10", "tau4", "tau8", "tau12"],
                       "binary_sha256": sha(binary),
                       "source_sha256": sha(Path(__file__))}, sort_keys=True))
 
@@ -172,7 +173,7 @@ def main():
               "glv_rows": GLV_ROWS, "tau_rows": TAU_ROWS,
               "glv_component_bounds": [str(K1_BOUND), str(K2_BOUND)],
               "proxy_costs": {"doubling": 7, "tau": 5, "mixed_addition": 11},
-              "native_verified_modes": ["glv8", "glv10", "tau4", "tau8"],
+              "native_verified_modes": ["glv8", "glv10", "tau4", "tau8", "tau12"],
               "totals": {panel: {mode: dict(counts) for mode, counts in values.items()}
                          for panel, values in totals.items()},
               "cases": cases,
