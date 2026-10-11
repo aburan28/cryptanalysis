@@ -348,3 +348,15 @@ outputs, identical curve-preparation and online operations, 39,368 and
 stored graph builder; `test_curve` passed 1,030,887 checks. Both formats
 are present in the paired binary, and no isolated CPU timing or standalone
 binary-memory saving has been established.
+
+## Batched affine graph wavefront
+
+The [wavefront protocol](AFFINE_WAVEFRONT.md) was frozen in draft PR #299
+before native evaluation. The [eight-point panel](affine-wavefront-panel.json)
+matches all 1,229,148 prepared entries and 32,768 generic scalar outputs
+against the packed graph, with identical graph-addition and online counters.
+It trades three or four additional batch inversions and extra temporary
+scratch for fewer modeled field operations per graph edge and no final
+projective-to-affine normalization. The candidate is opt-in. The isolated
+manifest uses per-point `prep_ms`; no qualifying host receipt or single-scalar
+latency measurement exists yet.

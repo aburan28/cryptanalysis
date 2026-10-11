@@ -17,9 +17,11 @@ def make(args):
     gated2 = args.candidate_arm == "fused-hot-steer-gated2-batch128"
     graph = args.candidate_arm == "tapered-residue-graph-batch128"
     packed = args.candidate_arm == "tapered-residue-packed-batch128"
+    wavefront = args.candidate_arm == "tapered-residue-wavefront-batch128"
     tapered = args.candidate_arm in ("tapered-residue-orbit-batch128",
                                      "tapered-residue-graph-batch128",
-                                     "tapered-residue-packed-batch128")
+                                     "tapered-residue-packed-batch128",
+                                     "tapered-residue-wavefront-batch128")
     hot = args.candidate_arm == "fused-hot-batch128" or adapt2 or gated or steer or gated2 or tapered
     fused = args.candidate_arm in ("fused-batch128", "fused-orbit-batch128",
                                    "fused-hot-batch128",
@@ -29,10 +31,11 @@ def make(args):
                                    "fused-hot-steer-gated2-batch128",
                                    "tapered-residue-orbit-batch128",
                                    "tapered-residue-graph-batch128",
-                                   "tapered-residue-packed-batch128")
+                                   "tapered-residue-packed-batch128",
+                                   "tapered-residue-wavefront-batch128")
     if args.reference_arm and not (gated or gated2 or tapered):
         raise ValueError("--reference-arm is only supported for gated or tapered candidates")
-    default_prefix = ("orbit-graph" if graph or packed else "tapered" if tapered else
+    default_prefix = ("orbit-graph" if graph or packed or wavefront else "tapered" if tapered else
                       "gated2-steer" if gated2 else
                       "steer" if steer else "gated" if gated else
                       "adapt2" if adapt2 else "hot" if hot else
@@ -132,7 +135,7 @@ def make(args):
                       experiment / "check_tapered_panel.py",
                       experiment / "tapered-panel.json",
                       root / "src" / "generated" / "tau_wide_orbits.h"]
-    if graph or packed:
+    if graph or packed or wavefront:
         artifacts += [experiment / "ORBIT_GRAPH_PRECOMPUTE.md",
                       experiment / "make_tau_wide_graph.py",
                       experiment / "orbit-graph-screen.json",
@@ -140,18 +143,24 @@ def make(args):
                       experiment / "check_orbit_graph_panel.py",
                       experiment / "orbit-graph-panel.json",
                       root / "src" / "generated" / "tau_wide_graph.h"]
-    if packed:
+    if packed or wavefront:
         artifacts += [experiment / "PACKED_ORBIT_GRAPH.md",
                       experiment / "make_tau_wide_packed_graph.py",
                       experiment / "packed-orbit-graph-screen.json",
                       experiment / "check_packed_orbit_graph_panel.py",
                       experiment / "packed-orbit-graph-panel.json",
                       root / "src" / "generated" / "tau_wide_packed_graph.h"]
+    if wavefront:
+        artifacts += [experiment / "AFFINE_WAVEFRONT.md",
+                      experiment / "check_affine_wavefront_panel.py",
+                      experiment / "affine-wavefront-panel.json",
+                      root / "tests" / "test_curve.c"]
     artifacts += sorted((root / "src").glob("*.c"))
     artifacts += sorted((root / "src").glob("*.h"))
     artifacts += sorted((root / "include" / "cryptanalysis").glob("*.h"))
     cases = []
-    default_reference = ("tapered-residue-graph-batch128" if packed else
+    default_reference = ("tapered-residue-packed-batch128" if wavefront else
+                         "tapered-residue-graph-batch128" if packed else
                          "tapered-residue-orbit-batch128" if graph else
                          "fused-hot-steer-gated2-batch128" if tapered else
                          "fused-hot-steer-batch128" if gated2 else
@@ -163,7 +172,7 @@ def make(args):
                          "pos-global" if args.candidate_arm.startswith("pos-batch") else
                          "baseline")
     for case in fixture["cases"]:
-        scalar_path = (experiment / case["scalar_file"] if graph or packed else
+        scalar_path = (experiment / case["scalar_file"] if graph or packed or wavefront else
                        experiment / input_dir / case["scalar_file"])
         artifacts.append(scalar_path)
         base = [str(bench), None, case["curve"]["name"],
@@ -190,6 +199,12 @@ def make(args):
         "timeout_s": 120,
         "repetitions": 5,
         "measurement_boundary": (
+            "After process startup and frozen input loading: first per-point "
+            "positional-seed preparation through completed graph point table; "
+            "includes curve arithmetic, batch products and inversions, "
+            "scratch allocation, and affine output storage; excludes "
+            "4096-scalar evaluation and independent replay"
+            if wavefront else
             "After identical per-point global-batch table preparation: "
             "first public scalar representative selection through last "
             "affine output; includes all recoding, rotations, additions, "
@@ -211,6 +226,9 @@ def make(args):
         "result_field": "output_digest",
         "cases": cases,
     }
+    if wavefront:
+        manifest["metric_field"] = "prep_ms"
+        manifest["measurement_kind"] = "per_point_preparation"
     if not bench.is_file():
         raise ValueError(f"benchmark binary missing: {bench}")
     for path in artifacts:
@@ -237,12 +255,14 @@ if __name__ == "__main__":
         "fused-hot-adapt2-batch128", "fused-hot-gated-batch128",
         "fused-hot-steer-batch128", "fused-hot-steer-gated2-batch128",
         "tapered-residue-orbit-batch128", "tapered-residue-graph-batch128",
-        "tapered-residue-packed-batch128"),
+        "tapered-residue-packed-batch128",
+        "tapered-residue-wavefront-batch128"),
                         default="cost")
     parser.add_argument("--reference-arm", choices=(
         "fused-hot-batch128", "fused-hot-adapt2-batch128",
         "fused-hot-steer-batch128", "fused-hot-steer-gated2-batch128",
-        "tapered-residue-orbit-batch128", "tapered-residue-graph-batch128"))
+        "tapered-residue-orbit-batch128", "tapered-residue-graph-batch128",
+        "tapered-residue-packed-batch128"))
     parser.add_argument("--cgroup", required=True)
     parser.add_argument("--cpus", required=True)
     parser.add_argument("--execution-cpu", type=int, required=True)

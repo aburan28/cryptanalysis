@@ -1583,6 +1583,109 @@ size_t ca_ec_tau_wide_temp_bytes(int schedule)
     return entries * (sizeof(tau_jac) + sizeof(uint64_t));
 }
 
+typedef struct tau_affine_pair {
+    uint64_t x, y;
+} tau_affine_pair;
+
+/* Each graph depth is independent once the preceding depth is affine.  Keep
+ * digit coordinates and rotated parent coordinates until a single inverse
+ * makes every nonexceptional edge in this depth affine. */
+static int tau_wide_wavefront_block(const ca_group *g, ca_tau_wide_precomp *pre, size_t block,
+                                    tau_wide_atlas atlas, const uint32_t *packed, tau_jac *parents,
+                                    tau_affine_pair *digits, uint64_t *prefixes, uint64_t *adds,
+                                    uint64_t *rotations, uint64_t *inversions,
+                                    uint64_t *slot_lookups, uint64_t *denominators,
+                                    uint64_t *exceptions, uint64_t *doublings)
+{
+    size_t offset = pre->point_offset[block];
+    pre->point[offset] = (ca_elem){{0, 0, 1, 0}};
+    for (unsigned depth = 1; depth <= 3; depth++) {
+        uint64_t product = g->mont.r1;
+        size_t nonzero = 0;
+        prefixes[0] = product;
+        for (size_t id = 1; id < atlas.entries; id++) {
+            parents[id].z = 0;
+            uint32_t word = packed[id];
+            if (word >> 30 != depth) {
+                prefixes[id] = product;
+                continue;
+            }
+            unsigned digit_id = (word >> 20) & 63u;
+            unsigned position = (word >> 26) & 15u;
+            unsigned parent_packed = word & ((1u << 20) - 1);
+            if (digit_id >= sizeof(ca_tau_wide_packed_slot) || position >= pre->width[block])
+                return 0;
+            unsigned digit_slot = ca_tau_wide_packed_slot[digit_id];
+            if (digit_slot >= 81) return 0;
+            if (slot_lookups) (*slot_lookups)++;
+            ca_elem digit = tau_wide_digit_point(g, &pre->pos, pre->position[block] + position,
+                                                 digit_slot, rotations);
+            if (depth == 1) {
+                if (parent_packed) return 0;
+                pre->point[offset + id] = digit;
+                prefixes[id] = product;
+                continue;
+            }
+            unsigned parent_id = parent_packed & ((1u << CA_TAU_WIDE_ID_BITS) - 1);
+            unsigned unit = parent_packed >> CA_TAU_WIDE_ID_BITS;
+            if (parent_id >= atlas.entries || unit > 5 || packed[parent_id] >> 30 != depth - 1)
+                return 0;
+            ca_elem parent = pre->point[offset + parent_id];
+            unsigned power = unit % 3;
+            if (!parent.w[2]) {
+                if (power == 1)
+                    parent.w[0] = fm(g, pre->pos.base.beta, parent.w[0]);
+                else if (power == 2)
+                    parent.w[0] = fm(g, pre->pos.base.beta2, parent.w[0]);
+                if (rotations) *rotations += power != 0;
+                if (unit >= 3 && parent.w[1]) parent.w[1] = g->p - parent.w[1];
+            }
+            if (adds) (*adds)++;
+            if (parent.w[2]) {
+                pre->point[offset + id] = digit;
+                if (exceptions) (*exceptions)++;
+            } else if (digit.w[2]) {
+                pre->point[offset + id] = parent;
+                if (exceptions) (*exceptions)++;
+            } else if (parent.w[0] == digit.w[0] && (parent.w[1] != digit.w[1] || !parent.w[1])) {
+                pre->point[offset + id] = (ca_elem){{0, 0, 1, 0}};
+                if (exceptions) (*exceptions)++;
+            } else {
+                uint64_t denominator;
+                if (parent.w[0] == digit.w[0]) {
+                    denominator = f2(g, parent.w[1]);
+                    if (doublings) (*doublings)++;
+                } else {
+                    denominator = fs(g, digit.w[0], parent.w[0]);
+                }
+                if (!denominator) return 0;
+                parents[id] = (tau_jac){parent.w[0], parent.w[1], denominator};
+                digits[id] = (tau_affine_pair){digit.w[0], digit.w[1]};
+                product = fm(g, product, denominator);
+                nonzero++;
+            }
+            prefixes[id] = product;
+        }
+        if (!nonzero) continue;
+        uint64_t inverse = ca_mont_inv(&g->mont, product);
+        if (!inverse) return 0;
+        if (inversions) (*inversions)++;
+        if (denominators) *denominators += nonzero;
+        for (size_t id = atlas.entries; id-- > 1;) {
+            if (packed[id] >> 30 != depth || !parents[id].z) continue;
+            uint64_t inv_denominator = fm(g, inverse, prefixes[id - 1]);
+            inverse = fm(g, inverse, parents[id].z);
+            uint64_t numerator = parents[id].x == digits[id].x ? f3(g, fq(g, parents[id].x))
+                                                               : fs(g, digits[id].y, parents[id].y);
+            uint64_t slope = fm(g, numerator, inv_denominator);
+            uint64_t x = fs(g, fs(g, fq(g, slope), parents[id].x), digits[id].x);
+            uint64_t y = fs(g, fm(g, slope, fs(g, parents[id].x, x)), parents[id].y);
+            pre->point[offset + id] = (ca_elem){{x, y, 0, 0}};
+        }
+    }
+    return 1;
+}
+
 void ca_ec_tau_wide_clear(ca_tau_wide_precomp *pre)
 {
     if (pre) {
@@ -1594,13 +1697,14 @@ void ca_ec_tau_wide_clear(ca_tau_wide_precomp *pre)
 static int tau_wide_prepare_impl(const ca_group *g, const ca_elem *point, int schedule,
                                  ca_tau_wide_precomp *out, uint64_t *triples, uint64_t *adds,
                                  uint64_t *rotations, uint64_t *inversions, int graph,
-                                 uint64_t *slot_lookups)
+                                 uint64_t *slot_lookups, ca_tau_wide_wavefront_stats *wavefront)
 {
     if (triples) *triples = 0;
     if (adds) *adds = 0;
     if (rotations) *rotations = 0;
     if (inversions) *inversions = 0;
     if (slot_lookups) *slot_lookups = 0;
+    if (wavefront) memset(wavefront, 0, sizeof(*wavefront));
     if (!g || !point || !out || (schedule != 0 && schedule != 1)) return 0;
     ca_tau_wide_precomp pre = {0};
     uint64_t n3 = 0, na = 0, nr = 0, ni = 0;
@@ -1622,7 +1726,9 @@ static int tau_wide_prepare_impl(const ca_group *g, const ca_elem *point, int sc
     pre.point = malloc(pre.point_offset[pre.blocks] * sizeof(*pre.point));
     tau_jac *projective = malloc(max_entries * sizeof(*projective));
     uint64_t *prefixes = malloc(max_entries * sizeof(*prefixes));
-    if (!pre.point || !projective || !prefixes) {
+    tau_affine_pair *digit_pairs = graph == 3 ? malloc(max_entries * sizeof(*digit_pairs)) : NULL;
+    if (!pre.point || !projective || !prefixes || (graph == 3 && !digit_pairs)) {
+        free(digit_pairs);
         free(prefixes);
         free(projective);
         ca_ec_tau_wide_clear(&pre);
@@ -1634,13 +1740,23 @@ static int tau_wide_prepare_impl(const ca_group *g, const ca_elem *point, int sc
             const ca_tau_wide_recipe *recipes =
                 graph == 1 ? tau_wide_recipe_for(pre.width[block]) : NULL;
             const uint32_t *packed =
-                graph == 2 ? tau_wide_packed_recipe_for(pre.width[block]) : NULL;
+                graph >= 2 ? tau_wide_packed_recipe_for(pre.width[block]) : NULL;
             if ((!recipes && !packed) || (recipes && recipes[0].depth != 0) ||
                 (packed && packed[0] != 0))
                 goto fail;
             for (size_t id = 1; id < atlas.entries; id++) {
                 unsigned candidate_depth = recipes ? recipes[id].depth : packed[id] >> 30;
                 if (candidate_depth < 1 || candidate_depth > 3) goto fail;
+            }
+            if (graph == 3) {
+                if (!tau_wide_wavefront_block(g, &pre, block, atlas, packed, projective,
+                                              digit_pairs, prefixes, &na, &nr, &ni,
+                                              wavefront ? &wavefront->slot_lookups : NULL,
+                                              wavefront ? &wavefront->denominators : NULL,
+                                              wavefront ? &wavefront->exceptional_edges : NULL,
+                                              wavefront ? &wavefront->doubling_edges : NULL))
+                    goto fail;
+                continue;
             }
             projective[0] = (tau_jac){0, g->mont.r1, 0};
             for (unsigned depth = 1; depth <= 3; depth++) {
@@ -1722,6 +1838,7 @@ static int tau_wide_prepare_impl(const ca_group *g, const ca_elem *point, int sc
         }
         ni += normalized;
     }
+    free(digit_pairs);
     free(prefixes);
     free(projective);
     *out = pre;
@@ -1731,6 +1848,7 @@ static int tau_wide_prepare_impl(const ca_group *g, const ca_elem *point, int sc
     if (inversions) *inversions = ni + 1;
     return 1;
 fail:
+    free(digit_pairs);
     free(prefixes);
     free(projective);
     ca_ec_tau_wide_clear(&pre);
@@ -1742,7 +1860,7 @@ int ca_ec_tau_wide_prepare(const ca_group *g, const ca_elem *point, int schedule
                            uint64_t *rotations, uint64_t *inversions)
 {
     return tau_wide_prepare_impl(g, point, schedule, out, triples, adds, rotations, inversions, 0,
-                                 NULL);
+                                 NULL, NULL);
 }
 
 int ca_ec_tau_wide_prepare_graph(const ca_group *g, const ca_elem *point, int schedule,
@@ -1750,7 +1868,7 @@ int ca_ec_tau_wide_prepare_graph(const ca_group *g, const ca_elem *point, int sc
                                  uint64_t *rotations, uint64_t *inversions)
 {
     return tau_wide_prepare_impl(g, point, schedule, out, triples, adds, rotations, inversions, 1,
-                                 NULL);
+                                 NULL, NULL);
 }
 
 int ca_ec_tau_wide_prepare_packed(const ca_group *g, const ca_elem *point, int schedule,
@@ -1758,7 +1876,24 @@ int ca_ec_tau_wide_prepare_packed(const ca_group *g, const ca_elem *point, int s
                                   uint64_t *rotations, uint64_t *inversions, uint64_t *slot_lookups)
 {
     return tau_wide_prepare_impl(g, point, schedule, out, triples, adds, rotations, inversions, 2,
-                                 slot_lookups);
+                                 slot_lookups, NULL);
+}
+
+size_t ca_ec_tau_wide_wavefront_temp_bytes(int schedule)
+{
+    size_t entries = schedule == 0   ? CA_TAU_WIDE10_ORBIT_COUNT
+                     : schedule == 1 ? CA_TAU_WIDE12_ORBIT_COUNT
+                                     : 0;
+    return entries * (sizeof(tau_jac) + sizeof(uint64_t) + sizeof(tau_affine_pair));
+}
+
+int ca_ec_tau_wide_prepare_wavefront(const ca_group *g, const ca_elem *point, int schedule,
+                                     ca_tau_wide_precomp *out, uint64_t *triples, uint64_t *adds,
+                                     uint64_t *rotations, uint64_t *inversions,
+                                     ca_tau_wide_wavefront_stats *stats)
+{
+    return tau_wide_prepare_impl(g, point, schedule, out, triples, adds, rotations, inversions, 3,
+                                 NULL, stats);
 }
 
 static int tau_wide_mul_jac(const ca_group *g, const ca_tau_wide_precomp *pre, tau_jac *out,

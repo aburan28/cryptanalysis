@@ -182,3 +182,10 @@ generic outputs and both arms' operations while cutting recipe data nearly
 in half: 78,744→39,426 bytes and 717,360→358,734 bytes. The paired binary
 contains both formats; controlled CPU and standalone memory gains are
 unmeasured.
+
+The [affine-wavefront builder](AFFINE_WAVEFRONT.md) evaluates the packed
+orbit graph breadth-first with batched affine inversions. Its eight-point
+panel matches all prepared table entries and 32,768 generic outputs while
+retaining the same graph-addition and online counts. It adds three or four
+preparation inversions and 157,488 or 1,417,200 scratch bytes. Isolated
+preparation time and single-scalar latency are unmeasured.
