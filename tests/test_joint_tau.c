@@ -10,7 +10,7 @@ static void check_pair(const ca_group *g, const ca_tau4_joint_precomp *pre,
                        uint64_t *saved_tau, uint64_t *saved_full)
 {
     ca_elem ap, bq, expected, separate, joint, fused, paired, paired_five, paired_two;
-    ca_elem paired_gauge, paired_trellis, paired_free_gauge;
+    ca_elem paired_gauge, paired_trellis, paired_free_gauge, paired_square_z;
     ca_group_mul(g, &ap, p, a % g->order, NULL);
     ca_group_mul(g, &bq, q, b % g->order, NULL);
     ca_group_op(g, &expected, &ap, &bq);
@@ -67,6 +67,18 @@ static void check_pair(const ca_group *g, const ca_tau4_joint_precomp *pre,
     CHECK_EQ_U64(free_cost.gauge_transitions, 0);
     CHECK(free_cost.rotations <= trellis_cost.rotations);
     CHECK(free_cost.rotations <= two_cost.rotations);
+    ca_tau4_joint_counts square_z_cost = {0};
+    CHECK(ca_ec_tau4_paired_two_free_gauge_square_z_mul_profile(g, pre,
+                                                                 &paired_square_z,
+                                                                 a, b, &square_z_cost));
+    CHECK(ca_group_equal(g, &paired_square_z, &paired_free_gauge));
+    CHECK_EQ_U64(square_z_cost.tau_steps, free_cost.tau_steps);
+    CHECK_EQ_U64(square_z_cost.tau_square_z_steps, square_z_cost.tau_steps);
+    CHECK_EQ_U64(free_cost.tau_square_z_steps, 0);
+    CHECK_EQ_U64(square_z_cost.mixed_adds, free_cost.mixed_adds);
+    CHECK_EQ_U64(square_z_cost.rotations, free_cost.rotations);
+    CHECK_EQ_U64(square_z_cost.free_gauge_transitions,
+                 free_cost.free_gauge_transitions);
     if (orbit) {
         ca_tau4_joint_counts combined = {0};
         CHECK(ca_ec_tau4_orbit_mul_profile(g, orbit, &fused, a, b, &combined));
