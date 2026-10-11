@@ -84,7 +84,23 @@ python3 /workspace/cryptanalysis/scripts/isolated_bench.py --queue-root /workspa
 
 `serve` holds both a queue lock and a fixed host-wide lock under `/run/lock`
 for its whole lifetime. A second server, even with a different queue
-directory, or a direct run refuses to start. Keep the SQLite queue on a
+directory, or a direct run refuses to start. If the host also uses the
+`exp-run` launcher, start the service with its existing serial lock:
+
+```sh
+python3 /workspace/cryptanalysis/scripts/isolated_bench.py \
+  --queue-root /workspace/isolated-bench \
+  --shared-job-lock /workspace/experiment-runs/.serial.lock serve
+```
+
+The service takes this shared `flock` for each complete benchmark job,
+including preflight and result writing, then releases it before the next
+job. A job remains `queued` while another launcher holds the lock. The
+same option applies to a direct `run`. This coordinates with existing
+`exp-run` jobs, including jobs queued before the service starts, because
+their launch scripts already hold that file during execution. Use one
+lock file on a local filesystem for every launcher on the host; a launcher
+that skips it is outside the one-job guarantee. Keep the SQLite queue on a
 single-host local filesystem; SQLite WAL and file locks are not a
 distributed scheduler. The service marks any job left `running` after a crash
 as `interrupted`; it never silently resumes a partial panel. It takes queued

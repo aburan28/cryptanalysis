@@ -287,6 +287,35 @@ vendor place-and-route this flow does not run.  See
 order, what each testbench establishes, and what the next improvement is
 (batched inversion, ~3x).
 
+## First use case: the live ECC2K-130 campaign
+
+[`usecases/ecc2k130/`](usecases/ecc2k130/README.md) connects the live
+ECC2K-130 run to its AWS corpus and status store:
+
+```text
+s3://ecc2k130-590183823895/dp/
+  ── object ref ─▶ durable Redis Stream ─▶ RDS rho-dp
+                                           └▶ s3://ecc2k130-status-590183823895/status.json
+```
+
+The integration removes the long-running importer that repeatedly listed the
+whole S3 prefix. S3 remains the authoritative immutable corpus; a persistent,
+`noeviction` Redis-compatible service carries object references through a
+consumer group; and one idempotent RDS transaction verifies and indexes each
+object before its stream entry is atomically acknowledged and deleted.
+
+Queue depth, bytes, oldest-entry age and Redis memory pressure drive explicit
+green/yellow/red backpressure. At red, producers retain their local spool and
+retry instead of dropping DPs or filling Redis. The queue is deliberately
+separate from the fail-open Redis cache used for disposable fleet hints.
+The coordinator ships as a Helm chart with publisher and consumer Deployments,
+guarded schema-migration init containers and an S3 reconciliation CronJob.
+
+```sh
+make ecc2k130-usecase ecc2k130-helm
+```
+
+
 ## GPU client for ECC2K-130
 
 `ecc2k130/` is a rho walker for the same challenge on a CUDA device, over the
@@ -563,6 +592,7 @@ cuda/                    the CUDA kernel (ca_device.cuh is shared C11/CUDA code)
 tests/                   C test programs (ctest)
 tools/                   ca (CLI) and ca_bench
 fpga/                    ECC2K-130 rho core: golden C model, Verilog, testbenches, host tool
+usecases/ecc2k130/        live ECC2K-130 S3/Redis Streams/RDS integration
 ecc2k130/                ECC2K-130 clients: packed GF(2^131) table walk (CUDA, CPU, Metal), host tests vs the model
 scripts/                 build_cuda_kernel.sh, cli_smoke.sh (every ca subcommand)
 bindings/{rust,go,python} plus bindings/rust/cryptanalysis-cuda (Rust GPU driver)
@@ -598,6 +628,7 @@ set locally, in the order that fails fastest.
 | `suite` | the attack suite: fmt, clippy `-D warnings` over every target, rustdoc `-D warnings`, the release test suite (2,395 unit and 31 integration tests), a checked answer from each tool, the declared MSRV rebuilt and tested, cargo-deny, and the Python engine's ruff and unit tests on three interpreters |
 | `fuzz` | seven libFuzzer harnesses: corpus replay and a one-minute run per harness on every change, a ten-minute soak per harness nightly |
 | `fpga` | the ECC2K-130 core: the golden model's own checks, then every testbench against the vectors it produces, at three multiplier widths; verilator `-Wall`; a yosys area report |
+| `ecc2k130-usecase` | packed-record/key/manifest compatibility, durable Redis consumer groups, pending recovery, dead-lettering, producer backpressure, transactional PostgreSQL indexing, and status publication |
 | `ecc2k130` | the GPU client: the packed arithmetic, the table walk's selection and the walk itself against `fpga/model` on gcc and clang; the kernel compiled for sm_120 with CUDA 13.3 from pip wheels, with its register and spill report |
 | `deploy` | the Helm chart and the container images: `helm lint`, a render with every optional piece enabled whose manifests are parsed and asserted (one coordinator replica, `Recreate`, and an agent NetworkPolicy that allows no ingress at all), the three configurations the chart must refuse, and a build of both image targets that then runs each one |
 | `gpu-health` | the health-check orchestrator's tests on Python 3.8 and 3.12; the Helm chart linted, and its MutatingAdmissionPolicy run on a real kube-apiserver; the image built on x86_64 and aarch64 (which compiles `ec2k-gpu` for sm_80 to sm_120 and runs the host test and `check --kat`) and smoke-run: without a GPU it must fail and say why, against scripted GPUs it must pass; then, on x86_64, the chart on kind, where the injected check gates a stand-in device plugin |
