@@ -73,14 +73,21 @@ def main():
     assert group["results"]["adic"]["cases"] == 4_096
 
     materialization = receipt("native-materialization.json")
+    tested_materialization = receipt("native-tested-materialization.json")
     targeted = receipt("native-targeted.json")
     suite = receipt("native-full-suite.json")
     edge = receipt("native-edge-check.json")
     assert materialization["materializer_sha256"] == file_hash("materialize_native.py")
     assert materialization["group_receipt_sha256"] == file_hash("group-check.json")
+    for name in ("generated_sha256", "assets_sha256",
+                 "included_assets_sha256", "group_receipt_sha256"):
+        assert materialization[name] == tested_materialization[name], name
     assert targeted["status"] == suite["status"] == edge["status"] == "passed"
     assert targeted["materialization_sha256"] == suite["materialization_sha256"] \
         == edge["materialization_sha256"] == file_hash("native-materialization.json")
+    assert targeted["tested_materialization_sha256"] == \
+        suite["tested_materialization_sha256"] == \
+        file_hash("native-tested-materialization.json")
     assert targeted["assets_sha256"] == materialization["assets_sha256"]
     assert targeted["included_assets_sha256"] == \
         materialization["included_assets_sha256"]
@@ -97,6 +104,7 @@ def main():
 
     assert edge["verifier_sha256"] == file_hash("verify_edge.py")
     assert edge["generic_verifier_sha256"] == digest(FIXTURE_VERIFIER.read_bytes())
+    assert (HERE / "native-edge.stderr").read_bytes() == b""
     compressed = (HERE / "native-edge.stdout.gz").read_bytes()
     assert digest(compressed) == edge["stdout_gzip_sha256"]
     fixture = ROOT / "prime-j0-tau-bucket-two-x-20261010/edge-fixture.json"

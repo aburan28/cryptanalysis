@@ -31,19 +31,31 @@ def archive_log(name):
 
 
 def main():
-    assert len(sys.argv) == 2, "usage: collect_native.py MATERIALIZED_CRATE"
+    assert len(sys.argv) == 3, \
+        "usage: collect_native.py FINAL_CRATE TESTED_CRATE"
     native = Path(sys.argv[1]).resolve()
+    tested_native = Path(sys.argv[2]).resolve()
     materialization_raw = (native / "materialization.json").read_bytes()
     materialization = json.loads(materialization_raw)
+    tested_raw = (tested_native / "materialization.json").read_bytes()
+    tested = json.loads(tested_raw)
     assert materialization["timing_class"] == "correctness_only"
+    assert tested["timing_class"] == "correctness_only"
+    for name in ("generated_sha256", "assets_sha256",
+                 "included_assets_sha256", "group_receipt_sha256"):
+        assert materialization[name] == tested[name], name
     for name, expected in materialization["generated_sha256"].items():
         assert digest((native / name).read_bytes()) == expected
+        assert digest((tested_native / name).read_bytes()) == expected
     for name, expected in materialization["assets_sha256"].items():
         assert digest((native / name).read_bytes()) == expected
+        assert digest((tested_native / name).read_bytes()) == expected
     for name, expected in materialization["included_assets_sha256"].items():
         assert digest((native / name).read_bytes()) == expected
+        assert digest((tested_native / name).read_bytes()) == expected
     assert len(materialization["included_assets_sha256"]) >= 40
     (HERE / "native-materialization.json").write_bytes(materialization_raw)
+    (HERE / "native-tested-materialization.json").write_bytes(tested_raw)
 
     targeted_raw = (HERE / "native-targeted-tests.log").read_bytes()
     targeted_text = targeted_raw.decode()
@@ -67,6 +79,7 @@ def main():
                 "direct_gauge_rotations": direct_rotations,
                 "group_receipt_sha256": digest(group_raw),
                 "materialization_sha256": digest(materialization_raw),
+                "tested_materialization_sha256": digest(tested_raw),
                 "generated_sha256": materialization["generated_sha256"],
                "assets_sha256": materialization["assets_sha256"],
                 "included_assets_sha256": materialization["included_assets_sha256"],
@@ -81,6 +94,7 @@ def main():
     suite = {"schema": 1, "status": "passed", "timing_class": "correctness_only",
              "passed": 139, "failed": 0,
              "materialization_sha256": digest(materialization_raw),
+             "tested_materialization_sha256": digest(tested_raw),
              "raw_log": archive_log("native-full-tests.log")}
     (HERE / "native-full-suite.json").write_text(
         json.dumps(suite, indent=2, sort_keys=True) + "\n")
