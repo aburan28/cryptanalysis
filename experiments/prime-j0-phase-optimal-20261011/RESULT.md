@@ -14,8 +14,9 @@ class assignment, and all **1,048,576** residues. The [cover receipt](check.json
 binds the serialized `LP21` cover. The [native atlas verifier](native-atlas-check.json)
 checks all residues again after reindexing into the `DR20` layout. The
 native atlas is **1,691,796 bytes**, with **890,292** precomputed affine
-slots including the terminal table, matching the preceding exact-size
-cover's layout and memory requirement.
+slots including the terminal table. The [native point receipt](native-targeted-check.json)
+confirms **59,032,928 retained bytes**, matching the preceding
+exact-size cover.
 
 The candidate source, cover and verifiers were frozen at commit
 `dfe1e80` before drawing a new 4,096-scalar panel. The
@@ -36,7 +37,11 @@ binary point fixtures.
 | Occupied buckets | 11,903 | **11,769** |
 
 The [phase receipt](phase-cost.json) counts the grouped buckets from
-the frozen paths. This is an exact algorithmic path comparison; native
-point replay is in progress. CPU wall-time comparison requires the
-host-isolation and noise gates in
+the frozen paths. The source-pinned native release replay passed all
+**4,096** cases against the independent control and checked the first
+**128** against a separate binary multiplication path. It reported
+49,152 additions and 18,077 grouped rotations; the
+[raw output](native-targeted.log.gz) and [receipt](native-targeted-check.json)
+bind the source, inputs, atlas, executable and result. CPU wall-time
+comparison requires the host-isolation and noise gates in
 `../../docs/ISOLATED_BENCHMARKS.md`.
