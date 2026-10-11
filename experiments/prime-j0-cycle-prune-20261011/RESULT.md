@@ -58,8 +58,13 @@ table access and other point arithmetic.
 ## Native point replay and timing boundary
 
 The [materializer](materialize_native.py) binds the refined DR20 atlas and
-frozen paths to the direct-XYZZ Rust evaluator. Its 4,096-case point test is
-running on the local Mac; a terminal test receipt will be added to this PR.
-The complete native suite and CLI edge fixtures remain to be replayed for
-this specific atlas. CPU wall-time ratios require the host-level isolation
-receipt specified in `../../docs/ISOLATED_BENCHMARKS.md`.
+frozen paths to the direct-XYZZ Rust evaluator. Its 4,096-case point test
+passed on the local ARM64 Mac, including comparison with the adic path,
+certified digits, and 128 independently computed binary points. The
+[source-bound receipt](native-targeted-check.json) retains the complete raw
+test log, generated source and asset hashes, test binary hash, and the
+terminal `1 passed; 0 failed` result. Its 2,445.13-second elapsed time is a
+correctness-run observation on a contended host. The focused Linux workflow
+for the complete native suite and CLI edge fixtures is queued. CPU wall-time
+ratios require the host-level isolation receipt specified in
+`../../docs/ISOLATED_BENCHMARKS.md`.
