@@ -10102,6 +10102,7 @@ def main():
                 "still cap without a relation and consume many reverse "
                 "root calls; Q1333/Q1334 use "
                 "an adaptive target-local inversion "
+                "growth; Q1333/Q1334 use an adaptive target-local inversion "
                 "window and reproduce the fixed-window ordinary outcomes; "
                 "Q1336/Q1337 fuse one field multiplication per S3 root but "
                 "show no repeatable wall-time gain in one unisolated "

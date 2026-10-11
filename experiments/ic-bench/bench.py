@@ -12,9 +12,9 @@ achievable rank, solve the relation matrix mod r, descend each workload target a
 over its manifest (candidates/<id>.json).  Workloads fix the curve, query stream, targets
 and rerandomization streams, so the factor base is the declared variable of a suite.
 
-Costs are the opcount counters of every exclusive phase, priced in the frozen calibration
-(calibration.json, unit `rps`).  Counters and priced totals are exact for a given source
-state; wall time is recorded alongside and is not compared.
+The primary suite uses one previously unseen target. Its headline metric is measured
+target-online wall time paired with a verified rho solve of that same public point.
+Cold operation counts remain supplementary stage diagnostics.
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ import resource
 import subprocess
 import sys
 import time
+from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
@@ -55,6 +56,7 @@ PHASES = ("setup", "isogeny", "factor_base", "precompute", "queries", "pdp", "re
 SOURCES = [
     PDP / "pdpkernel.c", PDP / "kernel.py", PDP / "opcount.py", PDP / "toycurve.py", PDP / "factor_base.py",
     PDP / "descent.py", PDP / "macaulay.py", PDP / "relations.py", PDP / "monitor.py", PDP / "profile.py",
+    PDP / "htsolver.py",
     HERE.parent / "pdp-scaling" / "sumpoly.py", HERE.parent / "pdp-scaling" / "gf2n.py", HERE / "bench.py",
 ]
 CALIBRATION = HERE / "calibration.json"
@@ -64,13 +66,144 @@ RECEIPTS = HERE / "results" / "receipts.jsonl"
 LIMITS = {"d_max": 10, "max_cols": 40_000, "max_rows": 200_000}
 
 
-def cells(n, m, l, families, workload_seeds, targets=3, max_attempts=200_000, mode="mxl"):
-    return [{"n": n, "m": m, "l": l, "family": f, "seed": 1, "mode": mode, "workload_seed": w,
-             "targets": targets, "max_attempts": max_attempts}
-            for w in workload_seeds for f in families]
+def batch_prefix_sizes(targets: int) -> list[int]:
+    """Powers of two through targets, plus the final size when it is not a power of two."""
+    if targets < 1:
+        return []
+    out, k = [], 1
+    while k <= targets:
+        out.append(k)
+        k <<= 1
+    if out[-1] != targets:
+        out.append(targets)
+    return out
+
+
+def batch_rho_group_operations(r: int, targets: int, class_divisor: int = 1) -> int:
+    """Kuhn-Struik batch-rho expectation on r/class_divisor equivalence classes.
+
+    The T targets are solved in turn by one distinguished-point rho whose walks may
+    finish on trails belonging to targets already solved.  Detection lag, seeding and
+    jump-table setup are omitted, making this a deliberately generous rho reference.
+    For T=1 this is sqrt(pi*N/2), N=r/class_divisor.
+    """
+    if targets < 1 or class_divisor < 1:
+        raise ValueError("targets and class_divisor must be positive")
+    coeff = 1.0
+    series = 0.0
+    for k in range(targets):
+        series += coeff
+        coeff *= (2 * k + 1) / (2 * k + 2)
+    classes = r / class_divisor
+    return round(math.sqrt(math.pi * classes / 2) * series)
+
+
+def workload_series_id(curve: ToyCurve, seed: int, cache_state: str) -> str:
+    """Identity shared by workload prefixes with the same query/target streams."""
+    record = {
+        "schema": "ic-bench-workload-series/1",
+        "curve_id": curve.curve_id,
+        "query_stream": f"icbench-queries|{curve.curve_id}|{seed}",
+        "target_stream": f"icbench-targets|{curve.curve_id}|{seed}",
+        "rerandomization_stream": f"icbench-descent|{curve.curve_id}|{seed}",
+        "cache_state": cache_state,
+        "seed": seed,
+    }
+    return "ICBW1h" + sha256_hex(record)[:12]
+
+
+def warm_accounting(total: int | None, per_target: list[int], rho: int, rho_floor: int,
+                    r: int, n: int, ec_add_weight: int) -> dict:
+    """Shared-vs-marginal accounting and fair batch-rho controls for one run."""
+    k = len(per_target)
+    target_total = sum(per_target)
+    shared = total - target_total if total is not None else None
+    plain_batch = batch_rho_group_operations(r, k) * ec_add_weight if k else None
+    folded_batch = batch_rho_group_operations(r, k, 2 * n) * ec_add_weight if k else None
+    independent = k * rho if k else None
+    prefixes = []
+    cumulative = 0
+    wanted = set(batch_prefix_sizes(k))
+    for i, ops in enumerate(per_target, 1):
+        cumulative += ops
+        if i not in wanted:
+            continue
+        ic = shared + cumulative if shared is not None else None
+        plain = batch_rho_group_operations(r, i) * ec_add_weight
+        folded = batch_rho_group_operations(r, i, 2 * n) * ec_add_weight
+        prefixes.append({
+            "targets": i,
+            "ic_operations": ic,
+            "shared_operations": shared,
+            "target_operations": cumulative,
+            "mean_target_operations": cumulative / i,
+            "amortized_operations_per_target": ic / i if ic is not None else None,
+            "independent_rho_operations": i * rho,
+            "batch_rho_operations": plain,
+            "folded_batch_rho_operations": folded,
+            "ic_over_independent_rho": ic / (i * rho) if ic is not None else None,
+            "ic_over_batch_rho": ic / plain if ic is not None else None,
+            "ic_over_folded_batch_rho": ic / folded if ic is not None else None,
+            "shared_fraction": shared / ic if ic else None,
+        })
+    mean_target = target_total / k if k else None
+    break_even = None
+    if shared is not None and mean_target is not None and mean_target < rho:
+        break_even = math.floor(shared / (rho - mean_target)) + 1
+    return {
+        "k": k,
+        "per_target_operations": per_target,
+        "target_operations": target_total,
+        "mean_target_operations": mean_target,
+        "shared_operations": shared,
+        "amortized_operations_per_target": total / k if total is not None and k else None,
+        "independent_rho_operations": independent,
+        "batch_rho_operations": plain_batch,
+        "folded_batch_rho_operations": folded_batch,
+        "ic_over_independent_rho": total / independent if total is not None and independent else None,
+        "ic_over_batch_rho": total / plain_batch if total is not None and plain_batch else None,
+        "ic_over_folded_batch_rho": total / folded_batch if total is not None and folded_batch else None,
+        "break_even_targets_vs_independent_rho": break_even,
+        "prefixes": prefixes,
+        "shared": "factor base, relation collection, relation LA and shared log checks; all target work is marginal",
+        "batch_rho_model": "Kuhn-Struik distinguished-point expectation; folded reference uses r/(2n) sign/Frobenius classes; no detection lag or setup",
+    }
+
+
+def cells(n, m, l, families, workload_seeds, targets=3, max_attempts=200_000, mode="mxl", seed=1,
+          rerandomize="uniform"):
+    out = [{"n": n, "m": m, "l": l, "family": f, "seed": seed, "mode": mode, "workload_seed": w,
+            "targets": targets, "max_attempts": max_attempts}
+           for w in workload_seeds for f in families]
+    if rerandomize != "uniform":
+        for c in out:
+            c["rerandomize"] = rerandomize
+    return out
+
+
+SEARCH_SELECTION = HERE.parent / "fb-search" / "selected.json"
+ONLINE_SELECTION = HERE.parent / "fb-search" / "online-selected.json"
+# suites whose runs have one prepared target and a measured online interval paired with rho
+ONLINE_SUITES = ("primary", "online", "online-ht")
+HT_SELECTION = HERE.parent / "fb-search" / "online-ht-selected.json"
+
+
+def search_cells(path: Path = SEARCH_SELECTION, workload_seeds=(1, 2, 3), targets: int | None = None) -> list[dict]:
+    """Factor bases picked by ../fb-search (family, l, seed), each on the same frozen workloads."""
+    if not path.exists():
+        return []
+    out = []
+    for pick in json.loads(path.read_text())["picks"]:
+        c = pick["cell"]
+        n = c["n"]
+        out += cells(n, c["m"], c["l"], [c["family"]], list(workload_seeds), targets=targets or c["targets"],
+                     max_attempts=200_000 if n < 23 else 800_000, mode=c["mode"], seed=c["seed"],
+                     rerandomize=c.get("rerandomize", "uniform"))
+    return out
 
 
 SUITES = {
+    "primary": cells(13, 3, 3, ["prefix", "geomtrace", "random"], [1, 2, 3], targets=1),
     # small enough for a pull-request check on four cores
     "ci": cells(13, 3, 3, ["prefix", "geomtrace", "random"], [1, 2, 3])
     + cells(19, 2, 5, ["prefix", "geomtrace", "random"], [1]),
@@ -78,6 +211,15 @@ SUITES = {
     + cells(19, 2, 5, ["prefix", "geometric", "geomtrace", "geomtraceu", "random", "kertrace"], [1, 2, 3])
     + cells(19, 2, 6, ["prefix", "geometric", "geomtrace", "geomtraceu", "random"], [1, 2, 3])
     + cells(23, 2, 6, ["prefix", "geomtrace", "random"], [1], max_attempts=800_000),
+    "search": search_cells(),
+    # one-target online runs of the bases ../fb-search/online.py ranks best for T_online,1
+    "online": search_cells(ONLINE_SELECTION, targets=1),
+    # the same one-target protocol with the half-trace PDP solver (PDP2ht) and walk rerandomization
+    "online-ht": search_cells(HT_SELECTION, targets=1),
+    # Long multi-target runs. One 2^16-target receipt yields exact prefix points
+    # 1,2,4,...,2^16 without repaying the shared relation database at each size.
+    "batch": cells(13, 3, 3, ["geomtrace"], [1], targets=1 << 16)
+    + cells(19, 2, 7, ["geomtraceu"], [1], targets=1 << 16, seed=3),
 }
 
 CSV_FIELDS = [
@@ -89,11 +231,17 @@ CSV_FIELDS = [
     "rho_operations", "rho_floor_operations", "ratio_to_rho", "ratio_to_floor", "S_rps", "S_ec_add",
     *[f"count_{c}" for c in opcount.CLASSES], "wall_ns", "priced_over_wall", "peak_rss_bytes", "calibration_id",
     "implementation_sha256", "git_commit", "recorded_at", "host",
+    "ic_online_ns", "rho_online_ns", "online_speedup",
+    "workload_series_id", "shared_operations", "target_operations", "mean_target_operations",
+    "rho_independent_batch_operations", "rho_batch_operations", "rho_batch_floor_operations",
+    "ratio_to_independent_rho_batch", "ratio_to_batch_rho", "ratio_to_batch_floor",
 ]
 DETERMINISTIC = [f for f in CSV_FIELDS if f.startswith(("ops_", "count_")) or f in (
     "status", "verified", "targets_verified", "fb_points", "effective_columns", "achievable_rank", "final_rank",
     "ordinary_queries", "pdp_verified", "pdp_proved_unsat", "pdp_budget", "pdp_lift_rejected",
-    "verified_relations", "novel_rows", "descent_attempts", "total_operations", "rho_operations")]
+    "verified_relations", "novel_rows", "descent_attempts", "total_operations", "rho_operations",
+    "workload_series_id", "shared_operations", "target_operations", "rho_independent_batch_operations",
+    "rho_batch_operations", "rho_batch_floor_operations")]
 
 
 # ------------------------------------------------------------------ identities
@@ -106,10 +254,11 @@ def implementation_sha256() -> str:
 
 
 def cell_label(c: dict) -> str:
-    return f"n{c['n']}m{c['m']}l{c['l']}-{c['family']}-s{c['seed']}-{c['mode']}-w{c['workload_seed']}"
+    walk = "-walk" if c.get("rerandomize", "uniform") == "walk" else ""
+    return f"n{c['n']}m{c['m']}l{c['l']}-{c['family']}-s{c['seed']}-{c['mode']}{walk}-w{c['workload_seed']}"
 
 
-def workload(curve: ToyCurve, seed: int, count: int) -> tuple[str, dict]:
+def workload(curve: ToyCurve, seed: int, count: int, cache_state: str = "cold") -> tuple[str, dict]:
     rng = random.Random(f"icbench-targets|{curve.curve_id}|{seed}")
     targets = []
     for _ in range(count):
@@ -128,7 +277,7 @@ def workload(curve: ToyCurve, seed: int, count: int) -> tuple[str, dict]:
         "target_count": count,
         "rerandomization_law": "Q_i + [a]G with a uniform on [1, r-1], drawn from rerandomization_stream + '|i'",
         "rerandomization_stream": f"icbench-descent|{curve.curve_id}|{seed}",
-        "cache_state": "cold",
+        "cache_state": cache_state,
         "rho_reference": {"group_operations": round(math.sqrt(math.pi * r / 2)),
                           "rule": "expected parallel rho without equivalence classes, sqrt(pi r / 2)"},
         "rho_floor": {"group_operations": round(math.sqrt(math.pi * r / (4 * curve.n))),
@@ -163,16 +312,36 @@ def endomorphism_record(curve: ToyCurve) -> dict:
 
 def candidate_manifest(curve: ToyCurve, fb: FactorBase, cell: dict) -> tuple[str, dict]:
     m = cell["m"]
-    pdp = pdp_config(m, macaulay.Limits(**LIMITS))
-    pdp.update({
-        "stage_code": f"PDP{m}xl",
-        "modes": [cell["mode"]],
-        "completion_test": "refutation (1 in the row space) needs no oracle; for S >= 1 solutions the scan "
-        "stops when the standard monomials number S, with S and the solutions read off an exhaustive "
-        "enumeration (Moebius transform) that is charged to the phase it serves",
-        "summation_polynomials": "curve-independent symbolic S_k from pdp-scaling/sumpoly.py, loaded once per "
-        "process before the run (not charged)",
-    })
+    if cell["mode"] == "ht":
+        pdp = {
+            "stage_code": f"PDP{m}ht",
+            "summand_count": m,
+            "summation_polynomial": "S_3(X, Y, S) = (XY + S(X + Y))^2 + XYS + b, rewritten with u = X + Y, p = XY as "
+            "the Artin-Schreier equation (p/S)^2 + p/S = (u + sqrt(b)/S)^2 (Courtois, ePrint 2016/003, Sec. 2)",
+            "solver": "half-trace projection: p is F_2-affine in u; projecting X^2 + uX + p(u) = 0 onto F/V^(2) "
+            "gives n - dim V^(2) linear equations in u plus Tr(u) = Tr(sqrt(b)/S); each solution u yields at most "
+            "one {X, Y} by one half-trace, kept if X, Y lie in V and the signed lifts sum to R",
+            "residual_search_dimension": "max(0, dim V + dim V^(2) - n - 1 + [V in ker Tr])",
+            "completeness": "every decomposition is returned; no decomposition is proved by an inconsistent "
+            "system or an empty candidate set",
+            "internal_kernel": "F_2 bit-vector elimination (charged as mac_op word operations); field operations "
+            "in pdpkernel.c (gf_mul, gf_inv, gf_lin for trace, half-trace and square root)",
+            "monomial_order": "none",
+            "limits": "none",
+            "cache_policy": "V^(2), its parity checks and HT(v_j^2) precomputed per factor base (precompute phase)",
+            "implementation": "experiments/pdp-degree-heuristics/htsolver.py",
+        }
+    else:
+        pdp = pdp_config(m, macaulay.Limits(**LIMITS))
+        pdp.update({
+            "stage_code": f"PDP{m}xl",
+            "modes": [cell["mode"]],
+            "completion_test": "refutation (1 in the row space) needs no oracle; for S >= 1 solutions the scan "
+            "stops when the standard monomials number S, with S and the solutions read off an exhaustive "
+            "enumeration (Moebius transform) that is charged to the phase it serves",
+            "summation_polynomials": "curve-independent symbolic S_k from pdp-scaling/sumpoly.py, loaded once per "
+            "process before the run (not charged)",
+        })
     record = {
         "schema": "ic-candidate/1",
         "field": curve.field_record(),
@@ -203,7 +372,10 @@ def candidate_manifest(curve: ToyCurve, fb: FactorBase, cell: dict) -> tuple[str
         },
         "target_descent": {
             "stage_code": "TDpdp",
-            "policy": "Q + [a]G with a from the workload's rerandomization stream, decomposed by the same PDP "
+            "policy": ("Q + i [a0]G for i = 1, 2, ... with a0 from the workload's rerandomization stream (one group "
+                       "addition per attempt), decomposed by the same PDP solver until a verified relation appears; "
+                       "log Q = sum c_j log_j - i a0 mod r") if cell.get("rerandomize") == "walk" else
+            "Q + [a]G with a from the workload's rerandomization stream, decomposed by the same PDP "
             "solver until a verified relation appears; log Q = sum c_j log_j - a mod r",
             "recursive_solvers": "none",
             "success": "[log Q]G = Q",
@@ -215,7 +387,8 @@ def candidate_manifest(curve: ToyCurve, fb: FactorBase, cell: dict) -> tuple[str
         },
     }
     digest = sha256_hex(record)
-    cid = (f"IC1N{curve.n}C{curve.tag}fb{fb.usable_points}PDP{m}xlRCsampleLAgaussTDpdpISO0h{digest[:12]}")
+    solver = "ht" if cell["mode"] == "ht" else "xl"
+    cid = (f"IC1N{curve.n}C{curve.tag}fb{fb.usable_points}PDP{m}{solver}RCsampleLAgaussTDpdpISO0h{digest[:12]}")
     return cid, record
 
 
@@ -234,19 +407,63 @@ def _warm_process():
         descent.summation_polynomial(m + 1)
 
 
+def rho_one_target(curve: ToyCurve, Q: tuple[int, int], seed: str) -> dict:
+    """Measured three-set Pollard rho on the exact public target, with scalar replay."""
+    rng = random.Random("icbench-rho|" + seed)
+    K, r = curve.K, curve.r
+    steps = 0
+    start = time.perf_counter_ns()
+
+    def advance(state):
+        nonlocal steps
+        P, a, b = state
+        branch = P[0] % 3
+        if branch == 0:
+            P, a = K.add(P, curve.G), (a + 1) % r
+        elif branch == 1:
+            P, a, b = K.add(P, P), (2 * a) % r, (2 * b) % r
+        else:
+            P, b = K.add(P, Q), (b + 1) % r
+        steps += 1
+        return P, a, b
+
+    for restart in range(32):
+        a, b = rng.randrange(r), rng.randrange(r)
+        initial = (K.add(K.smul(curve.G, a), K.smul(Q, b)), a, b)
+        slow = fast = initial
+        for _ in range(20 * math.isqrt(r) + 100):
+            slow = advance(slow)
+            fast = advance(advance(fast))
+            if slow[0] != fast[0]:
+                continue
+            denominator = (fast[2] - slow[2]) % r
+            if denominator:
+                scalar = (slow[1] - fast[1]) * pow(denominator, -1, r) % r
+                verified = K.smul(curve.G, scalar) == Q
+                return {"status": "complete" if verified else "error", "verified": verified,
+                        "scalar": scalar, "online_wall_ns": time.perf_counter_ns() - start,
+                        "steps": steps, "restarts": restart}
+            break
+    return {"status": "budget", "verified": False, "scalar": None,
+            "online_wall_ns": time.perf_counter_ns() - start, "steps": steps, "restarts": 32}
+
+
 def run_cell(cell: dict, calibration: dict) -> dict:
     """Run one cell in this (fresh) process and return its receipt."""
     import monitor
 
     t_all = time.perf_counter_ns()
     curve = ToyCurve(cell["n"])
-    wid, wrec = workload(curve, cell["workload_seed"], cell["targets"])
+    primary = cell.get("suite") in ONLINE_SUITES
+    wid, wrec = workload(curve, cell["workload_seed"], cell["targets"],
+                         "prepared" if primary else "cold")
     fb = FactorBase(curve, cell["family"], cell["l"], cell["seed"])
     cid, manifest = candidate_manifest(curve, fb, cell)
     eid, env = resource_envelope(cell)
     weights = weights_for(calibration, cell["n"])
     args = SimpleNamespace(n=cell["n"], m=cell["m"], l=cell["l"], family=cell["family"], seed=cell["seed"],
-                           mode=cell["mode"], abort_degree=0, max_attempts=cell["max_attempts"],
+                           mode=cell["mode"], rerandomize=cell.get("rerandomize", "uniform"), abort_degree=0,
+                           max_attempts=cell["max_attempts"],
                            workload_seed=cell["workload_seed"], descent_targets=cell["targets"],
                            report_every=0, out="", trace="", **LIMITS)
     meter = opcount.Meter()
@@ -256,12 +473,43 @@ def run_cell(cell: dict, calibration: dict) -> dict:
     with meter.phase("isogeny"):
         pass
     priced = meter.priced(weights)
-    phase_ops = {p: priced.get(p, 0) for p in PHASES}
-    phase_wall = {p: meter.wall_ns.get(p, 0) for p in PHASES}
-    counters = {p: dict(meter.ops.get(p, {})) for p in PHASES}
+    # The supplementary cold ledger charges all target query/PDP/check work
+    # to target_descent, with scalar replay under recovery_check. The online
+    # ledger below preserves their finer five-phase wall-time split.
+    sources = {p: (p,) for p in PHASES}
+    sources["target_descent"] = ("target_query", "target_pdp", "target_relation_check", "target_descent")
+    sources["recovery_check"] = ("recovery_check", "target_recovery_check")
+    unmapped = set(priced) - {"instrument"} - {src for names in sources.values() for src in names}
+    if unmapped:
+        raise AssertionError(f"cold ledger omits charged phases: {sorted(unmapped)}")
+    phase_ops = {p: sum(priced.get(src, 0) for src in sources[p]) for p in PHASES}
+    phase_wall = {p: sum(meter.wall_ns.get(src, 0) for src in sources[p]) for p in PHASES}
+    counters = {p: dict(sum((meter.ops.get(src, Counter()) for src in sources[p]), Counter()))
+                for p in PHASES}
     mon = res["monitor"]
     st = mon["status"]
     descents = res["descents"]
+    rho_measured = None
+    online = None
+    if primary and len(descents) == 1:
+        d = descents[0]
+        phases = ("target_query", "target_pdp", "target_relation_check", "target_descent",
+                  "target_recovery_check")
+        phase_times = {p: meter.wall_ns.get(p, 0) for p in phases}
+        # Python loop and bookkeeping time belongs to target descent. The five
+        # exclusive phase costs then exactly cover the measured online interval.
+        overhead = d["online_wall_ns"] - sum(phase_times.values())
+        if overhead < 0:
+            raise AssertionError("target phases exceed the measured online interval")
+        phase_times["target_descent"] += overhead
+        online = {"ic_online_ns": d["online_wall_ns"], "phase_wall_ns": phase_times,
+                  "interval": "from first target rerandomization to independent scalar replay",
+                  "overhead_charged_to_target_descent_ns": overhead}
+        Q = tuple(wrec["targets"][0][1:])
+        rho_measured = rho_one_target(curve, Q, f"{curve.curve_id}|{Q[0]}|{Q[1]}")
+        online["rho_online_ns"] = rho_measured["online_wall_ns"]
+        online["speedup"] = (rho_measured["online_wall_ns"] / d["online_wall_ns"]
+                             if d["verified"] and d["matches_workload"] and rho_measured["verified"] else None)
     verified = bool(descents) and all(d["verified"] and d["matches_workload"] for d in descents)
     if not res["collection_complete"]:
         status = "insufficient_relations"
@@ -277,6 +525,8 @@ def run_cell(cell: dict, calibration: dict) -> dict:
     floor = wrec["rho_floor"]["group_operations"] * weights["ec_add"]
     per_target = [sum(k * weights[c] for c, k in d["ops"].items()) for d in descents]
     priced_charged = sum(phase_ops.values())
+    warm = warm_accounting(total, per_target, rho, floor, r, curve.n, weights["ec_add"])
+    series_id = workload_series_id(curve, cell["workload_seed"], "prepared" if primary else "cold")
     run = cell.get("run", 1)
     run_id = f"{cid}W{wid}R{run}"
     solved = st.get("verified_decomposition", 0)
@@ -288,13 +538,15 @@ def run_cell(cell: dict, calibration: dict) -> dict:
         "proposal_id": None,
         "run_id": run_id,
         "workload_id": wid,
+        "workload_series_id": series_id,
         "pair_block_id": f"W{wid}",
         "source_curve_ref": curve.curve_id,
         "profile_id": cell_label(cell),
         "isogeny_route_ref": "none",
         "bench_cell": cell_label(cell),
         "suite": cell.get("suite"),
-        "cell": {k: cell[k] for k in ("n", "m", "l", "family", "seed", "mode", "workload_seed", "targets")},
+        "cell": {**{k: cell[k] for k in ("n", "m", "l", "family", "seed", "mode", "workload_seed", "targets")},
+                 "rerandomize": cell.get("rerandomize", "uniform")},
         "subgroup_order": str(r),
         "counts": {
             "ordinary_queries": mon["attempts"],
@@ -324,14 +576,22 @@ def run_cell(cell: dict, calibration: dict) -> dict:
         "operation_unit": calibration["unit"],
         "rho_operations": rho,
         "rho_floor_operations": floor,
+        "online": online,
+        "rho_measured": rho_measured,
         "ratio_to_rho": total / rho if total is not None else None,
         "ratio_to_floor": total / floor if total is not None else None,
+        "ratio_to_independent_rho_batch": warm["ic_over_independent_rho"],
+        "ratio_to_batch_rho": warm["ic_over_batch_rho"],
+        "ratio_to_batch_floor": warm["ic_over_folded_batch_rho"],
+        "rho_batch": {
+            "independent_operations": warm["independent_rho_operations"],
+            "shared_dp_expected_operations": warm["batch_rho_operations"],
+            "folded_shared_dp_expected_operations": warm["folded_batch_rho_operations"],
+            "model": warm["batch_rho_model"],
+        },
         "S_rps": total / math.sqrt(r) if total is not None else None,
         "S_ec_add": total / (weights["ec_add"] * math.sqrt(r)) if total is not None else None,
-        "warm": {"k": len(descents), "per_target_operations": per_target,
-                 "shared_operations": priced_charged - sum(per_target),
-                 "amortized_operations_per_target": total / len(descents) if total is not None and descents else None,
-                 "shared": "every phase except target descent (factor base, collection, relation LA, log checks)"},
+        "warm": warm,
         "verified_scalar": status == "complete",
         "scalar_certificate_ref": f"{run_id}#descents" if status == "complete" else None,
         "descents": [{k: d[k] for k in ("attempts", "recovered", "verified", "matches_workload", "scalar")}
@@ -355,7 +615,9 @@ def run_cell(cell: dict, calibration: dict) -> dict:
         },
         "wall_ns": time.perf_counter_ns() - t_all,
         "run_wall_ns": wall,
-        "peak_rss_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024,
+        # Darwin reports ru_maxrss in bytes; Linux reports kibibytes.
+        "peak_rss_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss *
+        (1 if sys.platform == "darwin" else 1024),
         "provenance": {
             "workload_fixture_sha256": sha256_hex(wrec),
             "source_sha256": implementation_sha256(),
@@ -412,6 +674,19 @@ def csv_row(rec: dict, commit: str, recorded_at: str) -> dict:
         "peak_rss_bytes": rec["peak_rss_bytes"], "calibration_id": rec["provenance"]["calibration_id"],
         "implementation_sha256": rec["provenance"]["source_sha256"], "git_commit": commit,
         "recorded_at": recorded_at, "host": rec["provenance"]["host_id"],
+        "ic_online_ns": (rec.get("online") or {}).get("ic_online_ns"),
+        "rho_online_ns": (rec.get("online") or {}).get("rho_online_ns"),
+        "online_speedup": (rec.get("online") or {}).get("speedup"),
+        "workload_series_id": rec["workload_series_id"],
+        "shared_operations": rec["warm"]["shared_operations"],
+        "target_operations": rec["warm"]["target_operations"],
+        "mean_target_operations": rec["warm"]["mean_target_operations"],
+        "rho_independent_batch_operations": rec["warm"]["independent_rho_operations"],
+        "rho_batch_operations": rec["warm"]["batch_rho_operations"],
+        "rho_batch_floor_operations": rec["warm"]["folded_batch_rho_operations"],
+        "ratio_to_independent_rho_batch": rec["warm"]["ic_over_independent_rho"],
+        "ratio_to_batch_rho": rec["warm"]["ic_over_batch_rho"],
+        "ratio_to_batch_floor": rec["warm"]["ic_over_folded_batch_rho"],
     }
     for k, v in row.items():
         if isinstance(v, float):
@@ -423,6 +698,23 @@ def csv_row(rec: dict, commit: str, recorded_at: str) -> dict:
 
 def write_csv(path: Path, rows: list[dict], append: bool = False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    if append and path.exists() and path.stat().st_size:
+        with path.open(newline="") as fh:
+            reader = csv.DictReader(fh)
+            old_fields = reader.fieldnames or []
+            if old_fields != CSV_FIELDS:
+                if old_fields != CSV_FIELDS[:len(old_fields)]:
+                    raise ValueError(f"cannot migrate unknown CSV schema at {path}")
+                new_fields = CSV_FIELDS[len(old_fields):]
+                prior = []
+                for row in reader:
+                    extra = row.pop(None, [])
+                    if extra and len(extra) != len(new_fields):
+                        raise ValueError(f"incomplete extended CSV row at {path}")
+                    row.update(dict(zip(new_fields, extra)))
+                    prior.append(row)
+                write_csv(path, prior + rows)
+                return
     new = not (append and path.exists() and path.stat().st_size)
     with path.open("a" if append else "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=CSV_FIELDS, lineterminator="\n")
@@ -486,8 +778,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run", help="run a suite; write <suite>.csv, <suite>.jsonl and manifests to --out-dir")
-    r.add_argument("--suite", default="ci", choices=sorted(SUITES))
-    r.add_argument("--jobs", type=int, default=os.cpu_count() or 1)
+    r.add_argument("--suite", default="primary", choices=sorted(SUITES))
+    r.add_argument("--jobs", type=int, default=1)
     r.add_argument("--out-dir", default=str(HERE / "out"))
     r.add_argument("--record", action="store_true",
                    help="append to history.csv and results/receipts.jsonl, write manifests under candidates/ and "
