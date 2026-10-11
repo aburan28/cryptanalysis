@@ -37,6 +37,11 @@ The priority-cover evaluator currently combines buckets as
 and `rho=1+tau`. Both use the same recoding, atlas, seed table, and mixed
 window additions.
 
+The inherited native result field named `additions` is computed as the
+number of nonidentity recoded terms minus one. It is a recoding diagnostic;
+it does not count the final point additions introduced or removed by the
+direct `rho` path. The source-call model below compares those final paths.
+
 The frozen source-call model counts `add_xyzz` as 12 general field
 multiplications and 2 squarings on its ordinary nonidentity path. The
 direct `rho` method has 9 general multiplications, 5 squarings, and 2
