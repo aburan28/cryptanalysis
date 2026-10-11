@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "kind": "n83_w34_implicit_s3_planted_sat_protocol",
+  "curve_id": "EC1N83Ckb1h2bcb59d56ad6",
+  "candidate_id": null,
+  "full_w4_geometry_sha256": "fffbc44e8e9e80f3646eac51316302ce9b3fce02ed79e7ca9dc76b6a7765cf55",
+  "full_w4_representatives_sha256": "ad74d43eb121888a88e522a8896f78465d0f8e4cc35c5545c3b8e41b35054d57",
+  "full_w4_independent_replay_sha256": "bd3ad9477ad70be4b439a76f4afcf79608948d91efdb471f6fff74e34630d18b",
+  "planted_selection": "In lexicographic mask-combination order, enumerate distinct cyclic Frobenius mask orbits. For weight 3 use the first rational orbit at or after ordinals 20 and 200; for weight 4 use the first rational orbit at or after ordinals 400, 8000, and 19000. In each case choose the lift with the smaller encoded y. Reject the frozen fixture if any selected projected point is identity, any selected orbit is not in the complete W3/W4 base, a proper nonempty subset of the five raw points sums to identity, or the five-point projected target is identity.",
+  "planted_w3_orbit_lower_bounds": [20, 200],
+  "planted_w4_orbit_lower_bounds": [400, 8000, 19000],
+  "ordinary_scalar_derivation": "1 + (SHA-256 UTF-8 of n83-w34-ordinary-v1-0 interpreted as big-endian integer mod (r-1)); scalar remains in private fixture only",
+  "raw_target_fibers": "For subgroup Q, T=[4^{-1} mod r]Q and K ranges over O,(0,1),(1,0),(1,1). Store all four T+K with exact x/y coordinates and verify [4](T+K)=Q.",
+  "solver": "one process and one CryptoMiniSat thread; build an implicit four-equation S3 chain over GF(2^83) with five normal-mask x rows constrained to weight three or four, and three unconstrained intermediate x rows",
+  "pinned_control": "Fix all five x rows to the planted mask witness and solve the correct planted raw-target fiber branch first. This checks circuit satisfiability and model parsing but does not measure unpinned search.",
+  "unpinned_planted": "Run all distinct planted target-fiber x branches in ascending x order, retaining every timeout, error, SAT/UNSAT status, raw solver output, memory, conflicts, decisions, and verified witness. Stop only at a group-verified witness or after every branch is attempted.",
+  "ordinary_gate": "Run a frozen ordinary public target only after the pinned and unpinned planted controls both solve and independently replay, and a small exhaustive control verifies the S3-chain/point-lift ideal equivalence including exceptional cases.",
+  "max_seconds_per_branch": 30,
+  "max_conflicts_per_branch": 200000,
+  "max_rss_bytes_per_branch": 2147483648,
+  "external_wall_limit_seconds_per_branch": 45,
+  "claim_boundary": "Planted correctness and bounded SAT feasibility only until ordinary gate passes. No natural relation yield, complete DLP, rho pair, or speedup."
+}
