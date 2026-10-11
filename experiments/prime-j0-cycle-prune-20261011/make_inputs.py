@@ -12,11 +12,11 @@ import subprocess
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
-PRIOR = HERE.parent / "prime-j0-orbit-swap-20261011/make_inputs.py"
-SPEC = importlib.util.spec_from_file_location("cycle_inputs_prior", PRIOR)
-prior = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(prior)
-ORDER = prior.ORDER
+PARENT = HERE / "prune.py"
+SPEC = importlib.util.spec_from_file_location("cycle_inputs_parent", PARENT)
+parent = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(parent)
+ORDER = parent.dual.screen.ORDER
 COUNT = 4096
 SEED = 20261011090617
 SOURCE_FILES = ("prune.py", "exchange.py", "refine.py", "verify_exchange.py",
