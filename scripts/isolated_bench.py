@@ -22,6 +22,7 @@ import time
 import uuid
 
 CGROUP_ROOT = Path("/sys/fs/cgroup")
+HOST_LOCK_PATH = Path("/run/lock/cryptanalysis-isolated-bench.lock")
 
 
 def cpu_set(value):
@@ -121,6 +122,25 @@ def require_manifest(manifest):
     for field in manifest["pair_fields"]:
         if not isinstance(field, str) or not field:
             raise ValueError("invalid pair field")
+    if len(set(manifest["pair_fields"])) != len(manifest["pair_fields"]):
+        raise ValueError("pair_fields must be unique")
+    result_field = manifest.get("result_field")
+    if not isinstance(result_field, str) or not result_field or any(
+        char.isspace() or char == "=" for char in result_field
+    ):
+        raise ValueError("result_field must name the independently checked answer")
+    for case in manifest["cases"]:
+        expected = case.get("expected_fields")
+        if not isinstance(expected, dict) or any(
+            not isinstance(expected.get(field), str) or not expected[field]
+            for field in manifest["pair_fields"]
+        ):
+            raise ValueError("each case needs expected_fields for every pair field")
+        if not isinstance(case.get("expected_result"), str) or not case["expected_result"]:
+            raise ValueError("each case needs an expected_result")
+        if any(case["expected_result"] in case[variant][1:]
+               for variant in ("reference", "candidate")):
+            raise ValueError("expected_result must not be passed to solver argv")
     if not isinstance(manifest.get("artifacts"), list) or not manifest["artifacts"]:
         raise ValueError("artifacts must list at least one source or build file")
     for item in manifest["artifacts"]:
@@ -230,6 +250,25 @@ def preflight(manifest):
     if read(cg / "memory.events") is None:
         problems.append("memory.events unavailable")
     if read(cg / "cpu.pressure") is None:
+    events = read(cg / "cgroup.events")
+    evidence["cgroup.events"] = events
+    if events is None or "populated 0" not in events.splitlines():
+        problems.append("benchmark cgroup or a descendant contains processes")
+    cpu_stat_text = read(cg / "cpu.stat")
+    if not cpu_stat_text or not all(
+        any(line.startswith(key + " ") for line in cpu_stat_text.splitlines())
+        for key in ("nr_throttled", "throttled_usec")
+    ):
+        problems.append("cpu.stat throttling counters unavailable")
+    memory_events = read(cg / "memory.events")
+    if not memory_events or not all(
+        any(line.startswith(key + " ") for line in memory_events.splitlines())
+        for key in ("oom", "oom_kill")
+    ):
+        problems.append("memory.events unavailable")
+    pressure = read(cg / "cpu.pressure")
+    if not pressure or not any(line.startswith("some ") and "total=" in line
+                               for line in pressure.splitlines()):
         problems.append("cpu.pressure unavailable")
     interrupts_text = read("/proc/interrupts")
     if not interrupts_text or not all(f"CPU{cpu}" in interrupts_text.splitlines()[0].split()
@@ -287,6 +326,7 @@ def preflight(manifest):
                     evidence["irq_affinity_overlap"].append(path.parent.name)
             except ValueError:
                 pass
+                problems.append("IRQ effective affinity unreadable: " + str(path))
         if evidence["irq_affinity_overlap"]:
             problems.append("IRQ effective affinity intersects benchmark CPUs")
     return {"ok": not problems, "problems": problems, "evidence": evidence}
@@ -481,6 +521,8 @@ def one_run(argv, manifest, cpus, nodes, cgroup, folder, serial):
             raise ValueError("invalid online_ms")
     except (KeyError, ValueError):
         issues.append("missing or invalid online_ms")
+    if metric is not None and metric > outer_ms:
+        issues.append("online_ms exceeds outer elapsed time")
     if fields.get("verified") != "1":
         issues.append("missing verified=1")
     if proc.returncode != 0:
@@ -504,11 +546,17 @@ def execute(manifest, output):
     output.mkdir(parents=True, exist_ok=False)
     json_write(output / "manifest.json", manifest)
     artifact_hashes_before = {path: sha256(path) for path in manifest["artifacts"]}
+    binary_paths = {case[variant][0] for case in manifest["cases"]
+                    for variant in ("reference", "candidate")}
+    binary_hashes_before = {path: sha256(path) for path in sorted(binary_paths)}
+    runner_hash_before = sha256(Path(__file__))
     health = preflight(manifest)
     json_write(output / "preflight.json", health)
     if not health["ok"]:
         summary = {"status": "rejected", "problems": health["problems"],
                    "artifact_sha256": artifact_hashes_before,
+                   "binary_sha256": binary_hashes_before,
+                   "runner_sha256": runner_hash_before,
                    "paired_speedup": None, "valid_pairs": 0}
         json_write(output / "summary.json", summary)
         return summary
@@ -539,6 +587,13 @@ def execute(manifest, output):
                                 pair["reference"]["fields"][field] != pair["candidate"]["fields"].get(field)]
                     if mismatch:
                         issues.append("pair mismatch: " + ",".join(mismatch))
+                                if any(row["fields"].get(field) != case["expected_fields"][field]
+                                       for row in pair.values())]
+                    if mismatch:
+                        issues.append("frozen-input mismatch: " + ",".join(mismatch))
+                    if any(row["fields"].get(manifest["result_field"]) !=
+                           case["expected_result"] for row in pair.values()):
+                        issues.append("answer differs from frozen expected_result")
                 record = {"case": case["id"], "repeat": repeat,
                           "run_serials": {variant: row["serial"] for variant, row in pair.items()},
                           "status": "valid" if not issues else "invalid", "issues": issues,
@@ -554,6 +609,12 @@ def execute(manifest, output):
     artifacts_stable = artifact_hashes_after == artifact_hashes_before
     complete = (len(rows) == expected and len(pairs) == expected // 2 and
                 len(ratios) * 2 == expected and artifacts_stable)
+    binary_hashes_after = {path: sha256(path) for path in sorted(binary_paths)}
+    binaries_stable = binary_hashes_after == binary_hashes_before
+    runner_stable = sha256(Path(__file__)) == runner_hash_before
+    complete = (len(rows) == expected and len(pairs) == expected // 2 and
+                len(ratios) * 2 == expected and artifacts_stable and
+                binaries_stable and runner_stable)
     per_case = []
     for case in manifest["cases"]:
         case_ratios = [pair["speedup"] for pair in pairs
@@ -573,6 +634,10 @@ def execute(manifest, output):
                "artifact_sha256": artifact_hashes_before,
                "artifacts_stable": artifacts_stable,
                "runner_sha256": sha256(Path(__file__)),
+               "binary_sha256": binary_hashes_before,
+               "binaries_stable": binaries_stable,
+               "runner_sha256": runner_hash_before,
+               "runner_stable": runner_stable,
                "manifest_sha256": sha256(output / "manifest.json")}
     json_write(output / "summary.json", summary)
     return summary
@@ -585,6 +650,7 @@ def only_worker(queue_root):
         lock_paths = [queue_root / "worker.lock"]
         if sys.platform == "linux":
             lock_paths.append(Path("/run/lock/cryptanalysis-isolated-bench.lock"))
+            lock_paths.append(HOST_LOCK_PATH)
         for path in lock_paths:
             lock = stack.enter_context(path.open("a+"))
             try:
@@ -592,6 +658,20 @@ def only_worker(queue_root):
             except BlockingIOError:
                 raise RuntimeError("another benchmark worker holds lock " + str(path))
         yield
+
+
+@contextlib.contextmanager
+def job_slot(shared_job_lock):
+    """Hold a lock shared with any other launcher for the whole job."""
+    if shared_job_lock is None:
+        yield
+        return
+    with shared_job_lock.open("a+") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
 
 
 def database(queue_root):
@@ -605,6 +685,7 @@ def database(queue_root):
 
 
 def serve(queue_root, once=False):
+def serve(queue_root, once=False, shared_job_lock=None):
     with only_worker(queue_root):
         db = database(queue_root)
         db.execute("UPDATE jobs SET status='interrupted', finished_ns=? WHERE status='running'",
@@ -629,6 +710,18 @@ def serve(queue_root, once=False):
                 status = "error"
             db.execute("UPDATE jobs SET status=?,finished_ns=?,output=?,summary=? WHERE id=?",
                        (status, time.time_ns(), str(output), json.dumps(summary), job_id))
+            with job_slot(shared_job_lock):
+                db.execute("UPDATE jobs SET status='running',started_ns=? WHERE id=?",
+                           (time.time_ns(), job_id))
+                output = queue_root / "results" / job_id
+                try:
+                    summary = execute(json.loads(raw), output)
+                    status = summary["status"]
+                except Exception as exc:
+                    summary = {"status": "error", "error": type(exc).__name__ + ": " + str(exc)}
+                    status = "error"
+                db.execute("UPDATE jobs SET status=?,finished_ns=?,output=?,summary=? WHERE id=?",
+                           (status, time.time_ns(), str(output), json.dumps(summary), job_id))
             if once:
                 break
 
@@ -639,6 +732,8 @@ def main():
     signal.signal(signal.SIGTERM, interrupted)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--queue-root", type=Path, default=Path("/workspace/isolated-bench"))
+    parser.add_argument("--shared-job-lock", type=Path,
+                        help="flock path also used by other experiment launchers")
     sub = parser.add_subparsers(dest="action", required=True)
     probe = sub.add_parser("probe")
     probe.add_argument("manifest", type=Path)
@@ -689,6 +784,12 @@ def main():
         with only_worker(args.queue_root):
             output = args.queue_root / "results" / uuid.uuid4().hex
             summary = execute(manifest, output)
+        serve(args.queue_root, args.once, args.shared_job_lock)
+    else:
+        with only_worker(args.queue_root):
+            with job_slot(args.shared_job_lock):
+                output = args.queue_root / "results" / uuid.uuid4().hex
+                summary = execute(manifest, output)
             print(json.dumps({"output": str(output), "summary": summary}, indent=2))
             if summary["status"] != "completed":
                 raise SystemExit(3)

@@ -1,0 +1,25 @@
+{
+  "schema": "taskq.task-spec/v1",
+  "queue": "ca-cpu",
+  "kind": "command",
+  "source": {
+    "repo": "cryptanalysis",
+    "commit": "0000000000000000000000000000000000000000",
+    "sparse_paths": ["src", "include", "tools", "cuda", "cmake", "cloud/taskq"]
+  },
+  "command": {
+    "argv": ["python3", "cloud/taskq/ca_ecdlp_job.py",
+             "--ca", "build/taskq-cpu/ca",
+             "--instance", "cloud/taskq/instances/generic-26.json",
+             "--alg", "rho", "--seed", "1", "--threads", "1"],
+    "setup": [
+      ["cmake", "-S", ".", "-B", "build/taskq-cpu", "-DCMAKE_BUILD_TYPE=Release",
+       "-DCA_BUILD_TESTS=OFF", "-DCA_BUILD_SHARED=OFF"],
+      ["cmake", "--build", "build/taskq-cpu", "--target", "ca", "-j", "4"]
+    ]
+  },
+  "limits": {"timeout_seconds": 600, "setup_timeout_seconds": 1800},
+  "placement": {"cpus": 1},
+  "verify": {"builtin": "certificate"},
+  "labels": {"instance": "generic-26", "solver": "ca solve --alg rho", "submitted_by": "example"}
+}

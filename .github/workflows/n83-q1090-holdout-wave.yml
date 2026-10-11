@@ -1,0 +1,187 @@
+name: n83 Q1090 fresh holdout M32 wave
+
+on:
+  push:
+    branches:
+      - codex/koblitz-pair-claw-toy
+    paths:
+      - ".github/workflows/n83-q1090-holdout-wave.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  physical-x86-holdout-wave:
+    if: github.ref == 'refs/heads/codex/koblitz-pair-claw-toy'
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        query_start:
+          - "0"
+          - "536870912"
+          - "1073741824"
+          - "1610612736"
+          - "2147483648"
+          - "2684354560"
+          - "3221225472"
+          - "3758096384"
+          - "4294967296"
+          - "4831838208"
+          - "5368709120"
+          - "5905580032"
+          - "6442450944"
+          - "6979321856"
+          - "7516192768"
+          - "8053063680"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      QUERY_START: ${{ matrix.query_start }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the frozen instance, source, and host
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, platform, shutil, subprocess
+          root = pathlib.Path('experiments/koblitz-pair-claw-20260929')
+          plan_path = root / 'n83_q1090_holdout_m32_wave_plan.json'
+          target_path = root / 'n83_holdout_target_20261001.json'
+          workflow_path = pathlib.Path('.github/workflows/n83-q1090-holdout-wave.yml')
+          plan = json.loads(plan_path.read_text())
+          target = json.loads(target_path.read_text())
+          start = int(os.environ['QUERY_START'])
+          sha = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+          assert plan['proposal_id'] == 'Q1090' and plan['status'] == 'ready_for_dispatch'
+          assert plan['curve_id'] == target['curve_id'] == 'EC1N83Ckb1h876c2921cb64'
+          assert plan['isogeny'] == target['isogeny'] == 'none'
+          assert target['fixture_scalar_retained'] is False
+          assert plan['workload_id'] == target['workload_id'] == '9ccc27baec79'
+          assert plan['run_id'] == plan['candidate_id'] + 'W' + plan['workload_id'] + 'R1'
+          assert plan['holdout_target_sha256'] == sha(target_path)
+          assert plan['public_target'] == target['public_target']
+          assert plan['actual_usable_points_B_before_folding'] == 8000204
+          assert plan['signed_frobenius_columns'] == 48194
+          assert plan['query_starts'] == [i * (1 << 29) for i in range(16)]
+          assert start in plan['query_starts']
+          assert plan['table_start'] == 0 and plan['table_descriptors'] == 1 << 32
+          assert plan['query_representatives'] == 1 << 29
+          assert plan['cpu_backend'] == 'x86_pclmul'
+          assert plan['workers'] == 4 and plan['representative_batch'] == 8
+          assert plan['bits_per_key'] == 20 and plan['hashes'] == 10
+          candidate_path = root / plan['candidate_manifest']
+          candidate = json.loads(candidate_path.read_text())
+          assert sha(candidate_path) == plan['candidate_manifest_sha256']
+          assert candidate['candidate_id'] == plan['candidate_id']
+          for key, path in (
+              ('factor_base_screen_sha256', root / 'n83_full_spill_screen.json'),
+              ('source_sha256', root / 'freeze_n83_holdout_wave.py'),
+              ('runner_source_sha256', root / 'run_n83_holdout_chunk.py'),
+              ('source_generator_sha256', root / 'bench_n83_zero_run_stage.py'),
+              ('portable_native_source_sha256', root / 'native_n83_orbit_query_spill_portable.cpp'),
+              ('portable_core_source_sha256', root / 'native_n83_bloom_core_portable.hpp'),
+              ('portable_pairs_source_sha256', root / 'native_n83_pairs_portable.cpp'),
+              ('generated_field_sha256', pathlib.Path('ecc2k130/runner/generated/eccF83.h')),
+          ):
+              assert plan[key] == sha(path), key
+          assert platform.machine().lower() in ('x86_64', 'amd64')
+          cpu = pathlib.Path('/proc/cpuinfo').read_text().lower()
+          assert 'pclmulqdq' in cpu or 'pclmul' in cpu
+          memory = {line.split(':', 1)[0]: int(line.split(':', 1)[1].split()[0]) * 1024
+                    for line in pathlib.Path('/proc/meminfo').read_text().splitlines()
+                    if ':' in line}
+          root_free = shutil.disk_usage('/').free
+          dest = pathlib.Path(os.environ['RUNNER_TEMP']) / 'n83-q1090-holdout'
+          dest.mkdir()
+          for name in ('control-sources', 'full-sources', 'control-spill', 'full-spill'):
+              (dest / name).mkdir()
+          report = {
+              'kind': 'n83_q1090_holdout_M32_R29_physical_x86_preflight',
+              'proposal_id': 'Q1090', 'candidate_id': plan['candidate_id'],
+              'workload_id': plan['workload_id'], 'run_id': plan['run_id'],
+              'curve_id': plan['curve_id'], 'isogeny': 'none',
+              'factor_base_enumerated_set_sha256': plan['factor_base_enumerated_set_sha256'],
+              'actual_usable_points_B_before_folding': 8000204,
+              'signed_frobenius_columns': 48194,
+              'public_target': plan['public_target'],
+              'table_start': 0, 'table_descriptors': 1 << 32,
+              'query_start': start, 'query_representatives': 1 << 29,
+              'architecture': platform.machine(), 'platform': platform.platform(),
+              'cpu_model': next((line.split(':', 1)[1].strip() for line in
+                                 pathlib.Path('/proc/cpuinfo').read_text().splitlines()
+                                 if line.startswith('model name')), None),
+              'compiler': subprocess.run(['clang++', '--version'], check=True,
+                                         capture_output=True, text=True).stdout.splitlines()[0],
+              'mem_total_bytes': memory['MemTotal'],
+              'mem_available_bytes': memory['MemAvailable'],
+              'root_free_bytes': root_free,
+              'plan_sha256': sha(plan_path), 'target_sha256': sha(target_path),
+              'candidate_manifest_sha256': sha(candidate_path),
+              'workflow_sha256': sha(workflow_path),
+          }
+          (dest / 'host.json').write_text(json.dumps(report, indent=2) + '\n')
+          assert memory['MemAvailable'] >= plan['minimum_mem_available_bytes']
+          assert root_free >= plan['minimum_root_free_bytes']
+          print(json.dumps(report))
+          PY
+
+      - name: Same-host bounded control
+        run: |
+          python3 experiments/koblitz-pair-claw-20260929/run_n83_holdout_chunk.py \
+            --cpu-backend x86_pclmul --cxx clang++ \
+            --spill-dir "$RUNNER_TEMP/n83-q1090-holdout/control-spill" \
+            --source-dir "$RUNNER_TEMP/n83-q1090-holdout/control-sources" \
+            --binary "$RUNNER_TEMP/n83-q1090-holdout/control-bin" \
+            --table-log2 20 --query-reps-log2 14 \
+            --table-start 0 --query-start "$QUERY_START" \
+            --workers 4 --rep-batch 8 --bits-per-key 20 --hashes 10 \
+            --out "$RUNNER_TEMP/n83-q1090-holdout/control.json"
+
+      - name: Full M32 holdout search
+        run: |
+          python3 experiments/koblitz-pair-claw-20260929/run_n83_holdout_chunk.py \
+            --cpu-backend x86_pclmul --cxx clang++ \
+            --spill-dir "$RUNNER_TEMP/n83-q1090-holdout/full-spill" \
+            --source-dir "$RUNNER_TEMP/n83-q1090-holdout/full-sources" \
+            --frozen-plan experiments/koblitz-pair-claw-20260929/n83_q1090_holdout_m32_wave_plan.json \
+            --binary "$RUNNER_TEMP/n83-q1090-holdout/full-bin" \
+            --table-log2 32 --query-reps-log2 29 \
+            --table-start 0 --query-start "$QUERY_START" \
+            --workers 4 --rep-batch 8 --bits-per-key 20 --hashes 10 \
+            --out "$RUNNER_TEMP/n83-q1090-holdout/full.json"
+
+      - name: Check terminal receipt
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'n83-q1090-holdout'
+          host = json.loads((root / 'host.json').read_text())
+          control = json.loads((root / 'control.json').read_text())
+          full = json.loads((root / 'full.json').read_text())
+          assert control['proposal_id'] == full['proposal_id'] == 'Q1090'
+          assert full['candidate_id'] == host['candidate_id']
+          assert full['run_id'] == host['run_id']
+          assert control['curve_id'] == full['curve_id'] == host['curve_id']
+          assert control['factor_base'] == full['factor_base']
+          assert full['factor_base']['enumerated_set_sha256'] == host['factor_base_enumerated_set_sha256']
+          assert full['isogeny'] == 'none'
+          assert control['public_target'] == full['public_target'] == host['public_target']
+          assert full['table_descriptors'] == 1 << 32
+          assert full['query_representatives'] == 1 << 29
+          assert full['query_start'] == int(os.environ['QUERY_START'])
+          assert full['native_result']['candidate_store_mode'] == 'unlinked_file'
+          assert full['native_result']['peak_rss_bytes'] >= full['native_result']['bloom_bytes']
+          if full['native_result']['exact_hit_queries']:
+              assert full['verified_public_target_quotient_table_dlp']
+          print(json.dumps({'exact_hit_queries': full['native_result']['exact_hit_queries'],
+                            'verified_dlp': full['verified_public_target_quotient_table_dlp'],
+                            'target_online_seconds': full['target_online_seconds']}))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: n83-q1090-holdout-M32-R29-start-${{ matrix.query_start }}
+          path: ${{ runner.temp }}/n83-q1090-holdout/
+          retention-days: 7
