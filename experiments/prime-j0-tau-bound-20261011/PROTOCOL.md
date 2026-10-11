@@ -5,6 +5,20 @@ classes in 513 directed cycles. A seed at one class covers its own class,
 the next class when its mapped digit is within the norm limit, and the
 second successor when its twice-mapped digit is within the norm limit.
 The capacities are therefore nested lengths one, two, or three.
+Multiplication by `tau` has determinant three, which is invertible modulo
+1024, so its action really is a permutation of these classes. Unit
+rotation commutes with the action.
+
+The nearest representative of a class dominates every other
+representative for this cover: all have the same successor classes,
+while `N(tau^j z)=3^j N(z)`. The verifier searches translations of a
+canonical residue for its least norm. This search is exhaustive. The
+hexagonal residue lattice has covering radius squared `R^2/3` for
+`R=1024`. Since `N(a,b) >= 3b^2/4`, a closest representative has
+`|b|<R`; since `N(a,b) >= a^2/4`, it has `|a|<2R`. For initial
+coordinates in `[0,R)`, only horizontal shifts `-2,-1,0,1` and
+vertical shifts `-1,0` can remain. The verifier enumerates a superset
+of these shifts.
 
 For each cycle, minimize the number of selected seed positions covering
 every class. Any selected positions in cyclic order partition the cycle
@@ -20,6 +34,11 @@ integer lower bound and a complete cover. An independent verifier must
 recompute the class cycles, norm capacities, and optimum with a Boolean
 state dynamic program that enforces coverage class by class, then check
 the serialized cover and every exact residue.
+
+If a `k`-seed cover leaves `U` classes without a tau provider, adding a
+direct seed for each of those classes completes a tau-only cover with
+at most `k+U` seeds. Thus `U` is at least the exact tau-only minimum
+minus `k`, regardless of how the original `k` seeds were chosen.
 
 The fixed-budget rho cover in the parent experiment has 67,338 seeds.
 The exact tau-only optimum establishes the minimum table-size increase
