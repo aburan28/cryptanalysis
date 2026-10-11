@@ -22,6 +22,8 @@ def digest(raw):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("native_root", type=Path)
+    parser.add_argument("--log", default="native-full.log")
+    parser.add_argument("--exit-code", type=int, required=True)
     args = parser.parse_args()
     native = args.native_root.resolve()
     material = json.loads((HERE / "native-materialization.json").read_bytes())
@@ -29,12 +31,24 @@ def main():
         for name, expected in material[category].items():
             assert digest((native / name).read_bytes()) == expected, name
 
-    raw = (HERE / "native-full.log").read_bytes()
+    log_path = (HERE / args.log).resolve()
+    assert log_path.parent == HERE
+    raw = log_path.read_bytes()
     log = raw.decode()
     assert "running 143 tests" in log
-    assert f"test unit_orbit_windows::tests::{TEST} ... ok" in log
-    assert "test result: ok. 143 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out" in log
-    assert len(re.findall(r"^test .+ \.\.\. ok$", log, re.MULTILINE)) == 143
+    passed = len(re.findall(r"^test .+ \.\.\. ok$", log, re.MULTILINE))
+    failed = len(re.findall(r"^test .+ \.\.\. FAILED$", log, re.MULTILINE))
+    complete = (
+        args.exit_code == 0
+        and f"test unit_orbit_windows::tests::{TEST} ... ok" in log
+        and "test result: ok. 143 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out" in log
+        and passed == 143
+        and failed == 0
+    )
+    if args.exit_code == 0:
+        assert complete, "zero exit requires complete verified suite"
+    else:
+        assert "test result: ok." not in log, "nonzero exit contradicts success summary"
     match = re.search(
         r"Running unittests .*\((target/release/deps/eisenstein_fixed-[0-9a-f]+)\)",
         log)
@@ -43,12 +57,14 @@ def main():
     assert binary.is_file()
 
     archive = gzip.compress(raw, mtime=0)
-    (HERE / "native-full.log.gz").write_bytes(archive)
+    (HERE / (log_path.name + ".gz")).write_bytes(archive)
     receipt = {
         "schema": 1,
-        "status": "passed",
-        "tests_passed": 143,
-        "tests_failed": 0,
+        "status": "passed" if complete else "incomplete",
+        "exit_code": args.exit_code,
+        "tests_passed": passed,
+        "tests_failed": failed,
+        "last_line": log.splitlines()[-1] if log.splitlines() else "",
         "platform": platform.platform(),
         "machine": platform.machine(),
         "rustc": subprocess.check_output(["rustc", "--version"], text=True).strip(),
@@ -65,7 +81,7 @@ def main():
         "raw_log_archive_sha256": digest(archive),
         "collector_sha256": digest(Path(__file__).read_bytes()),
     }
-    (HERE / "native-full-check.json").write_text(
+    (HERE / (log_path.stem + "-check.json")).write_text(
         json.dumps(receipt, indent=2, sort_keys=True) + "\n"
     )
     print(json.dumps({key: receipt[key] for key in
