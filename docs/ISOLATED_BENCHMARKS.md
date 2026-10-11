@@ -13,6 +13,7 @@ the benchmark subprocesses alone enter the isolated partition.
 The strict preflight requires a physical Linux host with administrative
 control, an empty cgroup v2 `cpuset.cpus.partition=isolated` partition whose
 exclusive effective CPU and NUMA sets match the manifest, full SMT sibling
+coverage, `nohz_full` on those CPUs, a fixed `performance` frequency, no CPU
 coverage, `cgroup.events populated 0` across descendants, `nohz_full` on
 those CPUs, a fixed `performance` frequency, no CPU
 quota, no overlapping effective IRQ affinity, a housekeeping-only service
@@ -84,6 +85,7 @@ python3 /workspace/cryptanalysis/scripts/isolated_bench.py --queue-root /workspa
 
 `serve` holds both a queue lock and a fixed host-wide lock under `/run/lock`
 for its whole lifetime. A second server, even with a different queue
+directory, or a direct run refuses to start. Keep the SQLite queue on a
 directory, or a direct run refuses to start. If the host also uses the
 `exp-run` launcher, start the service with its existing serial lock:
 
@@ -120,6 +122,54 @@ service can then be reached through SSH. [RunPod's Pod documentation](https://do
 describes CPU Pods and SSH provisioning; it does not by itself certify
 host-wide CPU/NUMA isolation.
 
+## Replaying the j=0 rho comparison
+
+Build the two C variants on the same Linux host, with identical source,
+compiler, flags, and width-2 tau setup, changing only
+`CA_J0_RHO_COVARIANT_WALK`. Link
+`experiments/prime-j0-tau-20260930/large-rho-20261002/bench_rho_large.c`
+to each static library:
+
+```sh
+cd /workspace/cryptanalysis
+cmake -S . -B /workspace/build/j0-reference -DCMAKE_BUILD_TYPE=Release -DCA_CUPQC=OFF -DCA_WERROR=ON -DCA_J0_RHO_COVARIANT_WALK=OFF -DCA_J0_TAU_RHO_WIDTH=2
+cmake -S . -B /workspace/build/j0-oriented -DCMAKE_BUILD_TYPE=Release -DCA_CUPQC=OFF -DCA_WERROR=ON -DCA_J0_RHO_COVARIANT_WALK=ON -DCA_J0_TAU_RHO_WIDTH=2
+cmake --build /workspace/build/j0-reference --target cryptanalysis_static
+cmake --build /workspace/build/j0-oriented --target cryptanalysis_static test_curve
+mkdir -p /workspace/bin
+cc -O3 -std=c11 -Iinclude experiments/prime-j0-tau-20260930/large-rho-20261002/bench_rho_large.c /workspace/build/j0-reference/libcryptanalysis.a -lm -lpthread -o /workspace/bin/j0-rho-reference
+cc -O3 -std=c11 -Iinclude experiments/prime-j0-tau-20260930/large-rho-20261002/bench_rho_large.c /workspace/build/j0-oriented/libcryptanalysis.a -lm -lpthread -o /workspace/bin/j0-rho-oriented
+```
+
+Build and correctness checks are outside the online timer. Generate the
+exact 160-target panel from the
+frozen scalar law with [make_j0_isolated_manifest.py](../scripts/make_j0_isolated_manifest.py):
+
+```sh
+python3 scripts/make_j0_isolated_manifest.py \
+  --reference /workspace/bin/j0-rho-reference \
+  --candidate /workspace/bin/j0-rho-oriented \
+  --workdir /workspace/cryptanalysis \
+  --cgroup /sys/fs/cgroup/benchmark-isolated \
+  --cpus 4-5 --execution-cpu 4 --mem-nodes 0 \
+  --output /workspace/isolated-bench/j0-rho-panel.json
+python3 scripts/isolated_bench.py probe /workspace/isolated-bench/j0-rho-panel.json
+python3 scripts/isolated_bench.py --queue-root /workspace/isolated-bench submit /workspace/isolated-bench/j0-rho-panel.json
+```
+
+CPU IDs and NUMA nodes above are examples; use the host's verified topology.
+For any Sage manifest, use the absolute checked repository `sage` launcher
+and save its `--runtime-info` receipt before measurement, as required by
+[AGENTS.md](../AGENTS.md).
+IC comparisons must also carry the candidate, workload, and run IDs and the
+stage accounting required by that file; the service enforces the environment
+and pairing but does not replace the IC measurement contract.
+
+The prior [j=0 rho panel](../experiments/prime-j0-rho-coordinate-canon-20261002/README.md)
+was run on a heavily loaded Mac. Its timing ratios remain exploratory until
+replayed through a qualifying isolated host. Historical results elsewhere
+in the repository need an isolation audit before they are treated as
+controlled performance claims.
 ## Frozen manifest and result contract
 
 Each `cases` entry is one previously unseen target. Freeze its exact input

@@ -1,0 +1,37 @@
+{
+ "_note": "The L1-L5 texts are not on disk (verify/literature/ is empty and literature/*.json has no claim ids). L1-L4 are checked as summarised in the G4 task text and as written in literature/levels.json; L5 was not specified, so the two remaining literature assertions in literature/levels.json and literature/per_curve.json are checked as L5a and L5b.",
+ "L1": {
+  "claim": "Block split (JMV05 sec 6): B1 = levels {1, 263} (263 explicit curves) and B2 = levels {p, 263p}; random reducibility across the whole class cannot be proven because P(c_pi) = p is large.",
+  "verdict": "CORRECTED",
+  "confirmed_part": "JMV05 statements are quoted correctly (JMV05 lines [165]; JMV05 lines [947]; JMV05 lines [952]): no polynomial-time reduction across the p-gap is known, and only B1 is constructible (constructing any B2 curve costs >= 2^72.97 F_q-mults = 2^9.58 E0-rho solves, recomputed here).",
+  "correction": "The split is a polynomial-time notion only. Gal24 Thm 2 (Gal24 lines [722]) gives, for h0 = 1, an O~(h0 N^{1/2}) = O~(2^28.51) isogeny from E0 to any presented level-p curve, and Gal24 sec 10 (Gal24 lines [1040]) spells out the resulting reduction of floor-curve ECDLP to the crater; Gal24 Thm 5 (Gal24 lines [975]) replaces JMV-style random self-reducibility by one over all but a negligible part of the class in O~(q^{2/5}) plus polylog oracle queries. So B2 is not cut off from E0 at below-rho cost; the concrete cost is conditional (levels.p.transport_to_E0)."
+ },
+ "L2": {
+  "claim": "Every known vertical-isogeny method is infeasible for degree p; Rob22 sec 4 lists poly(log l) volcano navigation as open; Sut13 sec 3.3: no vertical l-isogeny algorithm below linear in l.",
+  "verdict": "REFUTED (as stated); the quoted sources are accurate for their date",
+  "evidence": "Rob22 (Rob22 lines [485]) and Sut13 (Sut13 lines [542]) are quoted correctly and Rob22's poly(log l) problem is still open. But Gal24 Thm 1 (Gal24 lines [457]) computes an evaluable representation of an unknown N-isogeny between two GIVEN curves in O~(N^{1/2}); with N = p this is the ascending vertical p-isogeny of a presented level-p curve in O~(2^28.51), with no kernel points and no kernel polynomial. Recomputed concrete costs: dim 2 reference [49.29, 54.02] F_q-mults per unit C (descended / compositum); dim 8 (Thm 1 exactly as proved) >= 2^72.2 even at kappa = 1. Infeasibility does hold for (i) any method that outputs kernel data (>= 2^56.02 coefficients), (ii) the cofactor route (>= 2^111.91), (iii) Phi_p (O~(p^2 log q) = 2^114.05-2^121.08; the 2^171.07 cubic figure is obsolete per Gal24 sec 8.1, Gal24 lines [846]), and (iv) the descending direction from E0 (Problem B, Gal24 Thm 4, Gal24 lines [876]).",
+  "also_checked": "CEL21 (CEL21 lines [11]) computes char-2 isogenies in time quasi-linear in the degree, but needs the codomain model and the isogeny differential (CEL21 lines [1112]), which it obtains by an Elkies-type step of quadratic complexity in the degree (CEL21 lines [1301]): not a shortcut for degree p."
+ },
+ "L3": {
+  "claim": "Horizontal graph on level 263 for l = 2, 11, 29 (literature/per_curve.json): l = 2 is the Frobenius / Verschiebung pair X_k <-> X_{k+-1}; l = 11 stays inside each orbit (A000 -> A016, A115); l = 29 crosses orbits (A000 -> B006, B065).",
+  "verdict": "CONFIRMED",
+  "evidence": "All 262 floor curves checked against the codex-crosscheck C1 results: mismatches l=2: 0, l=11: 0, l=29: 0. The C1 audit checked that Codex run-10 edge sets are Frobenius-shift invariant with all degrees 2 (so the A000 and B000 neighbourhoods determine every edge), and recomputed A000/B000/A090/B021/B067/A092 (l = 11) and A000/B021 (l = 29) directly by division polynomials / Velu, all matching. l = 2 follows from the label construction j(X_k) = j(X000)^(2^k) in ground_truth.json. E0 has only self-loops for l = 2, 11, 29."
+ },
+ "L4": {
+  "claim": "B2 is at least as hard as E0 and not provably equivalent to it.",
+  "verdict": "CORRECTED",
+  "confirmed_part": "\"At least as hard\" holds as a best-known-attack statement: every known attack on a presented B2 curve costs >= E0 rho (60.809): transport-then-rho is E0 rho plus a nonnegative transport, and native rho is 64.326. No reduction from E0 to B2 is known below q^{1/2} (Gal24 sec 10, Gal24 lines [1034]), so this is not a reduction-theoretic statement.",
+  "correction": "\"Not provably equivalent\" needs qualifying: the direction B2 -> E0 has a known reduction, Gal24 Thm 2 with h0 = 1, costing O~(p^{1/2}) asymptotically; it is heuristic in the 2-square (dim 4) form and in the MITM-uniqueness step, and the Elkies-prime heuristic is removable for |D0| = 7 (Gal24 lines [193]). What is missing is (a) a cheap reduction E0 -> B2 (Problem B, >= 2^72.97 F_q-mults here) and (b) a characteristic-2 implementation of the higher-dimensional step, which decides whether B2 sits at 60.81 or 64.33."
+ },
+ "L5a": {
+  "claim": "(reconstructed) Level identification is polynomial time given the factorisation of t^2 - 4q (Rob22 Thm 4.2; BS11 subexponential); within a level, ECDLP is random self-reducible under GRH (JMV05 Cor 1.2), and two given curves are linked in ~sqrt(h) isogeny steps: 2^28.5 (level p), 2^32.5 (level 263p).",
+  "verdict": "CONFIRMED",
+  "evidence": "Rob22 lines [417]; Gal24 repeats it (Gal24 lines [163, 687]); JMV05 Cor 1.2 (JMV05 lines [126, 162, 544]). sqrt(h) recomputed: log2 sqrt(p+1) = 28.51, log2 sqrt(262(p+1)) = 32.53.",
+  "caveat": "The companion sentence in literature/levels.json (moving between B1 and B2 needs a degree-p vertical isogeny with kernel x-coordinates in a degree-2^52.44 extension) is stale for the same reason as L2."
+ },
+ "L5b": {
+  "claim": "(reconstructed) GHS / Weil descent does not apply: ord_131(2) = 130, so the magic number is m in {1, 131} (Menezes-Qu, as restated in GHS02 Thm 2); E0 has m = 1, the 262 floor curves m = 131, and any B2 curve has b outside F_2, hence m = 131.",
+  "verdict": "CONFIRMED",
+  "evidence": "GHS02 Thm 2 (Menezes-Qu) found in literature/raw/ghs2002.txt; GHS02 states the extended isogeny-walk attack only works for composite extension degree. literature/per_curve.json: m = 131 for all 262 floor curves and m = 1 for E0 (counted here)."
+ }
+}
