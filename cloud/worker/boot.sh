@@ -66,7 +66,12 @@ save_secret() {
   [[ -n "$2" ]] || return 0
   (umask 077 && printf '%s' "$2" >"$SECRETS/$1")
 }
-save_secret cursor-api-key "${CURSOR_API_KEY:-}"
+# Without a key in the pod's environment the worker signs in with `agent login`.
+if [[ -n "${CURSOR_API_KEY:-}" ]]; then
+  save_secret cursor-api-key "$CURSOR_API_KEY"
+else
+  rm -f "$SECRETS/cursor-api-key"
+fi
 save_secret github-token "${GITHUB_TOKEN:-}"
 # The pod's own scoped key, if Runpod injected one, lets idle.py stop the pod.
 save_secret runpod-api-key "${RUNPOD_API_KEY:-}"

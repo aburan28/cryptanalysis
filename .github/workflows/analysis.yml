@@ -109,8 +109,12 @@ jobs:
         # New and edited code still has to match the style.
         run: |
           set -eu
-          base="${{ github.event.pull_request.base.sha }}"
-          if [ -z "$base" ]; then
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            # A PR checkout is a synthetic merge. Its first parent is the
+            # exact base used for this checkout, even if the base branch
+            # advanced while the workflow waited for a runner.
+            base=$(git rev-parse "HEAD^1")
+          else
             base=$(git rev-parse "HEAD^" 2>/dev/null || git rev-parse HEAD)
           fi
           echo "comparing against $base"
@@ -150,13 +154,17 @@ jobs:
         run: |
           sudo apt-get update || true
           sudo apt-get install -y --no-install-recommends shellcheck
-          shellcheck scripts/*.sh deploy/*/*.sh
+          shellcheck scripts/*.sh deploy/*/*.sh usecases/ecc2k130/deploy/helm/check.sh
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
 
       - name: actionlint
         # Also runs shellcheck over every `run:` block in these workflows.
-        uses: docker://rhysd/actionlint:1.7.7
-        with:
-          args: -color
+        run: |
+          GOBIN="$RUNNER_TEMP/actionlint-bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          "$RUNNER_TEMP/actionlint-bin/actionlint" -color
 
   # ----------------------------------------------------------- coverage ----
   coverage:
@@ -208,7 +216,7 @@ jobs:
 
       - name: Upload the HTML report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: coverage-html/
