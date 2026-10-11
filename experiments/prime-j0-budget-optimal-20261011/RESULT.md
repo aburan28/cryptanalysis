@@ -43,10 +43,23 @@ are paired algorithmic operation counts, not CPU timing ratios.
 The source-pinned native release replay passed all **4,096** cases against
 the independent control and checked the first **128** against a separate
 binary multiplication path. It reported 49,152 additions, 16,102 grouped
-rotations, and the retained size above. The complete Rust suite is running.
+rotations, and the retained size above.
 The [raw targeted log](native-targeted.log.gz) and
 [native receipt](native-targeted-check.json) bind the generated source,
 atlas, inputs, certificate, executable and result.
+The [native suite coverage check](native-suite-coverage.json) verifies all
+**143** Rust tests against the same executable and generated assets. Its
+coverage partition is 101 tests passed in the initial full-suite attempt,
+the interrupted hybrid test passed alone, and two disjoint complementary
+shards passed 21 and 20 tests. The initial attempt exited 101 without a
+final Rust summary after the 101 passes; its
+[raw log](native-full-attempt1.log.gz) and
+[receipt](native-full-attempt1-check.json) preserve that outcome. The
+[hybrid receipt](native-hybrid-isolate-check.json) and both
+[shard receipts](native-shard-0-check.json) bind their exact test names,
+raw logs, binary hash, and exit codes. The
+[aggregate verifier](verify_native_suite_coverage.py) compares their
+disjoint union with the executable's own 143-test listing.
 CPU wall-time comparison requires the host-isolation and noise gate in
 `../../docs/ISOLATED_BENCHMARKS.md`.
 
