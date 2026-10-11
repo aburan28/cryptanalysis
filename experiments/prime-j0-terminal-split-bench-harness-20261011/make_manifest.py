@@ -56,7 +56,7 @@ def main():
                  crate / "src/bin/eisenstein_fixed.rs",
                  crate / "src/bin/eisenstein_fixed/unit_orbit_windows.rs",
                  crate / "Cargo.toml", crate / "Cargo.lock",
-                 repo / "suite/src/ct_bignum.rs", Path(__file__)]
+                 repo / "suite/src/ct_bignum.rs", HERE / "make_manifest.py"]
     if args.tier == "tier0_host":
         if not args.mem_nodes or not args.cgroup:
             raise SystemExit("Tier 0 requires NUMA node and exclusive cgroup")
