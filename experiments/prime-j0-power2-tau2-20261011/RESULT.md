@@ -44,3 +44,7 @@ The [construction proof](PROOF.md), its
 and [native materializer](materialize_native.py) specify the complete
 candidate and its correctness evidence. CPU timing requires the
 host-level isolation receipt in `docs/ISOLATED_BENCHMARKS.md`.
+The [Linux replay dispatch](remote-dispatch.json) is queued on the
+existing serial runner with an immutable source commit and script hash.
+The [full local native suite](native-full-suite.json) passed 137 tests;
+its exact output is preserved in `native-full-tests.log.gz`.
