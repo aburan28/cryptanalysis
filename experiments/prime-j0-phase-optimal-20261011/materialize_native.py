@@ -145,6 +145,13 @@ def main():
                   "assert_eq!((radix, classes, seed_count), (1024, 174_764, 73_417));")
     source = once(source, "assert_eq!(entries, 817_344);",
                   "assert_eq!(entries, 890_292);")
+    # The source crate's compressed-cover fixture is invalid after replacing
+    # that atlas; the new frozen-panel test checks the replacement instead.
+    old_test = "    #[test]\n    fn cycle_compressed_cover_matches_disjoint_holdout_and_binary_points() {"
+    if old_test in source:
+        begin = source.index(old_test)
+        end = source.index("    #[test]\n", begin + len(old_test))
+        source = source[:begin] + source[end:]
     window.write_text(once(source, marker, RUST_TEST + marker))
     parent = json.loads(parent_raw)
     receipt = {"schema": 1, "status": "materialized",
