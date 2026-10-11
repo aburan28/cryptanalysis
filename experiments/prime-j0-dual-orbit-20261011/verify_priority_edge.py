@@ -23,15 +23,17 @@ def digest(raw):
 
 
 def main():
-    assert len(sys.argv) == 2, "usage: verify_priority_edge.py NATIVE_BINARY"
+    assert len(sys.argv) == 3, \
+        "usage: verify_priority_edge.py NATIVE_BINARY MATERIALIZATION_JSON"
     binary = Path(sys.argv[1]).resolve()
+    materialization_path = Path(sys.argv[2]).resolve()
     assert (HERE / "priority-native-edge.stderr").read_bytes() == b""
     raw = (HERE / "priority-native-edge.stdout").read_bytes()
     checked = reference.check_fixture(MODE, "edge", FIXTURE, raw, 10)
     compressed = gzip.compress(raw, compresslevel=9, mtime=0)
     (HERE / "priority-native-edge.stdout.gz").write_bytes(compressed)
     assert gzip.decompress(compressed) == raw
-    materialization = (binary.parents[2] / "materialization.json").read_bytes()
+    materialization = materialization_path.read_bytes()
     receipt = {"schema": 1, "status": "passed", "timing_class": "correctness_only",
                "mode": MODE, "cases": checked["cases"],
                "fixture_sha256": checked["fixture_sha256"],
