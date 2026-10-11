@@ -107,14 +107,23 @@ typedef struct ca_joint_pair_precomp {
     uint64_t beta, beta2;
     __int128 v1x, v1y, v2x, v2y, det;
     unsigned pairs;
+    unsigned top_count;
+    const uint16_t *top_orbit, *top_rank;
     int identity;
+    int top_compressed;
 } ca_joint_pair_precomp;
 size_t ca_ec_joint_pair_static_bytes(void);
+size_t ca_ec_joint_pair_top_static_bytes(void);
 size_t ca_ec_joint_pair_point_entries(const ca_group *g);
+size_t ca_ec_joint_pair_top_point_entries(const ca_group *g);
 int ca_ec_joint_pair_verify_map(void);
+int ca_ec_joint_pair_top_verify_map(void);
 int ca_ec_joint_pair_prepare(const ca_group *g, const ca_elem *point, ca_joint_pair_precomp *out,
                              uint64_t *doubles, uint64_t *adds, uint64_t *inversions,
                              uint64_t *plane_muls);
+int ca_ec_joint_pair_top_prepare(const ca_group *g, const ca_elem *point,
+                                 ca_joint_pair_precomp *out, uint64_t *doubles, uint64_t *adds,
+                                 uint64_t *inversions, uint64_t *plane_muls);
 int ca_ec_joint_pair_prepare_verify(const ca_joint_pair_precomp *pre);
 int ca_ec_joint_pair_mul_profile(const ca_group *g, const ca_joint_pair_precomp *pre, ca_elem *out,
                                  uint64_t k, uint64_t *adds, uint64_t *unit_adds,

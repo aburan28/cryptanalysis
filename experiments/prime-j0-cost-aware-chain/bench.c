@@ -118,7 +118,8 @@ static int select_mode(const char *name)
                                   "joint-window4-hot-pos",
                                   "joint-window4-xplane-pos",
                                   "joint-window4-zero-pos",
-                                  "joint-pair-hex-pos"};
+                                  "joint-pair-hex-pos",
+                                  "joint-pair-top-pos"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -147,7 +148,7 @@ int main(int argc, char **argv)
                 "tau3-atlas-pos|tau3-sparse-pos|tau3-radix27-pos|tau3-scatter-pos|"
                 "tau3-scatter-direct-pos|tau3-scatter-atlas-pos|endo-radix8-pos|"
                 "joint-window4-pos|joint-window4-hot-pos|joint-window4-xplane-pos|"
-                "joint-window4-zero-pos|joint-pair-hex-pos "
+                "joint-window4-zero-pos|joint-pair-hex-pos|joint-pair-top-pos "
                 "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
@@ -185,7 +186,8 @@ int main(int argc, char **argv)
     int joint_window4_hot = mode >= 46 && mode <= 48;
     int joint_window4_plane = mode == 47 || mode == 48;
     int joint_window4_zero = mode == 48;
-    int joint_pair_hex = mode == 49;
+    int joint_pair_hex = mode == 49 || mode == 50;
+    int joint_pair_top = mode == 50;
     int periodic_policy = mode == 32 ? 2 : (mode == 31 ? 1 : 0);
     int pair_complete = mode == 29 || pair_periodic || pair_mixed;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
@@ -248,19 +250,20 @@ int main(int argc, char **argv)
         : comb          ? (CA_FIXED_COMB_ENTRIES * 4 + CA_FIXED_COMB_WIDTH * 3) * sizeof(uint64_t)
                         : 0;
     size_t fused_entries = hot ? 2048 : orbit ? 4933 : 29593;
-    size_t point_entries = joint_pair_hex  ? ca_ec_joint_pair_point_entries(&group)
-                           : joint_window4 ? ca_ec_joint_window4_point_entries(&group)
-                           : endo_radix8   ? ca_ec_endo_radix8_point_entries(&group)
-                           : scatter       ? ca_ec_tau3_scatter_point_entries(&group)
-                           : sparse        ? ca_ec_tau3_sparse_point_entries(&group)
-                           : tau3          ? ca_ec_tau3_fused_blocks(&group) * 343
-                           : compact       ? ca_ec_tau4_pos_compact_layers(&group) * 18
-                           : comb          ? CA_FIXED_COMB_ENTRIES
-                           : pair_complete ? CA_TAU_PAIR_COMPLETE_COUNT
-                           : pair_fused    ? CA_TAU_PAIR_FUSED_REP_COUNT
-                           : tapered       ? ca_ec_tau_wide_entries(wide_schedule)
-                           : fused         ? fused_blocks * fused_entries
-                                           : 0;
+    size_t point_entries = joint_pair_top   ? ca_ec_joint_pair_top_point_entries(&group)
+                           : joint_pair_hex ? ca_ec_joint_pair_point_entries(&group)
+                           : joint_window4  ? ca_ec_joint_window4_point_entries(&group)
+                           : endo_radix8    ? ca_ec_endo_radix8_point_entries(&group)
+                           : scatter        ? ca_ec_tau3_scatter_point_entries(&group)
+                           : sparse         ? ca_ec_tau3_sparse_point_entries(&group)
+                           : tau3           ? ca_ec_tau3_fused_blocks(&group) * 343
+                           : compact        ? ca_ec_tau4_pos_compact_layers(&group) * 18
+                           : comb           ? CA_FIXED_COMB_ENTRIES
+                           : pair_complete  ? CA_TAU_PAIR_COMPLETE_COUNT
+                           : pair_fused     ? CA_TAU_PAIR_FUSED_REP_COUNT
+                           : tapered        ? ca_ec_tau_wide_entries(wide_schedule)
+                           : fused          ? fused_blocks * fused_entries
+                                            : 0;
     size_t point_table_bytes = point_entries * sizeof(ca_elem);
     size_t prep_bytes = joint_pair_hex  ? sizeof(joint_pair_pre) + point_table_bytes
                         : joint_window4 ? sizeof(joint_window4_pre) + point_table_bytes
@@ -321,8 +324,14 @@ int main(int argc, char **argv)
                 return 2;
             }
         } else if (joint_pair_hex) {
-            if (!ca_ec_joint_pair_prepare(&group, &point, &joint_pair_pre, &prep_doubles,
-                                          &prep_adds, &prep_layer_inversions, &prep_plane_muls)) {
+            int prepared = joint_pair_top
+                               ? ca_ec_joint_pair_top_prepare(
+                                     &group, &point, &joint_pair_pre, &prep_doubles, &prep_adds,
+                                     &prep_layer_inversions, &prep_plane_muls)
+                               : ca_ec_joint_pair_prepare(&group, &point, &joint_pair_pre,
+                                                          &prep_doubles, &prep_adds,
+                                                          &prep_layer_inversions, &prep_plane_muls);
+            if (!prepared) {
                 free(outputs);
                 return 2;
             }
@@ -447,7 +456,8 @@ int main(int argc, char **argv)
     uint64_t sparse_cold_pairs = 0, radix27_dp_states = 0, radix27_dp_options = 0;
     uint64_t scatter_pairs = 0;
     uint64_t zero_attempts = 0, zero_feasible = 0, zero_selected = 0;
-    size_t static_map_bytes = joint_pair_hex          ? ca_ec_joint_pair_static_bytes()
+    size_t static_map_bytes = joint_pair_top          ? ca_ec_joint_pair_top_static_bytes()
+                              : joint_pair_hex        ? ca_ec_joint_pair_static_bytes()
                               : joint_window4_hot     ? ca_ec_joint_window4_hot_static_bytes()
                               : joint_window4         ? ca_ec_joint_window4_static_bytes()
                               : scatter_atlas         ? ca_ec_tau3_scatter_atlas_static_bytes()
