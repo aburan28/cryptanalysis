@@ -619,6 +619,50 @@ enumeration, failed blocks, relation replay, and independent scalar replay.
 The measured group/field call vectors remain separate, and no paired rho
 online wall comparison or common-operation total is asserted.
 
+### Subgroup-correct four-summand SAT probe at degree 83 (Q1035)
+
+The [bounded runner](n83_weight4_s3_stage.py) uses the same exact public
+normal-basis curve and target `EC1N83Ckb1h876c2921cb64`. It enumerates
+nonzero normal-basis `x` coordinates of weight at most four, retains only
+rational points in the prime subgroup, and closes the base under sign and
+Frobenius. The [receipt](runs/n83_weight4_s3_stage.json) records **935,742
+actual usable points before folding**, **5,637 signed-Frobenius columns**,
+the exact point-set digest, and 37.5 seconds of target-independent base
+construction in this run. The factor base is subgroup checked; the SAT
+encoding also imposes even `x` weight as a necessary subgroup condition.
+The CNF does not encode the complete enumerated point set, so any SAT model
+must be lifted, checked for base membership, and replayed with the group law.
+
+Four summands use three chained `S3` links and two intermediate `x` values.
+At degree 83 the shared circuit has 92,456 bit-operation gates. The ordinary
+public-target formula has **80,342 variables, 86,392 CNF clauses, and 50,884
+native XOR clauses**. CryptoMiniSat 5.14.7 reached its bounded limit on the
+ordinary target without a decomposition: about 20.7 seconds and 93,633
+conflicts. Constructing that CNF took 0.044 seconds and writing its 2.55 MB
+DIMACS/XOR file took 0.042 seconds; the observed bottleneck was the search.
+An unpinned planted target also reached 100,000 conflicts without
+a result. A separately **pinned** planted control fixes all four input
+`x` values and both chain intermediates; it returned SAT in about 0.045
+seconds, and its subgroup points independently replayed to the planted
+target. Pinning makes that row an encoding check, not a solve-time or
+natural-yield sample.
+
+For independent uniform subgroup queries, even counting every unordered
+four-point multiset as potentially useful gives the exact coverage cap
+`C(935745,4)/r = 0.0132125421`. Hence an ideal decomposition oracle needs
+at least **75.69 uniform queries per hit in expectation**. Seeing the 5,637
+column relations plus one target relation needs at least **426,716 queries
+(`2^18.703`) in expectation**, before dependent rows, failed SAT attempts,
+or target descent. If the entire `2^61` field-operation target were spent on
+only these minimum queries, each could average at most `2^42.297` field
+operations. This necessary budget ignores base construction and linear
+algebra; SAT conflicts have not been converted to field operations. The
+query count is a lower bound, not an estimate of
+the SAT solver's total work. The two bounded unpinned instances give no
+measured natural relation yield or calibrated full-work `2^x` for this lane.
+Q1035 remains a proposal with `candidate_id: null`, `PDP4sat`, and
+`isogeny: "none"`.
+
 ### Same-target degree-83 rho reference
 
 The [rho bridge](n83_public_target_rho.cpp) supplies the **same frozen public

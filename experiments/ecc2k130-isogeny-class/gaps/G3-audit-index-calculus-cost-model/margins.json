@@ -1,0 +1,1437 @@
+{
+ "reference": {
+  "rho_E0_log2_it": 60.809,
+  "rho_floor_native_negation_only_log2_it": 64.326,
+  "generic_bound_sqrt_N_over_262_log2": 60.483,
+  "generic_bound_margin_vs_rho_bits": -0.326,
+  "units": "log2 rho iterations: 1 group operation = 1 iteration = 6 F_q-mults (task constant). Corrected rows price linear algebra at 1 F_q-mult per sparse mult-add mod N (costmodel.py: 1 LA op = 1 iteration). The PDP budget is also given in F_q-mults.",
+  "margin_definition": "margin_bits = log2(cost) - log2(rho_E0) = log2(cost) - 60.809; positive = attack slower than rho",
+  "scope": "all 263 curves (E0 and the 262 conductor-263 floor curves): same #E = 4N; the floor curves use E0's tau structure through the 263-isogeny"
+ },
+ "families": {
+  "IC_table_amortised_combinatorial_PDP": {
+   "claimed": {
+    "costmodel_json_min_m_le_7": {
+     "plain": 74.79,
+     "GGMP_hyp": 70.64
+    },
+    "redteam1_RT3_min_m_le_60": {
+     "plain": 71.477,
+     "ordered_tau_slots": 67.0,
+     "tau_union": 68.948
+    }
+   },
+   "corrected_unlimited_memory": {
+    "costmodel_formula_l>=2": {
+     "m": 29,
+     "l": 6,
+     "log2_total_it": 71.477,
+     "table_log2_entries": 70.06
+    },
+    "corrected_plain": {
+     "m": 29,
+     "l": 6,
+     "log2_total_it": 70.955,
+     "table_log2_entries": 70.06
+    },
+    "corrected_ordered_tau_slots": {
+     "m": 66,
+     "l": 1,
+     "log2_total_it": 66.585,
+     "table_log2_entries": 65.0
+    },
+    "corrected_tau_union": {
+     "m": 13,
+     "l": 1,
+     "log2_total_it": 68.366,
+     "table_log2_entries": 67.57
+    }
+   },
+   "corrected_min_log2_it": 66.585,
+   "corrected_memory_capped": {
+    "table|corrected_plain|mem<=2^40": {
+     "m": 22,
+     "l": 5,
+     "total": 99.017,
+     "log2_entries": 39.53
+    },
+    "table|corrected_ordered_tau_slots|mem<=2^40": {
+     "m": 41,
+     "l": 1,
+     "total": 91.0,
+     "log2_entries": 40.0
+    },
+    "table|corrected_tau_union|mem<=2^40": {
+     "m": 7,
+     "l": 1,
+     "total": 95.099,
+     "log2_entries": 38.71
+    },
+    "table|corrected_plain|mem<=2^50": {
+     "m": 16,
+     "l": 6,
+     "total": 89.295,
+     "log2_entries": 49.75
+    },
+    "table|corrected_ordered_tau_slots|mem<=2^50": {
+     "m": 51,
+     "l": 1,
+     "total": 81.0,
+     "log2_entries": 50.0
+    },
+    "table|corrected_tau_union|mem<=2^50": {
+     "m": 9,
+     "l": 1,
+     "total": 85.202,
+     "log2_entries": 48.97
+    },
+    "table|corrected_plain|mem<=2^60": {
+     "m": 21,
+     "l": 6,
+     "total": 80.514,
+     "log2_entries": 58.92
+    },
+    "table|corrected_ordered_tau_slots|mem<=2^60": {
+     "m": 61,
+     "l": 1,
+     "total": 71.001,
+     "log2_entries": 60.0
+    },
+    "table|corrected_tau_union|mem<=2^60": {
+     "m": 11,
+     "l": 1,
+     "total": 75.916,
+     "log2_entries": 58.54
+    }
+   },
+   "generic_algorithm": true,
+   "generic_floor_log2": 60.483,
+   "rows_below_generic_bound": [],
+   "table_rows_checked": 189,
+   "table_rows_needing_over_2_50_entries": 184,
+   "RT3_67_decomposition": {
+    "cofactor_4 (collision in E, not G): 0.5*log2(4)": 1.0,
+    "no <-1,tau> class reduction: 0.5*log2(262)": 4.016711500768725,
+    "one unknown + BSGS table/scan balance (T + S = 2 sqrt): 1 + 0.5*rel(=1)": 1.5,
+    "rho constant: -0.5*log2(pi/2)": -0.32574806473615936,
+    "sum": 6.190963436032566,
+    "RT3 67.0 - rho": 6.190963436032568
+   },
+   "margin_bits_model": 5.776,
+   "margin_bits_floor_of_family": -0.326,
+   "status": "corrected",
+   "reason": "Every table row enumerates sums of known points and looks up x-coordinates, so the family is a generic algorithm for every l (the factor base could be any set of points). None of the 189 table rows (costmodel.json plus RT3) is below the generic bound 2^60.48, so no row is a model bug in that sense. But the model's minimum is its own baby-step giant-step floor 1 + (rel + 131)/2, which does not use the <-1,tau> classes. RT3's 2^67.0 (m = 34, l = 2, at the l >= 2 boundary of the search) is exactly that floor. Its 6.19-bit excess over rho breaks down as cofactor 4 (1.0) + no class reduction (4.02) + BSGS balance with one unknown (1.5) - rho's constant (0.33). That is not an index-calculus margin. The corrected model (ker-Tr bit, multiset scans, l >= 1, m <= 131) has its minimum at 2^66.58 (corrected_ordered_tau_slots, m = 66, l = 1, 2^65.0 table entries). 184 of 189 rows need more than 2^50 entries at their optimum. With at most 2^60 / 2^50 / 2^40 entries the best is 2^71.0 / 2^81.0 / 2^91.0."
+  },
+  "IC_MITM_per_call_combinatorial_PDP": {
+   "claimed": {
+    "costmodel_json_min_m_le_7": 93.49,
+    "costmodel_json_min_m_le_7_GGMP_hyp": 86.46
+   },
+   "costmodel_formula_extended_to_m_le_40": {
+    "m": 14,
+    "l": 12,
+    "log2_total_it": 83.701,
+    "table_log2_entries": null
+   },
+   "corrected": {
+    "plain": {
+     "m": 14,
+     "l": 12,
+     "log2_total_it": 83.701,
+     "table_log2_entries": null
+    },
+    "ordered_tau_slots": {
+     "m": 26,
+     "l": 5,
+     "log2_total_it": 70.087,
+     "table_log2_entries": null
+    }
+   },
+   "generic_algorithm": true,
+   "generic_floor_log2": 60.483,
+   "margin_bits": 9.278,
+   "status": "corrected",
+   "reason": "'MITM >= 2^93.5' holds only for m <= 7. The costmodel's own MITM formula gives 2^83.7 at m = 14. With multiset tables, the ker-Tr bit and ordered tau-slots it is 2^70.1. The family is generic, since a MITM table is a table rebuilt on every call, and the amortised table dominates it."
+  },
+  "IC_free_PDP_oracle": {
+   "claimed": {
+    "costmodel_m4": 54.81,
+    "costmodel_m3": 67.17
+   },
+   "recomputed": {
+    "costmodel_formula_l>=2": {
+     "3": {
+      "l": 33,
+      "total": 67.17,
+      "calls": 66.585,
+      "la": 65.585,
+      "k": null,
+      "table_log2_entries": null,
+      "boundary_l": false
+     },
+     "4": {
+      "l": 27,
+      "total": 54.807,
+      "calls": 53.585,
+      "la": 54.0,
+      "k": null,
+      "table_log2_entries": null,
+      "boundary_l": false
+     },
+     "5": {
+      "l": 23,
+      "total": 46.781,
+      "calls": 44.907,
+      "la": 46.322,
+      "k": null,
+      "table_log2_entries": null,
+      "boundary_l": false
+     },
+     "6": {
+      "l": 20,
+      "total": 41.14,
+      "calls": 39.492,
+      "la": 40.585,
+      "k": null,
+      "table_log2_entries": null,
+      "boundary_l": false
+     }
+    },
+    "corrected_plain": {
+     "3": {
+      "l": 34,
+      "total": 65.459,
+      "calls": 63.585,
+      "la": 65.0,
+      "k": null,
+      "table_log2_entries": null,
+      "boundary_l": false
+     },
+     "4": {
+      "l": 27,
+      "total": 53.115,
+      "calls": 52.585,
+      "la": 51.415,
+      "k": null,
+      "table_log2_entries": null,
+      "boundary_l": false
+     },
+     "5": {
+      "l": 23,
+      "total": 44.824,
+      "calls": 43.907,
+      "la": 43.737,
+      "k": null,
+      "table_log2_entries": null,
+      "boundary_l": false
+     },
+     "6": {
+      "l": 20,
+      "total": 39.267,
+      "calls": 38.492,
+      "la": 38.0,
+      "k": null,
+      "table_log2_entries": null,
+      "boundary_l": false
+     }
+    },
+    "corrected_ordered_tau_slots": {
+     "3": {
+      "l": 33,
+      "total": 64.0,
+      "calls": 63.0,
+      "la": 63.0,
+      "k": null,
+      "table_log2_entries": null,
+      "boundary_l": false
+     },
+     "4": {
+      "l": 26,
+      "total": 51.415,
+      "calls": 51.0,
+      "la": 49.415,
+      "k": null,
+      "table_log2_entries": null,
+      "boundary_l": false
+     },
+     "5": {
+      "l": 22,
+      "total": 42.415,
+      "calls": 41.0,
+      "la": 41.737,
+      "k": null,
+      "table_log2_entries": null,
+      "boundary_l": false
+     },
+     "6": {
+      "l": 19,
+      "total": 36.322,
+      "calls": 34.0,
+      "la": 36.0,
+      "k": null,
+      "table_log2_entries": null,
+      "boundary_l": false
+     }
+    }
+   },
+   "m3_free_pdp_optimum": {
+    "costmodel": {
+     "l": 33,
+     "total": 67.17,
+     "margin": 6.361
+    },
+    "corrected_plain": {
+     "l": 34,
+     "total": 65.459,
+     "margin": 4.65
+    },
+    "corrected_ordered": {
+     "l": 33,
+     "total": 64.0,
+     "margin": 3.191
+    }
+   },
+   "margin_bits_m3_corrected_plain": 4.65,
+   "margin_bits_m3_corrected_ordered": 3.191,
+   "status": "corrected (m = 3 conclusion confirmed)",
+   "reason": "This is a hypothetical oracle, not an attack. The costmodel's 2^54.81 at m = 4 becomes 2^53.115 (plain) and 2^51.415 (ordered tau-slots). m = 3 stays above rho even with a free PDP: +4.65 bits plain, +3.19 bits with ordered tau-slots. The costmodel's claim that relation count plus LA alone exceed rho at m = 3 is confirmed."
+  },
+  "IC_algebraic_PDP_measured_engines": {
+   "per_m": {
+    "m3|corrected_plain": {
+     "budget": {
+      "feasible": false,
+      "l_opt": 31,
+      "log2_calls": 69.585,
+      "log2_LA_it": 59.0,
+      "log2_budget_it": -9.261,
+      "log2_budget_Fq_mults": -6.676,
+      "budget_seconds_at_t_M_conservative": 1.6302617610716636e-10
+     },
+     "verdict": "no PDP budget: index calculus cannot tie rho at this m even with a free PDP"
+    },
+    "m3|ordered_tau_slots(H2=H1)": {
+     "budget": {
+      "feasible": false,
+      "l_opt": 31,
+      "log2_calls": 67.0,
+      "log2_LA_it": 59.0,
+      "log2_budget_it": -6.676,
+      "log2_budget_Fq_mults": -4.091,
+      "budget_seconds_at_t_M_conservative": 9.781570566430016e-10
+     },
+     "verdict": "no PDP budget: index calculus cannot tie rho at this m even with a free PDP"
+    },
+    "m3|costmodel": {
+     "budget": {
+      "feasible": false,
+      "l_opt": 30,
+      "log2_calls": 72.585,
+      "log2_LA_it": 59.585,
+      "log2_budget_it": -12.582,
+      "log2_budget_Fq_mults": -9.997,
+      "budget_seconds_at_t_M_conservative": 1.630926161570772e-11
+     },
+     "verdict": "no PDP budget: index calculus cannot tie rho at this m even with a free PDP"
+    },
+    "m3|readme": {
+     "budget": {
+      "feasible": false,
+      "l_opt": 29,
+      "log2_calls": 75.585,
+      "log2_LA_it": 59.585,
+      "log2_budget_it": -15.582,
+      "log2_budget_Fq_mults": -12.997,
+      "budget_seconds_at_t_M_conservative": 2.038657701963465e-12
+     },
+     "verdict": "no PDP budget: index calculus cannot tie rho at this m even with a free PDP"
+    },
+    "m4|corrected_plain": {
+     "budget": {
+      "feasible": true,
+      "l_opt": 31,
+      "log2_calls": 40.585,
+      "log2_LA_it": 59.415,
+      "log2_budget_it": 19.533,
+      "log2_budget_Fq_mults": 22.118,
+      "budget_seconds_at_t_M_conservative": 0.07587316741293264
+     },
+     "fit_extrapolation": {
+      "msolve-audit-plain-random": {
+       "c_bits_per_l": 9.488,
+       "fit_l_range": [
+        3,
+        4
+       ],
+       "gap_bits_n131": 269.54,
+       "gap_bits_n61": 269.96,
+       "boundA_gap_bits": 13.97,
+       "boundB_gap_bits": -5.66,
+       "required_slope_bits_per_l_to_meet_budget": -0.517,
+       "attack_margin_fit_bits": 268.85,
+       "attack_margin_boundB_bits": -1.35
+      },
+      "sat": {
+       "c_bits_per_l": 6.97,
+       "fit_l_range": [
+        3,
+        5
+       ],
+       "gap_bits_n131": 189.56,
+       "gap_bits_n61": 192.17,
+       "boundA_gap_bits": 11.32,
+       "boundB_gap_bits": 1.88,
+       "required_slope_bits_per_l_to_meet_budget": -0.435,
+       "attack_margin_fit_bits": 188.87,
+       "attack_margin_boundB_bits": 1.41
+      }
+     },
+     "fit_free_largest_l": {
+      "msolve-audit-ordered-planted": {
+       "largest_l": 3,
+       "runs_at_largest_l": 6,
+       "timeouts_at_largest_l": 0,
+       "min_seconds_or_timeout": 4.760656000000001,
+       "n_of_min": 31,
+       "min_is_timeout_lower_bound": false,
+       "boundA_log2_Fq_mults": 28.09,
+       "boundA_gap_bits": 5.97,
+       "required_slope_bits_per_l": -0.213
+      },
+      "msolve-audit-ordered-random": {
+       "largest_l": 4,
+       "runs_at_largest_l": 2,
+       "timeouts_at_largest_l": 2,
+       "min_seconds_or_timeout": 1342.046713,
+       "n_of_min": 31,
+       "min_is_timeout_lower_bound": true,
+       "boundA_log2_Fq_mults": 36.23,
+       "boundA_gap_bits": 14.11,
+       "required_slope_bits_per_l": -0.523
+      },
+      "msolve-audit-plain-planted": {
+       "largest_l": 3,
+       "runs_at_largest_l": 6,
+       "timeouts_at_largest_l": 0,
+       "min_seconds_or_timeout": 1.618858,
+       "n_of_min": 37,
+       "min_is_timeout_lower_bound": false,
+       "boundA_log2_Fq_mults": 26.53,
+       "boundA_gap_bits": 4.42,
+       "required_slope_bits_per_l": -0.158
+      },
+      "msolve-audit-plain-random": {
+       "largest_l": 4,
+       "runs_at_largest_l": 2,
+       "timeouts_at_largest_l": 1,
+       "min_seconds_or_timeout": 1214.3931300000002,
+       "n_of_min": 31,
+       "min_is_timeout_lower_bound": false,
+       "boundA_log2_Fq_mults": 36.08,
+       "boundA_gap_bits": 13.97,
+       "required_slope_bits_per_l": -0.517
+      },
+      "sat": {
+       "largest_l": 5,
+       "runs_at_largest_l": 6,
+       "timeouts_at_largest_l": 3,
+       "min_seconds_or_timeout": 193.7205,
+       "n_of_min": 31,
+       "min_is_timeout_lower_bound": false,
+       "boundA_log2_Fq_mults": 33.44,
+       "boundA_gap_bits": 11.32,
+       "required_slope_bits_per_l": -0.435
+      }
+     },
+     "mitm_exact_gap_bits": 42.47
+    },
+    "m4|ordered_tau_slots(H2=H1)": {
+     "budget": {
+      "feasible": true,
+      "l_opt": 31,
+      "log2_calls": 36.0,
+      "log2_LA_it": 59.415,
+      "log2_budget_it": 24.118,
+      "log2_budget_Fq_mults": 26.703,
+      "budget_seconds_at_t_M_conservative": 1.8209560179103899
+     },
+     "fit_extrapolation": {
+      "msolve-audit-plain-random": {
+       "c_bits_per_l": 9.488,
+       "fit_l_range": [
+        3,
+        4
+       ],
+       "gap_bits_n131": 264.95,
+       "gap_bits_n61": 265.38,
+       "boundA_gap_bits": 9.38,
+       "boundB_gap_bits": -10.24,
+       "required_slope_bits_per_l_to_meet_budget": -0.347,
+       "attack_margin_fit_bits": 264.26,
+       "attack_margin_boundB_bits": -1.39
+      },
+      "sat": {
+       "c_bits_per_l": 6.97,
+       "fit_l_range": [
+        3,
+        5
+       ],
+       "gap_bits_n131": 184.97,
+       "gap_bits_n61": 187.59,
+       "boundA_gap_bits": 6.73,
+       "boundB_gap_bits": -2.71,
+       "required_slope_bits_per_l_to_meet_budget": -0.259,
+       "attack_margin_fit_bits": 184.28,
+       "attack_margin_boundB_bits": -1.07
+      }
+     },
+     "fit_free_largest_l": {
+      "msolve-audit-ordered-planted": {
+       "largest_l": 3,
+       "runs_at_largest_l": 6,
+       "timeouts_at_largest_l": 0,
+       "min_seconds_or_timeout": 4.760656000000001,
+       "n_of_min": 31,
+       "min_is_timeout_lower_bound": false,
+       "boundA_log2_Fq_mults": 28.09,
+       "boundA_gap_bits": 1.39,
+       "required_slope_bits_per_l": -0.05
+      },
+      "msolve-audit-ordered-random": {
+       "largest_l": 4,
+       "runs_at_largest_l": 2,
+       "timeouts_at_largest_l": 2,
+       "min_seconds_or_timeout": 1342.046713,
+       "n_of_min": 31,
+       "min_is_timeout_lower_bound": true,
+       "boundA_log2_Fq_mults": 36.23,
+       "boundA_gap_bits": 9.53,
+       "required_slope_bits_per_l": -0.353
+      },
+      "msolve-audit-plain-planted": {
+       "largest_l": 3,
+       "runs_at_largest_l": 6,
+       "timeouts_at_largest_l": 0,
+       "min_seconds_or_timeout": 1.618858,
+       "n_of_min": 37,
+       "min_is_timeout_lower_bound": false,
+       "boundA_log2_Fq_mults": 26.53,
+       "boundA_gap_bits": -0.17,
+       "required_slope_bits_per_l": 0.006
+      },
+      "msolve-audit-plain-random": {
+       "largest_l": 4,
+       "runs_at_largest_l": 2,
+       "timeouts_at_largest_l": 1,
+       "min_seconds_or_timeout": 1214.3931300000002,
+       "n_of_min": 31,
+       "min_is_timeout_lower_bound": false,
+       "boundA_log2_Fq_mults": 36.08,
+       "boundA_gap_bits": 9.38,
+       "required_slope_bits_per_l": -0.347
+      },
+      "sat": {
+       "largest_l": 5,
+       "runs_at_largest_l": 6,
+       "timeouts_at_largest_l": 3,
+       "min_seconds_or_timeout": 193.7205,
+       "n_of_min": 31,
+       "min_is_timeout_lower_bound": false,
+       "boundA_log2_Fq_mults": 33.44,
+       "boundA_gap_bits": 6.73,
+       "required_slope_bits_per_l": -0.259
+      }
+     },
+     "mitm_exact_gap_bits": 37.88,
+     "budget_with_measured_msolve_H2_over_H1_log2_Fq_mults": 25.063
+    },
+    "m4|costmodel": {
+     "budget": {
+      "feasible": true,
+      "l_opt": 30,
+      "log2_calls": 44.585,
+      "log2_LA_it": 60.0,
+      "log2_budget_it": 15.004,
+      "log2_budget_Fq_mults": 17.589,
+      "budget_seconds_at_t_M_conservative": 0.003285717412169137
+     },
+     "fit_extrapolation": {
+      "msolve-audit-plain-random": {
+       "c_bits_per_l": 9.488,
+       "fit_l_range": [
+        3,
+        4
+       ],
+       "gap_bits_n131": 264.58,
+       "gap_bits_n61": 265.0,
+       "boundA_gap_bits": 18.5,
+       "boundB_gap_bits": -1.13,
+       "required_slope_bits_per_l_to_meet_budget": -0.711,
+       "attack_margin_fit_bits": 263.36,
+       "attack_margin_boundB_bits": -0.38
+      },
+      "sat": {
+       "c_bits_per_l": 6.97,
+       "fit_l_range": [
+        3,
+        5
+       ],
+       "gap_bits_n131": 187.12,
+       "gap_bits_n61": 189.73,
+       "boundA_gap_bits": 15.85,
+       "boundB_gap_bits": 6.41,
+       "required_slope_bits_per_l_to_meet_budget": -0.634,
+       "attack_margin_fit_bits": 185.9,
+       "attack_margin_boundB_bits": 5.21
+      }
+     },
+     "fit_free_largest_l": {
+      "msolve-audit-ordered-planted": {
+       "largest_l": 3,
+       "runs_at_largest_l": 6,
+       "timeouts_at_largest_l": 0,
+       "min_seconds_or_timeout": 4.760656000000001,
+       "n_of_min": 31,
+       "min_is_timeout_lower_bound": false,
+       "boundA_log2_Fq_mults": 28.09,
+       "boundA_gap_bits": 10.5,
+       "required_slope_bits_per_l": -0.389
+      },
+      "msolve-audit-ordered-random": {
+       "largest_l": 4,
+       "runs_at_largest_l": 2,
+       "timeouts_at_largest_l": 2,
+       "min_seconds_or_timeout": 1342.046713,
+       "n_of_min": 31,
+       "min_is_timeout_lower_bound": true,
+       "boundA_log2_Fq_mults": 36.23,
+       "boundA_gap_bits": 18.64,
+       "required_slope_bits_per_l": -0.717
+      },
+      "msolve-audit-plain-planted": {
+       "largest_l": 3,
+       "runs_at_largest_l": 6,
+       "timeouts_at_largest_l": 0,
+       "min_seconds_or_timeout": 1.618858,
+       "n_of_min": 37,
+       "min_is_timeout_lower_bound": false,
+       "boundA_log2_Fq_mults": 26.53,
+       "boundA_gap_bits": 8.94,
+       "required_slope_bits_per_l": -0.331
+      },
+      "msolve-audit-plain-random": {
+       "largest_l": 4,
+       "runs_at_largest_l": 2,
+       "timeouts_at_largest_l": 1,
+       "min_seconds_or_timeout": 1214.3931300000002,
+       "n_of_min": 31,
+       "min_is_timeout_lower_bound": false,
+       "boundA_log2_Fq_mults": 36.08,
+       "boundA_gap_bits": 18.5,
+       "required_slope_bits_per_l": -0.711
+      },
+      "sat": {
+       "largest_l": 5,
+       "runs_at_largest_l": 6,
+       "timeouts_at_largest_l": 3,
+       "min_seconds_or_timeout": 193.7205,
+       "n_of_min": 31,
+       "min_is_timeout_lower_bound": false,
+       "boundA_log2_Fq_mults": 33.44,
+       "boundA_gap_bits": 15.85,
+       "required_slope_bits_per_l": -0.634
+      }
+     },
+     "mitm_exact_gap_bits": 45.0
+    },
+    "m4|readme": {
+     "budget": {
+      "feasible": true,
+      "l_opt": 29,
+      "log2_calls": 48.585,
+      "log2_LA_it": 60.0,
+      "log2_budget_it": 11.004,
+      "log2_budget_Fq_mults": 13.589,
+      "budget_seconds_at_t_M_conservative": 0.0002053573382605713
+     },
+     "fit_extrapolation": {
+      "msolve-audit-plain-random": {
+       "c_bits_per_l": 9.488,
+       "fit_l_range": [
+        3,
+        4
+       ],
+       "gap_bits_n131": 259.09,
+       "gap_bits_n61": 259.51,
+       "boundA_gap_bits": 22.5,
+       "boundB_gap_bits": 2.87,
+       "required_slope_bits_per_l_to_meet_budget": -0.9,
+       "attack_margin_fit_bits": 257.87,
+       "attack_margin_boundB_bits": 1.89
+      },
+      "sat": {
+       "c_bits_per_l": 6.97,
+       "fit_l_range": [
+        3,
+        5
+       ],
+       "gap_bits_n131": 184.15,
+       "gap_bits_n61": 186.76,
+       "boundA_gap_bits": 19.85,
+       "boundB_gap_bits": 10.41,
+       "required_slope_bits_per_l_to_meet_budget": -0.827,
+       "attack_margin_fit_bits": 182.93,
+       "attack_margin_boundB_bits": 9.19
+      }
+     },
+     "fit_free_largest_l": {
+      "msolve-audit-ordered-planted": {
+       "largest_l": 3,
+       "runs_at_largest_l": 6,
+       "timeouts_at_largest_l": 0,
+       "min_seconds_or_timeout": 4.760656000000001,
+       "n_of_min": 31,
+       "min_is_timeout_lower_bound": false,
+       "boundA_log2_Fq_mults": 28.09,
+       "boundA_gap_bits": 14.5,
+       "required_slope_bits_per_l": -0.558
+      },
+      "msolve-audit-ordered-random": {
+       "largest_l": 4,
+       "runs_at_largest_l": 2,
+       "timeouts_at_largest_l": 2,
+       "min_seconds_or_timeout": 1342.046713,
+       "n_of_min": 31,
+       "min_is_timeout_lower_bound": true,
+       "boundA_log2_Fq_mults": 36.23,
+       "boundA_gap_bits": 22.64,
+       "required_slope_bits_per_l": -0.906
+      },
+      "msolve-audit-plain-planted": {
+       "largest_l": 3,
+       "runs_at_largest_l": 6,
+       "timeouts_at_largest_l": 0,
+       "min_seconds_or_timeout": 1.618858,
+       "n_of_min": 37,
+       "min_is_timeout_lower_bound": false,
+       "boundA_log2_Fq_mults": 26.53,
+       "boundA_gap_bits": 12.94,
+       "required_slope_bits_per_l": -0.498
+      },
+      "msolve-audit-plain-random": {
+       "largest_l": 4,
+       "runs_at_largest_l": 2,
+       "timeouts_at_largest_l": 1,
+       "min_seconds_or_timeout": 1214.3931300000002,
+       "n_of_min": 31,
+       "min_is_timeout_lower_bound": false,
+       "boundA_log2_Fq_mults": 36.08,
+       "boundA_gap_bits": 22.5,
+       "required_slope_bits_per_l": -0.9
+      },
+      "sat": {
+       "largest_l": 5,
+       "runs_at_largest_l": 6,
+       "timeouts_at_largest_l": 3,
+       "min_seconds_or_timeout": 193.7205,
+       "n_of_min": 31,
+       "min_is_timeout_lower_bound": false,
+       "boundA_log2_Fq_mults": 33.44,
+       "boundA_gap_bits": 19.85,
+       "required_slope_bits_per_l": -0.827
+      }
+     },
+     "mitm_exact_gap_bits": 47.0
+    },
+    "m5|corrected_plain": {
+     "budget": {
+      "feasible": true,
+      "l_opt": 28,
+      "log2_calls": 27.0,
+      "log2_LA_it": 53.737,
+      "log2_budget_it": 33.798,
+      "log2_budget_Fq_mults": 36.383,
+      "budget_seconds_at_t_M_conservative": 1493.8069663753558
+     },
+     "fit_extrapolation": {
+      "sat": {
+       "c_bits_per_l": 8.508,
+       "fit_l_range": [
+        3,
+        4
+       ],
+       "gap_bits_n131": 205.26,
+       "gap_bits_n61": 203.13,
+       "boundA_gap_bits": -3.18,
+       "boundB_gap_bits": -3.18,
+       "required_slope_bits_per_l_to_meet_budget": 0.133,
+       "attack_margin_fit_bits": 205.25,
+       "attack_margin_boundB_bits": -3.1
+      }
+     },
+     "fit_free_largest_l": {
+      "sat": {
+       "largest_l": 4,
+       "runs_at_largest_l": 6,
+       "timeouts_at_largest_l": 3,
+       "min_seconds_or_timeout": 164.229,
+       "n_of_min": 17,
+       "min_is_timeout_lower_bound": false,
+       "boundA_log2_Fq_mults": 33.2,
+       "boundA_gap_bits": -3.18,
+       "required_slope_bits_per_l": 0.133
+      }
+     },
+     "mitm_exact_gap_bits": 47.62
+    },
+    "m5|ordered_tau_slots(H2=H1)": {
+     "budget": {
+      "feasible": true,
+      "l_opt": 26,
+      "log2_calls": 25.0,
+      "log2_LA_it": 49.737,
+      "log2_budget_it": 35.808,
+      "log2_budget_Fq_mults": 38.393,
+      "budget_seconds_at_t_M_conservative": 6017.170770694668
+     },
+     "fit_extrapolation": {
+      "sat": {
+       "c_bits_per_l": 8.508,
+       "fit_l_range": [
+        3,
+        4
+       ],
+       "gap_bits_n131": 186.24,
+       "gap_bits_n61": 184.11,
+       "boundA_gap_bits": -5.19,
+       "boundB_gap_bits": -5.19,
+       "required_slope_bits_per_l_to_meet_budget": 0.236,
+       "attack_margin_fit_bits": 186.24,
+       "attack_margin_boundB_bits": -5.17
+      }
+     },
+     "fit_free_largest_l": {
+      "sat": {
+       "largest_l": 4,
+       "runs_at_largest_l": 6,
+       "timeouts_at_largest_l": 3,
+       "min_seconds_or_timeout": 164.229,
+       "n_of_min": 17,
+       "min_is_timeout_lower_bound": false,
+       "boundA_log2_Fq_mults": 33.2,
+       "boundA_gap_bits": -5.19,
+       "required_slope_bits_per_l": 0.236
+      }
+     },
+     "mitm_exact_gap_bits": 39.61
+    },
+    "m5|costmodel": {
+     "budget": {
+      "feasible": true,
+      "l_opt": 28,
+      "log2_calls": 27.0,
+      "log2_LA_it": 56.322,
+      "log2_budget_it": 33.743,
+      "log2_budget_Fq_mults": 36.328,
+      "budget_seconds_at_t_M_conservative": 1437.88292417175
+     },
+     "fit_extrapolation": {
+      "sat": {
+       "c_bits_per_l": 8.508,
+       "fit_l_range": [
+        3,
+        4
+       ],
+       "gap_bits_n131": 205.32,
+       "gap_bits_n61": 203.19,
+       "boundA_gap_bits": -3.13,
+       "boundB_gap_bits": -3.13,
+       "required_slope_bits_per_l_to_meet_budget": 0.13,
+       "attack_margin_fit_bits": 205.25,
+       "attack_margin_boundB_bits": -2.7
+      }
+     },
+     "fit_free_largest_l": {
+      "sat": {
+       "largest_l": 4,
+       "runs_at_largest_l": 6,
+       "timeouts_at_largest_l": 3,
+       "min_seconds_or_timeout": 164.229,
+       "n_of_min": 17,
+       "min_is_timeout_lower_bound": false,
+       "boundA_log2_Fq_mults": 33.2,
+       "boundA_gap_bits": -3.13,
+       "required_slope_bits_per_l": 0.13
+      }
+     },
+     "mitm_exact_gap_bits": 47.67
+    },
+    "m5|readme": {
+     "budget": {
+      "feasible": true,
+      "l_opt": 28,
+      "log2_calls": 28.0,
+      "log2_LA_it": 58.322,
+      "log2_budget_it": 32.526,
+      "log2_budget_Fq_mults": 35.111,
+      "budget_seconds_at_t_M_conservative": 618.2781660858745
+     },
+     "fit_extrapolation": {
+      "sat": {
+       "c_bits_per_l": 8.508,
+       "fit_l_range": [
+        3,
+        4
+       ],
+       "gap_bits_n131": 206.54,
+       "gap_bits_n61": 204.4,
+       "boundA_gap_bits": -1.91,
+       "boundB_gap_bits": -1.91,
+       "required_slope_bits_per_l_to_meet_budget": 0.08,
+       "attack_margin_fit_bits": 206.25,
+       "attack_margin_boundB_bits": -1.34
+      }
+     },
+     "fit_free_largest_l": {
+      "sat": {
+       "largest_l": 4,
+       "runs_at_largest_l": 6,
+       "timeouts_at_largest_l": 3,
+       "min_seconds_or_timeout": 164.229,
+       "n_of_min": 17,
+       "min_is_timeout_lower_bound": false,
+       "boundA_log2_Fq_mults": 33.2,
+       "boundA_gap_bits": -1.91,
+       "required_slope_bits_per_l": 0.08
+      }
+     },
+     "mitm_exact_gap_bits": 48.89
+    },
+    "m6|corrected_plain": {
+     "budget": {
+      "feasible": true,
+      "l_opt": 24,
+      "log2_calls": 23.0,
+      "log2_LA_it": 46.0,
+      "log2_budget_it": 37.809,
+      "log2_budget_Fq_mults": 40.394,
+      "budget_seconds_at_t_M_conservative": 24079.02687950434
+     },
+     "fit_extrapolation": {},
+     "fit_free_largest_l": {},
+     "mitm_exact_gap_bits": 32.61
+    },
+    "m6|ordered_tau_slots(H2=H1)": {
+     "budget": {
+      "feasible": true,
+      "l_opt": 21,
+      "log2_calls": 24.0,
+      "log2_LA_it": 40.0,
+      "log2_budget_it": 36.809,
+      "log2_budget_Fq_mults": 39.394,
+      "budget_seconds_at_t_M_conservative": 12039.916269615102
+     },
+     "fit_extrapolation": {},
+     "fit_free_largest_l": {},
+     "mitm_exact_gap_bits": 24.61
+    },
+    "m6|costmodel": {
+     "budget": {
+      "feasible": true,
+      "l_opt": 24,
+      "log2_calls": 23.0,
+      "log2_LA_it": 48.585,
+      "log2_budget_it": 37.809,
+      "log2_budget_Fq_mults": 40.394,
+      "budget_seconds_at_t_M_conservative": 24074.835445948076
+     },
+     "fit_extrapolation": {},
+     "fit_free_largest_l": {},
+     "mitm_exact_gap_bits": 32.61
+    },
+    "m6|readme": {
+     "budget": {
+      "feasible": true,
+      "l_opt": 24,
+      "log2_calls": 24.0,
+      "log2_LA_it": 50.585,
+      "log2_budget_it": 36.808,
+      "log2_budget_Fq_mults": 39.393,
+      "budget_seconds_at_t_M_conservative": 12029.867975774
+     },
+     "fit_extrapolation": {},
+     "fit_free_largest_l": {},
+     "mitm_exact_gap_bits": 33.61
+    }
+   },
+   "min_attack_margin_fit_bits": 184.28,
+   "min_attack_margin_fit_at": [
+    "m4|ordered_tau_slots(H2=H1)",
+    "sat"
+   ],
+   "H1_vs_H2": {
+    "3": {
+     "all_cells": [
+      -0.025243610482901656,
+      0.9364470506056783,
+      1.8403599523218028
+     ],
+     "cells_over_1s": [
+      -0.025243610482901656,
+      0.24618039430566976,
+      1.564775952265991
+     ],
+     "net_gain_bits_median": 1.6485154501154777
+    },
+    "4": {
+     "all_cells": [
+      1.3857596285738554,
+      1.6404293155011973,
+      1.885067371261689
+     ],
+     "cells_over_1s": [
+      1.3857596285738554,
+      1.6404293155011973,
+      1.885067371261689
+     ],
+     "net_gain_bits_median": 2.9445331852199588
+    }
+   },
+   "status": "corrected (budgets); conclusion confirmed by the fits, not by a fit-free bound for m >= 5",
+   "margin_bits": 184.28,
+   "reason": "Corrected per-call PDP budgets in rho iterations, plain / ordered tau-slots (H2 = H1): m = 4: 2^19.5 / 2^24.1; m = 5: 2^33.8 / 2^35.8; m = 6: 2^37.8 / 2^36.8. The README figures were 2^12.2 / 2^32.8 / 2^36.8; it takes U = 2^l, does not subtract LA from rho, has no ker-Tr bit and prices LA at 1 op = 1 iteration. Every engine fitted at n = 131 misses the budget by more than 150 bits (smallest attack margin by fit: 184.28 bits). Ordered slots need m*l <= 131. At m = 6 that caps l at 21 and lowers the budget. Without extrapolating in l: at m = 4 the smallest measured UNSAT cost at l = 4 (msolve, n = 31, 1214 CPU s) is already +14.0 bits over the plain budget and +9.4 bits over the ordered budget. The SAT solve at l = 5 is +11.3 / +6.7 bits over. So m = 4 is excluded provided PDP cost does not fall as n grows from 31 to 131. m = 5 and m = 6 cannot be excluded without extrapolating in l: at m = 5 the budget exceeds the measured l = 4 cost, and an engine would need a slope of about 0.1-0.3 bits per unit of l up to l = 26-28, while every measured engine has at least 1.9 bits per unit of l."
+  },
+  "RT6_petit_quisquater_first_fall_degree": {
+   "claimed": {
+    "omega2": 126.61,
+    "omega2_37": 134.0
+   },
+   "recomputed_verbatim": {
+    "omega2": {
+     "log2_total": 126.614,
+     "m": 2,
+     "l": 62,
+     "log2_calls": 70.0,
+     "log2_pdp": 55.614,
+     "log2_LA": 125.0,
+     "D": 5,
+     "margin_bits": 65.805
+    },
+    "omega2_37": {
+     "log2_total": 134.0,
+     "m": 2,
+     "l": 66,
+     "log2_calls": 66.0,
+     "log2_pdp": 66.98,
+     "log2_LA": 133.0,
+     "D": 5,
+     "margin_bits": 73.191
+    }
+   },
+   "corrected": {
+    "omega2": {
+     "log2_total": 123.647,
+     "m": 2,
+     "l": 63,
+     "log2_calls": 67.0,
+     "log2_pdp": 55.847,
+     "log2_LA": 122.415,
+     "D": 5,
+     "margin_bits": 62.838
+    },
+    "omega2_37": {
+     "log2_total": 131.753,
+     "m": 2,
+     "l": 65,
+     "log2_calls": 65.0,
+     "log2_pdp": 66.717,
+     "log2_LA": 126.415,
+     "D": 5,
+     "margin_bits": 70.944
+    },
+    "omega2_ordered": {
+     "log2_total": 122.899,
+     "m": 2,
+     "l": 62,
+     "log2_calls": 67.0,
+     "log2_pdp": 55.614,
+     "log2_LA": 120.415,
+     "D": 5,
+     "margin_bits": 62.089
+    },
+    "omega2_37_ordered": {
+     "log2_total": 130.788,
+     "m": 2,
+     "l": 65,
+     "log2_calls": 64.0,
+     "log2_pdp": 66.717,
+     "log2_LA": 126.415,
+     "D": 5,
+     "margin_bits": 69.979
+    }
+   },
+   "margin_bits": 62.09,
+   "status": "corrected (verbatim reproduced exactly)",
+   "reason": "The verbatim recomputation gives 2^126.614 (omega = 2) and 2^134.0 (omega = 2.37), the stored values. Corrections: 2^(l-1) + 1 relations instead of 2^l, an lg-sum instead of max + 1, the ker-Tr bit, LA in F_q-mults and ordered slots. They give 2^122.90 at omega = 2 and 2^130.79 at omega = 2.37. The optimum stays at m = 2, where D = m^2 + 1 = 5 is smallest."
+  },
+  "RT7_semaev2015_splitting_D_le_4": {
+   "claimed": {
+    "D4_omega2": 89.33
+   },
+   "recomputed_verbatim": {
+    "D4_omega2": {
+     "log2_total": 89.332,
+     "m": 9,
+     "l": 17,
+     "vars": 1070,
+     "log2_calls": 17.0,
+     "log2_per_pdp": 71.332,
+     "margin_bits": 28.523
+    },
+    "D4_omega2_37": {
+     "log2_total": 102.528,
+     "m": 9,
+     "l": 17,
+     "vars": 1070,
+     "log2_calls": 17.0,
+     "log2_per_pdp": 84.528,
+     "margin_bits": 41.719
+    }
+   },
+   "corrected": {
+    "D4_omega2": {
+     "log2_total": 87.332,
+     "m": 9,
+     "l": 17,
+     "vars": 1070,
+     "log2_calls": 16.0,
+     "log2_per_pdp": 71.332,
+     "margin_bits": 26.523
+    },
+    "D4_omega2_37": {
+     "log2_total": 100.528,
+     "m": 9,
+     "l": 17,
+     "vars": 1070,
+     "log2_calls": 16.0,
+     "log2_per_pdp": 84.528,
+     "margin_bits": 39.719
+    },
+    "D4_omega2_ordered_uncapped": {
+     "log2_total": 84.443,
+     "m": 10,
+     "l": 13,
+     "vars": 1178,
+     "log2_calls": 12.0,
+     "log2_per_pdp": 72.442,
+     "margin_bits": 23.634
+    },
+    "D4_omega2_37_ordered_uncapped": {
+     "log2_total": 97.844,
+     "m": 10,
+     "l": 13,
+     "vars": 1178,
+     "log2_calls": 12.0,
+     "log2_per_pdp": 85.844,
+     "margin_bits": 37.035
+    }
+   },
+   "sensitivity_D5": {
+    "verbatim_omega2": {
+     "log2_total": 104.643,
+     "m": 7,
+     "l": 21,
+     "vars": 802,
+     "log2_calls": 21.0,
+     "log2_per_pdp": 82.643,
+     "margin_bits": 43.834
+    },
+    "corrected_ordered_uncapped_omega2": {
+     "log2_total": 100.196,
+     "m": 10,
+     "l": 13,
+     "vars": 1178,
+     "log2_calls": 12.0,
+     "log2_per_pdp": 88.195,
+     "margin_bits": 39.387
+    }
+   },
+   "sensitivity_D6": {
+    "verbatim_omega2": {
+     "log2_total": 118.582,
+     "m": 6,
+     "l": 24,
+     "vars": 668,
+     "log2_calls": 24.0,
+     "log2_per_pdp": 93.582,
+     "margin_bits": 57.773
+    },
+    "corrected_ordered_uncapped_omega2": {
+     "log2_total": 114.335,
+     "m": 5,
+     "l": 26,
+     "vars": 523,
+     "log2_calls": 25.0,
+     "log2_per_pdp": 89.335,
+     "margin_bits": 53.526
+    }
+   },
+   "floor_D3_input_degree": {
+    "corrected_ordered_uncapped_omega2": {
+     "log2_total": 68.043,
+     "m": 10,
+     "l": 13,
+     "vars": 1178,
+     "log2_calls": 12.0,
+     "log2_per_pdp": 56.043,
+     "margin_bits": 7.234
+    },
+    "note": "D = 3 is the degree of the descended equations themselves, so no D can be lower. It would mean solving with no degree growth at all; no one claims it."
+   },
+   "best_corrected_D4": {
+    "key": "corrected_ordered_uncapped_D4_omega2.0",
+    "log2_total": 84.443,
+    "m": 10,
+    "l": 13,
+    "vars": 1178,
+    "log2_calls": 12.0,
+    "log2_per_pdp": 72.442,
+    "margin_bits": 23.634
+   },
+   "margin_bits": 23.634,
+   "status": "corrected (verbatim reproduced exactly)",
+   "reason": "The verbatim value 2^89.332 matches the stored one. Corrections: 2^(l-1) + 1 relations, an lg-sum, the ker-Tr bit, ordered tau-slots, and counting every decomposition per call (lambda > 1 at the optimum). The best D <= 4 figure is then 2^84.443 (corrected_ordered_uncapped_D4_omega2.0, m = 10, l = 13, 1178 Boolean variables). D <= 4 is Semaev's own unproven, disputed heuristic. The margin is very sensitive to D. D = 5 gives 2^100.196. The degree of the descended equations themselves (D = 3, which no one claims) is the absolute floor and gives 2^68.043, still above rho."
+  },
+  "GGMP_3.2_Frobenius_invariant_factor_base": {
+   "claimed": {
+    "costmodel_free_GGMP_hyp_m7": 24.86
+   },
+   "status": "confirmed unrealisable for an algebraic PDP at n = 131 (hypothetical rows carry no margin)",
+   "margin_bits": null,
+   "reason": "At n = 131 the only squaring-invariant F_2-subspaces have dimensions 0, 1, 130 and 131 (C5 audit, audit_c5.json invariant_subspace_dims). There is no invariant V of dimension 1 < l < 130, so the costmodel's GGMP-hyp rows (relations / 131, LA / 131^2) cannot be instantiated with a summation-polynomial PDP. The tau-union of 131 conjugate subspaces is realisable only as a combinatorial factor base, i.e. the generic table family."
+  },
+  "GGMP_3.1_ordered_tau_slots": {
+   "status": "realisable on E0 (floor curves via the 263-isogeny); m! gain in p confirmed on toy curves; H2 > H1 measured",
+   "toy_relation_probability": {
+    "runs": 21,
+    "cells": [
+     [
+      23,
+      2,
+      10
+     ],
+     [
+      23,
+      2,
+      11
+     ],
+     [
+      23,
+      3,
+      6
+     ],
+     [
+      23,
+      3,
+      7
+     ],
+     [
+      23,
+      4,
+      5
+     ],
+     [
+      29,
+      2,
+      14
+     ],
+     [
+      29,
+      3,
+      9
+     ]
+    ],
+    "x_coverage_over_poisson_M_over_E": [
+     0.9969943408503847,
+     0.999970292595647,
+     1.00158253551357
+    ],
+    "G_target_hit_over_prediction": [
+     0.9938993119417794,
+     1.0019788740585176,
+     1.0532567115359968
+    ],
+    "G_target_hit_over_costmodel_formula_true_F": [
+     0.9939570002639705,
+     1.0025411045716353,
+     1.0539019481221876
+    ],
+    "G_targets_sampled_per_run": 200000,
+    "G_target_hit_over_prediction_cells_with_F_ge_1000": [
+     0.9938993119417794,
+     1.000186582098091,
+     1.0063404809386236
+    ],
+    "note": "x-coverage prediction: 1-exp(-M/#E); ker-Tr: sums lie in 2E so 0.5(1-exp(-2M/#E)) of all x, and G-targets see 1-exp(-2M/#E). Deviations up to -27% occur only at |F| <= 60 (m = 3, 4), where multisets with repeated or cancelling points (P, -P) are a sizeable fraction of M."
+   },
+   "H2_over_H1_msolve_log2": {
+    "3": {
+     "all_cells": [
+      -0.025243610482901656,
+      0.9364470506056783,
+      1.8403599523218028
+     ],
+     "cells_over_1s": [
+      -0.025243610482901656,
+      0.24618039430566976,
+      1.564775952265991
+     ],
+     "net_gain_bits_median": 1.6485154501154777
+    },
+    "4": {
+     "all_cells": [
+      1.3857596285738554,
+      1.6404293155011973,
+      1.885067371261689
+     ],
+     "cells_over_1s": [
+      1.3857596285738554,
+      1.6404293155011973,
+      1.885067371261689
+     ],
+     "net_gain_bits_median": 2.9445331852199588
+    }
+   },
+   "margin_bits": null,
+   "reason": "The ordered-slot relation probability |F|^m / #E (an m! gain) was confirmed by exact counts on toy curves. On the same targets msolve pays H2/H1 = 2^0.94 (median over all m = 3 cells), 2^0.25 (median over the largest cells, l = 5) and 2^1.64 at m = 4 (l = 3). At m = 4, l = 4 the ordered UNSAT call was still running after 1342 CPU s, against 1214 CPU s for the plain call. The penalty shrinks as the instances grow, so the prudent attacker-side assumption for Groebner-type PDPs is H2 = H1 (the full m!), and the corrected budgets use it. For exhaustive enumeration (WDSat's symmetric model needs S_m-invariance) the m! is repaid in full per call. For MITM the per-call cost grows by about ceil(m/2)!, which is already in the corrected MITM rows. costmodel.py had no ordered slots in its free, MITM or table rows; RT3 had them only in its table variant."
+  }
+ },
+ "formula_differences": [
+  {
+   "id": "FD1",
+   "item": "relation probability per PDP call (plain factor base)",
+   "costmodel": "p = min(1, 2^(m l) / (m! 2^131))",
+   "first_principles": "p = M/#E with M = #m-multisets of F (|F| ~ 2^l points, both signs) and #E = 4N ~ 2^131",
+   "verdict": "confirmed",
+   "evidence": "exact toy counts: hit rate of G-targets / costmodel formula with the true |F| = 1.005 (median, plain:random), 1.008 (plain:normal); no extra factor 2 for +-R (F = -F makes the sum set symmetric)"
+  },
+  {
+   "id": "FD2",
+   "item": "Z/4 cofactor / targets in the N-subgroup G",
+   "costmodel": "denominator 2^131 (= #E up to 2^-66.7), no ker-Tr factor base",
+   "first_principles": "Generic V: G-targets decompose at the same rate as random points of E. A factor base V inside ker Tr (Tr(a2) = 0 on all 263 curves) puts every factor-base point in 2E, which doubles the rate for G-targets. 4E-membership is not linear in x, so there is no second bit",
+   "verdict": "corrected (+1 bit for the attacker)",
+   "evidence": "toy G-target hit / (1-exp(-2M/#E)) = 0.993 (plain:kertr) and 1.001 (ordered:kertr), medians. The E/2E trace criterion holds on all 263 curves (raw/per_curve_facts.json)"
+  },
+  {
+   "id": "FD3",
+   "item": "points up to sign: unknowns",
+   "costmodel": "U = 2^(l-1)",
+   "first_principles": "U = 2^(l-1) (+1 relation for the target)",
+   "verdict": "confirmed (the pdp-scaling README's 2^l is 1 bit high in calls and 2 bits in LA)",
+   "evidence": "analytic"
+  },
+  {
+   "id": "FD4",
+   "item": "m! symmetry (plain)",
+   "costmodel": "1/m! in p",
+   "first_principles": "1/m! (multisets)",
+   "verdict": "confirmed",
+   "evidence": "toy coverage / Poisson(M/#E) = 1.00 (cells with |F| >= 1000)"
+  },
+  {
+   "id": "FD5",
+   "item": "GGMP 2020 Sec 3.1 ordered tau-slots (E0; floor curves via transfer)",
+   "costmodel": "absent (free/mitm/table); RT3: table variant only, logfact = 0 and tables without /k!",
+   "first_principles": "p = |F|^m / #E (x m!), unknowns unchanged, requires m l <= 131 and disjoint V_i = V^(2^i). The PDP per call becomes H2 >= H1",
+   "verdict": "corrected (the free/algebraic rows gain log2 m! - log2(H2/H1))",
+   "evidence": "toy ordered/prediction = 1.002; msolve log2(H2/H1) median 0.94 (m = 3), 1.64 (m = 4)"
+  },
+  {
+   "id": "FD6",
+   "item": "linear algebra unit",
+   "costmodel": "LA = m U^2, 1 op = 1 PDP call = 1 rho iteration",
+   "first_principles": "Lanczos about m U^2 (Wiedemann about 3 m U^2) mult-adds mod N, each about 1 F_q-mult = 1/6 iteration",
+   "verdict": "corrected (LA 2.58 bits cheaper with Lanczos, 1.0 bit with Wiedemann)",
+   "evidence": "task constant: 1 rho iteration = 6 F_q-mults"
+  },
+  {
+   "id": "FD7",
+   "item": "relations per call capped at 1",
+   "costmodel": "min(0, log p)",
+   "first_principles": "E[#decompositions] = lambda, usable when lambda > 1 and the solver returns all solutions",
+   "verdict": "conservative for the attacker; matters only for the Semaev optimum (lambda > 1)",
+   "evidence": "RT7 corrected rows"
+  },
+  {
+   "id": "FD8",
+   "item": "table: per-target scan",
+   "costmodel": "2^((m-k) l) ordered (m-k)-tuples",
+   "first_principles": "2^((m-k) l)/(m-k)! multisets",
+   "verdict": "no effect at the optima (k = m-1)",
+   "evidence": "audit.json families"
+  },
+  {
+   "id": "FD9",
+   "item": "search ranges",
+   "costmodel": "l >= 2; m <= 7 (costmodel), m <= 60 (RT3)",
+   "first_principles": "l >= 1, m up to 131 (ordered: m l <= 131)",
+   "verdict": "corrected: MITM by the costmodel's own formula 83.701 (m = 14) instead of >= 93.49; RT3 table optimum sits at the l = 2 boundary",
+   "evidence": "audit.json families"
+  },
+  {
+   "id": "FD10",
+   "item": "table memory",
+   "costmodel": "ignored",
+   "first_principles": "2^(k l)/k! entries",
+   "verdict": "corrected: 184 of 189 table rows need > 2^50 entries",
+   "evidence": "audit.json generic_analysis / table_memory_capped"
+  },
+  {
+   "id": "FD11",
+   "item": "generic lower bound",
+   "costmodel": "not applied",
+   "first_principles": "table and MITM PDPs are generic, so Shoup-type bound sqrt(N/262) = 2^60.48",
+   "verdict": "corrected: no row violates it, and the modelled table minimum is the model's own BSGS floor",
+   "evidence": "audit.json generic_analysis"
+  },
+  {
+   "id": "FD12",
+   "item": "GGMP Sec 3.2 invariant factor base",
+   "costmodel": "relations / 131, LA / 131^2 (hypothetical)",
+   "first_principles": "no squaring-invariant subspace of dimension 1 < l < 130 at n = 131",
+   "verdict": "unrealisable for an algebraic PDP; realisable only as the combinatorial tau-union (generic)",
+   "evidence": "C5 audit"
+  },
+  {
+   "id": "FD13",
+   "item": "README break-even budget",
+   "costmodel": "budget = rho - calls (LA not subtracted), U = 2^l",
+   "first_principles": "budget = (rho - LA) / calls",
+   "verdict": "corrected: README overstates m = 4 by 1.2 bits relative to its own model; the corrected budgets are larger (ker-Tr, U, LA units)",
+   "evidence": "audit.json break_even"
+  },
+  {
+   "id": "FD14",
+   "item": "RT6 / RT7 totals",
+   "costmodel": "rel = 2^l relations, total = max(collection, LA) + 1",
+   "first_principles": "rel = 2^(l-1) + 1, total = collection + LA (lg-sum)",
+   "verdict": "corrected: -2 bits on RT7 (89.33 -> 87.33 before the ker-Tr / ordered / uncapped gains)",
+   "evidence": "audit.json RT6/RT7"
+  }
+ ],
+ "summary": {
+  "tightest_nongeneric_margin_bits": 23.634,
+  "tightest_nongeneric_family": "RT7_semaev2015_splitting_D_le_4",
+  "nongeneric_margins": {
+   "RT7_semaev2015_splitting_D_le_4": 23.634,
+   "RT6_petit_quisquater_first_fall_degree": 62.09,
+   "IC_algebraic_PDP_measured_engines(fit)": 184.28
+  },
+  "generic_families_floor_margin_bits": -0.326,
+  "generic_families_modelled_min_margin_bits": 5.776,
+  "previous_claim": "RT3 ordered tau-slots 2^67.0 (+6.2 bits) as the tightest non-generic margin",
+  "previous_claim_verdict": "reclassified: the m = 34, l = 2 optimum is a generic k-sum (BSGS in E(F_q) without the <-1,tau> class reduction), bounded below by 2^60.48 like every generic method",
+  "all_263_curves": "same margins: #E = 4N for every curve and Tr(a2) = 0 everywhere (ker-Tr bit available); only E0 has tau natively, and the floor curves reach it through the 263-isogeny"
+ }
+}

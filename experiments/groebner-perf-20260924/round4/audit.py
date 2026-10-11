@@ -2,18 +2,13 @@
 import gzip
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
-
-# experiments/pdp-scaling/ is shared with, and still being actively measured
-# by, other experiments; sumpoly.py has since changed there.  This round's
-# receipts pin the byte content it was measured against, so that content is
-# frozen here rather than re-pointed at the live, moved-on file.
-FROZEN_SOURCES = {
-    'experiments/pdp-scaling/sumpoly.py': HERE/'results'/'sources'/'sumpoly.py',
-}
+sys.path.insert(0, str(HERE.parent))
+from measured_source import measured_bytes
 
 
 def main():
@@ -24,13 +19,10 @@ def main():
         for relative, expected in report['source_sha256'].items():
             path = Path(relative)
             assert not path.is_absolute() and '..' not in path.parts
-            if relative in FROZEN_SOURCES:
-                path = FROZEN_SOURCES[relative]
-            else:
-                path = ROOT/path
-                if name == 'screen' and path.parent == HERE and path.name in ('packed_query.py','benchmark.py'):
-                    path = HERE/'screen'/path.name
-            assert hashlib.sha256(path.read_bytes()).hexdigest() == expected, str(path)
+            path = ROOT/path
+            if name == 'screen' and path.parent == HERE and path.name in ('packed_query.py','benchmark.py'):
+                path = HERE/'screen'/path.name
+            assert hashlib.sha256(measured_bytes(path, expected)).hexdigest() == expected, str(path)
             checked += 1
         for row in report['rows']:
             results = [row[arm]['result'] for arm in row['order']]
