@@ -5,6 +5,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from restore_crypto_source import ensure_snapshot
+
 
 HERE = Path(__file__).resolve().parent
 INPUTS = HERE.parent / "adaptive_all_orientations_20261004" / "inputs"
@@ -51,7 +53,7 @@ def verify():
         ("representatives", INPUTS / "n83_x_representatives.bin"),
     ):
         assert inputs[key] == sha256(path), key
-    crypto = HERE / "crypto_source_snapshot"
+    crypto = ensure_snapshot()
     assert inputs["crypto_manifest"] == sha256(crypto / "Cargo.toml")
     assert inputs["crypto_source_tree"] == tree_digest(
         crypto, (path for path in crypto.rglob("*") if path.is_file()))

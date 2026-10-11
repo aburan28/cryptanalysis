@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from benchmark_stage import ARM_FIELDS, PAIR_FIELDS, canonical, digest
+from restore_crypto_source import ensure_snapshot
 import run as stage_run
 
 
@@ -50,6 +51,7 @@ def main():
     audit = json.loads(audit_path.read_text())
     expected_reference = json.loads(reference.read_text())
     expected_candidate = json.loads(candidate.read_text())
+    ensure_snapshot()
 
     if summary["status"] != "validated_stage_comparison" or summary["invariant_mismatches"]:
         raise ValueError("frozen stage comparison failed")
@@ -99,7 +101,8 @@ def main():
                 "--bridge", str(bridge), "--reps", str(reps),
                 "--expected", str(expected), "--mode", mode]
 
-    artifacts = [binary, wrapper, experiment / "make_manifest.py", source,
+    artifacts = [binary, wrapper, experiment / "make_manifest.py",
+                 experiment / "restore_crypto_source.py", source,
                  experiment / "run.py", experiment / "Cargo.toml",
                  experiment / "Cargo.lock", stage, protocol, bridge, reps,
                  reference, candidate, summary_path, audit_path,
