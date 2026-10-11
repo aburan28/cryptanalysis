@@ -62,8 +62,8 @@ python3 experiments/compact-s3-m4-20261003/q1468_n53_pair_oracle/freeze_protocol
 python3 experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```
 
-The next natural-yield experiment should freeze a panel of uniform,
-previously unseen N53 subgroup targets and query this exact table. Report
-success and absence counts with uncertainty, each target's online cost, and
-novel relation rank. A shared table panel is secondary to the already
-completed single-target measurements and must keep its setup separate.
+[Q1469](../q1469_n53_yield_panel/README.md) now supplies the secondary
+ordinary-target panel: 13 independently verified relations in 128 seeded
+targets, with 13 early novel rows. It keeps fresh table setup separate from
+each target query and reports model-based uncertainty for yield and work per
+relation.

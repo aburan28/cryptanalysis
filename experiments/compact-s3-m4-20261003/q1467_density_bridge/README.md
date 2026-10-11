@@ -81,3 +81,8 @@ targets, with setup and query costs separately charged. At N83, first recover
 an unpinned known-solution control before using ordinary runs to estimate
 successful decomposition cost. Preserve all failures and rank measurements;
 do not fit a degree-131 solve exponent from capped cells.
+
+[Q1470](../q1470_n83_long_control/README.md) extends that exact unpinned
+N83 known-solution control to 600 seconds and remains censored without a
+model. Its SAT conflicts rise while native field-operation counts stay
+unchanged, so field calls alone cannot measure this solver's dominant work.

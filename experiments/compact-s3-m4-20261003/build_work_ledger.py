@@ -6627,6 +6627,75 @@ def main():
             "receipt_sha256": sha(receipt_path),
         })
     assert [row["status"] for row in q1468_rows] == ["found", "absent"]
+    q1469_dir = HERE / "q1469_n53_yield_panel"
+    q1469_protocol_path = q1469_dir / "protocol.json"
+    q1469_audit_path = q1469_dir / "panel_audit.json"
+    q1469_protocol = json.loads(q1469_protocol_path.read_text())
+    q1469_audit = json.loads(q1469_audit_path.read_text())
+    assert q1469_protocol["proposal_id"] == q1469_audit[
+        "proposal_id"] == "Q1469"
+    assert q1469_protocol["candidate_id"] is q1469_audit[
+        "candidate_id"] is None
+    assert q1469_protocol["isogeny"] == q1469_audit[
+        "isogeny"] == "none"
+    assert q1469_protocol["q1468_protocol_sha256"] == sha(
+        q1468_protocol_path)
+    assert q1469_protocol["curve_id"] == q1468_protocol["curve_id"]
+    assert q1469_protocol["factor_base_enumerated_set_sha256"] == (
+        q1468_protocol["factor_base_enumerated_set_sha256"])
+    assert q1469_audit["status"] == "passed"
+    assert q1469_audit["protocol_sha256"] == sha(q1469_protocol_path)
+    assert q1469_audit["auditor_source_sha256"] == sha(
+        q1469_dir / "audit_panel.py")
+    assert q1469_audit["target_count"] == len(q1469_audit["rows"]) == 128
+    assert q1469_audit["status_counts"] == {
+        "found": 13, "absent": 115, "censored": 0, "error": 0}
+    assert q1469_audit["final_relation_matrix_rank"] == 13
+    assert q1469_audit["verified_relation_count"] == 13
+    assert q1469_audit["complete_n131_log2_work"] is None
+    n83_q1467_base = next(profile for profile in
+                          q1467_base_protocol["profiles"]
+                          if profile["degree_n"] == 83)
+    n83_orbit_size = (n83_q1467_base["factor_base_actual_B"] //
+                      n83_q1467_base["folded_columns_K"])
+    assert n83_orbit_size == 166
+    n83_pair_table_entries = (
+        math.comb(n83_q1467_base["folded_columns_K"], 2) *
+        n83_orbit_size ** 2)
+    assert n83_pair_table_entries == 1_870_145_118_700
+    n131_pair_table_entries = (
+        math.comb(q1413_full["signed_frobenius_columns_K"], 2) *
+        (q1413_full["actual_usable_points_B_before_folding"] //
+         q1413_full["signed_frobenius_columns_K"]) ** 2)
+    assert n131_pair_table_entries == 21_514_403_416_657_745_244
+    q1470_dir = HERE / "q1470_n83_long_control"
+    q1470_protocol_path = q1470_dir / "protocol.json"
+    q1470_audit_path = q1470_dir / "archive_audit.json"
+    q1470_receipt_path = q1470_dir / "run/receipt.json"
+    q1470_protocol = json.loads(q1470_protocol_path.read_text())
+    q1470_audit = json.loads(q1470_audit_path.read_text())
+    assert q1470_protocol["proposal_id"] == q1470_audit[
+        "proposal_id"] == "Q1470"
+    assert q1470_protocol["candidate_id"] is q1470_audit[
+        "candidate_id"] is None
+    assert q1470_protocol["isogeny"] == q1470_audit[
+        "isogeny"] == "none"
+    assert q1470_protocol["q1467_protocol_sha256"] == sha(
+        q1467_solver_protocol_path)
+    assert q1470_protocol["curve_id"] == q1470_audit[
+        "curve_id"] == n83_q1467_base["curve_id"]
+    assert q1470_protocol["factor_base_enumerated_set_sha256"] == (
+        n83_q1467_base["enumerated_set_sha256"])
+    assert q1470_audit["status"] == "passed"
+    assert q1470_audit["protocol_sha256"] == sha(q1470_protocol_path)
+    assert q1470_audit["receipt_sha256"] == sha(q1470_receipt_path)
+    assert q1470_audit["auditor_source_sha256"] == sha(
+        q1470_dir / "audit.py")
+    assert q1470_audit["solver_status"] == "censored"
+    assert q1470_audit["stop_reason"] == "wall_cap"
+    assert q1470_audit["verified_relation_count"] == 0
+    assert q1470_audit["field_calls_equal_prior_60_second_run"] is True
+    assert q1470_audit["complete_n131_log2_work"] is None
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -8656,6 +8725,123 @@ def main():
             "archive_verification_sha256": sha(
                 q1468_verification_path),
         },
+        "q1469_n53_ordinary_relation_supply": {
+            "proposal_id": "Q1469", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4mitm",
+            "measurement_scope": q1469_audit["measurement_scope"],
+            "curve_id": q1469_protocol["curve_id"],
+            "factor_base_actual_B": q1469_protocol["factor_base_actual_B"],
+            "folded_columns_K": q1469_protocol["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": q1469_protocol[
+                "factor_base_enumerated_set_sha256"],
+            "panel_workload_id": q1469_protocol["panel_workload_id"],
+            "target_count": 128,
+            "same_method_n83_complete_pair_table_entries":
+                n83_pair_table_entries,
+            "same_method_n83_complete_pair_table_entries_log2":
+                math.log2(n83_pair_table_entries),
+            "status_counts": q1469_audit["status_counts"],
+            "verified_relation_count": 13,
+            "natural_relation_yield": q1469_audit[
+                "natural_relation_yield"],
+            "novel_rank": 13,
+            "novel_rank_per_query_observed": q1469_audit[
+                "novel_rank_per_query_decimal"],
+            "target_query_field_calls_total": q1469_audit[
+                "target_query_field_calls_total"],
+            "target_independent_table_field_calls_total": q1469_audit[
+                "target_independent_table_field_calls_total"],
+            "target_query_field_calls_per_novel_row": q1469_audit[
+                "query_field_calls_per_novel_row"],
+            "target_query_field_calls_per_verified_relation_bootstrap":
+                q1469_audit[
+                    "query_field_calls_per_verified_relation_bootstrap"],
+            "target_query_wall_ns_total_exploratory": q1469_audit[
+                "target_query_wall_ns_total_exploratory"],
+            "target_query_wall_ns_per_verified_relation_exploratory":
+                q1469_audit[
+                    "query_wall_ns_per_verified_relation_exploratory"],
+            "target_independent_table_wall_ns_total_exploratory":
+                q1469_audit[
+                    "target_independent_table_wall_ns_total_exploratory"],
+            "peak_child_rss_global_raw": q1469_audit[
+                "peak_child_rss_global_raw"],
+            "peak_child_rss_units": q1469_audit[
+                "peak_child_rss_units"],
+            "complete_n131_log2_work": None,
+            "challenge_run_admitted": False,
+            "decision": (
+                "All 128 seeded ordinary N53 public targets finish exact "
+                "cross-column enumeration, with 13 independently replayed "
+                "four-point relations, 115 complete absences, and 13 "
+                "novel rows among 26 folded columns. The observed yield "
+                "and per-useful-row cost describe this early-rank N53 "
+                "panel only; they do not provide N83 successful cost, "
+                "late-rank supply, full IC work, or a controlled CPU "
+                "speedup. The same complete pair-table design on Q1413's "
+                "exact N131 W<=6 base requires more than 2^64 entries "
+                "before any target query, so that explicit-table method "
+                "cannot meet a 2^61 work cap measured in at least one "
+                "entry materialization per pair. This does not bound "
+                "target-guided quotient-summation methods."),
+            "protocol_sha256": sha(q1469_protocol_path),
+            "panel_audit_sha256": sha(q1469_audit_path),
+            "per_target_rows": q1469_audit["rows"],
+        },
+        "q1470_n83_extended_known_solution_control": {
+            "proposal_id": "Q1470", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "curve_id": q1470_protocol["curve_id"],
+            "factor_base_actual_B": q1470_protocol["factor_base_actual_B"],
+            "folded_columns_K": q1470_protocol["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": q1470_protocol[
+                "factor_base_enumerated_set_sha256"],
+            "workload_id": q1470_protocol["workload_id"],
+            "public_target": q1470_protocol["public_target"],
+            "input_role": q1470_protocol["input_role"],
+            "solver_status": q1470_audit["solver_status"],
+            "stop_reason": q1470_audit["stop_reason"],
+            "verified_relation_count": 0,
+            "prior_60_second_conflicts": q1470_audit[
+                "prior_60_second_conflicts"],
+            "extended_600_second_conflicts": q1470_audit[
+                "conflicts"],
+            "prior_60_second_field_calls": q1470_audit[
+                "prior_60_second_field_calls"],
+            "extended_600_second_field_calls": q1470_audit[
+                "field_calls"],
+            "field_calls_equal_prior_60_second_run": True,
+            "joint_eligible_checks": q1470_audit[
+                "joint_eligible_checks"],
+            "prior_60_second_solver_process_wall_ns_exploratory":
+                q1470_audit[
+                    "prior_60_second_solver_process_wall_ns_exploratory"],
+            "extended_600_second_solver_process_wall_ns_exploratory":
+                q1470_audit["solver_process_wall_ns_exploratory"],
+            "prior_60_second_peak_child_rss_raw": q1470_audit[
+                "prior_60_second_peak_child_rss_raw"],
+            "extended_600_second_peak_child_rss_raw": q1470_audit[
+                "peak_child_rss_raw"],
+            "natural_relation_yield_estimate": None,
+            "successful_N83_solve_cost": None,
+            "complete_n131_log2_work": None,
+            "challenge_run_admitted": False,
+            "decision": (
+                "On Q1467's same known-representable N83 public target "
+                "and exact CNF, extending the native wall cap from 60 "
+                "to 600 seconds raises SAT conflicts from 44577 to "
+                "159108 but yields no unpinned model. The exact "
+                "joint-chain check occurs only once and field primitive "
+                "counts remain unchanged, so those counts do not "
+                "measure the dominant SAT search work. Peak child RSS "
+                "rises above 1.4 GB. This is a censored solver control, "
+                "not a natural N83 yield or successful-cost estimate."),
+            "protocol_sha256": sha(q1470_protocol_path),
+            "archive_audit_sha256": sha(q1470_audit_path),
+            "receipt_sha256": sha(q1470_receipt_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -8972,6 +9158,10 @@ def main():
                 "enumerated_set_sha256"],
             "four_summand_s3_complete_solve_work_log2": None,
             "four_summand_s3_per_decomposition_field_ops_log2": None,
+            "q1469_explicit_complete_pair_table_entries":
+                n131_pair_table_entries,
+            "q1469_explicit_complete_pair_table_entries_log2":
+                math.log2(n131_pair_table_entries),
             "reason_unestimated": (
                 "Q1327, Q1330, and Q1333 independently verified the same unassisted "
                 "ordinary n53 four-point relation and a nonzero row "
@@ -9148,8 +9338,18 @@ def main():
                 "column representation of the matched ordinary target, "
                 "without supplying a multi-query natural yield or N83 "
                 "successful cost; "
-                "one n53 success and censored n83 ordinary "
-                "runs do not measure natural useful-row or novel-rank rates; "
+                "Q1469's 128 seeded ordinary N53 targets produce 13 "
+                "independently verified relations and 13 early novel "
+                "rows at 10.16% observed yield; its full-table N131 "
+                "extrapolation already requires 2^64.22 explicit "
+                "pair entries, but this does not exclude a compact "
+                "target-guided method; "
+                "Q1470 extends Q1467's known-representable unpinned N83 "
+                "control to a 600-second wall cap with no model; SAT "
+                "conflicts rise while native field calls stay fixed, "
+                "showing that field calls alone undercharge this solver; "
+                "the N53 early-rank panel and censored N83 ordinary "
+                "runs do not measure N83 useful-row or late-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
                 "but conversions, hashing, memory and arithmetic types still "
                 "lack a common calibrated unit; complete relation collection, "
