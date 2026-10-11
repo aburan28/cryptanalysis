@@ -1,0 +1,46 @@
+name: Public curve witness replay
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/**'
+      - '.github/workflows/public-curve-replay.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/**'
+      - '.github/workflows/public-curve-replay.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-curve-replay-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  correctness-and-timing:
+    name: Public curve witness replay (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Rebuild, preflight, measure and independently audit the frozen panel
+        run: python -u experiments/groebner-perf-20260924/round63/run_validation.py --output public-replay-evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: public-curve-replay-${{ matrix.os }}
+          path: public-replay-evidence/
+          if-no-files-found: error
+          retention-days: 14

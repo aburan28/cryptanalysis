@@ -10,6 +10,14 @@
 uint64_t ca_powmod(uint64_t base, uint64_t exp, uint64_t m)
 {
     if (m == 1) return 0;
+    /* Odd modulus and more than a few squarings: Montgomery form, whose
+     * multiply has no 128-bit division.  Setting it up costs three, so
+     * short exponents stay on the plain ladder.  Same residue either way. */
+    if ((m & 1) && exp >= 16) {
+        ca_mont mo;
+        ca_mont_init(&mo, m);
+        return ca_mont_from(&mo, ca_mont_pow(&mo, ca_mont_to(&mo, base), exp));
+    }
     uint64_t r = 1;
     base %= m;
     while (exp) {
@@ -196,13 +204,16 @@ uint64_t ca_mont_inv(const ca_mont *m, uint64_t a)
 
 /* ---- primality -------------------------------------------------------- */
 
-static int mr_witness(uint64_t n, uint64_t a, uint64_t d, unsigned s)
+/* One Miller-Rabin round in Montgomery form: 1 is r1 = R mod n there, and
+ * n - 1 is n - r1. */
+static int mr_witness(const ca_mont *m, uint64_t a, uint64_t d, unsigned s)
 {
-    uint64_t x = ca_powmod(a, d, n);
-    if (x == 1 || x == n - 1) return 0;
+    const uint64_t one = m->r1, minus_one = m->p - m->r1;
+    uint64_t x = ca_mont_pow(m, ca_mont_to(m, a), d);
+    if (x == one || x == minus_one) return 0;
     for (unsigned r = 1; r < s; r++) {
-        x = ca_mulmod(x, x, n);
-        if (x == n - 1) return 0;
+        x = ca_mont_sqr(m, x);
+        if (x == minus_one) return 0;
     }
     return 1; /* composite */
 }
@@ -218,9 +229,11 @@ int ca_is_prime(uint64_t n)
     uint64_t d = n - 1;
     unsigned s = 0;
     while ((d & 1) == 0) { d >>= 1; s++; }
-    /* These 12 bases are deterministic for all n < 2^64. */
+    /* n is odd here.  These 12 bases are deterministic for all n < 2^64. */
+    ca_mont m;
+    ca_mont_init(&m, n);
     for (size_t i = 0; i < sizeof(small) / sizeof(small[0]); i++) {
-        if (mr_witness(n, small[i], d, s)) return 0;
+        if (mr_witness(&m, small[i], d, s)) return 0;
     }
     return 1;
 }
@@ -314,6 +327,17 @@ static int cmp_factor(const void *a, const void *b)
 
 ca_status ca_factorize(uint64_t n, ca_factorization *out)
 {
+    /* The factorisation of n is unique and returned sorted, so the last
+     * one per thread can be handed out again.  Callers factor the same
+     * group order repeatedly (element orders, then Pohlig-Hellman, per
+     * target), and Pollard-Brent dominated those calls. */
+    static _Thread_local uint64_t memo_n;
+    static _Thread_local ca_factorization memo_f;
+    if (n > 1 && n == memo_n) {
+        *out = memo_f;
+        return CA_OK;
+    }
+    const uint64_t n_in = n;
     memset(out, 0, sizeof(*out));
     if (n == 0) return CA_ERR_INVALID;
     if (n == 1) return CA_OK;
@@ -326,6 +350,8 @@ ca_status ca_factorize(uint64_t n, ca_factorization *out)
     }
     factor_rec(n, out, 0);
     qsort(out->f, out->count, sizeof(ca_factor), cmp_factor);
+    memo_n = n_in;
+    memo_f = *out;
     return CA_OK;
 }
 

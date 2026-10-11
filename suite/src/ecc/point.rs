@@ -18,7 +18,6 @@
 
 use super::field::FieldElement;
 use num_bigint::BigUint;
-use num_traits::{One, Zero};
 
 /// A point on a Weierstrass curve, either the identity (point at infinity)
 /// or an affine coordinate pair.
@@ -83,20 +82,36 @@ impl Point {
     /// for secret scalars.  This variable-time variant is appropriate
     /// only for public-input scalar multiplications, e.g. the verifier's
     /// `u1·G + u2·Q` in ECDSA verification.
+    ///
+    /// The ladder runs in Jacobian coordinates `(X : Y : Z)`, affine
+    /// `(X/Z², Y/Z³)`, and converts back with a single inversion at the
+    /// end: an affine step costs an inversion — a full modular
+    /// exponentiation here — where a Jacobian step costs a dozen
+    /// multiplications.  The result is the same affine point the
+    /// double-and-add over [`Point::add`] and [`Point::double`] returns,
+    /// including its identity and `2P = O` cases, because the two agree
+    /// wherever the affine formulas are defined.
     pub fn scalar_mul(&self, k: &BigUint, a: &FieldElement) -> Point {
-        let mut result = Point::Infinity;
-        let mut addend = self.clone();
-        let mut k = k.clone();
-        let one = BigUint::one();
-
-        while !k.is_zero() {
-            if &k & &one == one {
-                result = result.add(&addend, a);
+        let (x, y) = match self {
+            Point::Infinity => return Point::Infinity,
+            Point::Affine { x, y } => (x, y),
+        };
+        let mut acc: Option<Jacobian> = None;
+        for i in (0..k.bits()).rev() {
+            if let Some(j) = &acc {
+                acc = j.double(a);
             }
-            addend = addend.double(a);
-            k >>= 1;
+            if k.bit(i) {
+                acc = match &acc {
+                    None => Some(Jacobian::from_affine(x, y)),
+                    Some(j) => j.add_affine(x, y, a),
+                };
+            }
         }
-        result
+        match acc {
+            None => Point::Infinity,
+            Some(j) => j.to_affine(),
+        }
     }
 
     /// Scalar multiplication kP using the Montgomery ladder, processing
@@ -171,8 +186,154 @@ impl Point {
     }
 }
 
+/// A finite point in Jacobian coordinates, `(X : Y : Z)` with `Z ≠ 0`
+/// standing for the affine `(X/Z², Y/Z³)`; the identity is `None` where
+/// these are used.  Only [`Point::scalar_mul`] uses it.
+struct Jacobian {
+    x: FieldElement,
+    y: FieldElement,
+    z: FieldElement,
+}
+
+impl Jacobian {
+    fn from_affine(x: &FieldElement, y: &FieldElement) -> Self {
+        Jacobian {
+            x: x.clone(),
+            y: y.clone(),
+            z: FieldElement::one(x.modulus.clone()),
+        }
+    }
+
+    /// `2P` (dbl-2007-bl, general `a`).  `Y = 0` is exactly the affine
+    /// `y = 0`, whose double is the identity.
+    fn double(&self, a: &FieldElement) -> Option<Self> {
+        if self.y.is_zero() {
+            return None;
+        }
+        let xx = self.x.mul(&self.x);
+        let yy = self.y.mul(&self.y);
+        let yyyy = yy.mul(&yy);
+        let zz = self.z.mul(&self.z);
+        let t = self.x.add(&yy);
+        let s = t.mul(&t).sub(&xx).sub(&yyyy);
+        let s = s.add(&s);
+        let m = xx.add(&xx).add(&xx).add(&a.mul(&zz.mul(&zz)));
+        let x3 = m.mul(&m).sub(&s).sub(&s);
+        let yyyy8 = {
+            let d = yyyy.add(&yyyy);
+            let q = d.add(&d);
+            q.add(&q)
+        };
+        let y3 = m.mul(&s.sub(&x3)).sub(&yyyy8);
+        let yz = self.y.add(&self.z);
+        let z3 = yz.mul(&yz).sub(&yy).sub(&zz);
+        Some(Jacobian {
+            x: x3,
+            y: y3,
+            z: z3,
+        })
+    }
+
+    /// `P + (x₂, y₂)` for an affine `(x₂, y₂)` (madd-2007-bl).  Equal
+    /// abscissae (`H = 0`) mean `Q = ±P`: double when the ordinates agree
+    /// too, the identity otherwise — the cases [`Point::add`] branches on.
+    fn add_affine(&self, x2: &FieldElement, y2: &FieldElement, a: &FieldElement) -> Option<Self> {
+        let z1z1 = self.z.mul(&self.z);
+        let u2 = x2.mul(&z1z1);
+        let s2 = y2.mul(&self.z).mul(&z1z1);
+        let h = u2.sub(&self.x);
+        let r = s2.sub(&self.y);
+        if h.is_zero() {
+            return if r.is_zero() { self.double(a) } else { None };
+        }
+        let r = r.add(&r);
+        let hh = h.mul(&h);
+        let i = hh.add(&hh);
+        let i = i.add(&i);
+        let j = h.mul(&i);
+        let v = self.x.mul(&i);
+        let x3 = r.mul(&r).sub(&j).sub(&v).sub(&v);
+        let y1j = self.y.mul(&j);
+        let y3 = r.mul(&v.sub(&x3)).sub(&y1j).sub(&y1j);
+        let zh = self.z.add(&h);
+        let z3 = zh.mul(&zh).sub(&z1z1).sub(&hh);
+        Some(Jacobian {
+            x: x3,
+            y: y3,
+            z: z3,
+        })
+    }
+
+    fn to_affine(&self) -> Point {
+        let zi = self.z.inv().expect("a Jacobian point has Z != 0");
+        let zi2 = zi.mul(&zi);
+        Point::Affine {
+            x: self.x.mul(&zi2),
+            y: self.y.mul(&zi2.mul(&zi)),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use num_traits::{One, Zero};
+
+    /// The affine double-and-add that `scalar_mul` replaced.
+    fn scalar_mul_affine(p: &Point, k: &BigUint, a: &FieldElement) -> Point {
+        let mut result = Point::Infinity;
+        let mut addend = p.clone();
+        let mut k = k.clone();
+        let one = BigUint::one();
+        while !k.is_zero() {
+            if &k & &one == one {
+                result = result.add(&addend, a);
+            }
+            addend = addend.double(a);
+            k >>= 1;
+        }
+        result
+    }
+
+    /// Jacobian `scalar_mul` returns exactly the affine ladder's point,
+    /// over every scalar up to past the group order of a small curve
+    /// (identity, `2P = O` and `Q = ±P` cases included), and on P-256.
+    #[test]
+    fn jacobian_scalar_mul_matches_affine_double_and_add() {
+        // y² = x³ + 2x + 3 over F_97: every point, every k < 2·#E + 3.
+        let p = BigUint::from(97u32);
+        let fe = |v: u32| FieldElement::new(BigUint::from(v), p.clone());
+        let a = fe(2);
+        let mut points = vec![Point::Infinity];
+        for x in 0..97u32 {
+            for y in 0..97u32 {
+                if (y * y) % 97 == (x * x * x + 2 * x + 3) % 97 {
+                    points.push(Point::Affine { x: fe(x), y: fe(y) });
+                }
+            }
+        }
+        let order = points.len() as u32;
+        for pt in &points {
+            for k in 0..(2 * order + 3) {
+                let k = BigUint::from(k);
+                assert_eq!(
+                    pt.scalar_mul(&k, &a),
+                    scalar_mul_affine(pt, &k, &a),
+                    "{pt:?} k={k}"
+                );
+            }
+        }
+        let curve = crate::ecc::curve::CurveParams::p256();
+        let g = curve.generator();
+        let a = curve.a_fe();
+        let mut k = BigUint::from(0x1234_5678_9abc_def1u64);
+        for _ in 0..8 {
+            k = (&k * &k + 12345u32) % &curve.n;
+            assert_eq!(g.scalar_mul(&k, &a), scalar_mul_affine(&g, &k, &a));
+        }
+        let n_minus_1 = &curve.n - 1u32;
+        assert_eq!(g.scalar_mul(&n_minus_1, &a), g.neg());
+        assert_eq!(g.scalar_mul(&curve.n, &a), Point::Infinity);
+    }
     use super::*;
 
     /// Small curve for testing: y² = x³ + 2x + 3 mod 97

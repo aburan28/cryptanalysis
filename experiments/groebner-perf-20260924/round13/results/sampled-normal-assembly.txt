@@ -1,0 +1,78 @@
+0000000100003460 <Engine::normal(Row, std::__1::vector<Row, std::__1::allocator<Row>> const&, unsigned long)>:
+100003460: d10443ff    	sub	sp, sp, #0x110
+100003464: a90b6ffc    	stp	x28, x27, [sp, #0xb0]
+100003468: a90c67fa    	stp	x26, x25, [sp, #0xc0]
+10000346c: a90d5ff8    	stp	x24, x23, [sp, #0xd0]
+100003470: a90e57f6    	stp	x22, x21, [sp, #0xe0]
+100003474: a90f4ff4    	stp	x20, x19, [sp, #0xf0]
+100003478: a9107bfd    	stp	x29, x30, [sp, #0x100]
+10000347c: 910403fd    	add	x29, sp, #0x100
+100003480: aa0103f3    	mov	x19, x1
+100003484: aa0003f6    	mov	x22, x0
+100003488: aa0803f4    	mov	x20, x8
+10000348c: a9397fbf    	stp	xzr, xzr, [x29, #-0x70]
+100003490: f81a03bf    	stur	xzr, [x29, #-0x60]
+100003494: a940705b    	ldp	x27, x28, [x2]
+100003498: f9000be2    	str	x2, [sp, #0x10]
+10000349c: eb1c037f    	cmp	x27, x28
+1000034a0: 54001280    	b.eq	0x1000036f0 <Engine::normal(Row, std::__1::vector<Row, std::__1::allocator<Row>> const&, unsigned long)+0x290>
+1000034a4: a9000ff4    	stp	x20, x3, [sp]
+1000034a8: d2800014    	mov	x20, #0x0               ; =0
+1000034ac: d2800017    	mov	x23, #0x0               ; =0
+1000034b0: d2800018    	mov	x24, #0x0               ; =0
+1000034b4: 14000006    	b	0x1000034cc <Engine::normal(Row, std::__1::vector<Row, std::__1::allocator<Row>> const&, unsigned long)+0x6c>
+1000034b8: f80086f5    	str	x21, [x23], #0x8
+1000034bc: f81983b7    	stur	x23, [x29, #-0x68]
+1000034c0: 9100837b    	add	x27, x27, #0x20
+1000034c4: eb1c037f    	cmp	x27, x28
+1000034c8: 540008a0    	b.eq	0x1000035dc <Engine::normal(Row, std::__1::vector<Row, std::__1::allocator<Row>> const&, unsigned long)+0x17c>
+1000034cc: a9402768    	ldp	x8, x9, [x27]
+1000034d0: 9100210a    	add	x10, x8, #0x8
+1000034d4: eb09011f    	cmp	x8, x9
+1000034d8: fa491144    	ccmp	x10, x9, #0x4, ne
+1000034dc: 540002e0    	b.eq	0x100003538 <Engine::normal(Row, std::__1::vector<Row, std::__1::allocator<Row>> const&, unsigned long)+0xd8>
+1000034e0: f940010b    	ldr	x11, [x8]
+1000034e4: aa0a03ec    	mov	x12, x10
+1000034e8: f840858d    	ldr	x13, [x12], #0x8
+1000034ec: 9e670160    	fmov	d0, x11
+1000034f0: 0e205800    	cnt.8b	v0, v0
+1000034f4: 2e303800    	uaddlv.8b	h0, v0
+1000034f8: 1e26000e    	fmov	w14, s0
+1000034fc: 9e6701a0    	fmov	d0, x13
+100003500: 0e205800    	cnt.8b	v0, v0
+100003504: 2e303800    	uaddlv.8b	h0, v0
+100003508: 1e26000f    	fmov	w15, s0
+10000350c: eb0d017f    	cmp	x11, x13
+100003510: 1a9f97f0    	cset	w16, hi
+100003514: eb0f01df    	cmp	x14, x15
+100003518: 1a9f27ee    	cset	w14, lo
+10000351c: 1a8e020e    	csel	w14, w16, w14, eq
+100003520: 710001df    	cmp	w14, #0x0
+100003524: 9a8b11ab    	csel	x11, x13, x11, ne
+100003528: 9a881148    	csel	x8, x10, x8, ne
+10000352c: aa0c03ea    	mov	x10, x12
+100003530: eb09019f    	cmp	x12, x9
+100003534: 54fffda1    	b.ne	0x1000034e8 <Engine::normal(Row, std::__1::vector<Row, std::__1::allocator<Row>> const&, unsigned long)+0x88>
+100003538: f9400115    	ldr	x21, [x8]
+10000353c: eb1402ff    	cmp	x23, x20
+100003540: 54fffbc3    	b.lo	0x1000034b8 <Engine::normal(Row, std::__1::vector<Row, std::__1::allocator<Row>> const&, unsigned long)+0x58>
+100003544: cb1802f9    	sub	x25, x23, x24
+100003548: 9343ff37    	asr	x23, x25, #3
+10000354c: 910006e8    	add	x8, x23, #0x1
+100003550: d37dfd09    	lsr	x9, x8, #61
+100003554: b50022e9    	cbnz	x9, 0x1000039b0 <Engine::normal(Row, std::__1::vector<Row, std::__1::allocator<Row>> const&, unsigned long)+0x550>
+100003558: cb180289    	sub	x9, x20, x24
+10000355c: 9342fd2a    	asr	x10, x9, #2
+100003560: eb08015f    	cmp	x10, x8
+100003564: 9a888148    	csel	x8, x10, x8, hi
+100003568: b27defea    	mov	x10, #0x7ffffffffffffff8 ; =9223372036854775800
+10000356c: eb0a013f    	cmp	x9, x10
+100003570: 92fc0009    	mov	x9, #0x1fffffffffffffff ; =2305843009213693951
+100003574: 9a893114    	csel	x20, x8, x9, lo
+100003578: b40000f4    	cbz	x20, 0x100003594 <Engine::normal(Row, std::__1::vector<Row, std::__1::allocator<Row>> const&, unsigned long)+0x134>
+10000357c: d37dfe88    	lsr	x8, x20, #61
+100003580: b5002468    	cbnz	x8, 0x100003a0c <Engine::normal(Row, std::__1::vector<Row, std::__1::allocator<Row>> const&, unsigned long)+0x5ac>
+100003584: d37df280    	lsl	x0, x20, #3
+100003588: 940035be    	bl	0x100010c80 <_strlen+0x100010c80>
+10000358c: aa0003fa    	mov	x26, x0
+100003590: 14000002    	b	0x100003598 <Engine::normal(Row, std::__1::vector<Row, std::__1::allocator<Row>> const&, unsigned long)+0x138>
