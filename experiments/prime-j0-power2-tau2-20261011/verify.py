@@ -14,9 +14,9 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 REL = HERE.relative_to(ROOT)
 PARENT = HERE.parent / "prime-j0-power2-residual-20261010"
-CONSTRUCTION = "d99f500"
-INPUT_LAW = "14888b4"
-PANEL = "d503020"
+CONSTRUCTION = "10ca081d3469a392f78a6069b49839aeaf375e16"
+INPUT_LAW = "edcd1214148e68305d719c0c53ee6da1ce8a002f"
+PANEL = "c705ac1c21c02eec51cc18cf52c046d0090c7193"
 
 
 def digest(raw):
