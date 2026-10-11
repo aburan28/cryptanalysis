@@ -57,11 +57,12 @@ from pathlib import Path
 import sys
 
 work = Path(sys.argv[1])
-sys.path.insert(0, str(Path('experiments/prime-j0-asymmetric-r944-20261010').resolve()))
-from verify import check_fixture
+sys.path.insert(0, str(Path('experiments/prime-j0-power2-residual-20261010').resolve()))
+from verify_fixture import check_fixture
 
 assert (work / 'edge.stderr').read_bytes() == b''
-result = check_fixture('edge', Path('experiments/prime-j0-tau-bucket-two-x-20261010/edge-fixture.json'),
+result = check_fixture('unit_orbit_u256_tau_power2_residual_gauge_xyzz_tau_fixed',
+                       'edge', Path('experiments/prime-j0-tau-bucket-two-x-20261010/edge-fixture.json'),
                        (work / 'edge.stdout').read_bytes(), 10)
 print(f'edge: {result["cases"]} verified; stdout_sha256={result["stdout_sha256"]}', flush=True)
 PY
