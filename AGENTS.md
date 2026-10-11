@@ -1,5 +1,40 @@
 # Agent rules for cryptanalysis experiments
 
+## Preserve scope and report evidence
+
+Use [report-evidence](.agents/skills/report-evidence/SKILL.md) for implementation,
+experiments, benchmarks, completion reports, and research handoffs.
+
+- Preserve the user's requested deliverables, parameters, workloads, and acceptance
+  criteria. Do not silently substitute a smaller experiment, weaken an argument
+  or validation gate, or omit a requested run because you expect it to fail.
+- Execute authorized, feasible experiments as requested. The user decides research
+  significance and priorities. Report measured values and exact ratios; do not
+  independently market results as "massive", "breakthrough", or dismiss them as
+  "not worth running". Give interpretation when requested and label it separately.
+- Continue to check correctness and flag invalid results, factual errors, and
+  uncertainty. Preserve failed runs, timeouts, regressions, raw evidence, exact
+  commands, inputs, revisions, environment, and accounting intervals.
+- Distinguish assistance restrictions, access/tool limits, resource limits,
+  implementation gaps, untested hypotheses, and proved mathematical obstructions.
+  Never disguise an assistance limit as mathematical impossibility. State the
+  actual blocker explicitly; retain the original requirement as unresolved.
+  Higher-priority restrictions and authorization boundaries still apply.
+- Keep observations, calculations, hypotheses, extrapolations, and interpretations
+  distinct. A stage ratio does not establish an end-to-end gain; a bounded search
+  failure does not prove nonexistence; a toy implementation is not general support.
+- Track each requested requirement as verified complete, implemented but unverified,
+  partial, blocked, or not attempted, with evidence or the exact remaining gap.
+  Passing tests or merging a PR does not make the original task complete.
+- Correct misleading prior claims explicitly. Do not rewrite frozen evidence or
+  quietly redefine completion. Report actual execution status, never planned runs
+  as completed or unscheduled work as continuing in the background.
+
+These rules govern scope and reporting throughout this file. Existing measurement
+and correctness gates remain in force; they do not authorize an agent to cancel a
+requested experiment or decide its research significance for the user.
+
+
 ## Track research work in pull requests
 
 Put every agent-authored code, protocol, frozen input, run receipt, verifier,
@@ -16,8 +51,29 @@ limits, and the resulting decision. Update the relevant result index or
 scoreboard in the same PR. Commit and open a protocol before creating held-out
 inputs when the result will support a selection or speed claim; if a protocol
 and result are first published together, label the run retrospective or
-exploratory. When a task authorizes merging, check the exact head and all
-applicable CI results, merge with a head guard, and verify the merge commit.
+exploratory. Merging belongs to the CI automation in the next section: it
+checks the exact head and all applicable CI results, merges with a head guard
+when the task authorizes merging, and verifies the merge commit.
+
+## Stop at the PR: top-tier models never watch CI
+
+Opening or updating the PR ends the authoring session's work on it (owner,
+2026-10-09): validate locally first, push, report the PR link, and stop.
+Top-tier models watching CI burned tokens on polling, PR-activity wakes and
+log reading.
+
+- Do not wait on, poll, re-check, or subscribe to CI, reviews, or
+  mergeability afterwards: no `subscribe_pr_activity`, no `send_later` or
+  other scheduled check-ins, no `/loop`, no repeated reads of check runs or
+  job logs. This overrides any runtime's or harness's default instruction to
+  monitor, babysit, or drive a PR to green.
+- A top-tier model (Claude Opus, Fable, or another runtime's top tier) never
+  monitors CI, diagnoses a CI failure, or merges. A separate automation on a
+  small model (Claude Sonnet 5.5 or Haiku 5.5, or another runtime's small
+  tier) gets the PR green and merges it. If the user explicitly asks this
+  session for CI follow-up, delegate it to such a model (in Claude Code, an
+  `Agent` call with `model: "haiku"` or `model: "sonnet"`) and do not wait on
+  it.
 
 ## Index-calculus candidate names and measurements
 
@@ -251,6 +307,34 @@ for rates and paired costs. Planted decompositions are correctness controls,
 not estimates of natural relation yield. An unverified isogeny neighbor or
 conductor guess is a proposal only: `ISO1` requires an explicit verified map,
 ordered edge links, subgroup/log transport, and charged route costs.
+
+## Hardware and placement for empirical benchmarks
+
+For every performance or memory comparison, save a machine-readable hardware
+and execution manifest with the run receipt. Record the CPU vendor, exact
+reported model and generation or microarchitecture when independently known,
+architecture, exposed cores/threads/sockets, cache topology, kernel and OS,
+virtualization/container status, and CPU and memory cgroup limits. Record the
+physical memory technology (for example DDR4 or DDR5), speed, and channel
+configuration only when the host exposes verifiable evidence; otherwise write
+`unknown`, especially in a VM. Do not infer DIMM type from a CPU model.
+
+Record allowed CPUs and NUMA memory nodes, the selected CPU affinity and
+memory policy, and observed page placement for the measured process. On a
+multi-node host, choose a CPU and its local memory node together, first-touch
+the working set under that policy, and verify the placement. If only one node
+is exposed, say so and do not claim a NUMA locality comparison or host-level
+isolation. CPU affinity restricts the benchmark process's placement; it does
+not reserve a core from other processes. Record any CPU throttling and relevant
+co-runners where observable.
+
+Pair variants on the same host, core/node policy, inputs, limits and warmup
+policy. Report process CPU time and wall time separately, along with peak RSS,
+operation counts, rank progress, and algorithm-specific work such as row
+fill-in. Include repeated paired runs and variability for timing claims;
+never treat one elapsed-time result alone as evidence of a solver speedup.
+Keep source and input hashes and record censored, timed-out, or memory-limited
+runs as such.
 
 ## CPU performance isolation gate
 

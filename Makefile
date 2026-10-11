@@ -5,6 +5,8 @@ JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 
 .PHONY: all lib test bench asan tsan valgrind coverage tidy cppcheck analyzer \
         shellcheck format checks rust go python bindings clean install cuda cuda-kernel \
+        orchestrator orchestrator-test smoke fpga fpga-lint fpga-synth \
+        ecc2k130-usecase ecc2k130-helm controller controller-test controller-helm
         coordinator coordinator-test fpga fpga-lint fpga-synth ecc2k130 ecc2k130-gpu \
         ecc2k130-cpu ecc2k130-metal gpu-health gpu-health-image \
         suite suite-build suite-test suite-lint suite-python \
@@ -84,6 +86,14 @@ ecc2k130-usecase:
 ecc2k130-helm:
 	usecases/ecc2k130/deploy/helm/check.sh
 
+controller:
+	$(MAKE) -C controller generate build
+
+controller-test:
+	$(MAKE) -C controller verify-generate fmt-check vet test
+
+controller-helm:
+	$(MAKE) -C controller helm
 # ---- the ECC2K-130 GPU client (ecc2k130/) ----------------------------------
 # The packed GF(2^131) table walk for CUDA devices with a carry-less
 # multiplier, held to fpga/model's golden model.  `ecc2k130` is the host test

@@ -1,0 +1,78 @@
+image:
+  repository: ghcr.io/aburan28/cryptanalysis-campaign-controller
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Two replicas with leader election survive a node loss without a gap in
+# reconciliation; one is enough for a manager cluster that tolerates it.
+replicaCount: 1
+leaderElection: true
+
+# Restrict the controller to one namespace. Empty watches every namespace and
+# uses ClusterRole/ClusterRoleBinding; set to use Role/RoleBinding instead.
+watchNamespace: ""
+
+# HTTP timeout for the coordinator status.json feed.
+statusFeedTimeout: 10s
+
+logLevel: info
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+rbac:
+  create: true
+
+metrics:
+  enabled: true
+  port: 8080
+  service:
+    enabled: true
+    annotations: {}
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+priorityClassName: ""
+terminationGracePeriodSeconds: 30
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+
+# Deny all ingress to the controller except metrics scrapes from the selected
+# namespaces/pods. Egress to the API server and status feed is unaffected
+# unless the namespace has default-deny egress, in which case add rules here.
+networkPolicy:
+  enabled: true
+  metricsIngress: []
+  egress: []

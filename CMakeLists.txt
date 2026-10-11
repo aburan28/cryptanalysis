@@ -149,6 +149,29 @@ if(CA_BUILD_TOOLS)
   target_include_directories(ca_bench PRIVATE src cuda)
   target_compile_options(ca_bench PRIVATE ${CA_WARNINGS})
   ca_sanitize(ca_bench)
+  # `ca_bench --json` records the commit the build was configured at.  The
+  # reflog is a configure dependency, so a commit or checkout reconfigures and
+  # the define follows HEAD; without git the field is written as null.
+  find_package(Git QUIET)
+  if(Git_FOUND)
+    execute_process(COMMAND ${GIT_EXECUTABLE} -C ${CMAKE_CURRENT_SOURCE_DIR} rev-parse HEAD
+                    RESULT_VARIABLE CA_GIT_RC OUTPUT_VARIABLE CA_GIT_COMMIT
+                    OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(CA_GIT_RC EQUAL 0)
+      target_compile_definitions(ca_bench PRIVATE CA_GIT_COMMIT="${CA_GIT_COMMIT}")
+      execute_process(COMMAND ${GIT_EXECUTABLE} -C ${CMAKE_CURRENT_SOURCE_DIR}
+                              rev-parse --git-path logs/HEAD
+                      RESULT_VARIABLE CA_GIT_LOG_RC OUTPUT_VARIABLE CA_GIT_LOG
+                      OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+      if(CA_GIT_LOG_RC EQUAL 0)
+        get_filename_component(CA_GIT_LOG "${CA_GIT_LOG}" ABSOLUTE
+                               BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+        if(EXISTS "${CA_GIT_LOG}")
+          set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CA_GIT_LOG}")
+        endif()
+      endif()
+    endif()
+  endif()
 endif()
 
 if(CA_BUILD_TESTS)

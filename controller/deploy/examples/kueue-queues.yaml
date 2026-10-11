@@ -1,0 +1,49 @@
+# Minimal single-cluster Kueue topology for GPU campaigns. For MultiKueue,
+# replace the ClusterQueue's flavor with the manager-side flavor and add the
+# MultiKueue AdmissionCheck as documented in the controller README.
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: ResourceFlavor
+metadata:
+  name: nvidia-gpu
+spec:
+  nodeLabels:
+    cryptanalysis.io/walker-pool: "true"
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+---
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: ClusterQueue
+metadata:
+  name: gpu-campaigns
+spec:
+  namespaceSelector: {}
+  preemption:
+    withinClusterQueue: LowerPriority
+  resourceGroups:
+    - coveredResources: ["cpu", "memory", "nvidia.com/gpu"]
+      flavors:
+        - name: nvidia-gpu
+          resources:
+            - name: cpu
+              nominalQuota: "512"
+            - name: memory
+              nominalQuota: 1Ti
+            - name: nvidia.com/gpu
+              nominalQuota: "256"
+---
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: LocalQueue
+metadata:
+  name: gpu-campaigns
+  namespace: cryptanalysis
+spec:
+  clusterQueue: gpu-campaigns
+---
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: WorkloadPriorityClass
+metadata:
+  name: campaign-normal
+value: 1000
+description: Steady-state cryptanalysis campaigns
