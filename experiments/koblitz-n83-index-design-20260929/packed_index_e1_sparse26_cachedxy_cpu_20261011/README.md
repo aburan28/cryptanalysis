@@ -53,9 +53,15 @@ six N83 runs agree on the indexed first-witness lookup sample.
 [verify.py](verify.py) checks source and input hashes, the canonical workload
 ID, each raw run digest, exact invariant agreement across both arms, phase
 sums, the audit digest and counts, and the host-isolation field. Run
-`python3 verify.py` from this directory. To rebuild and rerun the paired
-panel in a fresh checkout, set `N83_E1_TARGET_DIR` to a writable build path
-and run `python3 run.py`; it freezes inputs before compilation and preserves
+`python3 verify.py` from this directory. A fresh checkout also needs the
+public [`crypto` source commit](https://github.com/aburan28/crypto/commit/904f0f844f3c1e69e8d22ae5e60ecd56e6648611): clone that repository,
+set `CRYPTO_REPO` to its checkout, and run `python3 restore_crypto_source.py`
+first. The restore script archives the pinned commit, checks all source-tree
+digests against `protocol.json`, and fills the missing linked snapshot only
+after those checks pass. The verifier and isolated manifest builder invoke it
+automatically when needed. To rebuild and rerun the paired panel, set
+`N83_E1_TARGET_DIR` to a writable build path and run `python3 run.py` after
+restoring the snapshot; it freezes inputs before compilation and preserves
 six raw run records. [audit.py](audit.py) replays the separate full audit
 against the built binary using [audit_protocol.json](audit_protocol.json).
 
