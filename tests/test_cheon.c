@@ -15,14 +15,14 @@ static void run(const ca_group *g, const ca_elem *gen, uint64_t d, int reps)
         CHECK(rc == CA_OK);
         CHECK_EQ_U64(got, alpha);
         if (k == 0)
-            printf("p=%" PRIu64 " d=%" PRIu64 ": %" PRIu64 " exps, %" PRIu64 " ops (sqrt p = %.0f)\n",
+            printf("p=%" PRIu64 " d=%" PRIu64 ": %" PRIu64 " exps, %" PRIu64
+                   " ops (sqrt p = %.0f)\n",
                    p, d, st.iterations, st.group_ops, sqrt((double)p));
     }
 }
 
-
-static void run_p_plus_1(const ca_group *g, const ca_elem *gen, uint64_t d,
-                         const uint64_t *alphas, size_t nalpha)
+static void run_p_plus_1(const ca_group *g, const ca_elem *gen, uint64_t d, const uint64_t *alphas,
+                         size_t nalpha)
 {
     uint64_t p = g->order;
     size_t count = (size_t)(2 * d + 1);
@@ -48,8 +48,8 @@ static void run_p_plus_1(const ca_group *g, const ca_elem *gen, uint64_t d,
         ca_status rc = ca_cheon_solve_p_plus_1(g, powers, count, d, NULL, &got, &st);
         CHECK(rc == CA_OK);
         CHECK_EQ_U64(got, alpha);
-        printf("p+1: p=%" PRIu64 " d=%" PRIu64 " alpha=%" PRIu64
-               ": %" PRIu64 " exps, %" PRIu64 " ops\n",
+        printf("p+1: p=%" PRIu64 " d=%" PRIu64 " alpha=%" PRIu64 ": %" PRIu64 " exps, %" PRIu64
+               " ops\n",
                p, d, alpha, st.iterations, st.group_ops);
     }
 
@@ -67,7 +67,10 @@ int main(void)
     /* find q = 2*k*p + 1 prime so the order-p subgroup of Z_q^* exists */
     uint64_t q = 0;
     for (uint64_t k = 1; k < 100000; k++) {
-        if (ca_is_prime(2 * k * p + 1)) { q = 2 * k * p + 1; break; }
+        if (ca_is_prime(2 * k * p + 1)) {
+            q = 2 * k * p + 1;
+            break;
+        }
     }
     CHECK(q != 0);
     CHECK(ca_group_zp_init(&g, q, p) == CA_OK);
@@ -84,12 +87,18 @@ int main(void)
     uint64_t base = 2ULL * 3 * 5 * 7 * 11 * 13 * 17 * 19 * 23 * 29;
     uint64_t p2 = 0;
     for (uint64_t k = 1; k < 100000; k++) {
-        if (ca_is_prime(base * k + 1)) { p2 = base * k + 1; break; }
+        if (ca_is_prime(base * k + 1)) {
+            p2 = base * k + 1;
+            break;
+        }
     }
     CHECK(p2 != 0);
     uint64_t q2 = 0;
     for (uint64_t k = 1; k < 100000; k++) {
-        if (ca_is_prime(2 * k * p2 + 1)) { q2 = 2 * k * p2 + 1; break; }
+        if (ca_is_prime(2 * k * p2 + 1)) {
+            q2 = 2 * k * p2 + 1;
+            break;
+        }
     }
     CHECK(q2 != 0);
     CHECK(ca_group_zp_init(&g, q2, p2) == CA_OK);
@@ -126,13 +135,11 @@ int main(void)
         size_t count = (size_t)(2 * pplus_d + 1);
         ca_elem *powers = calloc(count, sizeof(*powers));
         CHECK(powers != NULL);
-        CHECK(ca_cheon_make_instance_p_plus_1(&g, &gen, 42424242, pplus_d,
-                                              powers, count) == CA_OK);
-        CHECK(ca_cheon_solve_p_plus_1(&g, powers, count - 1, pplus_d,
-                                      NULL, &got, NULL) == CA_ERR_INVALID);
+        CHECK(ca_cheon_make_instance_p_plus_1(&g, &gen, 42424242, pplus_d, powers, count) == CA_OK);
+        CHECK(ca_cheon_solve_p_plus_1(&g, powers, count - 1, pplus_d, NULL, &got, NULL) ==
+              CA_ERR_INVALID);
         CHECK((p + 1) % 11 != 0);
-        CHECK(ca_cheon_solve_p_plus_1(&g, powers, count, 11,
-                                      NULL, &got, NULL) == CA_ERR_INVALID);
+        CHECK(ca_cheon_solve_p_plus_1(&g, powers, count, 11, NULL, &got, NULL) == CA_ERR_INVALID);
         free(powers);
     }
     TEST_MAIN_END();
