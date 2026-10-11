@@ -15,7 +15,7 @@ fn loadable(names: &[&str]) -> bool {
         // SAFETY: we only load the library and immediately drop it.  Loading
         // libcuda / libnvrtc runs their initialisers, which is exactly what
         // cudarc does a moment later; no symbol is called from here.
-        unsafe { libloading::Library::new(name) }.is_ok()
+        unsafe { libloading::Library::new(*name) }.is_ok()
     })
 }
 
