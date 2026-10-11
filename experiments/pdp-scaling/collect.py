@@ -255,6 +255,7 @@ def main() -> None:
         src = os.environ.get("WDSAT_FORK_SRC", "/tmp/WDSat-fork")
     else:
         src = os.environ.get("WDSAT_SRC", "/tmp/WDSat")
+    total_clock = Stopwatch(children=True)
     b = 1  # the Koblitz curve of ECC2K-130
     col = Collector(a.n, a.m, a.l, b, src, gauss, a.order, a.trace)
     if a.oracle:
@@ -265,7 +266,6 @@ def main() -> None:
     attempts = sat = unsat = timeouts = errors = verified = 0
     conf_sat = conf_unsat = 0
     cpu_sat = cpu_unsat = 0.0
-    t0 = time.monotonic()
 
     def one_target() -> Point:
         if a.mode == "planted":
@@ -317,8 +317,10 @@ def main() -> None:
                 flush=True,
             )
 
-    wall = time.monotonic() - t0
-    cpu_total = cpu_sat + cpu_unsat
+    # Include construction, query generation, verification, timeouts and errors.
+    # SAT/UNSAT subtotals remain useful diagnostics but are not a total cost.
+    wall = total_clock.wall()
+    cpu_total = total_clock.cpu()
     theory_yield = 2 ** (3 * a.l) / (6 * 2**a.n) if a.mode == "random" else 1.0
     out = {
         "engine": a.engine,
@@ -344,6 +346,8 @@ def main() -> None:
         "cpu_sat_mean": cpu_sat / sat if sat else 0.0,
         "cpu_unsat_mean": cpu_unsat / unsat if unsat else 0.0,
         "cpu_total": cpu_total,
+        "accounting": "collector construction through final attempt; self and reaped children",
+        "independent_rank": None,
         "cpu_per_call": cpu_total / attempts if attempts else 0.0,
         "relations_per_cpu_sec": verified / cpu_total if cpu_total else 0.0,
         "wall": wall,

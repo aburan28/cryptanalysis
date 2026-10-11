@@ -26,9 +26,9 @@ int usage()
     fprintf(stderr,
             "usage: ec2k-cpu <bench|walk|check> [options]\n%s"
             "  --workers N      worker threads (default: one per core)\n"
-            "  --batch B        lanes per batched inversion (default 512)\n"
+            "  --batch B        lanes per batched inversion (default %d)\n"
             "  --chunks C       batches in flight (default: two per worker)\n",
-            commonUsage());
+            commonUsage(), CpuEngine::kDefaultBatch);
     return 2;
 }
 
@@ -39,6 +39,7 @@ int cmdWalk(const Options &o, const HostTable &table, bool bench)
            ECC_HOST_CLMUL ? "hardware" : "software");
     printf("walks: %d batches x %d lanes = %zu, %d steps per launch, dp weight %d, run id %u\n",
            e.chunks(), e.batch(), e.laneCount(), o.steps, bench ? -1 : o.dpWeight, o.runId);
+    e.prepare(); // the lanes' start points before cmdRun starts its clock
     return cmdRun(o, table, e, bench);
 }
 

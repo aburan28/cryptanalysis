@@ -1,0 +1,70 @@
+name: Producer coefficient transform
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/round67/**'
+      - 'experiments/groebner-perf-20260924/round40/fixtures/**'
+      - 'experiments/groebner-perf-20260924/round51/producer.cpp'
+      - '.github/workflows/producer-coefficient-transform.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/round67/**'
+      - 'experiments/groebner-perf-20260924/round40/fixtures/**'
+      - 'experiments/groebner-perf-20260924/round51/producer.cpp'
+      - '.github/workflows/producer-coefficient-transform.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: producer-coefficient-transform-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  correctness:
+    name: Producer coefficient transform (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build host binaries and optional Metal
+        shell: bash
+        run: |
+          flags=()
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            flags+=(--metal)
+          fi
+          python experiments/groebner-perf-20260924/round67/build.py "${flags[@]}" > "$RUNNER_TEMP/producer-transform-build.log" 2>&1
+      - name: Exact controls and retained transform diagnostics
+        run: python -u experiments/groebner-perf-20260924/round67/run.py --allow-unavailable --output "$RUNNER_TEMP/producer-transform-evidence" > "$RUNNER_TEMP/producer-transform-run.log" 2>&1
+      - name: Audit retained artifacts
+        run: python experiments/groebner-perf-20260924/round67/audit.py --evidence "$RUNNER_TEMP/producer-transform-evidence" --output "$RUNNER_TEMP/producer-transform-audit.json"
+      - name: Record actual runner identity
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, platform, subprocess
+          out = pathlib.Path(os.environ['RUNNER_TEMP']) / 'producer-transform-runner.json'
+          data = {key: os.environ.get(key) for key in ('GITHUB_SHA', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'RUNNER_OS', 'RUNNER_ARCH')}
+          data.update(platform=platform.platform(), architecture=platform.machine(),
+              git_head=subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+              worktree_status=subprocess.check_output(['git', 'status', '--porcelain'], text=True))
+          out.write_text(json.dumps(data, indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: producer-coefficient-transform-${{ matrix.os }}
+          path: ${{ runner.temp }}/producer-transform-*
+          if-no-files-found: error
+          retention-days: 14

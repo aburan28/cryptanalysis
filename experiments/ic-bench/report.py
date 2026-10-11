@@ -8,6 +8,10 @@ other family is paired with it on the same curve, workload, solver, limits and
 calibration, with the factor base as the declared variable.  speedup = baseline total /
 candidate total in the calibrated unit.  Across workloads the table gives the geometric
 mean and, from three workloads up, a bootstrap 95% interval over workloads.
+
+For multi-target rows the table also reports amortized IC work and the fairer
+folded batch-rho comparison. The legacy ratio-to-rho column is a cold run versus
+one independent rho target and should not be used as a batch crossover claim.
 """
 
 from __future__ import annotations
@@ -34,12 +38,35 @@ def bootstrap(xs: list[float], seed: str) -> list[float] | None:
 
 
 def table(rows: list[dict], baseline_family: str) -> list[str]:
+    if rows and all(r.get("targets") == "1" for r in rows):
+        lines = ["| workload | candidate | verified | IC online ms | rho online ms | rho/IC | fb | columns | ordinary queries |",
+                 "|---|---|---|--:|--:|--:|--:|--:|--:|"]
+        by_family = defaultdict(list)
+        for r in rows:
+            good = bool(r.get("status") == "complete" and r.get("verified") == "True" and
+                        r.get("online_speedup"))
+            ic = float(r["ic_online_ns"]) / 1e6 if r.get("ic_online_ns") else None
+            rho = float(r["rho_online_ns"]) / 1e6 if r.get("rho_online_ns") else None
+            lines.append(f"| {r['workload_id']} | `{r['candidate_id']}` | {good} | "
+                         f"{f'{ic:.3f}' if ic is not None else '—'} | "
+                         f"{f'{rho:.3f}' if rho is not None else '—'} | "
+                         f"{r.get('online_speedup') or '—'} | {r['fb_points']} | "
+                         f"{r['effective_columns']} | {r['ordinary_queries']} |")
+            if good:
+                by_family[r["family"]].append(float(r["online_speedup"]))
+        lines += ["", "| factor base | verified targets | geometric mean rho/IC | 95% bootstrap interval |",
+                  "|---|--:|--:|---|"]
+        for family, ratios in sorted(by_family.items()):
+            ci = bootstrap(ratios, family)
+            lines.append(f"| {family} | {len(ratios)} | {geomean(ratios):.4f} | "
+                         f"{f'[{ci[0]:.4f}, {ci[1]:.4f}]' if ci else 'fewer than 3 targets'} |")
+        return lines
     groups = defaultdict(dict)
     for r in rows:
         groups[(int(r["n"]), int(r["m"]), int(r["l"]), r["mode"], r["workload_id"])][r["family"]] = r
     lines = ["| n | m | l | workload | arm | candidate | verified | fb | columns | queries | total ops | "
-             "ratio to rho | ratio to floor | S (ec_add eq.) | speedup vs baseline |",
-             "|--:|--:|--:|---|---|---|---|--:|--:|--:|--:|--:|--:|--:|--:|"]
+             "amortized ops/target | IC/independent-rho batch | IC/folded batch rho | S (ec_add eq.) | speedup vs baseline |",
+             "|--:|--:|--:|---|---|---|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|"]
     speedups = defaultdict(list)
     for key in sorted(groups):
         arms = groups[key]
@@ -55,8 +82,9 @@ def table(rows: list[dict], baseline_family: str) -> list[str]:
             lines.append(
                 f"| {key[0]} | {key[1]} | {key[2]} | {key[4]} | {fam}{' (baseline)' if fam == baseline_family else ''} "
                 f"| `{r['candidate_id']}` | {r['verified']} | {r['fb_points']} | {r['effective_columns']} "
-                f"| {r['ordinary_queries']} | {total if total is not None else 'unknown'} | {r['ratio_to_rho'] or '—'} "
-                f"| {r['ratio_to_floor'] or '—'} | {r['S_ec_add'] or '—'} | {f'{sp:.3f}' if sp else '—'} |"
+                f"| {r['ordinary_queries']} | {total if total is not None else 'unknown'} | "
+                f"{r.get('amortized_ops_per_target') or '—'} | {r.get('ratio_to_independent_rho_batch') or '—'} | "
+                f"{r.get('ratio_to_batch_floor') or '—'} | {r['S_ec_add'] or '—'} | {f'{sp:.3f}' if sp else '—'} |"
             )
     lines += ["", "| n | m | l | arm vs baseline | workloads | geometric-mean speedup | 95% bootstrap over workloads |",
               "|--:|--:|--:|---|--:|--:|---|"]
