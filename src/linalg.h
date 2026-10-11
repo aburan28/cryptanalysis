@@ -19,7 +19,8 @@ typedef struct ca_spmat {
     uint32_t *row_ptr;   /* rows + 1 */
     uint32_t *col;       /* nnz */
     int32_t *val;        /* nnz */
-    uint32_t nnz, cap;
+    uint32_t nnz, cap;   /* cap: slots allocated for col/val */
+    size_t row_cap;      /* slots allocated for row_ptr */
 } ca_spmat;
 
 ca_status ca_spmat_init(ca_spmat *m, uint32_t cols, uint32_t expected_rows, uint32_t expected_nnz);

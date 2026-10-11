@@ -1,0 +1,121 @@
+{{- if .Values.nodeGate.enabled }}
+{{- $name := include "gpu-health.suffixed" (list . "node-gate") }}
+{{- $c := .Values.check }}
+# The node gate: register GPU nodes with the taint nodeGate.taint (the node
+# group's or NodePool's taints, or kubelet --register-with-taints).  This
+# DaemonSet tolerates it and the GPU taints, checks every GPU of a new node in
+# its init container, and on a pass labels the node and lifts the taint; on a
+# failure it labels the node, keeps the taint and exits 1, and the kubelet
+# retries with backoff.  A node without the taint is never loaded again, so a
+# rollout does not disturb nodes that are running work.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "gpu-health.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "gpu-health.labels" . | nindent 4 }}
+rules:
+  # Read the node's taints; label, annotate and lift the gate taint.
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "gpu-health.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "gpu-health.labels" . | nindent 4 }}
+    app.kubernetes.io/component: node-gate
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "gpu-health.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: node-gate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "gpu-health.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: node-gate
+    spec:
+      serviceAccountName: {{ $name }}
+      {{- with .Values.nodeGate.runtimeClassName }}
+      runtimeClassName: {{ . }}
+      {{- end }}
+      {{- with .Values.nodeGate.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      {{- with .Values.nodeGate.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      tolerations:
+        - key: {{ .Values.nodeGate.taint }}
+          operator: Exists
+          effect: NoSchedule
+        {{- with .Values.nodeGate.tolerations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      initContainers:
+        - name: gpu-health
+          image: {{ include "gpu-health.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            {{- range (include "gpu-health.env" (list . "gate") | fromJsonArray) }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          {{- if or (not (kindIs "invalid" $c.privileged)) (not (kindIs "invalid" $c.runAsUser)) }}
+          securityContext:
+            {{- if not (kindIs "invalid" $c.privileged) }}
+            privileged: {{ $c.privileged }}
+            {{- end }}
+            {{- if not (kindIs "invalid" $c.runAsUser) }}
+            runAsUser: {{ int $c.runAsUser }}
+            {{- end }}
+          {{- end }}
+          {{- with $c.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          terminationMessagePolicy: FallbackToLogsOnError
+      containers:
+        - name: pause
+          image: {{ .Values.nodeGate.pauseImage }}
+          resources:
+            requests:
+              cpu: 1m
+              memory: 8Mi
+            limits:
+              memory: 16Mi
+{{- end }}

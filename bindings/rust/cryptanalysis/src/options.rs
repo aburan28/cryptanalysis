@@ -146,6 +146,36 @@ impl Options {
     }
 }
 
+/// Options for the precomputation solver [`Group::precomp`](crate::Group::precomp).
+///
+/// Mirrors the subset of `ca_precomp_params` exposed through the flat ABI.
+/// `PrecompOptions::default()` selects the library defaults for every field.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PrecompOptions {
+    /// Distinguished-point bits (`-1` => `round(log2(n) / 3)`).
+    pub dp_bits: i32,
+    /// Number of chains to build (0 => `coverage * n / 2^{2 dp_bits}`).
+    pub table_size: u64,
+    /// Precomputation coverage factor (0 => 1.0).
+    pub coverage: f64,
+    /// Build worker threads (0 => 1).
+    pub threads: u32,
+    /// RNG seed (0 => random).
+    pub seed: u64,
+}
+
+impl Default for PrecompOptions {
+    fn default() -> Self {
+        PrecompOptions {
+            dp_bits: -1,
+            table_size: 0,
+            coverage: 0.0,
+            threads: 0,
+            seed: 0,
+        }
+    }
+}
+
 /// Work statistics reported by every solver (`ca_stats`).
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Stats {

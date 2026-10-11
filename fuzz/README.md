@@ -66,6 +66,15 @@ harness frees every context and handle on every path, including the early
 
 ## Corpus
 
+`fuzz_coord` is the one harness whose input is text rather than a packed
+struct: it decodes the distributed-rho wire format, which is what a
+coordinator on a public address feeds every line it receives.  Its eight
+seeds are real lines produced by a real lane -- a job document, a bare
+claim, a batch of verifiable points, the solving check-in -- plus the
+rejection paths: a job id changed by one digit, a point whose
+coefficients were tampered with, a truncated field group and an
+over-long peer name.
+
 `fuzz/corpus/<harness>/seedNN` holds 8 hand-built seeds per harness, written
 against each decoder's field layout so they land on the interesting paths
 rather than bailing out: both group kinds, degenerate moduli, curves with

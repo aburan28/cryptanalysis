@@ -4,7 +4,7 @@
 use cryptanalysis::index_calculus::{self, IcContext, IcMethod, IcParams};
 use cryptanalysis::{
     cheon_best_divisor, factorize, invmod, is_prime, next_prime, powmod, primitive_root, Elem,
-    Error, Group, Kind, Options, Solver,
+    Error, Group, Kind, Options, PrecompOptions, Solver,
 };
 
 const P: u64 = 2_000_000_579;
@@ -175,6 +175,21 @@ fn zp_cheon() {
 }
 
 #[test]
+fn zp_precomp() {
+    let (g, gen, h) = zp_instance();
+    let opts = PrecompOptions {
+        threads: 4,
+        seed: 7,
+        ..PrecompOptions::default()
+    };
+    let (x, st) = g.precomp(&gen, &h, &opts).unwrap();
+    assert_eq!(x, X);
+    // Stats cover the n^{2/3} build, so far more than one online walk.
+    assert!(st.group_ops > 0);
+    assert!(st.table_entries > 0);
+}
+
+#[test]
 fn ec_curve_end_to_end() {
     let p = 1_000_003;
     let n = Group::ec_count_points(p, 1, 7).unwrap();
@@ -236,6 +251,52 @@ fn ec_curve_end_to_end() {
         )
         .unwrap();
     assert_eq!(x, 4242 % ord);
+    let (x, _) = e
+        .precomp(
+            &pt,
+            &q,
+            &PrecompOptions {
+                seed: 5,
+                ..PrecompOptions::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(x, 4242 % ord);
+}
+
+#[test]
+fn curve_dispatch_and_glv() {
+    use cryptanalysis::curve::{self, Endo};
+
+    // Detection from parameters and by name.
+    let info = curve::detect(67_108_933, 0, 7, 16_773_703).unwrap();
+    assert_eq!(info.endo, Endo::J0);
+    assert_eq!(info.aut_order, 6);
+    assert!(info.lambda > 1 && info.beta != 0);
+
+    let g1728 = curve::detect(67_108_933, 6, 0, 6_712_457).unwrap();
+    assert_eq!(g1728.endo, Endo::J1728);
+    assert_eq!(g1728.aut_order, 4);
+
+    let generic = curve::detect(67_108_879, 2, 3, 0).unwrap();
+    assert_eq!(generic.endo, Endo::None);
+
+    let (p, a, b, order) = curve::by_name("glv-j0-26").unwrap();
+    assert_eq!((p, a, b, order), (67_108_933, 0, 7, 16_773_703));
+    assert!(curve::by_name("no-such-curve").is_err());
+    let names = curve::names();
+    assert!(names.iter().any(|n| n == "glv-j0-26"));
+
+    // GLV-accelerated solve on the named curve, folding by the order-6 group.
+    let g = Group::ec(p, a, b, order).unwrap();
+    let gen = g.find_generator(1).unwrap();
+    let x = 424_242 % order;
+    let h = g.mul(&gen, x).unwrap();
+    let (got, si, st) = g.curve_solve(&gen, &h, 5).unwrap();
+    assert_eq!(got, x);
+    assert_eq!(si.endo, Endo::J0);
+    assert_eq!(si.aut_order, 6);
+    assert!(st.group_ops > 0);
 }
 
 #[test]

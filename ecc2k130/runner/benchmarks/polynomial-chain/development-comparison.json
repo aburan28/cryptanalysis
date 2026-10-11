@@ -1,0 +1,486 @@
+{
+  "sourceCommit": "2108934",
+  "configs": {
+    "control": [
+      0,
+      6
+    ],
+    "poly4": [
+      1,
+      4
+    ],
+    "poly6": [
+      1,
+      6
+    ]
+  },
+  "fixedKnobs": {
+    "PACKED_CACHE_DENOM": 1,
+    "PACKED_SINGLE_PRODUCT": 1,
+    "PACKED_BY_VALUE": 1,
+    "PACKED_PERM_SIGMA": 3
+  },
+  "valid": true,
+  "gpu": "name, uuid, driver_version\nNVIDIA RTX PRO 6000 Blackwell Server Edition, GPU-562964b2-ecd9-ddd4-93cc-31621e6692ac, 580.95.05\n",
+  "compiler": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2025 NVIDIA Corporation\nBuilt on Fri_Feb_21_20:23:50_PST_2025\nCuda compilation tools, release 12.8, V12.8.93\nBuild cuda_12.8.r12.8/compiler.35583870_0\n",
+  "binarySha256": {
+    "control": "c9f79ebf4ba0cb45841d98862bae8f27cf29afb7314e9d516102936c587a999e",
+    "poly4": "ff72777133a04cf46c72a30af40563ed67f1a07a8caeb34505769ad8268b5b40",
+    "poly6": "98856d5428cb7b38a06e01aaa463d71916c765d73c517f7fc6849d3913920c93"
+  },
+  "integration": {
+    "poly4": {
+      "returncode": 0,
+      "output": "PASS: DP replay across launch boundaries, restart and checkpoint resume\nPASS: byte-identical resume, scalar iteration count, incompatible checkpoint preserved\nPASS: overdue walks restart without false distinguished-point reports\n"
+    },
+    "poly6": {
+      "returncode": 0,
+      "output": "PASS: DP replay across launch boundaries, restart and checkpoint resume\nPASS: byte-identical resume, scalar iteration count, incompatible checkpoint preserved\nPASS: overdue walks restart without false distinguished-point reports\n"
+    }
+  },
+  "checkpoints": {
+    "control": {
+      "command": [
+        "/root/control",
+        "--packed",
+        "--curve",
+        "131",
+        "--bench",
+        "--threads",
+        "8",
+        "--steps",
+        "16",
+        "--launches",
+        "4",
+        "--verify",
+        "0",
+        "--checkpoint",
+        "/tmp/tmpnacxe0nq/control.ck"
+      ],
+      "returncode": 0,
+      "output": "packed kernel: 80 registers/thread, 56 local bytes/thread, 0 shared bytes/block, single-product multiplier\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 0\nbackend cuda-packed131: 8 threads x 32 slots x 1 lanes = 256 walks, dp weight 0, 16 steps per launch\nno checkpoint at /tmp/tmpnacxe0nq/control.ck, starting fresh\n       0.0 s       1.493 M it/s       16384 iterations         0 dp         0 stored         0 dropped\n  finished: 1.413 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+      "sha256": "115c93ad53e3f2171824b8a6597b7c1063d0c1fd87029d66f6f9d09e94d3ef12"
+    },
+    "poly4": {
+      "command": [
+        "/root/poly4",
+        "--packed",
+        "--curve",
+        "131",
+        "--bench",
+        "--threads",
+        "8",
+        "--steps",
+        "16",
+        "--launches",
+        "4",
+        "--verify",
+        "0",
+        "--checkpoint",
+        "/tmp/tmpnacxe0nq/poly4.ck"
+      ],
+      "returncode": 0,
+      "output": "packed kernel: 128 registers/thread, 32 local bytes/thread, 0 shared bytes/block, single-product multiplier\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 1\nbackend cuda-packed131: 8 threads x 32 slots x 1 lanes = 256 walks, dp weight 0, 16 steps per launch\nno checkpoint at /tmp/tmpnacxe0nq/poly4.ck, starting fresh\n       0.0 s       1.638 M it/s       16384 iterations         0 dp         0 stored         0 dropped\n  finished: 1.564 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+      "sha256": "115c93ad53e3f2171824b8a6597b7c1063d0c1fd87029d66f6f9d09e94d3ef12"
+    },
+    "poly6": {
+      "command": [
+        "/root/poly6",
+        "--packed",
+        "--curve",
+        "131",
+        "--bench",
+        "--threads",
+        "8",
+        "--steps",
+        "16",
+        "--launches",
+        "4",
+        "--verify",
+        "0",
+        "--checkpoint",
+        "/tmp/tmpnacxe0nq/poly6.ck"
+      ],
+      "returncode": 0,
+      "output": "packed kernel: 80 registers/thread, 96 local bytes/thread, 0 shared bytes/block, single-product multiplier\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 1\nbackend cuda-packed131: 8 threads x 32 slots x 1 lanes = 256 walks, dp weight 0, 16 steps per launch\nno checkpoint at /tmp/tmpnacxe0nq/poly6.ck, starting fresh\n       0.0 s       1.541 M it/s       16384 iterations         0 dp         0 stored         0 dropped\n  finished: 1.483 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+      "sha256": "115c93ad53e3f2171824b8a6597b7c1063d0c1fd87029d66f6f9d09e94d3ef12"
+    }
+  },
+  "samples": {
+    "control": [
+      {
+        "command": [
+          "/root/control",
+          "--packed",
+          "--curve",
+          "131",
+          "--bench",
+          "--steps",
+          "1024",
+          "--launches",
+          "32",
+          "--verify",
+          "0"
+        ],
+        "returncode": 0,
+        "raw": "device: NVIDIA RTX PRO 6000 Blackwell Server Edition, 188 SMs, 6 block(s) of 128 packed threads resident per SM\npacked kernel: 80 registers/thread, 56 local bytes/thread, 0 shared bytes/block, single-product multiplier\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 0\nbackend cuda-packed131: 144384 threads x 32 slots x 1 lanes = 4620288 walks, dp weight 0, 1024 steps per launch\n       2.4 s    5839.053 M it/s  14193524736 iterations         0 dp         0 stored         0 dropped\n       4.9 s    5838.135 M it/s  28387049472 iterations         0 dp         0 stored         0 dropped\n       7.3 s    5837.798 M it/s  42580574208 iterations         0 dp         0 stored         0 dropped\n       9.7 s    5837.702 M it/s  56774098944 iterations         0 dp         0 stored         0 dropped\n      12.2 s    5837.980 M it/s  70967623680 iterations         0 dp         0 stored         0 dropped\n      14.6 s    5837.554 M it/s  85161148416 iterations         0 dp         0 stored         0 dropped\n      17.0 s    5837.634 M it/s  99354673152 iterations         0 dp         0 stored         0 dropped\n      19.5 s    5837.464 M it/s  113548197888 iterations         0 dp         0 stored         0 dropped\n      21.9 s    5837.585 M it/s  127741722624 iterations         0 dp         0 stored         0 dropped\n      24.3 s    5837.696 M it/s  141935247360 iterations         0 dp         0 stored         0 dropped\n      25.9 s    5837.726 M it/s  151397597184 iterations         0 dp         0 stored         0 dropped\n  finished: 5837.701 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+        "valid": true,
+        "rate": 5837.701
+      },
+      {
+        "command": [
+          "/root/control",
+          "--packed",
+          "--curve",
+          "131",
+          "--bench",
+          "--steps",
+          "1024",
+          "--launches",
+          "32",
+          "--verify",
+          "0"
+        ],
+        "returncode": 0,
+        "raw": "device: NVIDIA RTX PRO 6000 Blackwell Server Edition, 188 SMs, 6 block(s) of 128 packed threads resident per SM\npacked kernel: 80 registers/thread, 56 local bytes/thread, 0 shared bytes/block, single-product multiplier\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 0\nbackend cuda-packed131: 144384 threads x 32 slots x 1 lanes = 4620288 walks, dp weight 0, 1024 steps per launch\n       2.4 s    5827.858 M it/s  14193524736 iterations         0 dp         0 stored         0 dropped\n       4.9 s    5831.258 M it/s  28387049472 iterations         0 dp         0 stored         0 dropped\n       7.3 s    5829.713 M it/s  42580574208 iterations         0 dp         0 stored         0 dropped\n       9.7 s    5830.296 M it/s  56774098944 iterations         0 dp         0 stored         0 dropped\n      12.2 s    5830.448 M it/s  70967623680 iterations         0 dp         0 stored         0 dropped\n      14.6 s    5830.607 M it/s  85161148416 iterations         0 dp         0 stored         0 dropped\n      17.0 s    5830.825 M it/s  99354673152 iterations         0 dp         0 stored         0 dropped\n      19.5 s    5830.468 M it/s  113548197888 iterations         0 dp         0 stored         0 dropped\n      21.9 s    5830.873 M it/s  127741722624 iterations         0 dp         0 stored         0 dropped\n      24.3 s    5830.993 M it/s  141935247360 iterations         0 dp         0 stored         0 dropped\n      26.0 s    5831.192 M it/s  151397597184 iterations         0 dp         0 stored         0 dropped\n  finished: 5831.165 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+        "valid": true,
+        "rate": 5831.165
+      },
+      {
+        "command": [
+          "/root/control",
+          "--packed",
+          "--curve",
+          "131",
+          "--bench",
+          "--steps",
+          "1024",
+          "--launches",
+          "32",
+          "--verify",
+          "0"
+        ],
+        "returncode": 0,
+        "raw": "device: NVIDIA RTX PRO 6000 Blackwell Server Edition, 188 SMs, 6 block(s) of 128 packed threads resident per SM\npacked kernel: 80 registers/thread, 56 local bytes/thread, 0 shared bytes/block, single-product multiplier\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 0\nbackend cuda-packed131: 144384 threads x 32 slots x 1 lanes = 4620288 walks, dp weight 0, 1024 steps per launch\n       2.4 s    5830.029 M it/s  14193524736 iterations         0 dp         0 stored         0 dropped\n       4.9 s    5829.337 M it/s  28387049472 iterations         0 dp         0 stored         0 dropped\n       7.3 s    5828.882 M it/s  42580574208 iterations         0 dp         0 stored         0 dropped\n       9.7 s    5828.933 M it/s  56774098944 iterations         0 dp         0 stored         0 dropped\n      12.2 s    5829.229 M it/s  70967623680 iterations         0 dp         0 stored         0 dropped\n      14.6 s    5830.158 M it/s  85161148416 iterations         0 dp         0 stored         0 dropped\n      17.0 s    5830.666 M it/s  99354673152 iterations         0 dp         0 stored         0 dropped\n      19.5 s    5831.202 M it/s  113548197888 iterations         0 dp         0 stored         0 dropped\n      21.9 s    5831.704 M it/s  127741722624 iterations         0 dp         0 stored         0 dropped\n      24.3 s    5832.148 M it/s  141935247360 iterations         0 dp         0 stored         0 dropped\n      26.0 s    5832.367 M it/s  151397597184 iterations         0 dp         0 stored         0 dropped\n  finished: 5832.342 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+        "valid": true,
+        "rate": 5832.342
+      }
+    ],
+    "poly4": [
+      {
+        "command": [
+          "/root/poly4",
+          "--packed",
+          "--curve",
+          "131",
+          "--bench",
+          "--steps",
+          "1024",
+          "--launches",
+          "32",
+          "--verify",
+          "0"
+        ],
+        "returncode": 0,
+        "raw": "device: NVIDIA RTX PRO 6000 Blackwell Server Edition, 188 SMs, 4 block(s) of 128 packed threads resident per SM\npacked kernel: 128 registers/thread, 32 local bytes/thread, 0 shared bytes/block, single-product multiplier\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 1\nbackend cuda-packed131: 96256 threads x 32 slots x 1 lanes = 3080192 walks, dp weight 0, 1024 steps per launch\n       2.1 s    6055.091 M it/s  12616466432 iterations         0 dp         0 stored         0 dropped\n       4.2 s    6055.190 M it/s  25232932864 iterations         0 dp         0 stored         0 dropped\n       6.3 s    6055.074 M it/s  37849399296 iterations         0 dp         0 stored         0 dropped\n       8.3 s    6055.057 M it/s  50465865728 iterations         0 dp         0 stored         0 dropped\n      10.4 s    6054.981 M it/s  63082332160 iterations         0 dp         0 stored         0 dropped\n      12.5 s    6055.066 M it/s  75698798592 iterations         0 dp         0 stored         0 dropped\n      14.6 s    6054.995 M it/s  88315265024 iterations         0 dp         0 stored         0 dropped\n      16.7 s    6055.041 M it/s  100931731456 iterations         0 dp         0 stored         0 dropped\n  finished: 6054.995 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+        "valid": true,
+        "rate": 6054.995
+      },
+      {
+        "command": [
+          "/root/poly4",
+          "--packed",
+          "--curve",
+          "131",
+          "--bench",
+          "--steps",
+          "1024",
+          "--launches",
+          "32",
+          "--verify",
+          "0"
+        ],
+        "returncode": 0,
+        "raw": "device: NVIDIA RTX PRO 6000 Blackwell Server Edition, 188 SMs, 4 block(s) of 128 packed threads resident per SM\npacked kernel: 128 registers/thread, 32 local bytes/thread, 0 shared bytes/block, single-product multiplier\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 1\nbackend cuda-packed131: 96256 threads x 32 slots x 1 lanes = 3080192 walks, dp weight 0, 1024 steps per launch\n       2.1 s    6054.430 M it/s  12616466432 iterations         0 dp         0 stored         0 dropped\n       4.2 s    6053.250 M it/s  25232932864 iterations         0 dp         0 stored         0 dropped\n       6.3 s    6052.540 M it/s  37849399296 iterations         0 dp         0 stored         0 dropped\n       8.3 s    6051.744 M it/s  50465865728 iterations         0 dp         0 stored         0 dropped\n      10.4 s    6050.655 M it/s  63082332160 iterations         0 dp         0 stored         0 dropped\n      12.5 s    6050.046 M it/s  75698798592 iterations         0 dp         0 stored         0 dropped\n      14.6 s    6049.890 M it/s  88315265024 iterations         0 dp         0 stored         0 dropped\n      16.7 s    6049.995 M it/s  100931731456 iterations         0 dp         0 stored         0 dropped\n  finished: 6049.952 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+        "valid": true,
+        "rate": 6049.952
+      },
+      {
+        "command": [
+          "/root/poly4",
+          "--packed",
+          "--curve",
+          "131",
+          "--bench",
+          "--steps",
+          "1024",
+          "--launches",
+          "32",
+          "--verify",
+          "0"
+        ],
+        "returncode": 0,
+        "raw": "device: NVIDIA RTX PRO 6000 Blackwell Server Edition, 188 SMs, 4 block(s) of 128 packed threads resident per SM\npacked kernel: 128 registers/thread, 32 local bytes/thread, 0 shared bytes/block, single-product multiplier\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 1\nbackend cuda-packed131: 96256 threads x 32 slots x 1 lanes = 3080192 walks, dp weight 0, 1024 steps per launch\n       2.1 s    6054.960 M it/s  12616466432 iterations         0 dp         0 stored         0 dropped\n       4.2 s    6055.069 M it/s  25232932864 iterations         0 dp         0 stored         0 dropped\n       6.3 s    6054.919 M it/s  37849399296 iterations         0 dp         0 stored         0 dropped\n       8.3 s    6054.365 M it/s  50465865728 iterations         0 dp         0 stored         0 dropped\n      10.4 s    6054.082 M it/s  63082332160 iterations         0 dp         0 stored         0 dropped\n      12.5 s    6054.050 M it/s  75698798592 iterations         0 dp         0 stored         0 dropped\n      14.6 s    6054.082 M it/s  88315265024 iterations         0 dp         0 stored         0 dropped\n      16.7 s    6054.138 M it/s  100931731456 iterations         0 dp         0 stored         0 dropped\n  finished: 6054.107 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+        "valid": true,
+        "rate": 6054.107
+      }
+    ],
+    "poly6": [
+      {
+        "command": [
+          "/root/poly6",
+          "--packed",
+          "--curve",
+          "131",
+          "--bench",
+          "--steps",
+          "1024",
+          "--launches",
+          "32",
+          "--verify",
+          "0"
+        ],
+        "returncode": 0,
+        "raw": "device: NVIDIA RTX PRO 6000 Blackwell Server Edition, 188 SMs, 6 block(s) of 128 packed threads resident per SM\npacked kernel: 80 registers/thread, 96 local bytes/thread, 0 shared bytes/block, single-product multiplier\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 1\nbackend cuda-packed131: 144384 threads x 32 slots x 1 lanes = 4620288 walks, dp weight 0, 1024 steps per launch\n       2.6 s    5554.116 M it/s  14193524736 iterations         0 dp         0 stored         0 dropped\n       5.1 s    5554.044 M it/s  28387049472 iterations         0 dp         0 stored         0 dropped\n       7.7 s    5531.928 M it/s  42580574208 iterations         0 dp         0 stored         0 dropped\n      10.3 s    5535.740 M it/s  56774098944 iterations         0 dp         0 stored         0 dropped\n      12.8 s    5539.948 M it/s  70967623680 iterations         0 dp         0 stored         0 dropped\n      15.4 s    5537.550 M it/s  85161148416 iterations         0 dp         0 stored         0 dropped\n      17.9 s    5540.570 M it/s  99354673152 iterations         0 dp         0 stored         0 dropped\n      20.5 s    5541.524 M it/s  113548197888 iterations         0 dp         0 stored         0 dropped\n      23.1 s    5540.233 M it/s  127741722624 iterations         0 dp         0 stored         0 dropped\n      25.6 s    5540.992 M it/s  141935247360 iterations         0 dp         0 stored         0 dropped\n      27.3 s    5537.106 M it/s  151397597184 iterations         0 dp         0 stored         0 dropped\n  finished: 5537.085 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+        "valid": true,
+        "rate": 5537.085
+      },
+      {
+        "command": [
+          "/root/poly6",
+          "--packed",
+          "--curve",
+          "131",
+          "--bench",
+          "--steps",
+          "1024",
+          "--launches",
+          "32",
+          "--verify",
+          "0"
+        ],
+        "returncode": 0,
+        "raw": "device: NVIDIA RTX PRO 6000 Blackwell Server Edition, 188 SMs, 6 block(s) of 128 packed threads resident per SM\npacked kernel: 80 registers/thread, 96 local bytes/thread, 0 shared bytes/block, single-product multiplier\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 1\nbackend cuda-packed131: 144384 threads x 32 slots x 1 lanes = 4620288 walks, dp weight 0, 1024 steps per launch\n       2.5 s    5566.985 M it/s  14193524736 iterations         0 dp         0 stored         0 dropped\n       5.1 s    5581.159 M it/s  28387049472 iterations         0 dp         0 stored         0 dropped\n       7.6 s    5570.188 M it/s  42580574208 iterations         0 dp         0 stored         0 dropped\n      10.2 s    5572.280 M it/s  56774098944 iterations         0 dp         0 stored         0 dropped\n      12.7 s    5577.961 M it/s  70967623680 iterations         0 dp         0 stored         0 dropped\n      15.3 s    5576.824 M it/s  85161148416 iterations         0 dp         0 stored         0 dropped\n      17.8 s    5577.928 M it/s  99354673152 iterations         0 dp         0 stored         0 dropped\n      20.3 s    5580.968 M it/s  113548197888 iterations         0 dp         0 stored         0 dropped\n      22.9 s    5580.055 M it/s  127741722624 iterations         0 dp         0 stored         0 dropped\n      25.4 s    5581.453 M it/s  141935247360 iterations         0 dp         0 stored         0 dropped\n      27.1 s    5581.963 M it/s  151397597184 iterations         0 dp         0 stored         0 dropped\n  finished: 5581.942 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+        "valid": true,
+        "rate": 5581.942
+      },
+      {
+        "command": [
+          "/root/poly6",
+          "--packed",
+          "--curve",
+          "131",
+          "--bench",
+          "--steps",
+          "1024",
+          "--launches",
+          "32",
+          "--verify",
+          "0"
+        ],
+        "returncode": 0,
+        "raw": "device: NVIDIA RTX PRO 6000 Blackwell Server Edition, 188 SMs, 6 block(s) of 128 packed threads resident per SM\npacked kernel: 80 registers/thread, 96 local bytes/thread, 0 shared bytes/block, single-product multiplier\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 1\nbackend cuda-packed131: 144384 threads x 32 slots x 1 lanes = 4620288 walks, dp weight 0, 1024 steps per launch\n       2.6 s    5539.635 M it/s  14193524736 iterations         0 dp         0 stored         0 dropped\n       5.1 s    5517.519 M it/s  28387049472 iterations         0 dp         0 stored         0 dropped\n       7.7 s    5527.806 M it/s  42580574208 iterations         0 dp         0 stored         0 dropped\n      10.3 s    5527.970 M it/s  56774098944 iterations         0 dp         0 stored         0 dropped\n      12.9 s    5517.448 M it/s  70967623680 iterations         0 dp         0 stored         0 dropped\n      15.4 s    5521.445 M it/s  85161148416 iterations         0 dp         0 stored         0 dropped\n      18.0 s    5523.797 M it/s  99354673152 iterations         0 dp         0 stored         0 dropped\n      20.6 s    5524.542 M it/s  113548197888 iterations         0 dp         0 stored         0 dropped\n      23.1 s    5527.035 M it/s  127741722624 iterations         0 dp         0 stored         0 dropped\n      25.7 s    5522.009 M it/s  141935247360 iterations         0 dp         0 stored         0 dropped\n      27.4 s    5523.052 M it/s  151397597184 iterations         0 dp         0 stored         0 dropped\n  finished: 5523.034 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+        "valid": true,
+        "rate": 5523.034
+      }
+    ]
+  },
+  "summary": {
+    "control": {
+      "valid": true,
+      "rate": 5832.342,
+      "minRate": 5831.165,
+      "maxRate": 5837.701,
+      "samples": [
+        {
+          "command": [
+            "/root/control",
+            "--packed",
+            "--curve",
+            "131",
+            "--bench",
+            "--steps",
+            "1024",
+            "--launches",
+            "32",
+            "--verify",
+            "0"
+          ],
+          "returncode": 0,
+          "raw": "device: NVIDIA RTX PRO 6000 Blackwell Server Edition, 188 SMs, 6 block(s) of 128 packed threads resident per SM\npacked kernel: 80 registers/thread, 56 local bytes/thread, 0 shared bytes/block, single-product multiplier\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 0\nbackend cuda-packed131: 144384 threads x 32 slots x 1 lanes = 4620288 walks, dp weight 0, 1024 steps per launch\n       2.4 s    5839.053 M it/s  14193524736 iterations         0 dp         0 stored         0 dropped\n       4.9 s    5838.135 M it/s  28387049472 iterations         0 dp         0 stored         0 dropped\n       7.3 s    5837.798 M it/s  42580574208 iterations         0 dp         0 stored         0 dropped\n       9.7 s    5837.702 M it/s  56774098944 iterations         0 dp         0 stored         0 dropped\n      12.2 s    5837.980 M it/s  70967623680 iterations         0 dp         0 stored         0 dropped\n      14.6 s    5837.554 M it/s  85161148416 iterations         0 dp         0 stored         0 dropped\n      17.0 s    5837.634 M it/s  99354673152 iterations         0 dp         0 stored         0 dropped\n      19.5 s    5837.464 M it/s  113548197888 iterations         0 dp         0 stored         0 dropped\n      21.9 s    5837.585 M it/s  127741722624 iterations         0 dp         0 stored         0 dropped\n      24.3 s    5837.696 M it/s  141935247360 iterations         0 dp         0 stored         0 dropped\n      25.9 s    5837.726 M it/s  151397597184 iterations         0 dp         0 stored         0 dropped\n  finished: 5837.701 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+          "valid": true,
+          "rate": 5837.701
+        },
+        {
+          "command": [
+            "/root/control",
+            "--packed",
+            "--curve",
+            "131",
+            "--bench",
+            "--steps",
+            "1024",
+            "--launches",
+            "32",
+            "--verify",
+            "0"
+          ],
+          "returncode": 0,
+          "raw": "device: NVIDIA RTX PRO 6000 Blackwell Server Edition, 188 SMs, 6 block(s) of 128 packed threads resident per SM\npacked kernel: 80 registers/thread, 56 local bytes/thread, 0 shared bytes/block, single-product multiplier\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 0\nbackend cuda-packed131: 144384 threads x 32 slots x 1 lanes = 4620288 walks, dp weight 0, 1024 steps per launch\n       2.4 s    5827.858 M it/s  14193524736 iterations         0 dp         0 stored         0 dropped\n       4.9 s    5831.258 M it/s  28387049472 iterations         0 dp         0 stored         0 dropped\n       7.3 s    5829.713 M it/s  42580574208 iterations         0 dp         0 stored         0 dropped\n       9.7 s    5830.296 M it/s  56774098944 iterations         0 dp         0 stored         0 dropped\n      12.2 s    5830.448 M it/s  70967623680 iterations         0 dp         0 stored         0 dropped\n      14.6 s    5830.607 M it/s  85161148416 iterations         0 dp         0 stored         0 dropped\n      17.0 s    5830.825 M it/s  99354673152 iterations         0 dp         0 stored         0 dropped\n      19.5 s    5830.468 M it/s  113548197888 iterations         0 dp         0 stored         0 dropped\n      21.9 s    5830.873 M it/s  127741722624 iterations         0 dp         0 stored         0 dropped\n      24.3 s    5830.993 M it/s  141935247360 iterations         0 dp         0 stored         0 dropped\n      26.0 s    5831.192 M it/s  151397597184 iterations         0 dp         0 stored         0 dropped\n  finished: 5831.165 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+          "valid": true,
+          "rate": 5831.165
+        },
+        {
+          "command": [
+            "/root/control",
+            "--packed",
+            "--curve",
+            "131",
+            "--bench",
+            "--steps",
+            "1024",
+            "--launches",
+            "32",
+            "--verify",
+            "0"
+          ],
+          "returncode": 0,
+          "raw": "device: NVIDIA RTX PRO 6000 Blackwell Server Edition, 188 SMs, 6 block(s) of 128 packed threads resident per SM\npacked kernel: 80 registers/thread, 56 local bytes/thread, 0 shared bytes/block, single-product multiplier\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 0\nbackend cuda-packed131: 144384 threads x 32 slots x 1 lanes = 4620288 walks, dp weight 0, 1024 steps per launch\n       2.4 s    5830.029 M it/s  14193524736 iterations         0 dp         0 stored         0 dropped\n       4.9 s    5829.337 M it/s  28387049472 iterations         0 dp         0 stored         0 dropped\n       7.3 s    5828.882 M it/s  42580574208 iterations         0 dp         0 stored         0 dropped\n       9.7 s    5828.933 M it/s  56774098944 iterations         0 dp         0 stored         0 dropped\n      12.2 s    5829.229 M it/s  70967623680 iterations         0 dp         0 stored         0 dropped\n      14.6 s    5830.158 M it/s  85161148416 iterations         0 dp         0 stored         0 dropped\n      17.0 s    5830.666 M it/s  99354673152 iterations         0 dp         0 stored         0 dropped\n      19.5 s    5831.202 M it/s  113548197888 iterations         0 dp         0 stored         0 dropped\n      21.9 s    5831.704 M it/s  127741722624 iterations         0 dp         0 stored         0 dropped\n      24.3 s    5832.148 M it/s  141935247360 iterations         0 dp         0 stored         0 dropped\n      26.0 s    5832.367 M it/s  151397597184 iterations         0 dp         0 stored         0 dropped\n  finished: 5832.342 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+          "valid": true,
+          "rate": 5832.342
+        }
+      ]
+    },
+    "poly4": {
+      "valid": true,
+      "rate": 6054.107,
+      "minRate": 6049.952,
+      "maxRate": 6054.995,
+      "samples": [
+        {
+          "command": [
+            "/root/poly4",
+            "--packed",
+            "--curve",
+            "131",
+            "--bench",
+            "--steps",
+            "1024",
+            "--launches",
+            "32",
+            "--verify",
+            "0"
+          ],
+          "returncode": 0,
+          "raw": "device: NVIDIA RTX PRO 6000 Blackwell Server Edition, 188 SMs, 4 block(s) of 128 packed threads resident per SM\npacked kernel: 128 registers/thread, 32 local bytes/thread, 0 shared bytes/block, single-product multiplier\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 1\nbackend cuda-packed131: 96256 threads x 32 slots x 1 lanes = 3080192 walks, dp weight 0, 1024 steps per launch\n       2.1 s    6055.091 M it/s  12616466432 iterations         0 dp         0 stored         0 dropped\n       4.2 s    6055.190 M it/s  25232932864 iterations         0 dp         0 stored         0 dropped\n       6.3 s    6055.074 M it/s  37849399296 iterations         0 dp         0 stored         0 dropped\n       8.3 s    6055.057 M it/s  50465865728 iterations         0 dp         0 stored         0 dropped\n      10.4 s    6054.981 M it/s  63082332160 iterations         0 dp         0 stored         0 dropped\n      12.5 s    6055.066 M it/s  75698798592 iterations         0 dp         0 stored         0 dropped\n      14.6 s    6054.995 M it/s  88315265024 iterations         0 dp         0 stored         0 dropped\n      16.7 s    6055.041 M it/s  100931731456 iterations         0 dp         0 stored         0 dropped\n  finished: 6054.995 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+          "valid": true,
+          "rate": 6054.995
+        },
+        {
+          "command": [
+            "/root/poly4",
+            "--packed",
+            "--curve",
+            "131",
+            "--bench",
+            "--steps",
+            "1024",
+            "--launches",
+            "32",
+            "--verify",
+            "0"
+          ],
+          "returncode": 0,
+          "raw": "device: NVIDIA RTX PRO 6000 Blackwell Server Edition, 188 SMs, 4 block(s) of 128 packed threads resident per SM\npacked kernel: 128 registers/thread, 32 local bytes/thread, 0 shared bytes/block, single-product multiplier\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 1\nbackend cuda-packed131: 96256 threads x 32 slots x 1 lanes = 3080192 walks, dp weight 0, 1024 steps per launch\n       2.1 s    6054.430 M it/s  12616466432 iterations         0 dp         0 stored         0 dropped\n       4.2 s    6053.250 M it/s  25232932864 iterations         0 dp         0 stored         0 dropped\n       6.3 s    6052.540 M it/s  37849399296 iterations         0 dp         0 stored         0 dropped\n       8.3 s    6051.744 M it/s  50465865728 iterations         0 dp         0 stored         0 dropped\n      10.4 s    6050.655 M it/s  63082332160 iterations         0 dp         0 stored         0 dropped\n      12.5 s    6050.046 M it/s  75698798592 iterations         0 dp         0 stored         0 dropped\n      14.6 s    6049.890 M it/s  88315265024 iterations         0 dp         0 stored         0 dropped\n      16.7 s    6049.995 M it/s  100931731456 iterations         0 dp         0 stored         0 dropped\n  finished: 6049.952 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+          "valid": true,
+          "rate": 6049.952
+        },
+        {
+          "command": [
+            "/root/poly4",
+            "--packed",
+            "--curve",
+            "131",
+            "--bench",
+            "--steps",
+            "1024",
+            "--launches",
+            "32",
+            "--verify",
+            "0"
+          ],
+          "returncode": 0,
+          "raw": "device: NVIDIA RTX PRO 6000 Blackwell Server Edition, 188 SMs, 4 block(s) of 128 packed threads resident per SM\npacked kernel: 128 registers/thread, 32 local bytes/thread, 0 shared bytes/block, single-product multiplier\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 1\nbackend cuda-packed131: 96256 threads x 32 slots x 1 lanes = 3080192 walks, dp weight 0, 1024 steps per launch\n       2.1 s    6054.960 M it/s  12616466432 iterations         0 dp         0 stored         0 dropped\n       4.2 s    6055.069 M it/s  25232932864 iterations         0 dp         0 stored         0 dropped\n       6.3 s    6054.919 M it/s  37849399296 iterations         0 dp         0 stored         0 dropped\n       8.3 s    6054.365 M it/s  50465865728 iterations         0 dp         0 stored         0 dropped\n      10.4 s    6054.082 M it/s  63082332160 iterations         0 dp         0 stored         0 dropped\n      12.5 s    6054.050 M it/s  75698798592 iterations         0 dp         0 stored         0 dropped\n      14.6 s    6054.082 M it/s  88315265024 iterations         0 dp         0 stored         0 dropped\n      16.7 s    6054.138 M it/s  100931731456 iterations         0 dp         0 stored         0 dropped\n  finished: 6054.107 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+          "valid": true,
+          "rate": 6054.107
+        }
+      ]
+    },
+    "poly6": {
+      "valid": true,
+      "rate": 5537.085,
+      "minRate": 5523.034,
+      "maxRate": 5581.942,
+      "samples": [
+        {
+          "command": [
+            "/root/poly6",
+            "--packed",
+            "--curve",
+            "131",
+            "--bench",
+            "--steps",
+            "1024",
+            "--launches",
+            "32",
+            "--verify",
+            "0"
+          ],
+          "returncode": 0,
+          "raw": "device: NVIDIA RTX PRO 6000 Blackwell Server Edition, 188 SMs, 6 block(s) of 128 packed threads resident per SM\npacked kernel: 80 registers/thread, 96 local bytes/thread, 0 shared bytes/block, single-product multiplier\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 1\nbackend cuda-packed131: 144384 threads x 32 slots x 1 lanes = 4620288 walks, dp weight 0, 1024 steps per launch\n       2.6 s    5554.116 M it/s  14193524736 iterations         0 dp         0 stored         0 dropped\n       5.1 s    5554.044 M it/s  28387049472 iterations         0 dp         0 stored         0 dropped\n       7.7 s    5531.928 M it/s  42580574208 iterations         0 dp         0 stored         0 dropped\n      10.3 s    5535.740 M it/s  56774098944 iterations         0 dp         0 stored         0 dropped\n      12.8 s    5539.948 M it/s  70967623680 iterations         0 dp         0 stored         0 dropped\n      15.4 s    5537.550 M it/s  85161148416 iterations         0 dp         0 stored         0 dropped\n      17.9 s    5540.570 M it/s  99354673152 iterations         0 dp         0 stored         0 dropped\n      20.5 s    5541.524 M it/s  113548197888 iterations         0 dp         0 stored         0 dropped\n      23.1 s    5540.233 M it/s  127741722624 iterations         0 dp         0 stored         0 dropped\n      25.6 s    5540.992 M it/s  141935247360 iterations         0 dp         0 stored         0 dropped\n      27.3 s    5537.106 M it/s  151397597184 iterations         0 dp         0 stored         0 dropped\n  finished: 5537.085 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+          "valid": true,
+          "rate": 5537.085
+        },
+        {
+          "command": [
+            "/root/poly6",
+            "--packed",
+            "--curve",
+            "131",
+            "--bench",
+            "--steps",
+            "1024",
+            "--launches",
+            "32",
+            "--verify",
+            "0"
+          ],
+          "returncode": 0,
+          "raw": "device: NVIDIA RTX PRO 6000 Blackwell Server Edition, 188 SMs, 6 block(s) of 128 packed threads resident per SM\npacked kernel: 80 registers/thread, 96 local bytes/thread, 0 shared bytes/block, single-product multiplier\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 1\nbackend cuda-packed131: 144384 threads x 32 slots x 1 lanes = 4620288 walks, dp weight 0, 1024 steps per launch\n       2.5 s    5566.985 M it/s  14193524736 iterations         0 dp         0 stored         0 dropped\n       5.1 s    5581.159 M it/s  28387049472 iterations         0 dp         0 stored         0 dropped\n       7.6 s    5570.188 M it/s  42580574208 iterations         0 dp         0 stored         0 dropped\n      10.2 s    5572.280 M it/s  56774098944 iterations         0 dp         0 stored         0 dropped\n      12.7 s    5577.961 M it/s  70967623680 iterations         0 dp         0 stored         0 dropped\n      15.3 s    5576.824 M it/s  85161148416 iterations         0 dp         0 stored         0 dropped\n      17.8 s    5577.928 M it/s  99354673152 iterations         0 dp         0 stored         0 dropped\n      20.3 s    5580.968 M it/s  113548197888 iterations         0 dp         0 stored         0 dropped\n      22.9 s    5580.055 M it/s  127741722624 iterations         0 dp         0 stored         0 dropped\n      25.4 s    5581.453 M it/s  141935247360 iterations         0 dp         0 stored         0 dropped\n      27.1 s    5581.963 M it/s  151397597184 iterations         0 dp         0 stored         0 dropped\n  finished: 5581.942 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+          "valid": true,
+          "rate": 5581.942
+        },
+        {
+          "command": [
+            "/root/poly6",
+            "--packed",
+            "--curve",
+            "131",
+            "--bench",
+            "--steps",
+            "1024",
+            "--launches",
+            "32",
+            "--verify",
+            "0"
+          ],
+          "returncode": 0,
+          "raw": "device: NVIDIA RTX PRO 6000 Blackwell Server Edition, 188 SMs, 6 block(s) of 128 packed threads resident per SM\npacked kernel: 80 registers/thread, 96 local bytes/thread, 0 shared bytes/block, single-product multiplier\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 1\nbackend cuda-packed131: 144384 threads x 32 slots x 1 lanes = 4620288 walks, dp weight 0, 1024 steps per launch\n       2.6 s    5539.635 M it/s  14193524736 iterations         0 dp         0 stored         0 dropped\n       5.1 s    5517.519 M it/s  28387049472 iterations         0 dp         0 stored         0 dropped\n       7.7 s    5527.806 M it/s  42580574208 iterations         0 dp         0 stored         0 dropped\n      10.3 s    5527.970 M it/s  56774098944 iterations         0 dp         0 stored         0 dropped\n      12.9 s    5517.448 M it/s  70967623680 iterations         0 dp         0 stored         0 dropped\n      15.4 s    5521.445 M it/s  85161148416 iterations         0 dp         0 stored         0 dropped\n      18.0 s    5523.797 M it/s  99354673152 iterations         0 dp         0 stored         0 dropped\n      20.6 s    5524.542 M it/s  113548197888 iterations         0 dp         0 stored         0 dropped\n      23.1 s    5527.035 M it/s  127741722624 iterations         0 dp         0 stored         0 dropped\n      25.7 s    5522.009 M it/s  141935247360 iterations         0 dp         0 stored         0 dropped\n      27.4 s    5523.052 M it/s  151397597184 iterations         0 dp         0 stored         0 dropped\n  finished: 5523.034 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+          "valid": true,
+          "rate": 5523.034
+        }
+      ]
+    }
+  },
+  "remoteArtifact": "/data/polynomial-chain/1788941195606774227.json"
+}

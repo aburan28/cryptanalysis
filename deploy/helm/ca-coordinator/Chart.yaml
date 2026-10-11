@@ -1,0 +1,27 @@
+apiVersion: v2
+name: ca-coordinator
+description: |
+  The rendezvous a distributed Pollard-rho fleet dials out to, and the
+  agents that dial it.  Agents open every connection and the coordinator
+  answers on the same socket, so no agent needs an inbound rule, a
+  public address, or a copy of the job document.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - cryptanalysis
+  - discrete-logarithm
+  - pollard-rho
+  - distributed
+home: https://github.com/aburan28/cryptanalysis
+sources:
+  - https://github.com/aburan28/cryptanalysis
+maintainers:
+  - name: aburan28
+    url: https://github.com/aburan28
+annotations:
+  # The coordinator holds the shared distinguished-point table in
+  # memory.  Losing it loses no work -- agents keep walking and
+  # reconverge -- but two replicas would each hold half the table and
+  # miss the collisions that span them, so this chart runs exactly one.
+  category: Analytics

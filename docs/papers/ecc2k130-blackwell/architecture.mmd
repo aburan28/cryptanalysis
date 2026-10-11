@@ -1,0 +1,27 @@
+sequenceDiagram
+    participant Host as src/main.cu
+    participant Engine as packedengine.cuh
+    participant Walk as packedkernels.cuh:walk
+    participant Table as packedtablewalk.cuh
+    participant Inverse as collective_inverse.cuh
+    participant Square as square_reduce.h
+    Host->>Engine: launch(iterBase)
+    Engine->>Walk: Launch packed kernel
+    loop Scheduled step
+        loop 16 forward slots per thread
+            Walk->>Table: Select tag and table addend
+            Table-->>Walk: Tag, denominator, numerator
+            Walk->>Walk: Store weighted prefix and form batch product
+        end
+        Walk->>Inverse: goal22CollectiveInverse<4>(product)
+        Inverse-->>Walk: Per-thread batch-product inverse
+        loop 16 reverse slots per thread
+            Walk->>Table: Reconstruct denominator from tag
+            Walk->>Square: goal22SquareReduced(lambda)
+            Square-->>Walk: Reduced polynomial square
+            Walk->>Walk: Complete affine update and store state
+        end
+    end
+    Host->>Engine: fetch(recs)
+    Engine-->>Host: Reports
+    Host->>Host: Replay when requested, persist records, update accounting

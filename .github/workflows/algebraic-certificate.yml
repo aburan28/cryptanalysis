@@ -1,0 +1,41 @@
+name: Algebraic Boolean certificates
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/boolean_basis.py'
+      - '.github/workflows/algebraic-certificate.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/boolean_basis.py'
+      - '.github/workflows/algebraic-certificate.yml'
+permissions:
+  contents: read
+concurrency:
+  group: algebraic-certificates-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  algebraic:
+    name: Algebraic proof checks (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, cxx: g++}
+          - {os: macos-latest, cxx: clang++}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      CXX: ${{ matrix.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build sparse F4 with proofs and UBSan
+        run: python experiments/groebner-perf-20260924/round5/build.py
+      - name: Independent, adversarial, wide-variable and native checks
+        run: python -m unittest discover -s experiments/groebner-perf-20260924/round5 -p 'test_*.py' -v
+      - name: Source/evidence audit and retained certificate replay
+        run: python experiments/groebner-perf-20260924/round5/audit.py

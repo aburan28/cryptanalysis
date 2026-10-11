@@ -349,6 +349,7 @@ ca_status ca_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *ta
     }
     double t0 = ca_now();
     uint64_t n = g->order;
+    if (!ca_check_members(g, base, target, n, "rho")) return CA_ERR_NOT_FOUND;
 
     /* trivial cases */
     if (ca_group_is_identity(g, target)) { *x = 0; return CA_OK; }

@@ -1,0 +1,60 @@
+{
+  "status": "frozen before the 12-round measured runs; the 32-point smoke was a pilot",
+  "objective": "test one public Sage point-map dispatch for independent same-plan batches",
+  "cases": [
+    {
+      "degree": 131,
+      "points": 1024,
+      "groups": 4,
+      "power": 65,
+      "seed": 2026092401,
+      "rounds": 12
+    },
+    {
+      "degree": 131,
+      "points": 4096,
+      "groups": 16,
+      "power": 65,
+      "seed": 2026092402,
+      "rounds": 12
+    },
+    {
+      "degree": 131,
+      "points": 1024,
+      "groups": 4,
+      "power": 65,
+      "seed": 2026092411,
+      "rounds": 12
+    },
+    {
+      "degree": 131,
+      "points": 4096,
+      "groups": 16,
+      "power": 65,
+      "seed": 2026092412,
+      "rounds": 12
+    }
+  ],
+  "arms": [
+    "metal_separate",
+    "metal_batched",
+    "cpu_separate",
+    "cpu_batched"
+  ],
+  "source_sha256": {
+    "baseline.py": "a895cf65a28f52e1b7703a7121213b394f9cb814338bdfe104dd48fa728d2de0",
+    "candidate.py": "dd59bd3c8ec6a216a7ad22218e2c45279d7c8490ce6b27e069afdc7a27240da4",
+    "benchmark.py": "866822404b0c9225fb30f9f0a03ee2da7537d440ac6ac4128cab058cf1e646d4",
+    "installed.py": "a895cf65a28f52e1b7703a7121213b394f9cb814338bdfe104dd48fa728d2de0",
+    "native.dylib": "7ae8510c922b5ba3ee127c6b56333bab5a742fc049fd1b3b37ffa4c4d1ef6a8e",
+    "run.py": "370a04ec85d3b8fb527b2d3a6eae6fc7f61ef5913588c7a720bb17d6a5e04511"
+  },
+  "correctness": "compare every output group against native Sage frobenius_points, including group order and boundaries",
+  "measurement": "fresh process per case; 12 rotating and reversing arm orders; full point calls including packing and construction; separately record setup, GPU-only timing, cleanup, and peak RSS",
+  "resource_budget": {
+    "per_case_seconds": 300,
+    "working_set_bytes": 536870912,
+    "cloud_spend": 0
+  },
+  "decision": "promote optional batching only if exact and full-call Metal improves on separate Metal; do not auto-route unless it also beats CPU on matched complete calls and cold accounting"
+}

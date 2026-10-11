@@ -1,0 +1,357 @@
+{
+  "status": "frozen before implementation and timing",
+  "step_id": "sage-binary-point-construction-v1",
+  "incumbent_revision_and_binary_hash": {
+    "source_sha256": "b97a6b5ca3fd91cb574b2c9ce9c9e506fd5dfa9b2155eaf501a18934a2b3c810",
+    "native_source_sha256": "0dc88abc99f82ced01a79dd6dacc391f5758bd2f4e1a8e466d081f901e826df2",
+    "native_binary_sha256": "2c47926bd1ef85f3623b2624ecd2cb0b7f08027315609bec896a05165e4d833a",
+    "native_filename": "binary_batch_ntl.cpython-314-darwin.so",
+    "runtime": "Sage 10.10.rc0, accepted native batch addition from prior step"
+  },
+  "candidate_patch_hash": null,
+  "hypothesis_and_mechanism": "For internally computed normalized affine sums and exactly EllipticCurvePoint_finite_field, initialize the regular Sage Element parent and point state directly in Cython. Cache the point homset and allocation callable once per batch. Avoid repeated general constructor dispatch, homset/value-ring lookup and scanning z=1 for normalization. Preserve ordinary constructor for custom point subclasses.",
+  "profile_evidence_and_hotspot_share": {
+    "path": "experiments/sage-binary-native-addition/run-001/profile-candidate.txt",
+    "constructor_cumulative_seconds": 0.229,
+    "total_seconds": 0.337,
+    "share": 0.6795252225519288
+  },
+  "predicted_complete_component_gain": "A 25% reduction in the profiled 68% constructor share predicts ~1.20x complete-component speed; a 2% complete gain requires ~2.9% reduction of this share. Diagnostic profile estimates only.",
+  "mathematical_invariants": [
+    "exact point sums, classes, parents, curves and coordinates",
+    "_normalized true only for generated affine z=1 outputs",
+    "point __dict__ and initialization state equivalent to fresh standard constructor",
+    "no copied input caches or shared point dictionaries",
+    "hashing, comparison, pickle/copy, domain/codomain, normalization and subsequent arithmetic",
+    "infinity, inverse, doubling, order-two, duplicates, invalid input rejection and generators unchanged",
+    "custom point classes retain their constructor behavior",
+    "field arithmetic and batch inversion operation counts unchanged"
+  ],
+  "internal_counters_intentionally_changed": [
+    "general point constructor calls for standard finite-field outputs",
+    "repeated point homset/value-ring access and normalization scans"
+  ],
+  "edge_cases_modes_and_architectures": [
+    "local ARM64 CPU",
+    "small and large NTL fields",
+    "Givaro fallback",
+    "alternate moduli and non-prime coefficients",
+    "non-normalized input points",
+    "custom point subclass constructors",
+    "cached input metadata",
+    "empty/singleton and all-exceptional batches"
+  ],
+  "primary_cases": [
+    {
+      "degree": 19,
+      "side": 1,
+      "api": "pairs",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 19,
+      "side": 1,
+      "api": "cartesian",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 19,
+      "side": 3,
+      "api": "pairs",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 19,
+      "side": 3,
+      "api": "cartesian",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 19,
+      "side": 8,
+      "api": "pairs",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 19,
+      "side": 8,
+      "api": "cartesian",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 19,
+      "side": 32,
+      "api": "pairs",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 19,
+      "side": 32,
+      "api": "cartesian",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 19,
+      "side": 64,
+      "api": "pairs",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 19,
+      "side": 64,
+      "api": "cartesian",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 67,
+      "side": 1,
+      "api": "pairs",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 67,
+      "side": 1,
+      "api": "cartesian",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 67,
+      "side": 3,
+      "api": "pairs",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 67,
+      "side": 3,
+      "api": "cartesian",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 67,
+      "side": 8,
+      "api": "pairs",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 67,
+      "side": 8,
+      "api": "cartesian",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 67,
+      "side": 32,
+      "api": "pairs",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 67,
+      "side": 32,
+      "api": "cartesian",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 67,
+      "side": 64,
+      "api": "pairs",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 67,
+      "side": 64,
+      "api": "cartesian",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 131,
+      "side": 1,
+      "api": "pairs",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 131,
+      "side": 1,
+      "api": "cartesian",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 131,
+      "side": 3,
+      "api": "pairs",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 131,
+      "side": 3,
+      "api": "cartesian",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 131,
+      "side": 8,
+      "api": "pairs",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 131,
+      "side": 8,
+      "api": "cartesian",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 131,
+      "side": 32,
+      "api": "pairs",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 131,
+      "side": 32,
+      "api": "cartesian",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 131,
+      "side": 64,
+      "api": "pairs",
+      "seed": 2026092441,
+      "model": "koblitz"
+    },
+    {
+      "degree": 131,
+      "side": 64,
+      "api": "cartesian",
+      "seed": 2026092441,
+      "model": "koblitz"
+    }
+  ],
+  "new_confirmation_cases": [
+    {
+      "degree": 31,
+      "side": 16,
+      "api": "pairs",
+      "seed": 2026092442,
+      "model": "koblitz"
+    },
+    {
+      "degree": 31,
+      "side": 16,
+      "api": "cartesian",
+      "seed": 2026092442,
+      "model": "koblitz"
+    },
+    {
+      "degree": 31,
+      "side": 48,
+      "api": "pairs",
+      "seed": 2026092442,
+      "model": "koblitz"
+    },
+    {
+      "degree": 31,
+      "side": 48,
+      "api": "cartesian",
+      "seed": 2026092442,
+      "model": "koblitz"
+    },
+    {
+      "degree": 163,
+      "side": 16,
+      "api": "pairs",
+      "seed": 2026092442,
+      "model": "koblitz"
+    },
+    {
+      "degree": 163,
+      "side": 16,
+      "api": "cartesian",
+      "seed": 2026092442,
+      "model": "koblitz"
+    },
+    {
+      "degree": 163,
+      "side": 48,
+      "api": "pairs",
+      "seed": 2026092442,
+      "model": "koblitz"
+    },
+    {
+      "degree": 163,
+      "side": 48,
+      "api": "cartesian",
+      "seed": 2026092442,
+      "model": "koblitz"
+    },
+    {
+      "degree": 131,
+      "side": 48,
+      "api": "pairs",
+      "seed": 2026092443,
+      "model": "general"
+    },
+    {
+      "degree": 131,
+      "side": 48,
+      "api": "cartesian",
+      "seed": 2026092443,
+      "model": "general"
+    }
+  ],
+  "construction_reset_cleanup_and_verification_accounting": "Complete warm API wall and CPU includes native allocation, parent setup, point output initialization, pair creation for general API, exact equality verification against scalar Sage sums, and cleanup. Common field/fixture/reference setup recorded separately. Import/compile/startup excluded. Maximum-size peak RSS measured in separate fresh processes; incumbent uses preserved original native binary through isolated import name.",
+  "criteria_version": "sage-binary-point-construction-v1: same local component gates as preceding native-addition step, expanded to singleton/small cases and general-coefficient confirmation; fresh worker per cell, balanced paired rounds",
+  "rounds_and_order": "12 paired rounds per cell; 6 AB and 6 BA shuffled deterministically; calls per sample max(4,ceil(4096/output_count)); one fresh process per cell. Candidate frozen before timing, no tuning on confirmation.",
+  "CPU_RAM_disk_and_timeout_budgets": {
+    "local_cpu_workers": 1,
+    "build_jobs": 6,
+    "wall_seconds_per_worker": 180,
+    "benchmark_total_seconds": 1800,
+    "memory_bytes": 2147483648,
+    "disk_bytes": 1073741824,
+    "cloud_spend_usd": 0
+  },
+  "rejection_conditions": [
+    "incorrect output",
+    "missing work",
+    "crash/timeout",
+    "undeclared effort reduction"
+  ],
+  "result_and_decision": null,
+  "created_utc": "2026-09-24T13:52:56.390652+00:00",
+  "criteria": {
+    "primary_geomean_speedup_min": 1.02,
+    "confirmation_geomean_speedup_min": 1.01,
+    "paired_bootstrap_95_lower_min": 1.0,
+    "per_cell_speedup_min": 0.9803921568627451,
+    "cpu_candidate_over_incumbent_max": 1.05,
+    "rss_candidate_max": "max(1.05*incumbent, incumbent+2 MiB)",
+    "bootstrap_samples": 10000
+  }
+}

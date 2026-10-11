@@ -1,0 +1,170 @@
+name: Cloud ECC2K-130
+
+# One-click Modal / RunPod launch for the ECC2K-130 20 B/s GPU rho client.
+# Manual only — never runs on push (GPU time is billed).
+#
+# Secrets (Settings → Secrets → Actions):
+#   MODAL_TOKEN_ID, MODAL_TOKEN_SECRET   required for Modal actions
+#   RUNPOD_API_KEY, RUNPOD_SSH_PRIVATE_KEY   required for runpod/ingest
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, ECC_BUCKET   sync + ingest
+#
+# Docs: docs/CLOUD_LAUNCH.md
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "What to run"
+        required: true
+        type: choice
+        default: doctor
+        options:
+          - doctor
+          - bench
+          - long
+          - sync
+          - ingest-start
+          - ingest-status
+          - runpod-status
+      hours:
+        description: "ECC_HOURS for long (Modal GPU-hours per worker)"
+        required: false
+        default: "24"
+      fanout:
+        description: "ECC_FANOUT for long (parallel GPUs)"
+        required: false
+        default: "4"
+      run_id:
+        description: "ECC_RUN_ID base (16-bit; avoid 1)"
+        required: false
+        default: "4242"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-ecc2k130-${{ github.ref }}-${{ inputs.action }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  cloud:
+    name: ${{ inputs.action }}
+    runs-on: ubuntu-latest
+    # long can run for many hours; bench/doctor/sync stay short.
+    timeout-minutes: ${{ inputs.action == 'long' && 1560 || 60 }}
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      ECC_BUCKET: ${{ secrets.ECC_BUCKET }}
+      AWS_DEFAULT_REGION: us-west-2
+      ECC_HOURS: ${{ inputs.hours }}
+      ECC_FANOUT: ${{ inputs.fanout }}
+      ECC_RUN_ID: ${{ inputs.run_id }}
+      CRYPTO_DIR: ${{ github.workspace }}/.crypto
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Modal (+ boto3 for sync)
+        if: inputs.action != 'runpod-status'
+        run: |
+          pip install -q 'modal>=0.72'
+          if [[ "${{ inputs.action }}" == "sync" ]]; then
+            pip install -q boto3
+          fi
+
+      - name: Install runpodctl
+        if: >-
+          inputs.action == 'runpod-status' ||
+          inputs.action == 'doctor' ||
+          inputs.action == 'ingest-start' ||
+          inputs.action == 'ingest-status'
+        run: |
+          if [[ -z "${RUNPOD_API_KEY:-}" ]]; then
+            echo "RUNPOD_API_KEY secret not set; RunPod checks will be skipped."
+            exit 0
+          fi
+          curl -sL https://github.com/runpod/runpodctl/releases/latest/download/runpodctl-linux-amd64 \
+            -o /usr/local/bin/runpodctl
+          chmod +x /usr/local/bin/runpodctl
+          runpodctl version || true
+
+      - name: SSH key for RunPod / ingest
+        if: >-
+          inputs.action == 'doctor' ||
+          inputs.action == 'runpod-status' ||
+          inputs.action == 'ingest-start' ||
+          inputs.action == 'ingest-status'
+        run: |
+          mkdir -p "$HOME/.ssh"
+          if [[ -n "${{ secrets.RUNPOD_SSH_PRIVATE_KEY }}" ]]; then
+            printf '%s\n' "${{ secrets.RUNPOD_SSH_PRIVATE_KEY }}" > "$HOME/.ssh/id_ed25519"
+            chmod 600 "$HOME/.ssh/id_ed25519"
+            ssh-keygen -y -f "$HOME/.ssh/id_ed25519" > "$HOME/.ssh/id_ed25519.pub"
+          elif [[ ! -f "$HOME/.ssh/id_ed25519" ]]; then
+            # doctor only — generate a disposable key so the check path works.
+            ssh-keygen -t ed25519 -N "" -f "$HOME/.ssh/id_ed25519" -q
+          fi
+
+      - name: Doctor
+        if: inputs.action == 'doctor'
+        run: chmod +x scripts/cloud_launch.sh && ./scripts/cloud_launch.sh doctor
+
+      - name: Modal ${{ inputs.action }}
+        if: inputs.action == 'bench' || inputs.action == 'long' || inputs.action == 'sync'
+        run: |
+          set -euo pipefail
+          if [[ -z "${MODAL_TOKEN_ID:-}" || -z "${MODAL_TOKEN_SECRET:-}" ]]; then
+            echo "Set repo secrets MODAL_TOKEN_ID and MODAL_TOKEN_SECRET." >&2
+            exit 1
+          fi
+          chmod +x scripts/cloud_launch.sh scripts/modal_deploy_ecc2k130.sh
+          ./scripts/cloud_launch.sh modal "${{ inputs.action }}"
+
+      - name: Ingest MiG ${{ inputs.action }}
+        if: inputs.action == 'ingest-start' || inputs.action == 'ingest-status'
+        run: |
+          set -euo pipefail
+          if [[ -z "${RUNPOD_API_KEY:-}" ]]; then
+            echo "Set repo secret RUNPOD_API_KEY." >&2
+            exit 1
+          fi
+          if [[ "${{ inputs.action }}" == "ingest-start" ]]; then
+            if [[ -z "${AWS_ACCESS_KEY_ID:-}" || -z "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
+              echo "Set AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY for ingest." >&2
+              exit 1
+            fi
+          fi
+          if [[ ! -f "${HOME}/.ssh/id_ed25519" ]]; then
+            echo "Set secret RUNPOD_SSH_PRIVATE_KEY (pod authorized key)." >&2
+            exit 1
+          fi
+          chmod +x scripts/cloud_launch.sh scripts/runpod_ingest_ecc2k130.sh
+          sub="${{ inputs.action }}"
+          sub="${sub#ingest-}"
+          ./scripts/cloud_launch.sh ingest "$sub"
+
+      - name: RunPod status
+        if: inputs.action == 'runpod-status'
+        run: |
+          set -euo pipefail
+          if [[ -z "${RUNPOD_API_KEY:-}" ]]; then
+            echo "Set repo secret RUNPOD_API_KEY." >&2
+            exit 1
+          fi
+          if [[ ! -f "${HOME}/.ssh/id_ed25519" ]]; then
+            echo "Set secret RUNPOD_SSH_PRIVATE_KEY (pod authorized key)." >&2
+            exit 1
+          fi
+          chmod +x scripts/cloud_launch.sh scripts/runpod_deploy_ecc2k130.sh
+          ./scripts/cloud_launch.sh runpod status

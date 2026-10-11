@@ -1,0 +1,49 @@
+--- a/src/sage/schemes/elliptic_curves/binary_batch_ntl.pyx
++++ b/src/sage/schemes/elliptic_curves/binary_batch_ntl.pyx
+@@ -55,17 +55,18 @@
+     cdef FiniteField_ntl_gf2eElement model = field.zero()
+     cdef FiniteField_ntl_gf2eElement x1, y1, x2, y2, x3, y3
+     cdef vector[binary_batch_entry] active
+-    cdef binary_batch_entry entry
++    cdef binary_batch_entry* entry
+     cdef GF2E_c inverse, reciprocal, slope, result_x, result_y, temporary
+     cdef Py_ssize_t i, n
+     cdef Element point
+     cdef Parent point_parent
+-    cdef bint standard_points
++    cdef bint standard_points, same_x
+     output = [None] * len(pairs)
+     zero_point = None
+     one = field.one()
+     constructor = curve._point
+     model._cache.F.restore()
++    active.reserve(len(pairs))
+ 
+     for i in range(len(pairs)):
+         sig_check()
+@@ -80,12 +81,16 @@
+         if (x1.parent() is not field or y1.parent() is not field
+                 or x2.parent() is not field or y2.parent() is not field):
+             raise ValueError('coordinates belong to a different field')
+-        if x1.x == x2.x:
++        same_x = x1.x == x2.x
++        if same_x:
+             if y1.x != y2.x or IsZero(x1.x):
+                 if zero_point is None:
+                     zero_point = curve(0)
+                 output[i] = zero_point
+                 continue
++        active.emplace_back()
++        entry = &active.back()
++        if same_x:
+             sqr(entry.numerator, x1.x)
+             add(entry.numerator, entry.numerator, y1.x)
+             entry.denominator = x1.x
+@@ -97,7 +102,6 @@
+         entry.index = i
+         entry.x = x1.x
+         entry.y = y1.x
+-        active.push_back(entry)
+ 
+     n = active.size()
+     if not n:

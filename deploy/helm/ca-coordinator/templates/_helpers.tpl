@@ -1,0 +1,155 @@
+{{/* Name helpers, the usual shape. */}}
+{{- define "ca-coordinator.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "ca-coordinator.fullname" -}}
+{{- if .Values.fullnameOverride -}}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- $name := default .Chart.Name .Values.nameOverride -}}
+{{- if contains $name .Release.Name -}}
+{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "ca-coordinator.labels" -}}
+helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+app.kubernetes.io/name: {{ include "ca-coordinator.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/part-of: cryptanalysis
+{{- end -}}
+
+{{- define "ca-coordinator.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "ca-coordinator.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: coordinator
+{{- end -}}
+
+{{- define "ca-coordinator.agentSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "ca-coordinator.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: agent
+{{- end -}}
+
+{{/*
+The helm test pod's own identity.  It needs one because the coordinator's
+NetworkPolicy selects on the component label, and a probe that the policy
+does not admit fails the hook rather than the deployment.
+*/}}
+{{/*
+A name with a suffix, truncated so the *result* is a legal DNS label.
+
+fullname is already cut to 63 characters, so appending "-agent" or
+"-token" to it pushes the metadata name over the limit and the API
+server rejects the install.  CI renders with the release name `rho` and
+would never see it.  Call as: include "ca-coordinator.suffixed" (list .
+"agent")
+*/}}
+{{- define "ca-coordinator.suffixed" -}}
+{{- $top := index . 0 -}}
+{{- $suffix := index . 1 -}}
+{{- $room := int (sub 62 (len $suffix)) -}}
+{{- printf "%s-%s" (include "ca-coordinator.fullname" $top | trunc $room | trimSuffix "-") $suffix -}}
+{{- end -}}
+
+{{- define "ca-coordinator.testSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "ca-coordinator.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: test
+{{- end -}}
+
+{{- define "ca-coordinator.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create -}}
+{{- default (include "ca-coordinator.fullname" .) .Values.serviceAccount.name -}}
+{{- else -}}
+{{- default "default" .Values.serviceAccount.name -}}
+{{- end -}}
+{{- end -}}
+
+{{/* Where the job document comes from: a ConfigMap you brought, or ours. */}}
+{{- define "ca-coordinator.jobConfigMap" -}}
+{{- if .Values.job.existingConfigMap -}}
+{{- .Values.job.existingConfigMap -}}
+{{- else -}}
+{{- printf "%s-job" (include "ca-coordinator.fullname" .) -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "ca-coordinator.tokenSecret" -}}
+{{- if .Values.auth.existingSecret -}}
+{{- .Values.auth.existingSecret -}}
+{{- else -}}
+{{- printf "%s-token" (include "ca-coordinator.fullname" .) -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "ca-coordinator.hasToken" -}}
+{{- if or .Values.auth.token .Values.auth.existingSecret -}}true{{- end -}}
+{{- end -}}
+
+{{/* The URL agents inside the cluster dial. */}}
+{{- define "ca-coordinator.internalURL" -}}
+{{- printf "http://%s.%s.svc:%d" (include "ca-coordinator.fullname" .) .Release.Namespace (int .Values.service.port) -}}
+{{- end -}}
+
+{{- define "ca-coordinator.coordinatorImage" -}}
+{{- printf "%s:%s" .Values.coordinator.image.repository (default .Chart.AppVersion .Values.coordinator.image.tag) -}}
+{{- end -}}
+
+{{- define "ca-coordinator.agentImage" -}}
+{{- printf "%s:%s" .Values.agents.image.repository (default .Chart.AppVersion .Values.agents.image.tag) -}}
+{{- end -}}
+
+{{/*
+Refuse configurations that cannot work, at template time rather than at
+3 a.m.:
+  * no job document at all;
+  * more than one coordinator replica, which would split the
+    distinguished-point table and miss every collision spanning the two;
+  * auth.required with nothing to require.
+*/}}
+{{- define "ca-coordinator.validate" -}}
+{{- if and (not .Values.job.document) (not .Values.job.existingConfigMap) -}}
+{{- fail "ca-coordinator: set job.document to the line `ca coord-job` printed, or job.existingConfigMap to a ConfigMap holding one" -}}
+{{- end -}}
+{{- if ne (int .Values.coordinator.replicaCount) 1 -}}
+{{- fail "ca-coordinator: one replica per release is correct -- the replicas of a Deployment do not gossip, so a second would hold its own half of the distinguished-point table and miss every collision that spans them. To run more than one hub, install a release per cluster and list the others under federation.peers: those DO gossip, and converge." -}}
+{{- end -}}
+{{- if and .Values.federation.peers .Values.networkPolicy.enabled (not .Values.networkPolicy.extraIngressFrom) -}}
+{{- fail "ca-coordinator: federation.peers is set and networkPolicy.enabled is on, but networkPolicy.extraIngressFrom is empty -- a peer hub is not an agent pod and the policy would refuse it, so the peers would look configured and never exchange anything. Add the peers' sources (an ipBlock, or a namespaceSelector for a peer in this cluster), or turn the policy off." -}}
+{{- end -}}
+{{- $count := int .Values.sharding.count -}}
+{{- if or (lt $count 1) (gt $count 1024) -}}
+{{- fail "ca-coordinator: sharding.count must be between 1 and 1024" -}}
+{{- end -}}
+{{- if ge (int .Values.sharding.index) $count -}}
+{{- fail (printf "ca-coordinator: sharding.index %d is not a shard of %d" (int .Values.sharding.index) $count) -}}
+{{- end -}}
+{{- if gt $count 1 -}}
+{{- if ne (len .Values.sharding.urls) $count -}}
+{{- fail (printf "ca-coordinator: sharding.count is %d, so sharding.urls needs %d entries in shard order -- the agents here dial every shard, and a short list silently sends their points to the wrong hubs" $count $count) -}}
+{{- end -}}
+{{- end -}}
+{{- if .Values.job.document -}}
+{{- $declared := regexFind "sh=[0-9]+" .Values.job.document -}}
+{{- $want := 1 -}}
+{{- if $declared -}}{{- $want = atoi (trimPrefix "sh=" $declared) -}}{{- end -}}
+{{- if ne $want $count -}}
+{{- fail (printf "ca-coordinator: the job document declares %d shard(s) but sharding.count is %d -- the count rides inside the job id, so these cannot both be right" $want $count) -}}
+{{- end -}}
+{{- end -}}
+{{- range .Values.federation.peers -}}
+{{- if or (not .name) (not .url) -}}
+{{- fail "ca-coordinator: every federation.peers entry needs a name and a url" -}}
+{{- end -}}
+{{- end -}}
+{{- if and .Values.auth.required (not (include "ca-coordinator.hasToken" .)) -}}
+{{- fail "ca-coordinator: auth.required is set but no token was given; set auth.token, auth.existingSecret, or auth.required=false" -}}
+{{- end -}}
+{{- end -}}

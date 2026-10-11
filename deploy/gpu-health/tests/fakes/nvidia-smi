@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""A stand-in for nvidia-smi in gpu_health.py's tests (see fakes/ec2k-gpu)."""
+import json
+import os
+import sys
+
+scenario = json.load(open(os.environ["FAKE_GPU_SCENARIO"]))
+state = os.environ.get("FAKE_GPU_STATE", ".")
+GPU_FIELDS = [
+    "timestamp", "driver_version", "count", "name", "serial", "uuid", "pci.bus_id", "index",
+    "vbios_version", "persistence_mode", "compute_mode", "mig.mode.current", "ecc.mode.current",
+    "power.draw", "power.limit", "enforced.power.limit", "power.max_limit", "clocks.sm",
+    "clocks.mem", "clocks.max.sm", "clocks.max.memory", "utilization.gpu", "temperature.gpu",
+    "temperature.memory", "pcie.link.gen.current", "pcie.link.gen.max",
+    "pcie.link.width.current", "pcie.link.width.max", "clocks_event_reasons.active",
+    "ecc.errors.corrected.volatile.total", "ecc.errors.uncorrected.volatile.total",
+    "ecc.errors.uncorrected.aggregate.total", "retired_pages.pending",
+]
+REMAP_FIELDS = ["gpu_bus_id", "gpu_uuid", "remapped_rows.correctable",
+                "remapped_rows.uncorrectable", "remapped_rows.pending", "remapped_rows.failure"]
+
+
+def value(i, g, field):
+    smi = g.get("smi", {})
+    loading = os.path.exists(os.path.join(state, "loading-%d" % i))
+    done = os.path.exists(os.path.join(state, "done-%d" % i))
+    if field == "uuid":
+        return g["uuid"]
+    if field == "name":
+        return g["name"]
+    if field == "index":
+        return str(i)
+    if field == "pci.bus_id":
+        return "0000" + g.get("pci", "0000:%02X:00.0" % (0x18 + i))
+    if field == "driver_version":
+        return "580.95.05"
+    if field == "clocks_event_reasons.active":
+        return "0x%016x" % (smi.get("reasons", 0) if loading else 0x1)
+    if field.startswith("ecc.errors.") and done and field + ".after" in smi:
+        return str(smi[field + ".after"])
+    defaults = {
+        "power.draw": "520.00" if loading else "70.00", "power.limit": "700.00",
+        "enforced.power.limit": "700.00", "clocks.sm": "1980" if loading else "345",
+        "clocks.max.sm": "1980", "utilization.gpu": "100" if loading else "0",
+        "temperature.gpu": "62" if loading else "35", "pcie.link.width.current": "16",
+        "pcie.link.width.max": "16", "pcie.link.gen.current": "5", "pcie.link.gen.max": "5",
+        "ecc.mode.current": "Enabled", "mig.mode.current": "Disabled",
+        "retired_pages.pending": "[N/A]", "temperature.memory": "[N/A]",
+    }
+    if field in smi:
+        return str(smi[field])
+    if field.startswith("ecc.errors."):
+        return "0"
+    return defaults.get(field, "[N/A]")
+
+
+def query(flag):
+    for a in sys.argv[1:]:
+        if a.startswith(flag):
+            return a[len(flag):].split(",")
+    return None
+
+
+gpus = scenario["gpus"]
+if "--help-query-gpu" in sys.argv:
+    print('List of valid properties to query for the switch "--query-gpu=":\n')
+    for f in GPU_FIELDS:
+        print('"%s"\nDescription of %s.\n' % (f, f))
+    sys.exit(0)
+if "--help-query-remapped-rows" in sys.argv:
+    print('List of valid properties to query for the switch "--query-remapped-rows=":\n')
+    for f in REMAP_FIELDS:
+        print('"%s"\nDescription.\n' % f)
+    sys.exit(0)
+fields = query("--query-gpu=")
+if fields:
+    bad = [f for f in fields if f not in GPU_FIELDS]
+    if bad:
+        print('Field "%s" is not a valid field to query.' % bad[0])
+        sys.exit(2)
+    for i, g in enumerate(gpus):
+        print(", ".join(value(i, g, f) for f in fields))
+    sys.exit(0)
+fields = query("--query-remapped-rows=")
+if fields:
+    for i, g in enumerate(gpus):
+        r = g.get("remap", {})
+        vals = {"gpu_bus_id": "00000000:18:00.0", "gpu_uuid": g["uuid"],
+                "remapped_rows.correctable": "0", "remapped_rows.uncorrectable": "0",
+                "remapped_rows.pending": r.get("pending", "No"),
+                "remapped_rows.failure": r.get("failure", "No")}
+        print(", ".join(vals[f] for f in fields))
+    sys.exit(0)
+fields = query("--query-compute-apps=")
+if fields:
+    for g in gpus:
+        for pid in range(g.get("apps", 0)):
+            print(", ".join({"gpu_uuid": g["uuid"], "pid": str(4242 + pid)}[f] for f in fields))
+    sys.exit(0)
+print("NVIDIA-SMI fake: unsupported arguments %s" % sys.argv[1:], file=sys.stderr)
+sys.exit(2)

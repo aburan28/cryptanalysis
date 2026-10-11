@@ -104,5 +104,25 @@ int main(void)
         CHECK_EQ_U64(x[0], 2); CHECK_EQ_U64(x[1], 3); CHECK_EQ_U64(x[2], 5); CHECK_EQ_U64(x[3], 7);
         ca_spmat_free(&A);
     }
+    /* row_ptr capacity is per matrix: expected_rows is a hint, so a matrix may
+     * grow past it, and one matrix growing must not let another skip its own
+     * reallocation.  (The capacity used to be a file-scope static shared by
+     * every matrix, and this sequence wrote past the small one's row_ptr.) */
+    {
+        const uint32_t c = 0;
+        const int32_t v = 1;
+        ca_spmat big, small;
+        CHECK(ca_spmat_init(&big, 8, 10, 64) == CA_OK);
+        for (uint32_t i = 0; i < 2000; i++) CHECK(ca_spmat_add_row(&big, &c, &v, 1) == CA_OK);
+        CHECK(ca_spmat_init(&small, 8, 4, 64) == CA_OK); /* row_ptr starts with 5 slots */
+        for (uint32_t i = 0; i < 10; i++) CHECK(ca_spmat_add_row(&small, &c, &v, 1) == CA_OK);
+        CHECK_EQ_U64(big.rows, 2000);
+        CHECK_EQ_U64(big.row_ptr[2000], 2000);
+        CHECK_EQ_U64(small.rows, 10);
+        CHECK_EQ_U64(small.row_ptr[10], 10);
+        CHECK(small.row_cap >= 11);
+        ca_spmat_free(&small);
+        ca_spmat_free(&big);
+    }
     TEST_MAIN_END();
 }

@@ -1,0 +1,10 @@
+{
+  "status": "frozen before candidate v5 source edits or timing",
+  "step_id": "local-onb-frobenius-bounded-hot-exponents-v5",
+  "incumbent_field_sha256": "81d0397473a2a55b06a04b19991382a2c3dd1c73ba515921dd7305a10b72dc5f",
+  "held_v4_field_sha256": "c437d4f00b0c3faba2785d22a0a0fa36309c503cf6f93eb245ca797aa351e719",
+  "reason": "Avoid a byte-table cache that can grow with every distinct Frobenius exponent; local IC call sites repeatedly use exponents 1 and 2.",
+  "candidate": "cache byte tables only for exponent residues 2 and 4; use original generic loop for all others",
+  "cases": "m=5,9,131 k=1,2; actual Curve.halfTrace and Curve.frob at m=131; portable pointFromX",
+  "acceptance": "Exact original outputs including noncanonical values; m131 frob mean >=1.15x and halfTrace >=1.10x in two paired runs; m5 and m9 each >=0.95x; added RSS <=4 MiB; cold setup disclosed; two-table cache bound; no DLP speedup claim."
+}

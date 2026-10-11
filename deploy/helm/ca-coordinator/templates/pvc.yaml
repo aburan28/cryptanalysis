@@ -1,0 +1,17 @@
+{{- if .Values.coordinator.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "ca-coordinator.suffixed" (list . "data") }}
+  labels:
+    {{- include "ca-coordinator.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.coordinator.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.coordinator.persistence.size }}
+  {{- with .Values.coordinator.persistence.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+{{- end }}

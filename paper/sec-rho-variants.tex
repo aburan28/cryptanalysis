@@ -1,0 +1,143 @@
+\section{Square-root neighbours, Cheon, and cross-validation}
+\label{sec:rho-variants}
+
+Rho is the reference. The neighbours are priced in the same unit so
+that a later claim has somewhere to sit.
+
+\subsection{Two grumpy giants and a baby}
+
+Bernstein--Lange~\cite{bernsteinlange2012grumpy} interleave three walks
+after shifting so that $x'=x-\ell$ lies in $[0,N)$:
+\[
+  B_j = jG,\qquad
+  U_i = H' + imG,\qquad
+  V_i = 2H' - i(m+1)G.
+\]
+Collisions $B_j=U_i$, $B_j=V_i$, $U_i=V_k$ each give a congruence for
+$x'$; all are taken modulo the group order when it is known, and every
+candidate is verified. The step $m=\alpha\sqrt{N}$ was chosen by
+simulating the three walks in exponent space and confirming with the
+implementation (400 instances): $\alpha=0.7$ gives $S=1.18$ on the
+whole group and $S=1.78$ on a $2^{22}$ interval without wrap. The
+paper's success probability after $1.5\sqrt{n}$ operations is
+$0.71875$; the simulation gives $0.70$ at $n=4093$. Interleaved BSGS
+in the same simulation is $1.33$, the known $4/3$
+figure.\art{docs/ALGORITHMS.md, grumpy table}
+
+\subsection{Free precomputation}
+
+Bernstein--Lange free precomputation~\cite{bernsteinlange2012small,bernsteinlange2013}
+builds, once per group and base, a table of distinguished-point chains
+and then solves each subsequent target in far fewer operations than a
+from-scratch square-root search. With $t=\mathrm{round}(\log_2 n/3)$,
+the table has $\sim n^{1/3}$ chains, the build costs $\sim n^{2/3}$
+group operations, and each online target costs $\sim n^{1/3}$.
+Table~\ref{tab:precomp} is the one-core measurement.\art{docs/BENCHMARKS.md, ``Discrete logarithm with precomputation''}
+
+\begin{table}[t]
+\centering
+\small
+\caption{Bernstein--Lange precomputation, one core. $P$ is the
+  one-time build; $T$ the per-target online cost. $\sqrt{n}/T$ is the
+  online speed-up over a from-scratch search.}
+\label{tab:precomp}
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+grp & bits & $t$ & chains & $P/n^{2/3}$ & $T/n^{1/3}$ & $\sqrt{n}/T$ \\
+\midrule
+$\ZZ_p^*$ & 24 & 7 & 200 & 1.398 & 1.926 & 6.6 \\
+$E(\FF_p)$ & 24 & 8 & 117 & 0.892 & 7.447 & 1.9 \\
+$\ZZ_p^*$ & 32 & 10 & 787 & 0.953 & 2.134 & 15.0 \\
+$E(\FF_p)$ & 32 & 10 & 1\,558 & 1.310 & 2.156 & 16.7 \\
+$\ZZ_p^*$ & 36 & 11 & 3\,039 & 1.277 & 0.901 & 56.4 \\
+$E(\FF_p)$ & 36 & 11 & 6\,145 & 1.591 & 2.082 & 27.4 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The build sits at $P\sim 0.8$--$1.6\,n^{2/3}$ and the table at
+$n^{1/3}$ entries, close to the paper's $1.24\,n^{2/3}$ and
+$n^{1/3}$. The online cost is $T\sim 1$--$7\,n^{1/3}$ against the
+paper's $1.77\,n^{1/3}$. The $\sqrt{n}/T$ column is the point of the
+method: already $7\times$--$56\times$ at these sizes, growing as
+$n^{1/6}$, at the price of a precomputation larger than one
+$\sqrt{n}$ search and worth it only amortised over many targets in a
+fixed group. That is a statement about non-uniform security, not a
+practical attack on a single logarithm.
+
+A fixed-base doubling table, batched inversion, and a 16-byte
+(fingerprint, exponent) table took the 36-bit curve build from $2.26$~s
+to $0.44$~s on one core; four threads then build it in $0.11$~s. Class:
+engineering.
+
+\subsection{GLV folding}
+
+On a CM curve the walk is folded by $\langle\psi\rangle$ (order $6$
+for $j=0$, $4$ for $j=1728$) against the plain negation-map rho on the
+same curve. The expected gain is $\sqrt{m/2}$ --- $1.73$ for $j=0$,
+$1.41$ for $j=1728$. Measured over 20 instances: \texttt{glv-j0-32}
+lands at $1.71\times$ ($S=0.988$ against $1.688$),
+\texttt{glv-j1728-26} at $1.34\times$. The generic curve is identical
+either way. Scatter is large because these are small curves; the
+point is the folding, applied automatically once the $j$-invariant is
+recognised.\art{docs/BENCHMARKS.md, ``GLV endomorphism-accelerated rho''}
+
+\subsection{Cheon}
+
+Cheon recovers $\alpha$ from $g,g^{\alpha},g^{\alpha^d}$ when $d$
+divides $p-1$~\cite{cheon2006,cheon2010}. It is not bare ECDLP. With
+$d\sim\sqrt{p}$ the library measures $1.9\times$ fewer group
+operations than rho at 32~bits, $4.2\times$ at 40~bits, $18.6\times$
+at 48~bits (each Cheon step is an exponentiation, $\sim 1.5\log_2 p$
+operations).\art{docs/BENCHMARKS.md, ``Cheon's attack''} The companion
+records a sharper statement on the $p-1$ and $p+1$ families with
+fixed-base-comb BSGS: at 40~bits, $S=0.016$ on $p-1$ ($0.010\times$
+matched rho, fitted exponent $0.231$ versus rho $0.487$); the $p+1$
+family fits exponent $0.355$ versus rho $0.503$. These are advances
+only against the DLP-with-auxiliary-inputs floor
+$\Omega(\sqrt{p/d})$, not against the generic ECDLP
+bound.\art{crypto:research/torsion_auxiliary_inputs_20260918/RESULTS.md}
+
+\subsection{Cross-validation against the companion}
+\label{sec:crossval}
+
+Two independent implementations in the sibling recover the same
+constants this library measures. They are cited as walk-checks. The
+256-bit CUDA rho and the ECC2K-95 kernel have, per their READMEs, run
+only through CPU emulation; no device-throughput number is taken from
+them.
+
+\paragraph{Rho $S=0.85$ versus BSGS $S=1.07$.}
+On a 40-bit toy curve ($n=649\,523\,094\,257$), CPU emulation of the
+companion kernels, 128 chains, every answer verified as $kG=Q$: rho
+with the negation map measures $S=0.85$ (predicted
+$0.96\times\sqrt{\pi n/4}$); rho without it $S=1.42$; BSGS with the
+negation layout and batched $W=16$ measures $S=1.07$ (predicted
+$1.00$), $1.26\times$ the rho reference and $1.07\times$ its own
+floor. Textbook BSGS without negation is $S=1.44$ against a predicted
+$1.41$. The batched stepper is engineering ($S$ unchanged, inversions
+cut by $W$); the negation layout is the $\sqrt{2}$ the table
+predicts; nothing here is an advance on rho's
+floor.\art{crypto:gpu/ecc/README.md, ``Cost, measured''}
+
+\paragraph{Frobenius-class walk, $0.94\times$ and $1.32\times$.}
+The companion Koblitz kernel walks on classes of $\langle\tau,-1\rangle$
+with the ECC2K-130 shape $P\leftarrow P+\tau^{j(P)}(P)$, $j=((g(x)/2)
+\bmod 8)+3$, $g$ the normal-basis Hamming weight. On a 21-bit
+subgroup, 128 walks, 24 trials: mean $251$ steps against a predicted
+$\sqrt{\pi r/(4m)}=268$, i.e.\ $0.94\times$ the class-walk prediction
+and $0.20\times$ a negation-only walk. On a 40-bit subgroup, 8 trials:
+mean $191\,840$ against $145\,129$, i.e.\ $1.32\times$; $59$k of the
+$192$k steps are the distinguished-point tail ($128$ walks $\times$
+about $463$ steps to a point), and $145\mathrm{k}+59\mathrm{k}\approx
+204\mathrm{k}$. Rho collision times have a standard deviation about
+equal to their mean, so 24 and 8 trials resolve these to roughly
+$\pm 20\%$ and $\pm 35\%$. They confirm the $\sqrt{2m}$ speedup; they
+are too noisy to rank iteration
+functions.\art{crypto:gpu/ecc2k/README.md, ``How this is verified''}
+
+The same note records that dropping the $/2$ in $j$ collapses the walk
+to four branches. Measured on the 40-bit curve, 64 walks, 160 trials:
+$187\,831$ steps for the four-branch rule against $151\,005$ for the
+eight-branch one. That is the Bailey et al.\ rule, and the one the
+FPGA core of Section~\ref{sec:fpga-core} implements.

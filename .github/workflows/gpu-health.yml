@@ -1,0 +1,236 @@
+name: gpu-health
+
+# The GPU health check (deploy/gpu-health/) and its Helm chart
+# (deploy/helm/gpu-health/):
+#
+#   tests   the orchestrator's tests on the oldest and newest Python it supports
+#   chart   helm lint and render, then the chart's MutatingAdmissionPolicy on a
+#           real kube-apiserver and etcd (the envtest binaries): the server
+#           type-checks it, and device plugin pods come back with the check
+#           appended while everything else comes back untouched
+#   image   the image, built from the repository root on x86_64 and aarch64.
+#           The build compiles ec2k-gpu for sm_80 through sm_120 and runs the
+#           host test (which includes the health checks' own tests) and
+#           `ec2k-gpu check --kat`.  The smoke runs hold the image to two
+#           behaviours: with no GPU it fails and says why, and against the
+#           scripted stand-ins in tests/fakes it passes.  On x86_64 the chart
+#           then runs on a kind cluster (tests/e2e/run.sh), where the injected
+#           check gates a stand-in device plugin: it passes and releases it,
+#           skips on the next pod in the same boot, runs again after a
+#           (played) reboot and holds the plugin back when a GPU fails, and
+#           leaves alone busy GPUs and a node that was in service before the
+#           check reached it.
+#
+# No runner has a GPU, so nothing here says anything about a card.
+#
+# A tag gpu-health-vX.Y.Z also publishes ghcr.io/OWNER/gpu-health:X.Y.Z, one
+# manifest for both architectures, and moves :latest unless the version has a
+# pre-release suffix (-rc1 and the like).
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["gpu-health-v*"]
+    paths:
+      - "deploy/gpu-health/**"
+      - "deploy/helm/gpu-health/**"
+      - "ecc2k130/Makefile"
+      - "ecc2k130/include/**"
+      - "ecc2k130/src/**"
+      - "ecc2k130/scripts/fetch_cuda.sh"
+      - "ecc2k130/tests/campaign-kat.hex"
+      - "fpga/model/**"
+      - ".github/workflows/gpu-health.yml"
+  pull_request:
+    paths:
+      - "deploy/gpu-health/**"
+      - "deploy/helm/gpu-health/**"
+      - "ecc2k130/Makefile"
+      - "ecc2k130/include/**"
+      - "ecc2k130/src/**"
+      - "ecc2k130/scripts/fetch_cuda.sh"
+      - "ecc2k130/tests/campaign-kat.hex"
+      - "fpga/model/**"
+      - ".github/workflows/gpu-health.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: orchestrator tests (Python ${{ matrix.python }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python: "3.8"
+            runner: ubuntu-22.04
+          - python: "3.12"
+            runner: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: unittest
+        run: python3 -m unittest discover -s deploy/gpu-health/tests -v
+
+  chart:
+    name: chart (lint, render, admission on kube-apiserver 1.37)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+      - name: helm lint, both modes
+        run: |
+          helm lint deploy/helm/gpu-health
+          helm lint deploy/helm/gpu-health --set inject.enabled=false --set nodeGate.enabled=true \
+            --set rbac.labelNodes.enabled=true
+      - name: Every name is a legal DNS label, even with a long release name
+        run: |
+          # 53 characters, the longest release name Helm accepts.
+          long=gpu-health-production-us-west-2-h100-fleet-seventeen
+          helm template "$long" deploy/helm/gpu-health --kube-version 1.37.0 \
+            --set nodeGate.enabled=true --set rbac.labelNodes.enabled=true > long.yaml
+          python3 - <<'PY'
+          import re
+          label = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
+          # Each document's own name: the first "  name:" under a top-level
+          # "metadata:".  No YAML library needed.
+          names = re.findall(r"^metadata:\n(?:  .*\n)*?  name: (\S+)$",
+                             open("long.yaml").read(), re.M)
+          assert len(names) >= 8, names
+          bad = [n for n in names if len(n) > 63 or not label.match(n)]
+          assert not bad, bad
+          print("%d metadata names, every one a legal DNS label" % len(names))
+          PY
+      - name: shellcheck the kind test
+        run: shellcheck deploy/helm/gpu-health/tests/e2e/run.sh
+      - name: etcd and kube-apiserver 1.37 (envtest)
+        run: |
+          curl -fsSL --retry 3 \
+            https://github.com/kubernetes-sigs/controller-tools/releases/download/envtest-v1.37.0/envtest-v1.37.0-linux-amd64.tar.gz |
+            tar -xz -C "$RUNNER_TEMP"
+          echo "ENVTEST_BIN=$RUNNER_TEMP/controller-tools/envtest" >> "$GITHUB_ENV"
+      - name: The policy on a real API server
+        run: python3 -m unittest discover -s deploy/helm/gpu-health/tests -p 'test_admission.py' -v
+
+  image:
+    name: image (linux/${{ matrix.arch }})
+    needs: tests
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      # Plain `docker build`, not buildx, for the reason deploy.yml gives:
+      # setting buildx up pulls moby/buildkit from Docker Hub first, and a
+      # reset there fails a job that has nothing to do with this repository.
+      # The retry covers the base-image pulls.
+      - name: Build
+        run: |
+          set -eu
+          for attempt in 1 2 3; do
+            if docker build --file deploy/gpu-health/Dockerfile --tag gpu-health:ci .; then
+              exit 0
+            fi
+            echo "::warning::docker build attempt $attempt failed; retrying"
+            sleep $((attempt * 20))
+          done
+          exit 1
+      - name: "Smoke: no GPU fails, and says so"
+        run: |
+          set +e
+          out=$(docker run --rm gpu-health:ci --seconds 5 2>&1)
+          rc=$?
+          set -e
+          echo "$out" | tail -5
+          [ "$rc" -eq 1 ] || { echo "::error::exit $rc without a GPU, expected 1"; exit 1; }
+          grep -q "no usable CUDA device" <<<"$out"
+      - name: "Smoke: the image's own binary checks itself"
+        run: docker run --rm --entrypoint ec2k-gpu gpu-health:ci check --kat /usr/local/share/gpu-health/campaign-kat.hex
+      - name: "Smoke: a healthy scripted node passes inside the image"
+        run: |
+          state=$(mktemp -d)
+          chmod 777 "$state"
+          cat >"$state/scenario.json" <<'EOF'
+          {"gpus": [{"name": "NVIDIA H100 80GB HBM3", "uuid": "GPU-00000000-0000-0000-0000-000000000000", "sms": 132, "cc": "9.0", "rate": 7.5e9},
+                    {"name": "NVIDIA H100 80GB HBM3", "uuid": "GPU-00000001-0000-0000-0000-000000000000", "sms": 132, "cc": "9.0", "rate": 7.45e9}]}
+          EOF
+          docker run --rm -v "$PWD/deploy/gpu-health/tests/fakes:/fakes:ro" -v "$state:/state" \
+            -e FAKE_GPU_SCENARIO=/state/scenario.json -e FAKE_GPU_STATE=/state gpu-health:ci \
+            --binary /fakes/ec2k-gpu --nvidia-smi /fakes/nvidia-smi --seconds 2 \
+            --json-out /state/report.json
+          python3 -c "import json,sys; r=json.load(open(sys.argv[1])); assert r['verdict'] == 'pass', r" "$state/report.json"
+      - uses: azure/setup-helm@v4
+        if: matrix.arch == 'amd64'
+        with:
+          version: v3.16.3
+      - name: "End to end: the chart on kind, gating a stand-in device plugin"
+        if: matrix.arch == 'amd64'
+        run: |
+          set -eu
+          bin="$RUNNER_TEMP/bin"
+          mkdir -p "$bin"
+          curl -fsSLo "$bin/kind" --retry 3 \
+            https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64
+          curl -fsSLo "$bin/kubectl" --retry 3 https://dl.k8s.io/release/v1.37.1/bin/linux/amd64/kubectl
+          chmod +x "$bin/kind" "$bin/kubectl"
+          export PATH="$bin:$PATH"
+          # The node image comes from Docker Hub; retry a failed pull once.
+          docker pull kindest/node:v1.37.0 || { sleep 30; docker pull kindest/node:v1.37.0; }
+          deploy/helm/gpu-health/tests/e2e/run.sh gpu-health:ci
+      - name: Push the architecture's image
+        if: startsWith(github.ref, 'refs/tags/gpu-health-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          owner=${GITHUB_REPOSITORY_OWNER,,}
+          image="ghcr.io/$owner/gpu-health:${TAG#gpu-health-v}-$ARCH"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker tag gpu-health:ci "$image"
+          docker push "$image"
+
+  publish:
+    name: publish ghcr.io/${{ github.repository_owner }}/gpu-health
+    needs: image
+    if: startsWith(github.ref, 'refs/tags/gpu-health-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: One manifest for both architectures
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          owner=${GITHUB_REPOSITORY_OWNER,,}
+          version=${TAG#gpu-health-v}
+          base="ghcr.io/$owner/gpu-health"
+          tags=(-t "$base:$version")
+          case "$version" in *-*) ;; *) tags+=(-t "$base:latest") ;; esac
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker buildx imagetools create "${tags[@]}" "$base:$version-amd64" "$base:$version-arm64"

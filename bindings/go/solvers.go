@@ -36,3 +36,16 @@ func (g *Group) Dlog(base, target Elem, opts *Options) (uint64, Stats, error) {
 	defer runtime.KeepAlive(g)
 	return ffiDlog(g.handle(), base, target, opts)
 }
+
+// Precomp solves base^x = target with the Bernstein-Lange free-precomputation
+// method: a one-time table for base (built with the given number of worker
+// threads) then this target solved online.  It is one-shot -- the table is
+// built, used once and freed -- so the returned Stats cover the whole n^2/3
+// build plus the n^1/3 online phase.  Pass dpBits < 0, tableSize 0, coverage 0
+// and threads 0 for the defaults; seed 0 is random.  base must generate the
+// whole group of order g.Order().
+func (g *Group) Precomp(base, target Elem, dpBits int32, tableSize uint64, coverage float64,
+	threads uint32, seed uint64) (uint64, Stats, error) {
+	defer runtime.KeepAlive(g)
+	return ffiPrecomp(g.handle(), base, target, dpBits, tableSize, coverage, threads, seed)
+}

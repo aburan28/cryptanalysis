@@ -1,0 +1,249 @@
+name: deploy
+
+# The deployment artifacts: the Helm chart and the two container images.
+#
+# These are the parts of the tree that no other job compiles, so without
+# this workflow they rot silently -- a chart that stopped rendering or a
+# Dockerfile that stopped building would be found by whoever next tried
+# to deploy, which is the worst time to find it.
+#
+# The chart job does not merely lint.  It renders with real values and
+# parses the result, and it asserts that the three configurations the
+# chart is supposed to refuse really are refused: a missing job document,
+# more than one coordinator replica (two would each hold half the
+# distinguished-point table and miss every collision that spans them),
+# and auth.required with no token.  A guard that is not tested is a
+# comment.
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "deploy/**"
+      - "bindings/go/cmd/ca-coordinator/**"
+      - "bindings/go/coord.go"
+      - "src/coord*.c"
+      - "include/cryptanalysis/ca_coord.h"
+      - ".github/workflows/deploy.yml"
+  pull_request:
+    paths:
+      - "deploy/**"
+      - "bindings/go/cmd/ca-coordinator/**"
+      - "bindings/go/coord.go"
+      - "src/coord*.c"
+      - "include/cryptanalysis/ca_coord.h"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  chart:
+    name: Helm chart (lint, render, guard rails)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      # A real job document, so the chart is rendered with the shape it
+      # will actually be given rather than a placeholder.
+      - name: Build the CLI and mint a job document
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCA_BUILD_TESTS=OFF
+          cmake --build build -j"$(nproc)" --target ca
+          ./build/ca coord-job --group zp --p 4503599627372423 \
+              --order 2251799813686211 --g 1456600859624672 --h 4047005209878851 \
+              --dp-bits 16 --unit-size 64 --seed 21 --out job.txt
+          cat job.txt
+
+      - name: helm lint
+        run: |
+          helm lint deploy/helm/ca-coordinator \
+              --set-file job.document=job.txt \
+              --set auth.token=0123456789abcdef0123456789abcdef
+
+      - name: Render every optional piece, and check the manifests parse
+        run: |
+          helm template rho deploy/helm/ca-coordinator \
+              --set-file job.document=job.txt \
+              --set auth.token=0123456789abcdef0123456789abcdef \
+              --set ingress.enabled=true \
+              --set coordinator.persistence.enabled=true \
+              --set networkPolicy.enabled=true \
+              --set serviceMonitor.enabled=true \
+              --set agents.replicaCount=5 > rendered.yaml
+          python3 - <<'PY'
+          import sys, yaml
+          docs = [d for d in yaml.safe_load_all(open("rendered.yaml")) if d]
+          for d in docs:
+              assert d.get("apiVersion") and d.get("kind"), d
+              assert d["metadata"].get("name"), d
+          kinds = sorted(d["kind"] for d in docs)
+          print(len(docs), "manifests:", ", ".join(kinds))
+          # The coordinator is single-replica by construction.
+          dep = [d for d in docs if d["kind"] == "Deployment"
+                 and d["metadata"]["name"].endswith("ca-coordinator")][0]
+          assert dep["spec"]["replicas"] == 1, dep["spec"]["replicas"]
+          assert dep["spec"]["strategy"]["type"] == "Recreate"
+          # Nothing may open a connection to an agent: that is the
+          # constraint the reverse channel exists to satisfy.
+          agent_np = [d for d in docs if d["kind"] == "NetworkPolicy"
+                      and d["metadata"]["name"].endswith("-agent")][0]
+          assert agent_np["spec"]["ingress"] == [], agent_np["spec"]["ingress"]
+          PY
+
+      - name: Every name is a legal DNS label, even with a long release name
+        run: |
+          # The bug this catches: fullname is cut to 63 characters and the
+          # templates then append "-agent", "-token", "-data", "-job".
+          # Rendering as `rho` never shows it, so render as something a
+          # real operator might type.
+          # 53 characters, which is the longest release name Helm itself
+          # accepts -- so this is the worst case an operator can create.
+          long=rho-production-west-2-campaign-secp256k1-run-seventee
+          helm template "$long" deploy/helm/ca-coordinator \
+              --set-file job.document=job.txt \
+              --set auth.token=0123456789abcdef0123456789abcdef \
+              --set ingress.enabled=true \
+              --set coordinator.persistence.enabled=true \
+              --set networkPolicy.enabled=true \
+              --set agents.replicaCount=2 > long.yaml
+          python3 - <<'PY'
+          import re, sys, yaml
+          label = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
+          bad = []
+          for d in (d for d in yaml.safe_load_all(open("long.yaml")) if d):
+              name = d["metadata"]["name"]
+              if len(name) > 63 or not label.match(name):
+                  bad.append((d["kind"], name, len(name)))
+          for kind, name, n in bad:
+              print(f"{kind}: {name!r} is {n} characters", file=sys.stderr)
+          assert not bad, f"{len(bad)} invalid metadata names"
+          print("every metadata name is a legal DNS label")
+          PY
+
+      - name: The configurations the chart must refuse
+        run: |
+          refuses() {
+            local why="$1"; shift
+            if helm template rho deploy/helm/ca-coordinator "$@" >/dev/null 2>&1; then
+              echo "FAIL: the chart accepted $why"
+              exit 1
+            fi
+            echo "ok: refused $why"
+          }
+          refuses "a missing job document" --set auth.required=false
+          refuses "two coordinator replicas" --set-file job.document=job.txt \
+              --set auth.token=abc --set coordinator.replicaCount=2
+          refuses "auth.required with no token" --set-file job.document=job.txt
+          refuses "peers a NetworkPolicy would silently block" --set-file job.document=job.txt \
+              --set auth.token=abc --set networkPolicy.enabled=true \
+              --set 'federation.peers[0].name=eu' --set 'federation.peers[0].url=http://eu:8080'
+          refuses "a peer with no url" --set-file job.document=job.txt \
+              --set auth.token=abc --set 'federation.peers[0].name=eu'
+
+      - name: Federation reaches the coordinator's argv
+        run: |
+          # A peer that is configured but never passed to the binary is the
+          # failure this catches: the chart would look federated and the
+          # hubs would never speak.
+          helm template rho deploy/helm/ca-coordinator \
+              --set-file job.document=job.txt \
+              --set auth.token=0123456789abcdef0123456789abcdef \
+              --set networkPolicy.enabled=true \
+              --set 'networkPolicy.extraIngressFrom[0].ipBlock.cidr=10.0.0.0/8' \
+              --set 'federation.peers[0].name=eu-west-1' \
+              --set 'federation.peers[0].url=http://rho.eu:8080' \
+              --set 'federation.peers[1].name=us-east-1' \
+              --set 'federation.peers[1].url=http://rho.us:8080' > fed.yaml
+          python3 - <<'PY'
+          import sys, yaml
+          docs = [d for d in yaml.safe_load_all(open("fed.yaml")) if d]
+          dep = [d for d in docs if d["kind"] == "Deployment"
+                 and d["metadata"]["name"].endswith("ca-coordinator")][0]
+          args = dep["spec"]["template"]["spec"]["containers"][0]["args"]
+          want = ["-peer=eu-west-1=http://rho.eu:8080", "-peer=us-east-1=http://rho.us:8080"]
+          for w in want:
+              assert w in args, f"{w!r} missing from {args}"
+          assert any(a.startswith("-peer-interval=") for a in args), args
+          print("federation reaches argv:", [a for a in args if a.startswith("-peer")])
+          PY
+
+  images:
+    name: images (coordinator, agent)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [coordinator, agent]
+    steps:
+      - uses: actions/checkout@v4
+
+      # Built, not pushed: this job is here to prove the Dockerfile still
+      # works, and publishing is a release decision.
+      #
+      # Plain `docker build`, not buildx.  Setting buildx up pulls
+      # moby/buildkit from Docker Hub before the Dockerfile is even read,
+      # and a reset there fails a job that has nothing to do with this
+      # repository -- which is exactly how it failed.  The daemon on the
+      # runner already has BuildKit built in, and this Dockerfile uses no
+      # buildx-only feature (no cache mounts, no multi-platform), so the
+      # only thing given up is the cross-run layer cache.  The retry
+      # covers the base-image pulls, which can flake the same way.
+      - name: docker build --target ${{ matrix.target }}
+        run: |
+          set -eu
+          for attempt in 1 2 3; do
+            if docker build \
+                 --file deploy/docker/Dockerfile \
+                 --target "${{ matrix.target }}" \
+                 --tag "ca-${{ matrix.target }}:ci" \
+                 . ; then
+              exit 0
+            fi
+            echo "build attempt $attempt failed"
+            # Not `[ "$attempt" = 3 ] && exit 1`: under `set -e` that list
+            # returns 1 on the attempts that are not the last, which would
+            # end the job on the first failure and defeat the retry.
+            if [ "$attempt" = 3 ]; then
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
+
+      # A binary that does not start is not an image.
+      - name: The image runs
+        run: |
+          if [ "${{ matrix.target }}" = "coordinator" ]; then
+            help=$(docker run --rm ca-coordinator:ci -help 2>&1 || true)
+            echo "$help"
+            echo "$help" | grep -q "Routes:"
+          else
+            docker run --rm ca-agent:ci version
+            # The image's CMD is `work`, so a bare `docker run` starts an
+            # agent; ask for the usage explicitly.  An unknown command
+            # prints it and exits 2, which is the contract, so capture
+            # rather than pipe: this shell runs with pipefail.
+            usage=$(docker run --rm ca-agent:ci not-a-command 2>&1 || true)
+            echo "$usage"
+            echo "$usage" | grep -q "coord-job"
+            # And do real work with it, so this proves the binary runs
+            # rather than only that it prints.
+            job=$(docker run --rm ca-agent:ci coord-job --group zp --p 2000303 \
+                --order 1000151 --g 5995 --h 1428864 --dp-bits 5 2>/dev/null)
+            echo "$job"
+            echo "$job" | grep -q '"job_id"'
+          fi

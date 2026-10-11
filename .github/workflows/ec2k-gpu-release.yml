@@ -1,0 +1,169 @@
+name: cryptanalysis-release
+
+# Release the unified cryptanalysis CLI and its ECC2K-130 rho backend.
+#
+# A tag cryptanalysis-vX.Y.Z (or the legacy ec2k-gpu-vX.Y.Z) builds the
+# campaign build (WALK=sigma) and unified CLI on Linux
+# x86_64 and aarch64 with the pinned CUDA 13.3 from NVIDIA's pip wheels, for
+# sm_80 through sm_120 plus compute_120 PTX, and publishes the tarballs and
+# their .sha256 as a GitHub release.  A tag with -rc or -pre in it is a
+# prerelease.  On a pull request, or run by hand (workflow_dispatch), it
+# builds and uploads the tarballs as workflow artifacts and publishes nothing.
+#
+# Every binary checks itself before it is packed: `ec2k-gpu check --kat`
+# replays the campaign's known answers on the runner's CPU (scripts/package.sh).
+# No runner has a GPU, so what a release says about the device kernel is only
+# that it compiled; ecc2k130/scripts/device_check.sh is the check on a card.
+
+on:
+  push:
+    tags: ["cryptanalysis-v*", "ec2k-gpu-v*"]
+  # A pull request that touches the client builds and self-checks both
+  # tarballs, so a tag never runs a packaging path for the first time.
+  pull_request:
+    paths:
+      - "ecc2k130/**"
+      - "fpga/model/**"
+      - "tools/ca_cli.c"
+      - "CMakeLists.txt"
+      - "scripts/cli_smoke.sh"
+      - "scripts/sage_release*.py"
+      - "scripts/sage-release-manifest.json"
+      - "docs/SAGE_RELEASE.md"
+      - "experiments/sage-binary-batch/*.patch"
+      - "experiments/sage-binary-hardware/*.patch"
+      - "experiments/sage-ic-campaign/**/*.patch"
+      - ".github/workflows/ec2k-gpu-release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+    working-directory: ecc2k130
+
+jobs:
+  build:
+    name: build (linux-${{ matrix.machine }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # 22.04's glibc 2.35 is the oldest the binaries then need.
+          - machine: x86_64
+            runner: ubuntu-22.04
+          - machine: aarch64
+            runner: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: ecc2k130/build/cuda
+          key: cuda-wheels-${{ matrix.machine }}-${{ hashFiles('ecc2k130/scripts/fetch_cuda.sh') }}
+      - name: Version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/ec2k-gpu-v* ]]; then
+            echo "VERSION=${GITHUB_REF_NAME#ec2k-gpu-v}" >> "$GITHUB_ENV"
+          elif [[ "$GITHUB_REF" == refs/tags/cryptanalysis-v* ]]; then
+            echo "VERSION=${GITHUB_REF_NAME#cryptanalysis-v}" >> "$GITHUB_ENV"
+          else
+            echo "VERSION=0.0.0-dev.${GITHUB_SHA::12}" >> "$GITHUB_ENV"
+          fi
+      - name: Build, self-check and pack
+        run: scripts/package.sh "$VERSION" dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cryptanalysis-linux-${{ matrix.machine }}
+          path: ecc2k130/dist/*
+          if-no-files-found: error
+
+  sage-source:
+    name: verify and package Sage source stack
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pinned Sage source
+        run: |
+          mkdir -p "$RUNNER_TEMP/sage-upstream"
+          git -C "$RUNNER_TEMP/sage-upstream" init
+          git -C "$RUNNER_TEMP/sage-upstream" remote add origin https://github.com/sagemath/sage.git
+          git -C "$RUNNER_TEMP/sage-upstream" fetch --depth=1 origin refs/tags/10.10.rc0
+          git -C "$RUNNER_TEMP/sage-upstream" checkout --detach FETCH_HEAD
+      - name: Reconstruct and verify the optimized Sage sources
+        run: |
+          python3 scripts/sage_release.py apply --sage "$RUNNER_TEMP/sage-upstream"
+          python3 scripts/sage_release.py verify --sage "$RUNNER_TEMP/sage-upstream"
+      - name: Package reproducible Sage source kit
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/cryptanalysis-v* ]]; then
+            version=${GITHUB_REF_NAME#cryptanalysis-v}
+          elif [[ "$GITHUB_REF" == refs/tags/ec2k-gpu-v* ]]; then
+            version=${GITHUB_REF_NAME#ec2k-gpu-v}
+          else
+            version="0.0.0-dev.${GITHUB_SHA::12}"
+          fi
+          python3 scripts/sage_release.py bundle --version "$version" --out ecc2k130/dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cryptanalysis-sage-source
+          path: ecc2k130/dist/cryptanalysis-sage-*
+          if-no-files-found: error
+
+  release:
+    name: publish
+    needs: [build, sage-source]
+    if: startsWith(github.ref, 'refs/tags/cryptanalysis-v') || startsWith(github.ref, 'refs/tags/ec2k-gpu-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          flags=()
+          case "$TAG" in *-rc* | *-pre*) flags+=(--prerelease) ;; esac
+          version=${TAG#cryptanalysis-v}
+          version=${version#ec2k-gpu-v}
+          cat > notes.md <<EOF
+          cryptanalysis $version: BSGS, rho, and prime-field index calculus from one CLI.
+          ECC2K-130 rho uses a packaged curve-specific CUDA backend for NVIDIA GPUs from Ampere (sm_80) onward on Linux.
+
+          \`\`\`sh
+          curl -fsSLO https://github.com/${GITHUB_REPOSITORY}/releases/download/$TAG/cryptanalysis-$version-linux-x86_64.tar.gz
+          curl -fsSLO https://github.com/${GITHUB_REPOSITORY}/releases/download/$TAG/cryptanalysis-$version-linux-x86_64.tar.gz.sha256
+          sha256sum -c cryptanalysis-$version-linux-x86_64.tar.gz.sha256
+          tar xzf cryptanalysis-$version-linux-x86_64.tar.gz && cd cryptanalysis-$version-linux-x86_64
+          bin/cryptanalysis rho --curve ecc2k130 --check --kat share/cryptanalysis/campaign-kat.hex
+          bin/cryptanalysis rho --curve ecc2k130 --run-id R --dp-file dps.bin --checkpoint state.ck
+          \`\`\`
+
+          Pick \`R\` at random in 10000-65534, one per GPU. The legacy ec2k-gpu archive is also included for existing runners. See share/cryptanalysis/ECC2K130-README.md in the archive for campaign point details, and ecc2k130/scripts/device_check.sh for checks on a card. The index-calculus command currently targets the multiplicative group of a prime field.
+
+          The cryptanalysis-sage-$version-source.tar.gz asset contains the pinned Sage patch stack and a local build/verification script. It is source, not a precompiled Sage binary; see docs/SAGE_RELEASE.md.
+          EOF
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" \
+            --title "cryptanalysis $version" --notes-file notes.md "${flags[@]}"
