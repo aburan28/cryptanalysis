@@ -2154,6 +2154,26 @@ matrix build/solve, target descent, and scalar replay. Keep the complete
 challenge only if the complete degree-131 projection is credibly below
 \(2^{61}\).
 
+### Q1467 density-matched four-point solver gate
+
+[Q1467](q1467_density_bridge/README.md) selects an exact N53 factor base
+with 2,756 usable subgroup points and 26 folded columns. Its four-summand
+counting upper bound is 0.11447 per uniform target, within 0.0142 bits of
+the exact N131 W≤6 reference bound of 0.11335. The exact N83 W≤4 base has
+1,934,066 usable points, 11,651 columns, and counting upper bound 0.24113.
+These are relation-supply bounds, not measured solver success rates.
+
+Six frozen compact chained-\(S_3\) cells were run with the same Q1466 native
+solver and a 60-second cap. Fully pinned planted controls independently
+verify at both degrees. Both unpinned known-representable controls and both
+ordinary queries reach the cap without a model. The N53 unpinned and ordinary
+cells each make 49 exact no-chain checks; the N83 cells each make one. The
+archive audit preserves the first replay-wrapper failure and verifies the
+corrected revision-2 receipts. The current solver under this cap does not
+meet the first successful-unpinned-decomposition gate. No natural useful-row
+rate, matched pair-table result, successful N83 cost, or complete N131 `2^x`
+is available. The challenge remains closed.
+
 ## Reproduction
 
 From this repository worktree, first save checked runtime information:
