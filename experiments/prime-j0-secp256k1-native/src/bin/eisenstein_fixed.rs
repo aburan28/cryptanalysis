@@ -5,6 +5,8 @@
 
 #[path = "../../../../suite/src/ct_bignum.rs"]
 mod ct_bignum;
+#[path = "eisenstein_fixed/unit_orbit_windows.rs"]
+mod unit_orbit_windows;
 
 #[cfg(test)]
 mod utils {
@@ -3465,6 +3467,7 @@ fn main() {
             || args == ["--scalar-w6-comb13-hex9-radius2-fixed"]
             || args == ["--scalar-w6-comb13-hex9-graph33-fixed"]
             || args == ["--scalar-w6-comb13-hex9-graphaware33-fixed"]
+            || args == ["--scalar-unit-orbit-windows-fixed"]
             || args == ["--scalar-w6-comb13-hex4-fixed"]
             || args == ["--scalar-glv-comb8-fixed"]
             || args == ["--scalar-glv-comb10-fixed"],
@@ -3491,6 +3494,7 @@ fn main() {
         || args == ["--scalar-w6-comb13-hex9-radius2-fixed"]
         || args == ["--scalar-w6-comb13-hex9-graph33-fixed"]
         || args == ["--scalar-w6-comb13-hex9-graphaware33-fixed"]
+        || args == ["--scalar-unit-orbit-windows-fixed"]
         || args == ["--scalar-w6-comb13-hex4-fixed"]
         || args == ["--scalar-glv-comb8-fixed"]
         || args == ["--scalar-glv-comb10-fixed"];
@@ -3518,6 +3522,9 @@ fn main() {
     } else {
         0
     };
+    if args == ["--scalar-unit-orbit-windows-fixed"] {
+        unit_orbit_windows::warm();
+    }
     for line in io::stdin().lock().lines() {
         let line = line.expect("input line");
         if line.trim().is_empty() {
@@ -3527,6 +3534,19 @@ fn main() {
         if scalar_mode {
             assert_eq!(fields.len(), 1, "expected one hexadecimal scalar");
             let scalar = scalar_from_hex(fields[0]);
+            if args == ["--scalar-unit-orbit-windows-fixed"] {
+                let (point, a, b, additions, retained_bytes) =
+                    unit_orbit_windows::multiply(&scalar);
+                println!("{}", json!({
+                    "point": if point.is_identity() { None } else { Some(point.strings()) },
+                    "representative": [a.to_string(), b.to_string()],
+                    "tau_steps": 0,
+                    "nonzero_digits": additions,
+                    "retained_bytes": retained_bytes,
+                    "radix": "unit-orbit-windows-fixed",
+                }));
+                continue;
+            }
             if glv_rows != 0 {
                 let (point, a, b, doublings, additions) =
                     scalar_multiply_glv_comb(&scalar, glv_rows);
