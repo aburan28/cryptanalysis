@@ -1,0 +1,199 @@
+{
+  "architecture": "arm64",
+  "artifact_sha256": {
+    "package-evidence-binding.json": "35a7fe96d24cb4f08092221a127f36a4a0c9df891bce653bf0242796a0065a8a",
+    "package-independent-audit.json": "b9f270ccce6f3af5200573e6317c02cd16c503905890a50e90088f4b1980e119",
+    "package-validation.json.gz": "23ca30930e35933085e8f21f59070885df2afebdba7d3e731cb02ff13553a423"
+  },
+  "budget_controls": 4,
+  "build_receipt": {
+    "architecture": "arm64",
+    "binaries": {
+      "producer-budget.dylib": "10c128acca20fa76c9ceeeb001e419daa9068e415b8181c4b0c9298ad44958aa",
+      "producer-copy-budget.dylib": "abc55792a309b5fd8da9c5473abfbaa46ef5c0e8f63f6734079d831d9c296e70",
+      "producer-metal.dylib": "d2e0a83ab0d38223bcfb69f1dd4c497158ca4aeddaa12e8503ea4055a2efdcf5",
+      "producer-multiplier-budget.dylib": "74caf5705cc9272ec7804374f178322bec4e03ba97f90dd8b56a1d7f658209d0",
+      "producer-reconstruction-budget.dylib": "14273852d6684ec22443923bfa040146807f4bcafa0fe82086178aa6d2e1fe2f",
+      "producer-ubsan.dylib": "17796a194c2bef7873d1d6e7d8663098a6309add4f2c79ba1ca69ba9b5e7aecb",
+      "producer.dylib": "a89faa405f4b7ad4aba7a0c9240ed9ef4d8e04be6dc047b85314bd293c1e8552"
+    },
+    "commands": [
+      [
+        "clang++",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-dynamiclib",
+        "-O3",
+        "/Volumes/SSD990/llm/tmp/cryptanalysis-block-symbolic-affine/experiments/groebner-perf-20260924/round42/producer.cpp",
+        "-o",
+        "/Volumes/SSD990/llm/tmp/cryptanalysis-block-symbolic-affine/experiments/groebner-perf-20260924/round42/build/producer.dylib"
+      ],
+      [
+        "clang++",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-dynamiclib",
+        "-O1",
+        "-g",
+        "-fsanitize=undefined",
+        "-fsanitize-undefined-trap-on-error",
+        "-fno-sanitize-recover=all",
+        "/Volumes/SSD990/llm/tmp/cryptanalysis-block-symbolic-affine/experiments/groebner-perf-20260924/round42/producer.cpp",
+        "-o",
+        "/Volumes/SSD990/llm/tmp/cryptanalysis-block-symbolic-affine/experiments/groebner-perf-20260924/round42/build/producer-ubsan.dylib"
+      ],
+      [
+        "clang++",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-dynamiclib",
+        "-O2",
+        "-DQUADRATIC_ENUMERATION_BUDGET=8",
+        "-DMULTIPLIER_WORK_BUDGET=8",
+        "-DMULTIPLIER_BRANCH_BUDGET=8",
+        "/Volumes/SSD990/llm/tmp/cryptanalysis-block-symbolic-affine/experiments/groebner-perf-20260924/round42/producer.cpp",
+        "-o",
+        "/Volumes/SSD990/llm/tmp/cryptanalysis-block-symbolic-affine/experiments/groebner-perf-20260924/round42/build/producer-budget.dylib"
+      ],
+      [
+        "clang++",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-dynamiclib",
+        "-O2",
+        "-DMULTIPLIER_WORK_BUDGET=8",
+        "-DMULTIPLIER_BRANCH_BUDGET=8",
+        "/Volumes/SSD990/llm/tmp/cryptanalysis-block-symbolic-affine/experiments/groebner-perf-20260924/round42/producer.cpp",
+        "-o",
+        "/Volumes/SSD990/llm/tmp/cryptanalysis-block-symbolic-affine/experiments/groebner-perf-20260924/round42/build/producer-multiplier-budget.dylib"
+      ],
+      [
+        "clang++",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-dynamiclib",
+        "-O2",
+        "-DSYMMETRY_COPY_WORDS_BUDGET=0",
+        "/Volumes/SSD990/llm/tmp/cryptanalysis-block-symbolic-affine/experiments/groebner-perf-20260924/round42/producer.cpp",
+        "-o",
+        "/Volumes/SSD990/llm/tmp/cryptanalysis-block-symbolic-affine/experiments/groebner-perf-20260924/round42/build/producer-copy-budget.dylib"
+      ],
+      [
+        "clang++",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-dynamiclib",
+        "-O2",
+        "-DDEFERRED_RECONSTRUCTION_BUDGET=0",
+        "/Volumes/SSD990/llm/tmp/cryptanalysis-block-symbolic-affine/experiments/groebner-perf-20260924/round42/producer.cpp",
+        "-o",
+        "/Volumes/SSD990/llm/tmp/cryptanalysis-block-symbolic-affine/experiments/groebner-perf-20260924/round42/build/producer-reconstruction-budget.dylib"
+      ],
+      [
+        "clang++",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-dynamiclib",
+        "-O3",
+        "-DQUADRATIC_METAL",
+        "-fobjc-arc",
+        "-framework",
+        "Foundation",
+        "-framework",
+        "Metal",
+        "/Volumes/SSD990/llm/tmp/cryptanalysis-block-symbolic-affine/experiments/groebner-perf-20260924/round42/producer.cpp",
+        "/Volumes/SSD990/llm/tmp/cryptanalysis-block-symbolic-affine/experiments/groebner-perf-20260924/round42/metal_backend.mm",
+        "-o",
+        "/Volumes/SSD990/llm/tmp/cryptanalysis-block-symbolic-affine/experiments/groebner-perf-20260924/round42/build/producer-metal.dylib"
+      ]
+    ],
+    "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: arm64-apple-darwin25.6.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin\n",
+    "generated": {
+      "kernel.inc": "6dc7dcfc0647855f66d5b5f3fd6db78d204a89b8b091f849e9c513bae4de2a49"
+    },
+    "platform": "macOS-26.6-arm64-arm-64bit-Mach-O",
+    "sources": {
+      "round27/interpolation.hpp": "032dc1c55aa240208cc50553cb2bed47e2d465b2f67055b03ae06864f868fc78",
+      "round31/abi.h": "11109374a810b6b26dd0fc6cf1b47eccf990d8b1e1aac35d0e1d9949912d12cb",
+      "round32/abi.h": "884cc4bdb8a9ee0ca97c55b1bf2418d0da5d5f38879c605d65da7693d3da2305",
+      "round33/abi.h": "42882b3fd6c7e147531af9ea7628cde43baf45c460eb0c3513b290a5bd26113f",
+      "round34/abi.h": "34aa9d4edd3232220d46df494bc31cf4d8465b47fb6e8a8a98d6052a9455c3e9",
+      "round35/abi.h": "c67a25af517cefeb32f09eacd2f20695ae2fb865c0b922fb2a93cf240393af66",
+      "round36/abi.h": "7493638b425ce13733d0a70a64df09e8a72cf724028f52f11512ad510335ef0e",
+      "round37/abi.h": "71e364988dc8a138aaef4857066898b16b2c2f13e6ab085d7275eca4e5847cbe",
+      "round38/abi.h": "c7796f60a524b14953898530f8aa1ae469d1cb7fa3ee25093a8b5f2b31ad9ef2",
+      "round42/abi.h": "71e364988dc8a138aaef4857066898b16b2c2f13e6ab085d7275eca4e5847cbe",
+      "round42/audit_queries.py": "dbdde879b1240ebfca9cd78f8289c6ed7a7e43bf0b72eb529b27541ac04752aa",
+      "round42/build.py": "636ce78bc5a86685aaf2ead747bd2f34d7cae5e5de90405a4a73b883aa0d0020",
+      "round42/metal_backend.h": "b9a8897fa9ab06f174e5f58bd1def1c2f4f136e2c615341a93637a5b2c05589a",
+      "round42/metal_backend.mm": "3cc6f4f7c2c0903be283f2080e2570bb30114c1f4f714cb649fa2e34c041fad0",
+      "round42/normalized.py": "311da2a9fab74ba7fe256c3f907567b6ac6a9149c890e4a68f7b72ae233e4439",
+      "round42/normalized_query.py": "05e581871146d072e3ab73ebe08e55fca633f086d9ac386f6f48c855e3112c01",
+      "round42/producer.cpp": "73bb038479e105ad16d2b3bb6e3a512b693ee7c00ba32420c29a89db312e6f0b",
+      "round42/quadratic.metal": "c5c076ec4d82c8571316e5447e511b46434fc2cd74a4bf11a38c5de518e61054",
+      "round42/transport_controls.py": "251d07a1b30f44fe04f98aa6e8b65702406e5248c761bac52a31e83a60829094",
+      "round42/validate_native.py": "2cd371e9e631f913685862cd923c91ff6e30f4dc470ea69e964df0a757258383"
+    }
+  },
+  "candidate_id": null,
+  "complete_queries": 54,
+  "configuration_controls": [
+    {
+      "modulus": 130,
+      "status": "rejected-and-disabled"
+    },
+    {
+      "modulus": 258,
+      "status": "rejected-and-disabled"
+    },
+    {
+      "argument": "-1",
+      "status": "rejected-before-native-request"
+    },
+    {
+      "argument": "True",
+      "status": "rejected-before-native-request"
+    },
+    {
+      "argument": "18446744073709551616",
+      "status": "rejected-before-native-request"
+    },
+    {
+      "modulus": 129,
+      "status": "setup-nonunit-disabled"
+    },
+    {
+      "modulus": 0,
+      "status": "explicitly-disabled"
+    }
+  ],
+  "device": "Physical Apple M4 Pro",
+  "expected_inconclusive_systems": 54,
+  "independently_audited_queries": 54,
+  "metal": {
+    "device": "Apple M4 Pro; registry=4294968414",
+    "requested": true,
+    "status": "AVAILABLE"
+  },
+  "online_speedup": null,
+  "status": "PASS",
+  "systems": 18003,
+  "timing_eligible": false,
+  "transport_shapes": 248,
+  "unique_proofs": 35,
+  "verified_systems": 17949
+}

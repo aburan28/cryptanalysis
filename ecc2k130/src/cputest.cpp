@@ -11,12 +11,16 @@
  *   - the 64-bit-limb hot path (f131.h) against the packed routines: product,
  *     squaring, reduction, conversion, selection with histories that fire
  *     the cycle rule, addend;
+ *   - on x86-64, the vector path (f131x.h) against the limb path, lane by
+ *     lane: product, squaring, reduction, conversion, the reduction mod 131,
+ *     and the selection on bit planes against the byte tables;
  *   - the engine's start points against the model's;
  *   - after a run with reports, --max-iters restarts and several workers,
  *     every lane where a re-walk from its seed on the model puts it, and
  *     every report re-walked the same way;
  *   - the reports of a run do not depend on how its lanes were cut into
- *     batches, nor on how many workers advanced them.
+ *     batches (whole vectors, ragged tails, fewer lanes than chains), nor on
+ *     how many workers advanced them.
  */
 #include "cpuwalk.h"
 #include "f131.h"
@@ -125,6 +129,126 @@ void checkF131(const HostTable &table, CheckResult *cr)
     }
 }
 
+#if ECC_F131_LANES > 1
+// The vector path (f131x.h) against the scalar one, lane by lane: the
+// arithmetic, and the selection on bit planes against the byte tables, on
+// operands that reach every branch of the pivot (a thin x whose mask is empty
+// more often than not, a single-bit x, x of every weight the table indexes).
+void checkF131x(const HostTable &table, CheckResult *cr)
+{
+    using namespace eccPacked131;
+    const int N = ECC_F131_LANES;
+    typedef f131x::F131x<N> X;
+    typedef typename f131x::Limbs<N>::V V;
+    const std::vector<uint32_t> consts = table.deviceConsts();
+    const uint32_t *tw = consts.data();
+    f131x::SelectConsts sc;
+    sc.build(tw);
+    uint64_t rng = 0x452821E638D01377ULL;
+    const auto randomF131 = [&rng](int shape) {
+        f131::F131 a;
+        for (int l = 0; l < 3; ++l) {
+            uint64_t w = splitmix(&rng);
+            if (shape == 1) w &= splitmix(&rng) & splitmix(&rng); // about a sixteenth of the bits
+            if (shape == 2) w = 0;
+            if (shape == 3) w = ~0ull;
+            a.w[l] = w;
+        }
+        if (shape == 2) {
+            const unsigned e = unsigned(splitmix(&rng) % 131u);
+            a.w[e >> 6] = 1ull << (e & 63);
+        }
+        a.w[2] &= 7u;
+        return a;
+    };
+    const auto same = [](const f131::F131 &a, const f131::F131 &b) {
+        return a.w[0] == b.w[0] && a.w[1] == b.w[1] && a.w[2] == b.w[2];
+    };
+    for (int i = 0; i < 1000; ++i) {
+        X a, b;
+        f131::F131 as[N], bs[N];
+        for (int l = 0; l < N; ++l) {
+            as[l] = randomF131((i + l) % 4 == 3 ? 3 : 0);
+            bs[l] = randomF131((i + l) % 5 == 4 ? 3 : 0);
+            a.setLane(l, as[l]);
+            b.setLane(l, bs[l]);
+        }
+        const X m = f131x::mul<N>(a, b), s = f131x::sqr<N>(a), c = f131x::fromPolynomial<N>(a);
+        V h[5];
+        uint64_t hs[5];
+        for (int k = 0; k < 5; ++k) {
+            for (int l = 0; l < N; ++l) h[k][l] = splitmix(&rng);
+        }
+        const X r = f131x::reduce<N>(h);
+        bool mulOk = true, sqrOk = true, convOk = true, redOk = true;
+        for (int l = 0; l < N; ++l) {
+            mulOk &= same(m.lane(l), f131::mul(as[l], bs[l]));
+            sqrOk &= same(s.lane(l), f131::sqr(as[l]));
+            convOk &= same(c.lane(l), f131::fromPolynomial(as[l]));
+            for (int k = 0; k < 5; ++k) hs[k] = h[k][l];
+            redOk &= same(r.lane(l), f131::reduce(hs));
+        }
+        cr->note(mulOk, "f131x mul == f131 mul, lane by lane");
+        cr->note(sqrOk, "f131x sqr == f131 sqr, lane by lane");
+        cr->note(convOk, "f131x conversion == f131 conversion, lane by lane");
+        cr->note(redOk, "f131x reduce == f131 reduce, lane by lane");
+        // The inverse against the packed normal-basis chain the engine used
+        // to call, and a * a^-1 = 1 (a = 0 excepted, where both give 0).
+        if (i % 10 == 0) {
+            const X ia = f131x::inv<N>(a), one = f131x::mul<N>(a, ia);
+            bool invOk = true, unitOk = true;
+            for (int l = 0; l < N; ++l) {
+                invOk &= same(ia.lane(l), f131::fromPacked(invPolynomial131(f131::toPacked(as[l]))));
+                const bool zero = (as[l].w[0] | as[l].w[1] | as[l].w[2]) == 0;
+                unitOk &= same(one.lane(l), f131::F131{{zero ? 0u : 1u, 0, 0}});
+            }
+            cr->note(invOk, "f131x inv == packed inv131, lane by lane");
+            cr->note(unitOk, "f131x inv: a * inv(a) == 1");
+        }
+    }
+    // mod131 is exact for every p the phase can produce (below 131^2 for the
+    // sum, below 131 * 130 for the product); hold it over all of 16 bits.
+    {
+        bool ok = true;
+        for (unsigned p = 0; p < 65536u; p += N) {
+            V v;
+            for (int l = 0; l < N; ++l) v[l] = p + l;
+            const V q = f131x::mod131<N>(v);
+            for (int l = 0; l < N; ++l) ok &= q[l] == (p + l) % 131u;
+        }
+        cr->note(ok, "f131x mod131 == % 131 on every 16-bit input");
+    }
+    for (int i = 0; i < 1500; ++i) {
+        X xn, yp;
+        f131::F131 xs[N], ys[N];
+        for (int l = 0; l < N; ++l) {
+            // every fourth lane thin, every eighth a single coordinate, one
+            // in 64 all ones (weight 131, the last entry of HW^-1)
+            const int shape = (i + l) % 64 == 63 ? 3 : (i + l) % 8 == 7 ? 2 : (i + l) % 4 == 3 ? 1 : 0;
+            do xs[l] = randomF131(shape);
+            while ((xs[l].w[0] | xs[l].w[1] | xs[l].w[2]) == 0);
+            ys[l] = randomF131(0);
+            xn.setLane(l, xs[l]);
+            yp.setLane(l, ys[l]);
+        }
+        V hw, k, eps;
+        f131x::select<N>(xn, yp, sc, &hw, &k, &eps);
+        bool hwOk = true, kOk = true, epsOk = true;
+        for (int l = 0; l < N; ++l) {
+            const int wantHw = f131::weight(xs[l]);
+            const int wantK = f131::selectPhase(xs[l], wantHw, tw);
+            const int wantEps = f131::coordinate(ys[l], f131::selectPivot(xs[l], wantK, tw), tw);
+            hwOk &= int(hw[l]) == wantHw;
+            kOk &= int(k[l]) == wantK;
+            epsOk &= int(eps[l]) == wantEps;
+        }
+        cr->note(hwOk, "f131x select: weight == f131 weight");
+        cr->note(kOk, "f131x select: phase on bit planes == f131 selectPhase");
+        cr->note(epsOk, "f131x select: pivot and sign == f131 selectPivot, coordinate");
+    }
+}
+#endif
+
 void checkStartPoints(const HostTable &table, CheckResult *cr)
 {
     Options o;
@@ -157,6 +281,10 @@ void checkEngine(const HostTable &table, CheckResult *cr)
     g.sliceSteps = 7;
     g.guardPeriod = 16;
     CpuEngine e(table, o, false, g);
+    e.prepare();
+    int seeded = 0;
+    for (size_t lane = 0; lane < e.laneCount(); ++lane) seeded += e.laneReady(lane) ? 1 : 0;
+    cr->note(seeded == (int)e.laneCount(), "prepare seeds every batch");
     std::vector<DpRecord> reports;
     LaunchCounts counts;
     for (int l = 0; l < 3; ++l) e.launch(50, &reports, &counts);
@@ -206,15 +334,22 @@ std::vector<DpRecord> reportsOf(const HostTable &table, int workers, int batch, 
 
 void checkGeometryIndependence(const HostTable &table, CheckResult *cr)
 {
-    const std::vector<DpRecord> a = reportsOf(table, 1, 12, 4), b = reportsOf(table, 1, 8, 6),
-                                c = reportsOf(table, 4, 16, 3);
-    cr->note(!a.empty(), "the geometry comparison has reports to compare");
     const auto same = [](const std::vector<DpRecord> &p, const std::vector<DpRecord> &q) {
         return p.size() == q.size() &&
                (p.empty() || memcmp(p.data(), q.data(), p.size() * sizeof(DpRecord)) == 0);
     };
+    // 48 lanes: batches below, at and above the chain count, with and without
+    // a tail that the vector width does not cover.
+    const std::vector<DpRecord> a = reportsOf(table, 1, 12, 4), b = reportsOf(table, 1, 8, 6),
+                                c = reportsOf(table, 4, 16, 3), d = reportsOf(table, 2, 24, 2),
+                                e = reportsOf(table, 1, 48, 1);
+    cr->note(!a.empty(), "the geometry comparison has reports to compare");
     cr->note(same(a, b), "reports do not depend on the batch size");
     cr->note(same(a, c), "reports do not depend on the workers");
+    cr->note(same(a, d) && same(a, e), "nor on a batch of several vectors with no tail");
+    // 74 lanes: a batch that is several vectors and a tail, against one batch.
+    const std::vector<DpRecord> f = reportsOf(table, 2, 37, 2), g = reportsOf(table, 1, 74, 1);
+    cr->note(!f.empty() && same(f, g), "nor on a batch of several vectors and a tail");
 }
 
 } // namespace
@@ -231,6 +366,9 @@ int main(int argc, char **argv)
     CheckResult cr = crossCheck(*table, rounds, 0x243F6A8885A308D3ULL);
     checkClmul(&cr);
     checkF131(*table, &cr);
+#if ECC_F131_LANES > 1
+    checkF131x(*table, &cr);
+#endif
     checkStartPoints(*table, &cr);
     checkEngine(*table, &cr);
     checkGeometryIndependence(*table, &cr);
