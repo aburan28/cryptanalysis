@@ -1,5 +1,13 @@
 # Trace-only last-pair relaxation accepts every N41 first-pair sum
 
+An exact **sparse-product linear gate** now rejects all 63 selected
+target-derived fourth outputs that pass the trace-only relaxation, while
+accepting all 1,956 exact fourth-pair outputs. The gate retains the
+rotation-30 W6 seed-sum and product spans in the halftrace-cubic pair
+equation. Its [frozen corrected result](linear_result_v2.json) and
+[independent Sage matrix audit](linear_audit_v2.json) establish an exact
+necessary rejection test at the point where the fourth output is known.
+
 Keeping three exact source-pair outputs but replacing the fourth pair's
 factor-base image by its trace-zero condition accepts **all 63** possible
 first-pair seed sums on the frozen N41 public point. Restoring exact
@@ -57,13 +65,42 @@ admissible preimage, the same additive argument makes a trace-only fourth
 output automatic from three trace-zero pair outputs. This is an exact
 necessary-condition statement; it does not enumerate N131 pair outputs.
 
+## Sparse-product linear gate at a known fourth output
+
+For a proposed reciprocal fourth output `z`, let `s` lie in the rotated
+six-dimensional source-sum space, `p` in its rotated 11-dimensional
+product span, and `epsilon` be one branch bit. A genuine pair satisfies
+`p*z + H((s+z)^2) + epsilon = 0`, where `H` is the field halftrace.
+For fixed `z`, this is a binary linear system with 18 columns and 41
+coordinate rows. Inconsistency safely rejects the output before solving
+whether `p` factors into two rational source seeds.
+
+The corrected frozen [protocol](linear_protocol_v2.json) uses the fourth
+window's Frobenius rotation **30**. Its checked-Sage [producer](linear_last_pair_sage_v2.py)
+accepted **1,956/1,956** exact fourth-pair outputs and rejected **63/63**
+selected target-derived raw outputs, one from each first-pair seed-sum
+family. The [independent audit](linear_audit_v2.json) rebuilt all 63
+negative linear systems with Sage's `GF(2)` matrix rank, matched every
+decision and rank, and checked the known public-row fourth pair as a
+positive. The exploratory producer charged 44.375 s for the 1,956-positive
+scan, 0.0064 s for 63 target-candidate constructions after raw pair lists
+were ready, and 1.502 s for the 63 linear-gate calls. These are Python/Sage
+stage costs, not a native or end-to-end timing comparison.
+
+The first frozen version used unrotated W6/product columns for the fourth
+window. Its positive control failed; the [failure receipt](linear_v1_failure.json)
+records `PRODUCER_FAILURE_WRONG_ROTATION_BASIS`. The known fourth-pair
+output fails that unrotated system and passes the corrected rotation-30
+system. The corrected version has separate frozen sources and result files.
+
 ## Next method gate
 
-A useful early constraint must retain more than trace and subgroup
-membership for the unresolved fourth pair. The next candidate is a sound
-blockwise eliminant that keeps the fourth pair's sparse seed sum/product
-relation with its reciprocal output and substitutes the target-conditioned
-required output from the other partial sums. Its N41 test should count
-rejected partial states before constructing complete fourth-pair witnesses,
-then compare the charged cost with the indexed join. The complete IC method
-remains a design proposal with `candidate_id: null`.
+The linear gate has the required soundness and strong rejection on the
+selected N41 target-derived outputs. It currently needs all three other
+pair outputs fixed to compute `z`; enumerating those triples would miss
+the N131 resource goal. The next candidate must eliminate or compress an
+unresolved third pair jointly with the target and the fourth pair's
+rotated sparse-product equation. Its N41 test should count rejected
+*families* before completing the third pair, preserve every exact row,
+and compare charged construction plus probe cost with the indexed join.
+The complete IC method remains a design proposal with `candidate_id: null`.
