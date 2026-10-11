@@ -408,3 +408,10 @@ Correctness passes do not establish speedups: require matched full-operation
 benchmarks on each claimed device, including conversion and transfer costs,
 before enabling device-specific automatic routing or making performance
 claims. Keep unmeasured backends opt-in.
+
+## Cross-repository curve identity in comparisons
+
+For new curve comparisons and UI exports, follow [docs/curve-identities.md](docs/curve-identities.md)
+and `tools/curve_identity.py`. Reuse EC1 aliases and full curve UIDs across IC and
+Pollard rho; keep factor-base/isogeny candidate identities separate. Preserve
+immutable historical names and never infer exact identity from field degree alone.
