@@ -21,7 +21,21 @@ using separately implemented Eisenstein actions, checks that the removed seed
 was redundant at each step, reconstructs the priority assignment, and checks
 all **1,048,576 residues**. The [receipt](redundant-check.json) passed.
 
-The source and cover were frozen in commit `9102e45` before any scalar panel
-was drawn for this variant. A new disjoint scalar panel, native point replay,
-and isolated CPU timing are subsequent measurements. The class count is an
-exact cover result and does not depend on host timing.
+The source and cover were frozen in commit `9102e45`, and the panel tool was
+frozen in commit `be7233a` before drawing the new 4,096-scalar panel.
+[Input](redundant-inputs.json), [path](redundant-paths.jsonl), and
+[independent check](redundant-holdout-check.json) receipts bind the panel to
+the cover and confirm disjointness from the listed earlier panels. The path
+check validates every scalar congruence and computes 128 independent binary
+point fixtures.
+
+| Same fresh 4,096-scalar panel | Active rho paths | Rho digits | Full-window terms |
+| --- | ---: | ---: | ---: |
+| Cycle-refined | 1,441 | 1,735 | 49,152 |
+| Redundant-slot augmentation | **1,435** | **1,720** | 49,152 |
+
+Fourteen scalars switch from rho-active to tau-only, while eight switch in
+the other direction. The net difference is six paths and fifteen rho digits
+on this panel; it is a paired path diagnostic. Native point replay for the
+new atlas and isolated CPU timing remain subsequent measurements. The exact
+class count does not depend on host timing.
