@@ -7,11 +7,11 @@ lookup covers a finite norm disk rather than all residues modulo 1024.
 Six-unit and optional degree-three tau images share one stored seed point;
 evaluation uses two tau buckets and grouped-unit gauge.
 
-An exact preliminary screen found 87,383 seeds for the full radix-1024
-atlas and 10,061 seeds for the terminal disk. Twelve full rows plus one
-terminal row would retain 1,058,657 affine slots, with 67,754,048 bytes of
-64-byte point payload. These are design figures until construction and an
-independent verifier produce source-bound receipts.
+The exhaustive atlas construction and independent verifier certify 87,383
+seeds for the full radix-1024 atlas and 10,061 seeds for the terminal disk.
+Twelve full rows plus one terminal row retain 1,058,657 affine slots, with
+67,754,048 bytes of 64-byte point payload and 72,663,424 retained bytes in
+the native implementation.
 
 ## Mathematical gate
 
