@@ -2476,13 +2476,29 @@ The independent audit preserves the operation vectors and charged stage
 intervals. This is a bounded search failure, not a successful PDP cost
 or an N131 work exponent.
 
+### Q1494 full native-XOR window S3
+
+[Q1494](q1494_full_xor_window_s3/README.md) adds the missing first-pair
+`S3` link to Q1493's exact window-base formula and gives all three links
+to CryptoMiniSat as native XOR rows. Its pinned N53 ordinary rotation-44
+control returns SAT and replays the public relation. With the witness
+pins removed, that known-satisfiable cell reaches the frozen 60-second
+cap without a model; the ordinary N53 and N83 rotation-zero cells also
+censor. The N53 formula has 795 XOR rows, and N83 has 1,245. The audit
+preserves exact conflicts and raw rounded propagation displays. This
+tests one solver representation on three bounded cells, not a full
+target-orbit sweep or successful decomposition cost. N83 yield, novel
+rank, and complete N131 `2^x` remain unknown. The N53 logs show zero
+active Gaussian matrices; N83 later uses one small matrix, while its
+large field-product components exceed the default column limit.
+
 ## Next goal
 
 Test a **fully coupled four-leaf search** that leaves both internal
 midpoints existential while it reasons about many cyclic windows at once.
 Q1485 through Q1487 all choose or constrain a narrow midpoint slice and
-find no unpinned relation; Q1493 shows that rotating through every first
-window does not make the current search finish. Pre-register a compact
+find no unpinned relation; Q1493's Frobenius sweep and Q1494's full native
+XOR circuit also censor. Pre-register a compact
 symbolic support method, check it against direct enumeration on small
 fields, and reuse the exact Q1481/Q1482 N53/N83 curves, bases, public
 points and limits. The first gate is to recover Q1490's known-satisfiable
@@ -2492,7 +2508,7 @@ followed by an ordinary N83 relation, without constructing the full pair
 table. Only after those gates should a frozen ordinary-query panel estimate
 useful yield and novel rank. Count failed attempts, SAT propagation,
 field arithmetic, memory, and target-dependent wall intervals alongside
-Q1482/Q1483/Q1485/Q1486/Q1487/Q1488/Q1493. If only controls pass, retain
+Q1482/Q1483/Q1485/Q1486/Q1487/Q1488/Q1493/Q1494. If only controls pass, retain
 N83 ordinary cost and N131 complete work as unknown. A complete N131 `2^x`
 also requires its exact usable base, relation collection, final matrix
 solve, target descent, and independent scalar replay.
