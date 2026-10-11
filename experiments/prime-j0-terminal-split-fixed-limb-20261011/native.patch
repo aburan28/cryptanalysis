@@ -1,0 +1,49 @@
+--- a/src/bin/eisenstein_fixed/unit_orbit_windows.rs
++++ b/src/bin/eisenstein_fixed/unit_orbit_windows.rs
+@@ -5449,6 +5449,25 @@
+     }).collect()
+ }
+ 
++fn split_terminal_fixed_corners(k: [u64; 4]) -> [(Signed192, Signed192); 4] {
++    LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
++    let (floor_w, _) = super::reciprocal_cell_limbs_from_words_512(k, &super::RECIP_V1);
++    let (floor_v, _) = super::reciprocal_cell_limbs_from_words_512(k, &super::RECIP_MINUS_W1);
++    let basis = &*super::FIXED_SCALAR_LATTICE;
++    std::array::from_fn(|corner| {
++        let (dw, dv) = [(0, 0), (1, 0), (0, 1), (1, 1)][corner];
++        let qw = super::add_one_192(floor_w, dw);
++        let qv = super::add_one_192(floor_v, dv);
++        let a = super::add_384([k[0], k[1], k[2], k[3], 0, 0],
++                               super::mul_192(qv, basis.u1));
++        let a = super::sub_384(a, super::mul_192(qw, basis.w0));
++        let b = super::sub_384(super::mul_192(qw, basis.minus_w1),
++                               super::mul_192(qv, basis.v1));
++        (super::signed_192_from_twos_complement(a),
++         super::signed_192_from_twos_complement(b))
++    })
++}
++
+ fn multiply_u256_tau_split_terminal(
+     scalar_words: [u64; 4],
+ ) -> (String, SplitTerminalPath) {
+@@ -5458,15 +5477,13 @@
+     } else {
+         super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+     };
+-    let bytes: Vec<u8> = residue.0.iter().flat_map(|limb| limb.to_le_bytes()).collect();
+-    let scalar_big = BigInt::from_bytes_le(num_bigint::Sign::Plus, &bytes);
+-    let corners = hexagonal_four_corner_choices(&scalar_big);
+-    assert_eq!(corners.len(), 4);
++    let baseline = super::hexagonal_certified_fixed_choice_words(residue.0).0;
++    let corners = split_terminal_fixed_corners(residue.0);
++    assert!(corners.contains(&baseline));
+     let tables = &*DUAL_RHO_TABLES;
+     let mut best: Option<SplitTerminalPath> = None;
+-    for (index, (a, b)) in corners.iter().enumerate() {
+-        let rep = (Signed192::from_bigint(a), Signed192::from_bigint(b));
+-        for option in split_terminal_paths(rep, index == 0, tables) {
++    for rep in corners {
++        for option in split_terminal_paths(rep, rep == baseline, tables) {
+             if best.as_ref().is_none_or(|current|
+                 option.proxy < current.proxy ||
+                 (option.proxy == current.proxy &&
