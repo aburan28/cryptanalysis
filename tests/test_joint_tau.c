@@ -10,7 +10,7 @@ static void check_pair(const ca_group *g, const ca_tau4_joint_precomp *pre,
                        uint64_t *saved_tau, uint64_t *saved_full)
 {
     ca_elem ap, bq, expected, separate, joint, fused, paired, paired_five, paired_two;
-    ca_elem paired_gauge;
+    ca_elem paired_gauge, paired_trellis;
     ca_group_mul(g, &ap, p, a % g->order, NULL);
     ca_group_mul(g, &bq, q, b % g->order, NULL);
     ca_group_op(g, &expected, &ap, &bq);
@@ -42,6 +42,18 @@ static void check_pair(const ca_group *g, const ca_tau4_joint_precomp *pre,
     CHECK_EQ_U64(gauge_cost.recode_attempts, two_cost.recode_attempts);
     CHECK_EQ_U64(gauge_cost.pair_scores, two_cost.pair_scores);
     CHECK(gauge_cost.gauge_selected <= 1);
+    ca_tau4_joint_counts trellis_cost = {0};
+    CHECK(ca_ec_tau4_paired_two_trellis_mul_profile(g, pre, &paired_trellis,
+                                                     a, b, &trellis_cost));
+    CHECK(ca_group_equal(g, &paired_trellis, &expected));
+    CHECK_EQ_U64(trellis_cost.recode_attempts, two_cost.recode_attempts);
+    CHECK_EQ_U64(trellis_cost.pair_scores, two_cost.pair_scores);
+    CHECK_EQ_U64(trellis_cost.tau_steps, two_cost.tau_steps);
+    CHECK_EQ_U64(trellis_cost.mixed_adds, two_cost.mixed_adds);
+    CHECK_EQ_U64(trellis_cost.rotations, trellis_cost.digit_rotations +
+                 trellis_cost.gauge_transitions + trellis_cost.final_rotations);
+    CHECK(trellis_cost.rotations <= two_cost.rotations);
+    CHECK(trellis_cost.gauge_model_rotations <= two_cost.rotations);
     if (orbit) {
         ca_tau4_joint_counts combined = {0};
         CHECK(ca_ec_tau4_orbit_mul_profile(g, orbit, &fused, a, b, &combined));
@@ -226,6 +238,7 @@ static void check_curve(uint64_t p, uint64_t b, uint64_t order,
 
 int main(void)
 {
+    CHECK(ca_ec_tau4_gauge_trellis_verify_map());
     check_curve(UINT64_C(4294967377), 15, UINT64_C(23729779),
                 UINT64_C(481899190), UINT64_C(1998487369));
     check_curve(UINT64_C(2305843009213693951), 7, UINT64_C(53624256071278747),
