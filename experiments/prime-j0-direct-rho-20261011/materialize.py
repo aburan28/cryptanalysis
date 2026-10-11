@@ -111,7 +111,7 @@ def main() -> None:
     multiply_u256_tau_dual_rho0_with(scalar_words, false)
 }
 
-fn multiply_u256_tau_dual_rho0_direct_gauge_xyzz_tau(
+pub(super) fn multiply_u256_tau_dual_rho0_direct_gauge_xyzz_tau(
     scalar_words: [u64; 4],
 ) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
     multiply_u256_tau_dual_rho0_with(scalar_words, true)
@@ -157,7 +157,49 @@ fn multiply_u256_tau_dual_rho0_direct_gauge_xyzz_tau(
 
 '''
     source = replace_once(source, marker, direct_test + marker)
+    source = replace_once(source, "    if format == 65 {",
+                          "    if format == 65 || format == 66 {")
     path.write_text(source)
+
+    main_path = output / "src/bin/eisenstein_fixed.rs"
+    main_source = main_path.read_text()
+    for old, new in (("(123..=165)", "(123..=166)"),
+                     ("(124..=165)", "(124..=166)"),
+                     ("(125..=165)", "(125..=166)")):
+        main_source = replace_once(main_source, old, new)
+    main_source = replace_once(main_source,
+        "    let actual = if unit_orbit_format == 165 {",
+        "    let actual = if unit_orbit_format == 166 {\n"
+        "        unit_orbit_windows::multiply_u256_tau_dual_rho0_direct_gauge_xyzz_tau(\n"
+        "            scalar_words.expect(\"direct rho0 requires unsigned 256-bit scalar\")\n"
+        "        ).0\n"
+        "    } else if unit_orbit_format == 165 {")
+    main_source = replace_once(main_source,
+        "    let mode = if unit_orbit_format == 165 {",
+        "    let mode = if unit_orbit_format == 166 {\n"
+        "        \"unit_orbit_u256_tau_dual_rho0_direct_gauge_xyzz_tau_fixed\"\n"
+        "    } else if unit_orbit_format == 165 {")
+    main_source = replace_once(main_source,
+        '            || args[0].starts_with("--check-scalar-unit-orbit-u256-tau-dual-rho0-folded-gauge-xyzz-tau")',
+        '            || args[0].starts_with("--check-scalar-unit-orbit-u256-tau-dual-rho0-direct-gauge-xyzz-tau")\n'
+        '            || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-tau-dual-rho0-direct-gauge-xyzz-tau")\n'
+        '            || args[0].starts_with("--check-scalar-unit-orbit-u256-tau-dual-rho0-folded-gauge-xyzz-tau")')
+    main_source = replace_once(main_source,
+        '            || args[0] == "--check-scalar-unit-orbit-u256-tau-dual-rho0-folded-gauge-xyzz-tau-fixed-case"',
+        '            || args[0] == "--check-scalar-unit-orbit-u256-tau-dual-rho0-direct-gauge-xyzz-tau-fixed-case"\n'
+        '            || args[0] == "--benchmark-scalar-unit-orbit-u256-tau-dual-rho0-direct-gauge-xyzz-tau-fixed-case"\n'
+        '            || args[0] == "--check-scalar-unit-orbit-u256-tau-dual-rho0-folded-gauge-xyzz-tau-fixed-case"')
+    main_source = replace_once(main_source,
+        '        let format = if args[0].contains("unit-orbit-u256-tau-dual-rho0-folded-gauge-xyzz-tau-fixed-fixture") {',
+        '        let format = if args[0].contains("unit-orbit-u256-tau-dual-rho0-direct-gauge-xyzz-tau-fixed-fixture") {\n'
+        '            166\n'
+        '        } else if args[0].contains("unit-orbit-u256-tau-dual-rho0-folded-gauge-xyzz-tau-fixed-fixture") {')
+    main_source = replace_once(main_source,
+        '            if args[0].contains("unit-orbit-u256-tau-dual-rho0-folded-gauge-xyzz-tau") {',
+        '            if args[0].contains("unit-orbit-u256-tau-dual-rho0-direct-gauge-xyzz-tau") {\n'
+        '                166\n'
+        '            } else if args[0].contains("unit-orbit-u256-tau-dual-rho0-folded-gauge-xyzz-tau") {')
+    main_path.write_text(main_source)
     receipt = {"schema": 1, "status": "materialized",
                "materializer_sha256": digest(Path(__file__)),
                "parent_materialization_sha256": sha256(parent_raw).hexdigest(),
