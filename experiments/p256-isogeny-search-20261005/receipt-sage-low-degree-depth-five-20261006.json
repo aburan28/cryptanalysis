@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "protocol_id": "p256-isogeny-search-exploratory-v1",
+  "status": "verified_exploratory_low_degree_depth_five",
+  "claim": "Every unique curve reached within five horizontal steps of degrees 3, 5, 11, and 13 was retained with an explicit path. All 112 curves not present in the prior 98-curve union received a matched-native screen; six exploratory hits failed an independent holdout.",
+  "run_completed_at": "2026-10-06T14:40:02Z",
+  "source": {
+    "pr_parent_remote_commit": "a14b279a3be760605797d3a955188bf16b252bc1",
+    "local_parent_commit": "8ff3aa169147add1f3d654190705370dd6e59e1a",
+    "manifest": "source-sage-low-degree-depth-five-20261006.sha256",
+    "manifest_sha256": "f810f080154438ad5ca31381658cb72ea9300e9d0cbb4c2af8b95bcefce6b059"
+  },
+  "runtime": {
+    "sage_image": "sagemath/sagemath:10.6",
+    "sage_image_digest": "sha256:19995db6194f4a4bab18ce9a88556fd15b9ed5e916b4504fefe618a7796ddbdb",
+    "native_release_binary_sha256": "768fb614af10bcd3990b8373194713b5406051149ea9b627c01b5e1e4f0a9e5d",
+    "host_cpu_isolation": "unverified; wall-time results are exploratory"
+  },
+  "commands": {
+    "search": "sage -python scripts/explore_sage.py --ells 3,5,11,13 --depth 5 --max-nodes 1000 --output results/sage-low-degree-depth-five-20261006/candidates.json",
+    "assemble": "python3 scripts/assemble_sage_low_degree_depth_five.py",
+    "native_screen": "python3 scripts/run_native_screen.py --binary NATIVE_BINARY --candidates results/sage-low-degree-depth-five-20261006/new-candidates.json --block-size 6 --seconds 0.5 --rotations 1 --warmup-seconds 0.05 --output-dir results/sage-low-degree-depth-five-20261006/native-screen",
+    "holdout": "p256_isogeny_native_bench --candidates NEW_CANDIDATES --candidate-id SIX_SCREENING_HITS --seconds 2 --trials 30 --warmup-seconds 0.2 --output results/sage-low-degree-depth-five-20261006/holdout.json",
+    "verify": "python3 scripts/verify_sage_low_degree_depth_five.py"
+  },
+  "artifacts": {
+    "results/sage-wide-depth-one-199-20261006/retained-union.json": "4de01bdc188931e7108cd040604f2d2261cf1f229df2c3bdcb6fbcb034575efb",
+    "results/sage-low-degree-depth-five-20261006/candidates.json": "3152a1d30a4508227ea72b698e3c24bf77d250472b2346a8f80905c37320c8d3",
+    "results/sage-low-degree-depth-five-20261006/new-candidates.json": "666db70553762dfaf0cc9e72e459ba3e649e50613880056c3c55d60baeabab73",
+    "results/sage-low-degree-depth-five-20261006/retained-union.json": "a57863e0e8c8ef20a4b8b0105534174a6202d1aa672765ad59e6a130d36c81bc",
+    "results/sage-low-degree-depth-five-20261006/native-screen/block-01.json": "21f952b6666fffa3e2744c8a25a093fe73f61a0886b304e6225a92817d729c6d",
+    "results/sage-low-degree-depth-five-20261006/native-screen/block-02.json": "5007751da7c21b9021f59797e419850588da63eb33efcb36ec14ec815b7704ba",
+    "results/sage-low-degree-depth-five-20261006/native-screen/block-03.json": "f3394f7848c5b2f10daf46592610953d7ba7d358598051cdb78e6736be2a404a",
+    "results/sage-low-degree-depth-five-20261006/native-screen/block-04.json": "3b53e1e757a1d57edf69f1816f7fda9696811085a00bcd5fa52477235cf8ff33",
+    "results/sage-low-degree-depth-five-20261006/native-screen/block-05.json": "3f6973d6b0353c254d3bc01f0d1c3834430fd25102515a835536db1877a71f66",
+    "results/sage-low-degree-depth-five-20261006/native-screen/block-06.json": "a4a23680cff839ee523f762c2a5f6f7a07af22986ed416e7d977612a07396b86",
+    "results/sage-low-degree-depth-five-20261006/native-screen/block-07.json": "806a5886783b66d7dfa8f26ffb288839304995867c7a598222ed795d2940dd1b",
+    "results/sage-low-degree-depth-five-20261006/native-screen/block-08.json": "e00d8bec7408a48e23b8d4013a1df95b8cfe2d0575d499f3dcaf8d0a679ef005",
+    "results/sage-low-degree-depth-five-20261006/native-screen/block-09.json": "27d2765e72629d0dc1f21a74a2155ee738eec1653bd15d60442ee8127bace53e",
+    "results/sage-low-degree-depth-five-20261006/native-screen/block-10.json": "3b830cbb33d5232b0ec7783a9e806b3bc47b0f49894b209f8842c81a398fda5c",
+    "results/sage-low-degree-depth-five-20261006/native-screen/block-11.json": "ce58b0149aae94b0a1df0c38e823198b97b3aa31d2f7cc377d11fa2f61931ea2",
+    "results/sage-low-degree-depth-five-20261006/native-screen/block-12.json": "c007125470769d81aa7e29931206ece23ad44fbec157df5d88b6f71e5292350f",
+    "results/sage-low-degree-depth-five-20261006/native-screen/block-13.json": "30ee311cd4b1e4e51478fa330922a49065bd168d734c232d266cfc8c3540090c",
+    "results/sage-low-degree-depth-five-20261006/native-screen/block-14.json": "c1ef92a93ae77a88ea28f8a32abb1dd12f17bfe5e21cf99260717472a8f92c51",
+    "results/sage-low-degree-depth-five-20261006/native-screen/block-15.json": "0b7fc43484ffb9eeced02a405be62dacbba689a7ca052e4ea07f71eb9d27972c",
+    "results/sage-low-degree-depth-five-20261006/native-screen/block-16.json": "5b27dd37bb1cf079c0d73d249e4e5f872eaee933c17ca0edfdbf051c8cd47ca3",
+    "results/sage-low-degree-depth-five-20261006/native-screen/block-17.json": "2ee7e50620278a30c754236cb337fb2ec0d741b17d2806a292bc4f61e36dd40d",
+    "results/sage-low-degree-depth-five-20261006/native-screen/block-18.json": "13e4c36c0efee4f9b8489ca2f609729abb701987a67ac0f8c42b38e9e10c2a21",
+    "results/sage-low-degree-depth-five-20261006/native-screen/block-19.json": "effd3a9522b023ffaa53e01b9c7d143b48ff12fdbfa989e6cafd930e4317f836",
+    "results/sage-low-degree-depth-five-20261006/native-screen/screening-summary.json": "b33206958686e1045602e6d45302ca67410f3d9fa43c024815105044969de2dd",
+    "results/sage-low-degree-depth-five-20261006/holdout.json": "6ed5f39e0492f1f196946d61d86935feebb6c26536747cf28c806a111d0abb80",
+    "results/sage-low-degree-depth-five-20261006/summary.md": "d92a669d9a3afd860e219d0b2fe5611302826c6806b226b24059cab304724c61"
+  },
+  "search": {
+    "ells": [3, 5, 11, 13],
+    "maximum_depth": 5,
+    "depth_counts": {"0": 1, "1": 6, "2": 17, "3": 32, "4": 48, "5": 64},
+    "depth_five_curves_including_p256": 168,
+    "overlap_with_prior_union": 56,
+    "new_non_root_curves": 112,
+    "combined_unique_curves_including_p256": 210,
+    "explicit_paths_verified": true,
+    "exceptional_automorphisms_found": false
+  },
+  "screening": {
+    "new_neighbors": 112,
+    "blocks": 19,
+    "seconds_per_trial": 0.5,
+    "complete_position_rotations_per_block": 1,
+    "candidate_trials": 776,
+    "all_linear_relations_verified": true,
+    "unadjusted_screening_hits": 6,
+    "largest_screening_point_estimate": {
+      "paired_relative_iteration_speed": 1.088038350600857,
+      "paired_relative_iteration_speed_95_percent_ci": [1.0296715203192095, 1.1497136989971655]
+    }
+  },
+  "holdout": {
+    "candidates": 6,
+    "seconds_per_trial": 2.0,
+    "trials_per_candidate": 30,
+    "all_linear_relations_verified": true,
+    "reproduced_speedups": 0,
+    "largest_point_estimate": {
+      "paired_relative_iteration_speed": 1.0152917334298728,
+      "paired_relative_iteration_speed_95_percent_ci": [0.9944687217873913, 1.0365507545760855]
+    }
+  },
+  "combined_native_coverage": {
+    "explicit_curves_including_p256": 210,
+    "non_root_curves_with_matched_native_measurement": 209,
+    "reproducible_speedups": 0
+  },
+  "cost_accounting": {
+    "discovery_and_reusable_precomputation_seconds": 48.8912903330056,
+    "native_screen_block_wall_seconds_total": 502.947596222,
+    "holdout_wall_seconds": 431.476165411,
+    "per_instance_mapping": "explicit formulas retained for P and Q; evaluation was not timed for the 112 additions",
+    "amortization": "no end-to-end estimate because per-key mapping for the added paths was not measured"
+  },
+  "limitations": [
+    "the traversal stops at depth five and uses only edge degrees 3, 5, 11, and 13",
+    "the 210-curve explicit registry is not the entire P-256 isogeny class",
+    "the CPU was not isolated and frequency stability was not independently verified",
+    "the screens measure generic rho iteration cost rather than completing a full P-256 collision",
+    "per-key mapping cost was not measured for the 112 additions"
+  ],
+  "decision": "No candidate advances. Six unadjusted screening hits all failed the fresh 30-trial holdout; all 209 retained non-root curves have matched native measurements and zero reproducible iteration-rate improvements."
+}

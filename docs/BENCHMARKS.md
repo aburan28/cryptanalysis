@@ -171,6 +171,17 @@ it is off.
 
 ## GLV endomorphism-accelerated rho (`ca_bench glv`)
 
+The table below predates the j0 `tau` scalar setup.  Its operation counts use
+the original affine scalar backend.  For paired online wall times with the
+new setup and the same target, see
+[the j0 tau experiment](../experiments/prime-j0-tau-20260930/README.md).
+The current j0 default uses an oriented quotient walk; its paired wall-time
+panel and correctness checks are in
+[the oriented-walk experiment](../experiments/prime-j0-rho-coordinate-canon-20261002/README.md).
+Those wall ratios were collected on a contended host and remain exploratory
+until an [isolated replay](ISOLATED_BENCHMARKS.md) passes its host and noise
+gates.
+
 Curve-aware dispatch (`ca_curve.h`): on a CM curve the rho walk is folded by
 the automorphism group `<psi>` (order 6 for j-invariant 0, 4 for j-invariant
 1728), against the plain negation-map rho on the same curve.  `S = group

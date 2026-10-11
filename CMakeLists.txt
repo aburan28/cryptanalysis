@@ -26,7 +26,21 @@ option(CA_NATIVE "Compile with -march=native" OFF)
 # "thread" or "memory".  ON is kept so existing invocations keep working.
 set(CA_SANITIZE OFF CACHE STRING "Sanitizers: OFF, ON (address,undefined), or a -fsanitize= list")
 option(CA_WERROR "Treat warnings as errors" OFF)
+option(CA_J0_TAU_RHO "Use tau-adic scalar multiplication in j=0 rho setup" ON)
+set(CA_J0_TAU_RHO_WIDTH "2" CACHE STRING "Tau window for j=0 rho setup (2 or 4)")
+option(CA_J0_RHO_COORD_CANON "Use direct coordinate orbit representative in j=0 GLV rho" OFF)
+option(CA_J0_RHO_COVARIANT_WALK "Use oriented quotient walk in j=0 GLV rho" ON)
+if(CA_J0_RHO_COORD_CANON AND CA_J0_RHO_COVARIANT_WALK)
+  message(FATAL_ERROR "Select only one j=0 rho walk: coordinate-only or covariant")
+endif()
+if(NOT CA_J0_TAU_RHO_WIDTH MATCHES "^(2|4)$")
+  message(FATAL_ERROR "CA_J0_TAU_RHO_WIDTH must be 2 or 4")
+endif()
 option(CA_CUDA "Build the CUDA backend for the GPU solvers (needs nvcc or clang with CUDA)" OFF)
+option(CA_CUPQC "Build the NVIDIA cuPQC ML-KEM example (needs the separately installed SDK; see docs/CUPQC.md)" OFF)
+if(CA_CUPQC)
+  include(cmake/CuPQC.cmake)
+endif()
 option(CA_FUZZ "Build the libFuzzer harnesses in fuzz/ (needs clang)" OFF)
 set(CA_CUDA_ARCHITECTURES "70;80;89;90" CACHE STRING "CUDA architectures for CA_CUDA")
 
@@ -109,6 +123,17 @@ function(ca_configure_target tgt)
     target_compile_definitions(${tgt} PRIVATE CA_RHO_J0_COORDINATE_ORBIT=1)
   elseif(CA_RHO_J0_FACTORED_HASH)
     target_compile_definitions(${tgt} PRIVATE CA_RHO_J0_FACTORED_HASH=1)
+  if(CA_J0_TAU_RHO)
+    target_compile_definitions(${tgt} PRIVATE CA_J0_TAU_RHO=1)
+    if(CA_J0_TAU_RHO_WIDTH STREQUAL "4")
+      target_compile_definitions(${tgt} PRIVATE CA_J0_TAU_RHO_WIDTH4=1)
+    endif()
+  endif()
+  if(CA_J0_RHO_COORD_CANON)
+    target_compile_definitions(${tgt} PRIVATE CA_J0_RHO_COORD_CANON=1)
+  endif()
+  if(CA_J0_RHO_COVARIANT_WALK)
+    target_compile_definitions(${tgt} PRIVATE CA_J0_RHO_COVARIANT_WALK=1)
   endif()
   target_link_libraries(${tgt} PUBLIC Threads::Threads m)
   if(CA_NATIVE)
@@ -164,6 +189,37 @@ if(CA_BUILD_TOOLS)
   target_include_directories(ca_bench PRIVATE src cuda)
   target_compile_options(ca_bench PRIVATE ${CA_WARNINGS})
   ca_sanitize(ca_bench)
+  # Fixed-input kernels for the performance index (docs/perf/PERFORMANCE_INDEX.md);
+  # speaks the same protocol as suite/examples/perfbench, driven by
+  # scripts/perf/perfindex.py.
+  add_executable(ca_perfbench tools/ca_perfbench.c)
+  target_link_libraries(ca_perfbench PRIVATE ${CA_LINK_TARGET})
+  target_include_directories(ca_perfbench PRIVATE src cuda)
+  target_compile_options(ca_perfbench PRIVATE ${CA_WARNINGS})
+  ca_sanitize(ca_perfbench)
+  # `ca_bench --json` records the commit the build was configured at.  The
+  # reflog is a configure dependency, so a commit or checkout reconfigures and
+  # the define follows HEAD; without git the field is written as null.
+  find_package(Git QUIET)
+  if(Git_FOUND)
+    execute_process(COMMAND ${GIT_EXECUTABLE} -C ${CMAKE_CURRENT_SOURCE_DIR} rev-parse HEAD
+                    RESULT_VARIABLE CA_GIT_RC OUTPUT_VARIABLE CA_GIT_COMMIT
+                    OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(CA_GIT_RC EQUAL 0)
+      target_compile_definitions(ca_bench PRIVATE CA_GIT_COMMIT="${CA_GIT_COMMIT}")
+      execute_process(COMMAND ${GIT_EXECUTABLE} -C ${CMAKE_CURRENT_SOURCE_DIR}
+                              rev-parse --git-path logs/HEAD
+                      RESULT_VARIABLE CA_GIT_LOG_RC OUTPUT_VARIABLE CA_GIT_LOG
+                      OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+      if(CA_GIT_LOG_RC EQUAL 0)
+        get_filename_component(CA_GIT_LOG "${CA_GIT_LOG}" ABSOLUTE
+                               BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+        if(EXISTS "${CA_GIT_LOG}")
+          set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CA_GIT_LOG}")
+        endif()
+      endif()
+    endif()
+  endif()
 endif()
 
 if(CA_BUILD_TAU_CHAIN_BENCH)
@@ -230,6 +286,16 @@ if(CA_BUILD_TESTS)
       add_test(NAME ${t} COMMAND test_${t})
     endif()
   endforeach()
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(
+      NAME ecc2k130-usecase
+      COMMAND ${Python3_EXECUTABLE} -m unittest discover
+              -s usecases/ecc2k130/tests -v)
+    set_tests_properties(
+      ecc2k130-usecase
+      PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+  endif()
 endif()
 
 # ---- fuzzing ---------------------------------------------------------------
