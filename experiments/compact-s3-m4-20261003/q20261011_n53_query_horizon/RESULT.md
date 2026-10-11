@@ -43,6 +43,15 @@ relation count per query was one. The added 1.5-million-query interval gave
 29 new rows from 32 matches; the final two-million interval gave 20 new rows
 from 23 matches. Duplicate rows account for the other matches.
 
+An additional [retrospective prefix scan](prefix_scan.json) recomputed rank
+at every relation-producing position in the saved stream and regenerated
+the identity-pair count at each position. Its lowest observed ratio occurs
+at query **3,126,020**, with rank **53** and **8,994,982** charged pair
+additions: **169,716.64 per row** (`2^17.373`). That is 1.030× lower than
+the frozen three-million checkpoint. This prefix was selected *after*
+inspecting this target, so it is a candidate cap for a fresh-target check,
+not a validated cross-target improvement.
+
 The match rates on this fixed public point and table are 14.0, 17.67, and
 15.2 per million queries at the three cumulative caps. Their Wilson 95%
 intervals, conditional on uniform-with-replacement query draws against this
@@ -91,6 +100,8 @@ exact N83 Q1325 factor base, with ordinary-query rank and a fully charged
 operation count. The prior Q1091 N83 group-law run recovered a scalar on a
 different base whose logs were known from construction; its direct-target
 result is a separate comparison from the unknown-log relation-matrix path.
+For cap tuning, freeze query position 3,126,020 before testing a second
+ordinary N53 public target.
 
 Reproduce the independent checks from the repository root:
 
@@ -98,5 +109,6 @@ Reproduce the independent checks from the repository root:
 PYTHONDONTWRITEBYTECODE=1 python3 experiments/compact-s3-m4-20261003/q20261011_n53_query_horizon/audit_queries.py
 PYTHONDONTWRITEBYTECODE=1 python3 experiments/compact-s3-m4-20261003/q20261011_n53_query_horizon/verify.py
 PYTHONDONTWRITEBYTECODE=1 python3 experiments/compact-s3-m4-20261003/q20261011_n53_query_horizon/analyze.py
+PYTHONDONTWRITEBYTECODE=1 python3 experiments/compact-s3-m4-20261003/q20261011_n53_query_horizon/prefix_scan.py
 PYTHONDONTWRITEBYTECODE=1 python3 experiments/compact-s3-m4-20261003/q20261011_n53_query_horizon/validate.py
 ```

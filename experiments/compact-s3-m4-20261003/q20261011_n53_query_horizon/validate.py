@@ -22,6 +22,7 @@ def main() -> None:
     replay = json.loads((HERE / "independent_replay.json").read_text())
     query_audit = json.loads((HERE / "query_prefix_audit.json").read_text())
     analysis = json.loads((HERE / "analysis.json").read_text())
+    scan = json.loads((HERE / "prefix_scan.json").read_text())
     earlier = json.loads((FULL / "native_measurement.json").read_text())
     assert freeze["protocol_sha256"] == sha(HERE / "protocol.json")
     assert freeze["native_source_sha256"] == sha(HERE / "native_sweep.cpp")
@@ -49,6 +50,10 @@ def main() -> None:
     assert replay["cap_results"]["1500000"]["augmented_rank"] == 21
     assert analysis["query_horizons"][-1]["augmented_rank"] == replay["cap_results"]["5000000"]["augmented_rank"]
     assert analysis["best_measured_query_cap_for_pair_adds_per_rank_row"] in protocol["point_decomposition"]["query_caps"]
+    assert scan["source_sha256"] == sha(HERE / "prefix_scan.py")
+    assert scan["analysis_sha256"] == sha(HERE / "analysis.json")
+    assert scan["selection_status"] == "retrospective_same_target_diagnostic"
+    assert scan["best_retrospective_prefix"]["augmented_rank"] <= replay["cap_results"]["5000000"]["augmented_rank"]
     assert all(record["candidate_id"] is None and record["run_id"] is None
                for record in (protocol, measured, replay, analysis))
     assert all(record["complete_solve_work_log2"] is None
