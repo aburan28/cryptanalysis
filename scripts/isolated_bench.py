@@ -139,6 +139,17 @@ def require_manifest(manifest):
     for field in manifest["pair_fields"]:
         if not isinstance(field, str) or not field:
             raise ValueError("invalid pair field")
+    result_field = manifest.get("result_field")
+    if not isinstance(result_field, str) or not result_field or result_field in manifest["pair_fields"]:
+        raise ValueError("result_field must identify the frozen answer separately")
+    for case in manifest["cases"]:
+        expected = case.get("expected_fields")
+        if not isinstance(expected, dict) or set(expected) != set(manifest["pair_fields"]):
+            raise ValueError("expected_fields must bind every pair field")
+        if any(not isinstance(value, str) or not value for value in expected.values()):
+            raise ValueError("expected_fields values must be nonempty strings")
+        if not isinstance(case.get("expected_result"), str) or not case["expected_result"]:
+            raise ValueError("expected_result must bind the frozen answer")
     if not isinstance(manifest.get("artifacts"), list) or not manifest["artifacts"]:
         raise ValueError("artifacts must list at least one source or build file")
     for item in manifest["artifacts"]:
@@ -713,6 +724,13 @@ def execute(manifest, output):
                                 pair["reference"]["fields"][field] != pair["candidate"]["fields"].get(field)]
                     if mismatch:
                         issues.append("pair mismatch: " + ",".join(mismatch))
+                    for variant, row in pair.items():
+                        wrong_input = [field for field, expected in case["expected_fields"].items()
+                                       if row["fields"].get(field) != expected]
+                        if wrong_input:
+                            issues.append(variant + " frozen input mismatch: " + ",".join(wrong_input))
+                        if row["fields"].get(manifest["result_field"]) != case["expected_result"]:
+                            issues.append(variant + " frozen result mismatch: " + manifest["result_field"])
                 record = {"case": case["id"], "repeat": repeat,
                           "measurement_tier": tier,
                           "run_serials": {variant: row["serial"] for variant, row in pair.items()},
