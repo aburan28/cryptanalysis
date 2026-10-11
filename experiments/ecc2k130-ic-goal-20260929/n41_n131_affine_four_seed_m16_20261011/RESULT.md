@@ -33,8 +33,14 @@ the union of all usable masks at these eight rotations, before folding.
 
 The [source census](support_result.json) counts every admissible mask pair
 from the previously audited rational-mask tables. Full pairwise ranks of the
-rotated W6 and W18 subspaces show that their nonzero coordinates do not
-overlap between windows; this proves the stated B counts. The signed tuple
+rotated W6 and W18 subspaces show that their nonzero reciprocal coordinates
+do not overlap between windows. The **projected** B counts use the existing
+exact eight-window [N41 point-geometry audit](../N41_W6_S8_DISTINCT_WINDOW_RESULT.md)
+and [N131 reciprocal-collision and Sage audit](../N131_LOWPOWER_W18_M8_GEOMETRY_RESULT.md)
+for these same factor-base unions; an additional projection check is needed
+because disjoint raw coordinates alone do not prove disjoint cofactor-four
+images. The four-seed policy restricts source pairs within those unions and
+does not change the enumerated factor bases. The signed tuple
 figures credit four raw sign assignments to every unordered pair and divide
 the eight-slot product by the exact subgroup order. They are **support
 ceilings**, before cross-slot column exclusions or possible output
