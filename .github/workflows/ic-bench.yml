@@ -10,22 +10,36 @@ on:
     paths:
       - "experiments/ic-bench/**"
       - "experiments/fb-archive/**"
+      - "experiments/fb-search/**"
       - "experiments/pdp-degree-heuristics/**"
       - "experiments/pdp-scaling/sumpoly.py"
       - "experiments/pdp-scaling/gf2n.py"
       - "experiments/pdp-scaling/descend.py"
       - "experiments/ic-candidate-catalog/**"
+      - "experiments/frobenius-quotient-m4/**"
+      - "experiments/linearized-half-decomposition/**"
+      - "experiments/sage-ic-campaign/pb-bulk-halftrace-20260924/**"
+      - "ecc2k130/runner/codegen/curves.py"
+      - "ecc2k130/runner/codegen/field.py"
+      - "ecc2k130/runner/codegen/indexcalc.py"
       - ".github/workflows/ic-bench.yml"
   push:
     branches: ["**"]
     paths:
       - "experiments/ic-bench/**"
       - "experiments/fb-archive/**"
+      - "experiments/fb-search/**"
       - "experiments/pdp-degree-heuristics/**"
       - "experiments/pdp-scaling/sumpoly.py"
       - "experiments/pdp-scaling/gf2n.py"
       - "experiments/pdp-scaling/descend.py"
       - "experiments/ic-candidate-catalog/**"
+      - "experiments/frobenius-quotient-m4/**"
+      - "experiments/linearized-half-decomposition/**"
+      - "experiments/sage-ic-campaign/pb-bulk-halftrace-20260924/**"
+      - "ecc2k130/runner/codegen/curves.py"
+      - "ecc2k130/runner/codegen/field.py"
+      - "ecc2k130/runner/codegen/indexcalc.py"
       - ".github/workflows/ic-bench.yml"
   workflow_dispatch:
 
@@ -60,6 +74,10 @@ jobs:
           python -m pytest -q experiments/pdp-degree-heuristics
           python -m pytest -q experiments/ic-bench
           python -m pytest -q experiments/fb-archive
+          python -m pytest -q experiments/fb-search
+          python -m pytest -q experiments/frobenius-quotient-m4/test_fqm4_factor_bases.py
+          python -m pytest -q experiments/linearized-half-decomposition/test_lhd_factor_bases.py
+          python -m pytest -q experiments/sage-ic-campaign/pb-bulk-halftrace-20260924/test_pbbulk_factor_bases.py
 
       - name: Candidate catalog
         working-directory: experiments/ic-candidate-catalog
@@ -78,6 +96,10 @@ jobs:
         working-directory: experiments/ic-bench
         run: python compare.py baseline/ci.csv bench-out/ci.csv --tolerance 0.05 --summary "$GITHUB_STEP_SUMMARY"
 
+      - name: Replay the m = 2 runs through the factor-base model
+        working-directory: experiments/fb-search
+        run: python search.py check ../ic-bench/bench-out/ci.jsonl --selection "" --require-exact
+
       - name: Paired factor-base report
         if: always()
         working-directory: experiments/ic-bench
@@ -90,7 +112,7 @@ jobs:
         working-directory: experiments/fb-archive
         run: python fbarchive.py verify --rebuild --rebuild-max-points 300
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ic-bench-ci

@@ -49,6 +49,60 @@ def receipt(config, block, cost, status="complete"):
 
 
 class AnalyzeTests(unittest.TestCase):
+    @staticmethod
+    def wall_receipt(config="IC1wall", block=1, online_ns=2000):
+        run = receipt(config, block, 200)
+        target = {"x": 5, "y": 9, "inf": False}
+        run.update(accounting_mode="verified_online_wall", operation_unit=None,
+                   unknown_operation_reason="Synthetic contract fixture; no operation counts",
+                   phase_operations={p: None for p in analyze.CONTRACT["phase_operations"]},
+                   total_operations=None, rho_operations=None,
+                   scalar_certificate={"target": target, "replayed_point": target, "scalar": 17},
+                   rho_measured={"verified": True, "scalar": 17, "target": target,
+                                 "replayed_point": target, "online_wall_ns": 10000})
+        phases = {"target_query": 10, "target_pdp": online_ns-40, "target_relation_check": 10,
+                  "target_descent": 10, "target_recovery_check": 10}
+        run["online"] = {"ic_online_ns": online_ns, "rho_online_ns": 10000,
+                         "speedup": 10000/online_ns, "phase_wall_ns": phases, "public_target": target}
+        run["counts"].update(targets=1, targets_verified=1)
+        run["phase_wall_ns"].update(target_descent=online_ns-10, recovery_check=10)
+        run["wall_ns"] = 1000 + online_ns
+        return run
+
+    def test_verified_online_wall_keeps_operation_costs_unknown(self):
+        runs = [analyze.validate_run(self.wall_receipt(config, block, cost))
+                for block in range(1, 4)
+                for config, cost in (("IC1wallbase", 2000), ("IC1wallcandidate", 1000))]
+        summary = analyze.summarize(runs)["IC1wallcandidate"]["Wtest"]
+        self.assertIsNone(summary["median_complete_total_operations"])
+        self.assertEqual(summary["median_verified_ic_online_ns"], 1000)
+        paired = analyze.paired_compare(runs, "IC1wallbase", "IC1wallcandidate")
+        self.assertEqual(paired["metric"], "one_target_online_wall_ns")
+        self.assertEqual(paired["speedup"], 2)
+
+    def test_wall_mode_rejects_missing_work_and_mismatched_recovery(self):
+        original = self.wall_receipt()
+        mutations = (
+            lambda r: r.update(accounting_mode="anything"),
+            lambda r: r.update(unknown_operation_reason=""),
+            lambda r: r.update(total_operations=0),
+            lambda r: r["phase_operations"].update(pdp=0),
+            lambda r: r.update(S_rps=0),
+            lambda r: r.update(online=None),
+            lambda r: r["online"]["phase_wall_ns"].update(target_pdp=1),
+            lambda r: r["counts"].update(targets=2),
+            lambda r: r["rho_measured"].update(verified=False),
+            lambda r: r["rho_measured"].update(target={"x": 6, "y": 9, "inf": False}),
+            lambda r: r["rho_measured"].update(scalar=18),
+            lambda r: r["scalar_certificate"].update(replayed_point={"x": 6, "y": 9, "inf": False}),
+            lambda r: r["phase_wall_ns"].update(matrix_build=None),
+        )
+        for mutate in mutations:
+            run = copy.deepcopy(original)
+            mutate(run)
+            with self.assertRaises(ValueError):
+                analyze.validate_run(run)
+
     def test_paired_complete_and_multiple_witnesses(self):
         runs = [analyze.validate_run(receipt(config, block, cost))
                 for block in range(1, 4)

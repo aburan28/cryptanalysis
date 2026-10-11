@@ -1,0 +1,69 @@
+name: Quadratic affine projection proof
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/**'
+      - 'experiments/pdp-degree-heuristics/**'
+      - '.github/workflows/quadratic-affine-projection.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/**'
+      - 'experiments/pdp-degree-heuristics/**'
+      - '.github/workflows/quadratic-affine-projection.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quadratic-affine-projection-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  correctness:
+    name: Affine projection (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install numerical dependency
+        run: python -m pip install numpy==2.4.0
+      - name: Build native CPU dependencies and prototype
+        shell: bash
+        run: |
+          mkdir -p affine-projection-evidence
+          for version in 20 23 31 32 33 34 35 36 37 40; do
+            python "experiments/groebner-perf-20260924/round${version}/build.py" > "affine-projection-evidence/build-${version}.log" 2>&1
+          done
+      - name: Exact systems, sanitizer, budgets and complete queries
+        run: python -u experiments/groebner-perf-20260924/round40/validate_native.py --output affine-projection-evidence/correctness.json.gz > affine-projection-evidence/validation.log 2>&1
+      - name: Retain runner and native build identity
+        if: always()
+        run: |
+          mkdir -p affine-projection-evidence
+          python - <<'PY'
+          import json, os, pathlib, shutil
+          metadata = {k: os.environ.get(k) for k in ('GITHUB_SHA', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'RUNNER_OS', 'RUNNER_ARCH')}
+          pathlib.Path('affine-projection-evidence/runner.json').write_text(json.dumps(metadata, indent=2)+'\n')
+          receipt = pathlib.Path('experiments/groebner-perf-20260924/round40/build/receipt.json')
+          if receipt.exists():
+              shutil.copy2(receipt, 'affine-projection-evidence/build-receipt.json')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: affine-projection-${{ matrix.os }}
+          path: affine-projection-evidence/
+          if-no-files-found: error
+          retention-days: 14

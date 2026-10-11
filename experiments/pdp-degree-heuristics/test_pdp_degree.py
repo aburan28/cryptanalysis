@@ -180,6 +180,30 @@ class DegreeTests(unittest.TestCase):
                 checked += 1
         self.assertGreater(checked, 40)
 
+    def test_lazy_solution_count_gives_the_same_scan(self):
+        rng = random.Random(23)
+        skipped = 0
+        for trial in range(60):
+            N = rng.randrange(3, 8)
+            s = random_system(rng, N, rng.randrange(N, N + 6), 2 + trial % 2, 3 * N)
+            if not s.equations:
+                continue
+            S, _ = s.solutions()
+            for mode in macaulay.MODES:
+                calls = []
+                eager = macaulay.degree_scan(s, S, macaulay.Limits(d_max=N + 1), mode=mode)
+                lazy = macaulay.degree_scan(s, lambda: calls.append(1) or S, macaulay.Limits(d_max=N + 1), mode=mode)
+                drop = ("wall_ns", "per_degree", "solution_count_read")
+                self.assertEqual({k: v for k, v in lazy.items() if k not in drop},
+                                 {k: v for k, v in eager.items() if k not in drop}, (trial, mode))
+                self.assertEqual([{k: v for k, v in r.items() if k != "wall_ns"} for r in lazy["per_degree"]],
+                                 [{k: v for k, v in r.items() if k != "wall_ns"} for r in eager["per_degree"]])
+                self.assertEqual(len(calls), int(lazy["solution_count_read"]))
+                if lazy["status"] == "refuted" and lazy["D_solve"] == lazy["per_degree"][0]["D"]:
+                    self.assertEqual(calls, [])
+                    skipped += 1
+        self.assertGreater(skipped, 0)
+
     def test_closure_never_exceeds_macaulay_degree(self):
         rng = random.Random(4)
         for _ in range(20):
