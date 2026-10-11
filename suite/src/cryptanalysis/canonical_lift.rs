@@ -12,7 +12,8 @@
 //! 2. Implements affine point arithmetic in `E(Z_p)` for the lift.
 //! 3. Implements the formal-group logarithm via the formal-group law
 //!    derived from the Weierstrass equation.
-//! 4. Implements Smart's attack end-to-end on a small anomalous curve.
+//! 4. Exposes Smart's attack end-to-end ([`smart_attack_anomalous`],
+//!    delegating to [`crate::cryptanalysis::weak_curves::smart`]).
 //! 5. Documents (without implementing) the canonical-lift extension to
 //!    non-anomalous curves — research-note item #1, the genuinely-novel-
 //!    but-low-probability angle.
@@ -58,13 +59,15 @@
 //!
 //! # Scope of the implementation
 //!
-//! - Works at small `p` (for testing and demonstration).  The
-//!   anomalous-curve-search routine runs in `O(p^3)` (try all
-//!   `(a, b)` and brute-force-count).  For `p ≤ 100` this finishes
-//!   instantly.
-//! - Anomalous curves at cryptographic sizes do exist (e.g., from
-//!   constructions in Schoof's algorithm) but constructing them
-//!   requires Schoof, not implemented here.
+//! - The affine [`ZpCurve`] arithmetic here cannot represent `[p]·P̂`
+//!   (it reduces to the point at infinity); [`smart_attack_anomalous`]
+//!   therefore delegates to the projective `Z/p²Z` implementation in
+//!   [`crate::cryptanalysis::weak_curves::smart`], which works at
+//!   cryptographic sizes.
+//! - [`find_anomalous_curve`] is a brute-force search running in
+//!   `O(p^3)`, suitable for `p ≤ ~200`.  Anomalous curves of any size
+//!   are constructed by the CM method in
+//!   [`crate::cryptanalysis::weak_curves::smart::anomalous_curve_cm`].
 
 use num_bigint::BigInt;
 use num_traits::{One, Zero};
@@ -383,14 +386,19 @@ pub fn formal_log_from_z(z: &ZpInt) -> ZpInt {
 /// **Smart's attack** on an anomalous curve `E/F_p` (i.e., `#E(F_p) = p`).
 /// Given the curve, two `F_p`-points `P, Q = d·P`, recover `d (mod p)`.
 ///
-/// Assumes:
-/// - `E` is anomalous (`#E(F_p) = p`).
-/// - `P` is a generator of `E(F_p)` (any non-identity point on an
-///   anomalous curve, since the group has prime order `p`).
+/// This is a thin wrapper over the working implementation in
+/// [`crate::cryptanalysis::weak_curves::smart`], which does the
+/// computation in homogeneous projective coordinates over `Z/p²Z` (the
+/// affine [`ZpCurve`] arithmetic above cannot represent `[p]·P̂`, which
+/// reduces to the point at infinity), uses a *random* lift of the curve
+/// to avoid the degenerate canonical-lift case, and retries with a
+/// fresh lift if one is degenerate.  Works at cryptographic sizes.
 ///
-/// Returns `Err` if the lift cannot be performed (e.g., `P` or `Q` is
-/// the identity, or `2·y_P ≡ 0 (mod p)`), or if the computed scalar
-/// fails verification.
+/// The returned `d` has been verified: `d·P = Q` on `E(F_p)`.
+///
+/// Returns `Err` if `p` is not a prime ≥ 5, a point is not on the
+/// curve, `P` is the identity, the curve is singular, `ord(P) ≠ p`
+/// (not anomalous), or every random lift fails.
 pub fn smart_attack_anomalous(
     p: &BigInt,
     a_coeff: &BigInt,
@@ -400,45 +408,41 @@ pub fn smart_attack_anomalous(
     q_pt_x: &BigInt,
     q_pt_y: &BigInt,
 ) -> Result<BigInt, &'static str> {
-    let precision = 2u32;
-    let curve = ZpCurve::new(a_coeff.clone(), b_coeff.clone(), p, precision);
+    use crate::cryptanalysis::weak_curves::arith::{AffinePoint, Ec};
+    use crate::cryptanalysis::weak_curves::smart::{smart_core, SmartOptions};
+    use crate::cryptanalysis::weak_curves::WeakCurveError;
+    use num_bigint::{BigUint, Sign};
 
-    // Hensel-lift P̂, Q̂ to E(Z_p / p²).
-    let p_hat = hensel_lift_point(&curve, p_pt_x, p_pt_y)
-        .ok_or("Hensel lift of P failed (likely 2·y_P ≡ 0 mod p)")?;
-    let q_hat = hensel_lift_point(&curve, q_pt_x, q_pt_y).ok_or("Hensel lift of Q failed")?;
-
-    // Compute [p]·P̂ and [p]·Q̂.  Both reduce to O ∈ E(F_p) (since
-    // #E(F_p) = p), so they lie in the formal group.
-    let pp_hat = curve.scalar_mul(&p_hat, p);
-    let pq_hat = curve.scalar_mul(&q_hat, p);
-
-    // For Smart's attack at precision 2: we need the formal-group
-    // z-coordinate of [p]·P̂ and [p]·Q̂.  Both have v_p(z) ≥ 1.
-    //
-    // Trick: in our truncated Z_p arithmetic, [p]·P̂ has X-coordinate
-    // ≡ p_pt_x (lift) (mod p), Y-coordinate ≡ p_pt_y (mod p).  But the
-    // *correct* result of [p]·P̂ is the identity in F_p, which means
-    // the affine X, Y go to infinity — they fall outside our finite-
-    // precision Z_p arithmetic.
-    //
-    // For Smart's attack to work with truncated arithmetic, we need
-    // a different formulation.  The cleanest approach: track the
-    // computation in projective coordinates that don't blow up.
-    //
-    // Phase-1 implementation note: this module provides the Hensel
-    // and arithmetic foundation; the projective-coordinate
-    // formal-log extraction is the missing piece for end-to-end
-    // Smart's attack at scale.  See docs.
-    let _ = (pp_hat, pq_hat);
-    Err(
-        "smart_attack_anomalous: projective-coord formal-log extraction \
-         not yet implemented; affine arithmetic at precision 2 cannot \
-         represent [p]·P̂ which lives at the point at infinity over F_p. \
-         The Hensel lift, p-adic arithmetic, and formal-group log infrastructure \
-         is in place; an extension to projective coordinates would close \
-         the loop. See module-level docs.",
-    )
+    if p.sign() != Sign::Plus {
+        return Err("p must be a positive prime");
+    }
+    let pu = p.magnitude().clone();
+    let red = |v: &BigInt| -> BigUint {
+        let r = ((v % p) + p) % p;
+        r.magnitude().clone()
+    };
+    let ec = Ec::new(&pu, &red(a_coeff), &red(b_coeff));
+    let g = AffinePoint::Affine(red(p_pt_x), red(p_pt_y));
+    let q = AffinePoint::Affine(red(q_pt_x), red(q_pt_y));
+    match smart_core(&ec, &g, &q, &SmartOptions::default()) {
+        Ok((d, _, _)) => {
+            // Independent check with the crate's point arithmetic.
+            let (gp, qp) = (ec.export(&g), ec.export(&q));
+            let a_fe = crate::ecc::field::FieldElement::new(ec.a.clone(), pu.clone());
+            if gp.scalar_mul(&d, &a_fe) != qp {
+                return Err("recovered scalar failed verification");
+            }
+            Ok(BigInt::from_biguint(Sign::Plus, d))
+        }
+        Err(WeakCurveError::NotApplicable(_)) => {
+            Err("not applicable: the curve is singular or ord(P) ≠ p (not anomalous)")
+        }
+        Err(WeakCurveError::InvalidInput(_)) => {
+            Err("invalid input: p must be a prime ≥ 5 and P ≠ O, Q on the curve")
+        }
+        Err(WeakCurveError::VerificationFailed) => Err("recovered scalar failed verification"),
+        Err(_) => Err("every random lift was degenerate or failed verification"),
+    }
 }
 
 // ── Anomalous-curve search (helper) ──────────────────────────────────────
@@ -587,13 +591,45 @@ mod tests {
         assert_eq!(count, p, "verified count");
     }
 
-    /// `smart_attack_anomalous` is currently a stub (returns Err
-    /// with documentation).  Verify the stub fires.
+    /// `smart_attack_anomalous` recovers every scalar on the smallest
+    /// anomalous curves found by brute force, and rejects a
+    /// non-anomalous one.  (It used to be a stub returning `Err`.)
     #[test]
-    fn smart_attack_stub_documents_extension_point() {
-        let p = BigInt::from(11);
-        let result = smart_attack_anomalous(
-            &p,
+    fn smart_attack_recovers_scalars() {
+        for p in [11u64, 17, 29] {
+            let (a, b) = find_anomalous_curve(p).expect("anomalous curve");
+            // First affine point with y ≠ 0.
+            let (px, py) = (0..p)
+                .flat_map(|x| (1..p).map(move |y| (x, y)))
+                .find(|&(x, y)| (y * y) % p == (x * x * x + a * x + b) % p)
+                .unwrap();
+            let pb = BigInt::from(p);
+            let curve = ZpCurve::new(BigInt::from(a), BigInt::from(b), &pb, 1);
+            let base = ZpPoint::Aff(
+                ZpInt::new(BigInt::from(px), &pb, 1),
+                ZpInt::new(BigInt::from(py), &pb, 1),
+            );
+            for d in 1..p {
+                let qd = curve.scalar_mul(&base, &BigInt::from(d));
+                let ZpPoint::Aff(qx, qy) = qd else {
+                    panic!("d·P = O for 0 < d < p");
+                };
+                let got = smart_attack_anomalous(
+                    &pb,
+                    &BigInt::from(a),
+                    &BigInt::from(b),
+                    &BigInt::from(px),
+                    &BigInt::from(py),
+                    &qx.value,
+                    &qy.value,
+                )
+                .unwrap_or_else(|e| panic!("p={p} d={d}: {e}"));
+                assert_eq!(got, BigInt::from(d));
+            }
+        }
+        // y² = x³ + x + 6 over F_11 has 13 points: not anomalous.
+        let r = smart_attack_anomalous(
+            &BigInt::from(11),
             &BigInt::from(1),
             &BigInt::from(6),
             &BigInt::from(2),
@@ -601,11 +637,6 @@ mod tests {
             &BigInt::from(2),
             &BigInt::from(4),
         );
-        // Currently returns Err documenting the projective-coord
-        // extension needed.  When that's implemented, this test
-        // should be updated to verify d-recovery.
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.contains("projective"));
+        assert!(r.unwrap_err().contains("not anomalous"));
     }
 }

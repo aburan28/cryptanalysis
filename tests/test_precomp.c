@@ -97,8 +97,9 @@ int main(void)
     CHECK_EQ_U64(got, q - 1);
 
     /* A primitive root of Z_p^* has order p-1 = 2q, so it is not in the
-     * order-q subgroup and has no logarithm to gen: a clean NOT_FOUND, and a
-     * tight online budget turns the same query into a LIMIT. */
+     * order-q subgroup and has no logarithm to gen: a clean NOT_FOUND, refused
+     * before any walk, whatever the budget.  A tight online budget on targets
+     * that are in the subgroup turns the query into a LIMIT. */
     uint64_t pr = ca_primitive_root(p);
     CHECK(pr != 0);
     ca_elem outside;
@@ -109,7 +110,17 @@ int main(void)
 
     ca_precomp_params lim = def;
     lim.max_online_ops = 32;
-    CHECK(ca_precomp_solve(&g, &gen, &outside, &lim, &got, NULL) == CA_ERR_LIMIT);
+    CHECK(ca_precomp_solve(&g, &gen, &outside, &lim, &got, NULL) == CA_ERR_NOT_FOUND);
+    lim.max_online_ops = 1;
+    int limited = 0;
+    for (uint64_t k = 1; k <= 8; k++) {
+        ca_elem in;
+        ca_group_mul(&g, &in, &gen, 1000003 * k % q, NULL);
+        ca_status rc = ca_precomp_solve(&g, &gen, &in, &lim, &got, NULL);
+        CHECK(rc == CA_ERR_LIMIT || (rc == CA_OK && got == 1000003 * k % q));
+        limited += rc == CA_ERR_LIMIT;
+    }
+    CHECK(limited > 0);
 
     /* One-shot convenience on a fresh planted instance. */
     uint64_t x1 = 424242 % q;

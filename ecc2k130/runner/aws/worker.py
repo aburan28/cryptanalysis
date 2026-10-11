@@ -32,6 +32,9 @@ Environment (written to /etc/ecc2k130.env by bootstrap.sh):
   ECC_ROOT       directory holding campaign.json, the client, per-GPU work dirs
   ECC_CLIENT     client binary (default ECC_ROOT/ecc2k130)
   ECC_LOCAL_STORE  directory that stands in for S3 and DynamoDB (rehearsals)
+  ECC_METRICS_DIR  optional node_exporter textfile-collector directory; each
+                 heartbeat rewrites ecc2k130-gpuN.prom there with the walk's
+                 throughput, which gpueff/ scores against DCGM
 
 No type hints, camelCase identifiers (project convention).
 """
@@ -68,6 +71,24 @@ MAX_SLOT = 65534           # run id = slot + 1 must fit in 16 bits
 
 def log(msg):
     print(time.strftime("%Y-%m-%dT%H:%M:%SZ ", time.gmtime()) + msg, flush=True)
+
+
+def writeMetrics(directory, gpu, last):
+    """Publish walk progress for Prometheus through node_exporter's textfile
+    collector.  The iteration count restarts with each client run; rate()
+    treats that as a counter reset.  Written to a temporary name and renamed
+    so the collector never reads half a file."""
+    path = os.path.join(directory, "ecc2k130-gpu%d.prom" % gpu)
+    body = ("# HELP ecc2k130_walk_iterations_total Walk iterations completed by the current client run.\n"
+            "# TYPE ecc2k130_walk_iterations_total counter\n"
+            "ecc2k130_walk_iterations_total{gpu=\"%d\"} %d\n"
+            "# HELP ecc2k130_walk_rate Walk iterations per second reported by the client.\n"
+            "# TYPE ecc2k130_walk_rate gauge\n"
+            "ecc2k130_walk_rate{gpu=\"%d\"} %r\n" % (gpu, last["iters"], gpu, float(last["rate"])))
+    with open(path + ".tmp", "w") as f:
+        f.write(body)
+    os.replace(path + ".tmp", path)
+    return path
 
 
 def sh(cmd, check=True):
@@ -319,7 +340,11 @@ class S3Slots:
     two workers racing for one slot cannot both win; a new slot is a PutObject
     with If-None-Match: *.  S3 reads are strongly consistent, which is what
     makes the read-modify-write safe.  Needs only s3:GetObject/PutObject/
-    ListBucket, so the instance role stays minimal."""
+    ListBucket, so the instance role stays minimal.
+
+    The aws CLI runs in its own session: a terminal Ctrl-C aimed at the
+    supervising process must not abort an in-flight lease request, which
+    would otherwise read as a lost lease."""
 
     def __init__(self, bucket, prefix=""):
         self.bucket = bucket
@@ -332,9 +357,12 @@ class S3Slots:
     def _prefix(self):
         return self.prefix + "/slots/" if self.prefix else "slots/"
 
+    def _run(self, cmd):
+        return subprocess.run(cmd, capture_output=True, text=True, start_new_session=True)
+
     def _get(self, slot):
-        r = subprocess.run(["aws", "s3api", "get-object", "--bucket", self.bucket, "--key", self._key(slot),
-                            self.tmp, "--output", "json"], capture_output=True, text=True)
+        r = self._run(["aws", "s3api", "get-object", "--bucket", self.bucket, "--key", self._key(slot),
+                       self.tmp, "--output", "json"])
         if r.returncode != 0:
             if "NoSuchKey" in r.stderr or "404" in r.stderr or "Not Found" in r.stderr:
                 return None, None
@@ -351,7 +379,7 @@ class S3Slots:
             cmd += ["--if-none-match", "*"]
         elif ifMatch:
             cmd += ["--if-match", ifMatch]
-        r = subprocess.run(cmd, capture_output=True, text=True)
+        r = self._run(cmd)
         if r.returncode == 0:
             return True
         if "PreconditionFailed" in r.stderr or "412" in r.stderr or "ConditionalRequestConflict" in r.stderr:
@@ -359,8 +387,8 @@ class S3Slots:
         raise RuntimeError("s3 put-object failed: " + r.stderr.strip())
 
     def scan(self):
-        r = subprocess.run(["aws", "s3api", "list-objects-v2", "--bucket", self.bucket, "--prefix", self._prefix(),
-                            "--query", "Contents[].Key", "--output", "json"], capture_output=True, text=True)
+        r = self._run(["aws", "s3api", "list-objects-v2", "--bucket", self.bucket, "--prefix", self._prefix(),
+                       "--query", "Contents[].Key", "--output", "json"])
         if r.returncode != 0:
             raise RuntimeError("s3 list failed: " + r.stderr.strip())
         keys = json.loads(r.stdout) or []
@@ -778,6 +806,11 @@ class Worker:
                           "binary": self.cfg.get("binaryKey", "")}
                 if last:
                     fields.update(rate=last["rate"], iters=last["iters"], dp=last["dp"], dropped=last["dropped"])
+                    if os.environ.get("ECC_METRICS_DIR"):
+                        try:
+                            writeMetrics(os.environ["ECC_METRICS_DIR"], self.gpu, last)
+                        except OSError as e:
+                            log("metrics export failed: %s" % e)
                 try:
                     self.renewLease(slot, force=True)
                     if not self.slots.heartbeat(slot, self.owner, fields):

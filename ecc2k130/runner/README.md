@@ -70,9 +70,22 @@ target retains scalar inversion for 385,024-worker populations. Measurements and
 checkpoint compatibility receipts are in
 [the reconciliation report](research/DP-RECONCILIATION.md).
 
-The 2026-09-21 rollout runs four RTX PRO 6000 workers for 23 hours in
+The 2026-09-25 rollout resumes runs 12,000–12,003 from their S3 checkpoints on
+four RTX PRO 6000 workers in
+[Modal app ap-OZBcIVgzRNv4khVa0Hojt3](https://modal.com/apps/a-buran28/main/ap-OZBcIVgzRNv4khVa0Hojt3),
+until 2026-09-26 03:36 UTC. It is the first rollout of the fused Frobenius build
+(profile v2). That exact image passed the legacy compatibility gate in
+[its validation receipt](research/production/2026-09-25-fused-deployment-validation.json).
+The first launch reserved four CPU cores per worker. At 04:35 UTC the fleet was
+relaunched with the two-core request. After the relaunch, the four clients
+reported 69.48 billion updates/s in total, zero drops, advancing checkpoints
+and seed-matching RDS samples. See the
+[relaunch receipt](research/production/2026-09-25-cpu2-deployment.json) and the
+[first launch receipt](research/production/2026-09-25-fused-deployment.json).
+
+The 2026-09-21 rollout ran four RTX PRO 6000 workers in
 [Modal app ap-89OUG2uEQpkkKtdd1WO8ru](https://modal.com/apps/a-buran28/main/ap-89OUG2uEQpkkKtdd1WO8ru).
-Run 12,000 resumes the successful three-minute canary; runs 12,001–12,003 start
+Run 12,000 resumed the successful three-minute canary; runs 12,001–12,003 started
 fresh. The older volume-backed jobs were stopped gracefully, with their final
 checkpoints and 71,194,498 stored DP records verified in the persistent volume.
 See the [deployment receipt](research/production/2026-09-21-120k-deployment.json)
@@ -107,6 +120,26 @@ would need replay/continuation under the same walk to reach DP32. For the table
 walk, replay must also recover the cycle-history state. Relabeling a table-walk
 configuration as Frobenius does not convert its records.
 
+`maxIters` restarts a walk that has gone that many steps without a report, and
+the restarted walk's steps are lost, so the limit belongs far out in the tail of
+the trail length. At DP32 a trail averages 2^28.41 steps: the former 2^30 (three
+mean trails) cut 4.9% of honest trails and discarded 15.6% of all steps, while
+the template's 2^32 cuts 0.0006%
+([crypto WALK-CONSTANT.md §6](https://github.com/aburan28/crypto/blob/main/ecc2k130/WALK-CONSTANT.md)).
+The Frobenius walk has no fruitless cycles for the limit to catch. The limit
+changes neither the walk nor the DP rule, and checkpoints do not store it, so
+records and checkpoints stay compatible across a change. Workers read the S3
+copy of `campaign.json`, which `run` never overwrites, and load it once per
+worker process. To change a live campaign, edit only `maxIters` in that copy;
+workers use it from their next start:
+
+```sh
+key="s3://$ECC_BUCKET/$ECC_PREFIX/campaign.json"
+aws s3 cp "$key" campaign.json
+python3 -c 'import json; c = json.load(open("campaign.json")); c["maxIters"] = 1 << 32; json.dump(c, open("campaign.json", "w"), indent=2)'
+aws s3 cp campaign.json "$key"
+```
+
 The measured compatibility experiment and cutoff calculations are documented in
 [research/DP-RECONCILIATION.md](research/DP-RECONCILIATION.md). Run
 `modal run ecc2k130/runner/reconcile_dp.py` to compare the legacy, production and faster
@@ -139,6 +172,16 @@ to use a different secret name. Each worker uses one RTX PRO 6000 GPU. This
 certified build requires CUDA architecture 120 and CUDA 13.3.1; the Dockerfile
 rejects a different architecture. Other GPU types require a separately validated
 build and compatible campaign configuration.
+
+Each GPU worker requests two CPU cores. Modal bills the larger of the request
+and actual use. Live workers averaged 1.16 cores (90th percentile 1.58, peak
+2.82): the client spins one core while waiting for the GPU, and uploads briefly
+add more. The earlier four-core request left about 2.8 paid cores idle.
+Releasing them saves about 3% of each worker's cost. Filling them with the CPU
+walker instead would add an estimated 0.2–0.4% throughput, at 15–25 M
+iterations/s per core. At that rate, paid Modal cores yield 10–17 times fewer
+iterations per dollar than RTX PRO 6000 time. The client keeps four OpenMP
+threads because the GPU idles while it converts each checkpoint.
 
 The secret must exist before the first launch; creating a Modal app does not
 create it. From the repository root, copy the template and fill in the real values
@@ -186,7 +229,11 @@ so check the logs for four distinct claimed slots and progress reports.
 
 The GPU workers use the same Dockerfile as Runpod. Re-running `run` claims
 available slots and resumes from S3; no Modal Volume is required. Each invocation
-is bounded to 23 hours, below the 24-hour function timeout. This is one bounded
+is bounded to 23 hours, below the 24-hour function timeout. All workers share one
+absolute rollout deadline: Modal restarts a preempted call with its original
+arguments, and the restarted worker runs only for the remaining time. The
+coordinator therefore outlives every worker and removes the rollout's ingress
+rules. This is one bounded
 fleet run (up to 92 GPU-hours), not an automatically renewing daily deployment. Shutdown still
 requires the provider to allow enough time to finish the current kernel and
 upload. An abrupt termination recovers from the last acknowledged checkpoint.
@@ -198,7 +245,12 @@ With `ECC_RDS_SECURITY_GROUP` set, each Modal worker adds only its actual public
 IPv4 `/32` on TCP 5432. The coordinator removes rules tagged for its rollout when
 all workers finish; existing administrator rules are never adopted or deleted.
 Hard cancellation of the app can bypass cleanup: inspect descriptions beginning
-`ecc2k130-rollout-` and remove only rules belonging to the stopped rollout. Leave
+`ecc2k130-rollout-` and remove only rules belonging to the stopped rollout.
+`modal app stop` is such a cancellation. It terminates the containers
+immediately, so the workers cannot write a final checkpoint. They resume from
+their last upload, which was 8–136 seconds old in the 2026-09-25 stop. Wait for the 180-second slot
+leases to expire before relaunching; otherwise new workers allocate fresh slots
+instead of resuming the stopped ones. Leave
 this setting unset when an existing network path or static egress allow-list
 already provides access. Runpod uses its configured network path; the Modal
 coordinator's managed ingress is not part of the standalone Docker command.

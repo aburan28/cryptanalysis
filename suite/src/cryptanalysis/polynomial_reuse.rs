@@ -19,6 +19,19 @@ pub struct DecompositionTemplate {
     pub constant: Vec<F2BoolPoly>,
     /// `coefficients[k][j]` is the coefficient of target bit k in equation j.
     pub coefficients: Vec<Vec<F2BoolPoly>>,
+    /// The inputs the template was built from, so an in-process memo can
+    /// confirm a hit exactly rather than trust a hash.  Not serialised:
+    /// the shared cache keys on the full inputs already.
+    #[serde(skip)]
+    source: Option<TemplateSource>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TemplateSource {
+    basis: Vec<Vec<u64>>,
+    b: Vec<u64>,
+    squares: Vec<u64>,
+    reduced: Vec<Vec<u64>>,
 }
 impl DecompositionTemplate {
     pub fn build(
@@ -71,7 +84,29 @@ impl DecompositionTemplate {
             prefix,
             constant,
             coefficients,
+            source: Some(TemplateSource {
+                basis: basis.iter().map(|e| e.raw_bits().to_vec()).collect(),
+                b: b.raw_bits().to_vec(),
+                squares: st.squares.clone(),
+                reduced: st.reduced.clone(),
+            }),
         })
+    }
+
+    /// Whether this template was built from exactly these inputs.
+    fn matches(&self, basis: &[F2mElement], b: &F2mElement, m: usize, st: &FieldStructure) -> bool {
+        self.m == m
+            && self.n == st.n
+            && self.source.as_ref().is_some_and(|s| {
+                s.basis.len() == basis.len()
+                    && s.basis
+                        .iter()
+                        .zip(basis)
+                        .all(|(x, e)| x.as_slice() == e.raw_bits())
+                    && s.b.as_slice() == b.raw_bits()
+                    && s.squares == st.squares
+                    && s.reduced == st.reduced
+            })
     }
     pub fn instantiate(&self, x_r: &F2mElement) -> DecompositionSystem {
         let bits = x_r.raw_bits().first().copied().unwrap_or(0);
@@ -157,6 +192,48 @@ pub fn template_key(
     let basis_bits: Vec<_> = basis.iter().map(|x| x.raw_bits()).collect();
     serde_json::to_vec(&(st, basis_bits, b.raw_bits(), m, "boolean-degrevlex-v0-high")).unwrap()
 }
+/// Templates kept per thread when no algebra cache is configured.  A
+/// decomposition run asks the same `(field, basis, b, m)` for every
+/// target, so a handful covers any caller; the list is searched
+/// linearly and the oldest entry dropped.
+const LOCAL_TEMPLATES: usize = 8;
+
+thread_local! {
+    static TEMPLATES: std::cell::RefCell<Vec<(u64, std::rc::Rc<DecompositionTemplate>)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// A hash of everything a template depends on: the field's structure
+/// constants, the ordered basis, `b` and `m`.  Collisions would hand one
+/// template to another system, so the full inputs are also compared by
+/// [`DecompositionTemplate::matches`] before a hit is used.
+fn local_template_key(basis: &[F2mElement], b: &F2mElement, m: usize, st: &FieldStructure) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    st.n.hash(&mut h);
+    st.squares.hash(&mut h);
+    st.reduced.hash(&mut h);
+    for e in basis {
+        e.raw_bits().hash(&mut h);
+    }
+    b.raw_bits().hash(&mut h);
+    m.hash(&mut h);
+    h.finish()
+}
+
+/// The decomposition system for target abscissa `x_r`.  Everything but
+/// the last link is independent of the target and the last link is
+/// linear in its bits, so the system is instantiated from a
+/// [`DecompositionTemplate`] built once — `n` polynomial additions per
+/// target instead of the symbolic field arithmetic of
+/// [`build_decomposition_system`], which measured 29 % of a whole
+/// `m = 2` decomposition at `n = 23`.  The equations are identical
+/// either way (`every_target_matches_original_chain`).
+///
+/// With the algebra cache configured (`IC_PREPROCESS_CACHE`), templates
+/// go through it; otherwise a small per-thread memo holds them.
+/// `IC_TEMPLATE_MEMO=0` restores building every system from scratch, as
+/// a same-binary control.
 pub fn build_decomposition_system_reusing(
     basis: &[F2mElement],
     x_r: &F2mElement,
@@ -165,7 +242,35 @@ pub fn build_decomposition_system_reusing(
     st: &FieldStructure,
 ) -> Option<DecompositionSystem> {
     if !algebra_cache::enabled(Layer::Preprocessing) {
-        return build_decomposition_system(basis, x_r, b, m, st);
+        static MEMO_OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        if *MEMO_OFF.get_or_init(|| std::env::var("IC_TEMPLATE_MEMO").as_deref() == Ok("0")) {
+            return build_decomposition_system(basis, x_r, b, m, st);
+        }
+        let key = local_template_key(basis, b, m, st);
+        let hit = TEMPLATES.with(|t| {
+            t.borrow()
+                .iter()
+                .find(|(k, tpl)| *k == key && tpl.matches(basis, b, m, st))
+                .map(|(_, tpl)| tpl.clone())
+        });
+        let template = match hit {
+            Some(t) => t,
+            None => {
+                let Some(built) = DecompositionTemplate::build(basis, b, m, st) else {
+                    return build_decomposition_system(basis, x_r, b, m, st);
+                };
+                let built = std::rc::Rc::new(built);
+                TEMPLATES.with(|t| {
+                    let mut t = t.borrow_mut();
+                    if t.len() == LOCAL_TEMPLATES {
+                        t.remove(0);
+                    }
+                    t.push((key, built.clone()));
+                });
+                built
+            }
+        };
+        return Some(template.instantiate(x_r));
     }
     let key = template_key(basis, b, m, st);
     let template: DecompositionTemplate =
@@ -175,25 +280,30 @@ pub fn build_decomposition_system_reusing(
     Some(template.instantiate(x_r))
 }
 
-/// Offline experiment only. Caller must enforce a process timeout/RSS budget;
-/// the existing Buchberger engine has no interrupt hook. The 16-variable cap
-/// prevents accidentally applying this toy experiment to production fields.
-pub fn parameter_basis_cached(
-    template: &DecompositionTemplate,
-    cache: &mut algebra_cache::AlgebraCache,
-) -> Option<Vec<F2BoolPoly>> {
-    let total = template.n_vars + template.n as usize;
-    if total > 16 {
-        return None;
-    }
-    let key = serde_json::to_vec(template).ok()?;
-    cache.memoize(Layer::Parameterized, &key, || {
-        Some(super::pq_groebner_f2::groebner_basis_f2(
-            template.parameterized_generators()?,
-            total,
-        ))
-    })
-}
+// There is deliberately no cache for a Gröbner basis of
+// `parameterized_generators()`.  `parameter_basis_cached` held one, under
+// `Layer::Parameterized`, until it was measured on every template its
+// 16-variable cap admitted (n = 3, 4; m = 2, 3; every ell and b = 1..3; 24
+// templates, 288 targets):
+//
+//   * computing the basis once cost 1.5x to 821x more operations than
+//     solving EVERY target in the field from scratch.  A cache of the 2^n
+//     answers dominates a cache of the basis, and no reuse pattern can
+//     amortise a basis that costs more than everything it could replace;
+//   * completing from the specialized basis was cheaper than solving from
+//     scratch in 17 of 24 templates and dearer in 7; where it was cheaper
+//     the systems cost 24 to 650 operations to begin with;
+//   * the specialization stayed a Gröbner basis for 100% of targets at
+//     ell = 1, 85% at ell = 2 and 47% at ell = 3.  Completing from it is
+//     correct either way, since it generates the right ideal; genericity
+//     only decides the cost.
+//
+// The 2026-09-14 experiment reached the same verdict on wall time
+// (research/polynomial_reuse_20260914/RESULTS.md: "failed its promotion
+// criterion"), on an engine that had not yet closed under the field
+// equations and so did less work than a correct one.  `parameterized_generators`
+// and `specialize_parameter_basis` remain: they are exact, cheap, and that
+// experiment's benchmark reproduces through them.
 
 #[cfg(test)]
 mod tests {
@@ -228,6 +338,33 @@ mod tests {
         }
     }
     #[test]
+    fn memoised_systems_match_direct_builds_on_real_curves() {
+        use crate::cryptanalysis::koblitz_index_calculus::{
+            build_frobenius_factor_base, KoblitzCurve,
+        };
+        use num_bigint::BigUint;
+        for (a, n, m) in [(0u8, 9u32, 2usize), (0, 9, 3), (1, 17, 2), (0, 13, 3)] {
+            let kc = KoblitzCurve::new(a, n).unwrap();
+            let fb = build_frobenius_factor_base(&kc, 0).unwrap();
+            let st = FieldStructure::new(kc.n, &kc.curve.irreducible);
+            for k in 1..24u32 {
+                let x = match kc.mul(kc.generator(), &BigUint::from(1000 + 37 * k)) {
+                    crate::binary_ecc::BinaryPoint::Affine { x, .. } => x,
+                    _ => continue,
+                };
+                let direct =
+                    build_decomposition_system(&fb.subspace_basis, &x, &kc.curve.b, m, &st);
+                let reused =
+                    build_decomposition_system_reusing(&fb.subspace_basis, &x, &kc.curve.b, m, &st);
+                assert_eq!(
+                    direct.map(|s| s.equations),
+                    reused.map(|s| s.equations),
+                    "K_{a}/2^{n} m={m} k={k}"
+                );
+            }
+        }
+    }
+    #[test]
     fn target_symbolization_matches_every_specialization() {
         let st = field();
         let t = DecompositionTemplate::build(&[fe(1), fe(2)], &fe(1), 2, &st).unwrap();
@@ -252,20 +389,37 @@ mod tests {
         );
     }
 
+    /// Specializing a Gröbner basis of the parametric system gives a
+    /// generating set of the target's ideal, generic target or not, so
+    /// completing it must land on the target's own reduced basis: reduced
+    /// Gröbner bases are unique.  Zero sets alone cannot show that — a
+    /// generating set with the right ideal has the right zero set whether or
+    /// not anything was closed — so this compares the bases.  `b = 1` is
+    /// the Koblitz coefficient, where the engine used to stop short.
     #[test]
-    fn cached_parameter_basis_preserves_all_boolean_fibers() {
-        let t = DecompositionTemplate::build(&[fe(1), fe(2)], &fe(1), 2, &field()).unwrap();
-        let mut cache = algebra_cache::AlgebraCache::local(1024 * 1024);
-        let g = parameter_basis_cached(&t, &mut cache).unwrap();
-        assert_eq!(g, parameter_basis_cached(&t, &mut cache).unwrap());
-        assert_eq!(cache.stats[2].local_hits, 1);
-        for r in 0..8 {
-            let specialized = t.specialize_parameter_basis(&g, r);
-            let original = t.instantiate(&fe(r));
-            for x in 0..16 {
+    fn specialized_parameter_basis_completes_to_the_targets_basis() {
+        use super::super::pq_groebner_f2::{groebner_basis_f2, is_boolean_groebner_basis};
+        for b in 1..=3 {
+            let t = DecompositionTemplate::build(&[fe(1), fe(2)], &fe(b), 2, &field()).unwrap();
+            let total = t.n_vars + t.n as usize;
+            let g = groebner_basis_f2(t.parameterized_generators().unwrap(), total);
+            assert!(
+                is_boolean_groebner_basis(&g),
+                "b = {b}: parametric basis not closed"
+            );
+            for r in 0..8 {
+                let specialized = t.specialize_parameter_basis(&g, r);
+                let original = t.instantiate(&fe(r)).equations;
+                for x in 0..16 {
+                    assert_eq!(
+                        specialized.iter().all(|p| p.eval(x) == 0),
+                        original.iter().all(|p| p.eval(x) == 0)
+                    );
+                }
                 assert_eq!(
-                    specialized.iter().all(|p| p.eval(x) == 0),
-                    original.equations.iter().all(|p| p.eval(x) == 0)
+                    groebner_basis_f2(specialized, t.n_vars),
+                    groebner_basis_f2(original, t.n_vars),
+                    "b = {b}, r = {r}"
                 );
             }
         }

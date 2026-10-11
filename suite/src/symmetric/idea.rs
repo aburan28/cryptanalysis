@@ -63,9 +63,8 @@ fn mul(a: u16, b: u16) -> u16 {
     } else if b == 0 {
         P - a
     } else {
-        let r = (a * b) % P;
         // r ∈ [1, p−1]; map p back to 0 isn't needed (product can't be p)
-        r
+        (a * b) % P
     };
     // Map 2^16 back to 0 for storage.
     (prod & 0xffff) as u16

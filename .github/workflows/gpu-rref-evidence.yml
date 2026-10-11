@@ -1,0 +1,55 @@
+name: GPU RREF experiment evidence
+
+on:
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/round6/**'
+      - 'experiments/groebner-perf-20260924/round7/**'
+      - '.github/workflows/gpu-rref-evidence.yml'
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/round6/**'
+      - 'experiments/groebner-perf-20260924/round7/**'
+      - '.github/workflows/gpu-rref-evidence.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Audit retained measurements and source snapshots
+        run: |
+          python experiments/groebner-perf-20260924/round6/summarize.py > /dev/null
+          python experiments/groebner-perf-20260924/round7/audit.py > /dev/null
+
+  host-build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install M4RI
+        run: brew install m4ri
+      - name: Compile Objective-C++ hosts
+        run: |
+          m4ri_prefix="$(brew --prefix m4ri)"
+          for width in 8 16; do
+            clang++ -O3 -std=c++17 -fobjc-arc -DFUSED=0 -DPANEL_WIDTH="$width" \
+              experiments/groebner-perf-20260924/round7/confirm.mm \
+              -I"$m4ri_prefix/include" -L"$m4ri_prefix/lib" -lm4ri \
+              -framework Foundation -framework Metal -o "$RUNNER_TEMP/confirm-$width"
+          done
+          clang++ -O3 -std=c++17 -fobjc-arc \
+            experiments/groebner-perf-20260924/round7/profile_rref.mm \
+            -I"$m4ri_prefix/include" -L"$m4ri_prefix/lib" -lm4ri \
+            -framework Foundation -framework Metal -o "$RUNNER_TEMP/profile-rref"
+      # Hosted CI builds the hosts and audits local qualification receipts.
+      # It does not claim a Metal device, shader execution, or GPU benchmarks.

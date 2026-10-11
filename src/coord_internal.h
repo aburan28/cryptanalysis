@@ -69,12 +69,22 @@ typedef struct coord_log_entry {
     char *line;
 } coord_log_entry;
 
+/* The in-process backend: the open-addressed table this library has always
+ * used, now reachable through ca_coord_dp_store like any other. */
+typedef struct coord_mem_store {
+    coord_dp_entry *dp;
+    size_t dp_cap, dp_count;
+} coord_mem_store;
+
 struct ca_coord_state {
     pthread_mutex_t lock;
     uint64_t job_id;
 
-    coord_dp_entry *dp;
-    size_t dp_cap, dp_count;
+    /* Where points are remembered.  `mem` is the default backend and is
+     * only touched through `store`; a state built with another backend
+     * leaves it empty. */
+    ca_coord_dp_store store;
+    coord_mem_store mem;
 
     coord_peer *peers;
     size_t peer_cap, peer_count;

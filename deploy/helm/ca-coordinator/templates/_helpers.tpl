@@ -119,7 +119,35 @@ Refuse configurations that cannot work, at template time rather than at
 {{- fail "ca-coordinator: set job.document to the line `ca coord-job` printed, or job.existingConfigMap to a ConfigMap holding one" -}}
 {{- end -}}
 {{- if ne (int .Values.coordinator.replicaCount) 1 -}}
-{{- fail "ca-coordinator: the coordinator holds the shared distinguished-point table in memory, so exactly one replica is correct; two would each hold half of it and miss the collisions that span them" -}}
+{{- fail "ca-coordinator: one replica per release is correct -- the replicas of a Deployment do not gossip, so a second would hold its own half of the distinguished-point table and miss every collision that spans them. To run more than one hub, install a release per cluster and list the others under federation.peers: those DO gossip, and converge." -}}
+{{- end -}}
+{{- if and .Values.federation.peers .Values.networkPolicy.enabled (not .Values.networkPolicy.extraIngressFrom) -}}
+{{- fail "ca-coordinator: federation.peers is set and networkPolicy.enabled is on, but networkPolicy.extraIngressFrom is empty -- a peer hub is not an agent pod and the policy would refuse it, so the peers would look configured and never exchange anything. Add the peers' sources (an ipBlock, or a namespaceSelector for a peer in this cluster), or turn the policy off." -}}
+{{- end -}}
+{{- $count := int .Values.sharding.count -}}
+{{- if or (lt $count 1) (gt $count 1024) -}}
+{{- fail "ca-coordinator: sharding.count must be between 1 and 1024" -}}
+{{- end -}}
+{{- if ge (int .Values.sharding.index) $count -}}
+{{- fail (printf "ca-coordinator: sharding.index %d is not a shard of %d" (int .Values.sharding.index) $count) -}}
+{{- end -}}
+{{- if gt $count 1 -}}
+{{- if ne (len .Values.sharding.urls) $count -}}
+{{- fail (printf "ca-coordinator: sharding.count is %d, so sharding.urls needs %d entries in shard order -- the agents here dial every shard, and a short list silently sends their points to the wrong hubs" $count $count) -}}
+{{- end -}}
+{{- end -}}
+{{- if .Values.job.document -}}
+{{- $declared := regexFind "sh=[0-9]+" .Values.job.document -}}
+{{- $want := 1 -}}
+{{- if $declared -}}{{- $want = atoi (trimPrefix "sh=" $declared) -}}{{- end -}}
+{{- if ne $want $count -}}
+{{- fail (printf "ca-coordinator: the job document declares %d shard(s) but sharding.count is %d -- the count rides inside the job id, so these cannot both be right" $want $count) -}}
+{{- end -}}
+{{- end -}}
+{{- range .Values.federation.peers -}}
+{{- if or (not .name) (not .url) -}}
+{{- fail "ca-coordinator: every federation.peers entry needs a name and a url" -}}
+{{- end -}}
 {{- end -}}
 {{- if and .Values.auth.required (not (include "ca-coordinator.hasToken" .)) -}}
 {{- fail "ca-coordinator: auth.required is set but no token was given; set auth.token, auth.existingSecret, or auth.required=false" -}}

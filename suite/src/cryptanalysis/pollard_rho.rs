@@ -229,6 +229,13 @@ where
                 let rhs_inv =
                     mod_inverse(&rhs, n).ok_or("inverse of (b_h − b_t) does not exist")?;
                 let x = (&lhs * &rhs_inv) % n;
+                // A collision solves g^x = h only when h is in <g> and n is
+                // ord(g); otherwise the congruence has an answer that is
+                // simply wrong.  Never report one unchecked.
+                if !eq(&pow(g, &x), h) {
+                    return Err("rho collision does not satisfy g^x = h: the target is not \
+                                in <g>, or n is not the order of g");
+                }
                 return Ok(RhoSolution {
                     x,
                     iterations: total_iters,
@@ -567,6 +574,22 @@ mod tests {
         let h = BigUint::from(12u32);
         let sol = pollard_rho_dlp_zp(&g, &h, &p, &q, &RhoOptions::default()).unwrap();
         assert_eq!(sol.x, BigUint::from(5u32));
+    }
+
+    /// A target outside <g> has no logarithm.  A collision still yields a
+    /// congruence with a solution; it must be refused, not returned.
+    /// (`g = 4` has order 65633 mod 131267; `2` is a non-residue, outside.)
+    #[test]
+    fn rho_refuses_a_target_outside_the_subgroup() {
+        let p = BigUint::from(131267u32);
+        let q = BigUint::from(65633u32);
+        let g = BigUint::from(4u32);
+        let h = BigUint::from(2u32);
+        let opts = RhoOptions {
+            max_iterations: 1_000_000,
+            ..RhoOptions::default()
+        };
+        assert!(pollard_rho_dlp_zp(&g, &h, &p, &q, &opts).is_err());
     }
 
     /// 16-bit DLP in the prime-order-q subgroup of Z_p* where

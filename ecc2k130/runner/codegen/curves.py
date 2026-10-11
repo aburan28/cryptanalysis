@@ -78,7 +78,7 @@ class Curve:
         if p is None:
             return True
         x, y = p
-        return self.f.add(self.f.mul(y, y), self.f.mul(x, y)) == self.f.add(self.f.mul(self.f.mul(x, x), x), self.one)
+        return self.f.add(self.f.sqr(y), self.f.mul(x, y)) == self.f.add(self.f.mul(self.f.sqr(x), x), self.one)
 
     def neg(self, p):
         if p is None:
@@ -94,8 +94,8 @@ class Curve:
             return None
         f = self.f
         lam = f.add(x, f.mul(y, f.inv(x)))
-        x3 = f.add(f.mul(lam, lam), lam)
-        y3 = f.add(f.mul(x, x), f.mul(f.add(lam, self.one), x3))
+        x3 = f.add(f.sqr(lam), lam)
+        y3 = f.add(f.sqr(x), f.mul(f.add(lam, self.one), x3))
         return (x3, y3)
 
     def add(self, p, q):
@@ -110,18 +110,40 @@ class Curve:
             return self.dbl(p) if y1 == y2 else None
         d = f.add(x1, x2)
         lam = f.mul(f.add(y1, y2), f.inv(d))
-        x3 = f.add(f.add(f.mul(lam, lam), lam), d)
+        x3 = f.add(f.add(f.sqr(lam), lam), d)
         y3 = f.add(f.add(f.mul(lam, f.add(x1, x3)), x3), y1)
         return (x3, y3)
 
     def mul(self, p, k):
+        if p is None or k == 0:
+            return None
+        if k < 0:
+            return self.neg(self.mul(p, -k))
+        if k.bit_length() < 32:
+            r = None
+            b = p
+            while k:
+                if k & 1:
+                    r = self.add(r, b)
+                b = self.dbl(b)
+                k >>= 1
+            return r
+        # For y^2 + xy = x^3 + 1, Frobenius tau obeys tau^2 + tau + 2 = 0.
+        # Divide k in Z[tau] with signed digits; each Horner step then uses
+        # Frobenius instead of an affine doubling and its field inversion.
+        digits = []
+        r0, r1 = k, 0
+        while r0 or r1:
+            digit = 2 - ((r0 - 2*r1) & 3) if r0 & 1 else 0
+            even = r0 - digit
+            digits.append(digit)
+            r0, r1 = r1 - even//2, -even//2
+        negative = self.neg(p)
         r = None
-        b = p
-        while k:
-            if k & 1:
-                r = self.add(r, b)
-            b = self.dbl(b)
-            k >>= 1
+        for digit in reversed(digits):
+            r = self.frob(r)
+            if digit:
+                r = self.add(r, p if digit > 0 else negative)
         return r
 
     def frob(self, p, j=1):
@@ -145,7 +167,7 @@ class Curve:
         f = self.f
         if x == 0:
             return None
-        c = f.add(x, f.inv(f.mul(x, x)))     # x + 1/x^2
+        c = f.add(x, f.inv(f.sqr(x)))     # x + 1/x^2
         if f.trace(c):
             return None
         z = self.halfTrace(c)
@@ -359,6 +381,8 @@ class CurvePb:
 
     def __init__(self, pb):
         self.f = pb
+        self._traceMask = None
+        self._halfTraceImages = None
 
     def onCurve(self, p):
         if p is None:
@@ -397,13 +421,34 @@ class CurvePb:
         return (x3, y3)
 
     def mul(self, p, k):
+        if p is None or k == 0:
+            return None
+        if k < 0:
+            return self.neg(self.mul(p, -k))
+        if k.bit_length() < 8:
+            r = None
+            b = p
+            while k:
+                if k & 1:
+                    r = self.add(r, b)
+                b = self.dbl(b)
+                k >>= 1
+            return r
+        # This polynomial-basis model has the same Koblitz Frobenius
+        # relation tau^2 + tau + 2 = 0 as the ONB curve above.
+        digits = []
+        r0, r1 = k, 0
+        while r0 or r1:
+            digit = 2 - ((r0 - 2*r1) & 3) if r0 & 1 else 0
+            even = r0 - digit
+            digits.append(digit)
+            r0, r1 = r1 - even//2, -even//2
+        negative = self.neg(p)
         r = None
-        b = p
-        while k:
-            if k & 1:
-                r = self.add(r, b)
-            b = self.dbl(b)
-            k >>= 1
+        for digit in reversed(digits):
+            r = self.frob(r)
+            if digit:
+                r = self.add(r, p if digit > 0 else negative)
         return r
 
     def frob(self, p, j=1):
@@ -415,6 +460,13 @@ class CurvePb:
         return (x, y)
 
     def halfTrace(self, a):
+        if self._halfTraceImages is not None and not a >> self.f.m:
+            result = 0
+            while a:
+                bit = a & -a
+                result ^= self._halfTraceImages[bit.bit_length() - 1]
+                a ^= bit
+            return result
         acc = a
         t = a
         for _ in range((self.f.m - 1) // 2):
@@ -422,7 +474,31 @@ class CurvePb:
             acc ^= t
         return acc
 
+    def prepareHalfTrace(self):
+        """Build the linear half-trace map for a declared bulk workload."""
+        if self._halfTraceImages is None:
+            self._halfTraceImages = tuple(self.halfTrace(1 << i)
+                                          for i in range(self.f.m))
+
     def trace(self, a):
+        if not a >> self.f.m:
+            if self._traceMask is None:
+                # Newton sums give Tr(z^k), the power sums of the roots of
+                # the field polynomial. Trace is linear in these bit basis
+                # coordinates, so subsequent calls need only one parity.
+                m = self.f.m
+                taps = [m - i for i in range(1, m)
+                        if (self.f.poly >> i) & 1]
+                sums = [0] * m
+                sums[0] = m & 1
+                for k in range(1, m):
+                    value = (k & 1) if k in taps else 0
+                    for j in taps:
+                        if j < k:
+                            value ^= sums[k - j]
+                    sums[k] = value
+                self._traceMask = sum(bit << i for i, bit in enumerate(sums))
+            return field._bitCount(a & self._traceMask) & 1
         t = a
         acc = a
         for _ in range(self.f.m - 1):
@@ -453,3 +529,79 @@ class CurvePb:
                 continue
             assert self.mul(p, ell) is None
             return p
+
+
+class NormalView:
+    """A polynomial-basis GF(2^m) seen through normal-basis coordinates.
+
+    Elements are polynomial-basis ints, as CurvePb expects, but fromCoords and
+    toCoords speak normal-basis coordinates, so code written against Onb --
+    the weight-bounded factor base and its Frobenius orbits in indexcalc.py --
+    runs unchanged on a field with no optimal normal basis.  The normal element
+    is the one whose conjugates, as polynomial-basis columns, are sparsest,
+    since those columns are the linear map the decomposition circuit pays for.
+    Seeded by m, so the factor base is the same on every run."""
+
+    def __init__(self, m, tries=400):
+        import random
+        self.m = m
+        self.poly, taps = findIrreduciblePoly(m)
+        self.taps = list(taps)
+        self.pb = field.Pb(m, self.poly)
+        rng = random.Random(m)
+        best = None
+        for _ in range(tries):
+            beta = rng.getrandbits(m)
+            if beta == 0:
+                continue
+            conj = []
+            cur = beta
+            for _ in range(m):
+                conj.append(cur)
+                cur = self.pb.sqr(cur)
+            inv = invertGf2Columns(conj, m)
+            if inv is None:
+                continue
+            ones = 0
+            for c in conj:
+                ones += bin(c).count('1')
+            if best is None or ones < best[0]:
+                best = (ones, conj, inv)
+        if best is None:
+            raise RuntimeError('no normal element found for m=%d' % m)
+        self.conj = best[1]
+        self.rowsPbToNb = best[2]
+        # rowsNbToPb[i]: the normal-basis coordinates whose parity is
+        # polynomial-basis coordinate i, the form linearMapIr takes
+        self.rowsNbToPb = []
+        for i in range(m):
+            r = 0
+            for j in range(m):
+                if (self.conj[j] >> i) & 1:
+                    r |= 1 << j
+            self.rowsNbToPb.append(r)
+
+    def fromCoords(self, c):
+        x = 0
+        j = 0
+        while c:
+            if c & 1:
+                x ^= self.conj[j]
+            c >>= 1
+            j += 1
+        return x
+
+    def toCoords(self, x):
+        c = 0
+        for i in range(self.m):
+            if bin(self.rowsPbToNb[i] & x).count('1') & 1:
+                c |= 1 << i
+        return c
+
+    def frob(self, x, k):
+        for _ in range(k % self.m):
+            x = self.pb.sqr(x)
+        return x
+
+    def trace(self, x):
+        return bin(self.toCoords(x)).count('1') & 1

@@ -5,7 +5,9 @@
 //!   cargo run --release --example elimination_bench -- --n 5 --m 3 --d 6
 //! ```
 
-use cryptanalysis_suite::cryptanalysis::koblitz_bench::elimination_comparison;
+use cryptanalysis_suite::cryptanalysis::koblitz_bench::{
+    elimination_comparison, sparse_elimination_cost,
+};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -20,6 +22,30 @@ fn main() {
     let m = flag("--m", 3) as usize;
     let d = flag("--d", 6) as u32;
     let seed = flag("--seed", 0x5EED);
+
+    // `--sparse-only`: time the sparse path alone, for cells where the dense
+    // pass would never finish.  It prints the matrix and the cost, and
+    // deliberately not whether the system resolved: a cost probe that also
+    // reported a degree would be a measurement taken before its registration.
+    if args.iter().any(|a| a == "--sparse-only") {
+        match sparse_elimination_cost(n, 0, m, d, seed) {
+            Some(c) => {
+                println!("n={} m={} degree={} vars={}", c.n, c.m, c.degree, c.n_vars);
+                println!(
+                    "  matrix      {} rows x {} cols ({} high)",
+                    c.rows, c.cols, c.high_cols
+                );
+                println!("  build       {:.1} ms", c.build_ms);
+                println!("  sparse      {:.1} ms", c.sparse_ms);
+                println!(
+                    "  row weight  {} -> {} (cols = {})",
+                    c.start_max_weight, c.max_weight, c.cols
+                );
+            }
+            None => println!("cell unavailable (size caps or no invariant subspace)"),
+        }
+        return;
+    }
 
     match elimination_comparison(n, 0, m, d, seed) {
         Some(c) => {

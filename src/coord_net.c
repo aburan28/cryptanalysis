@@ -191,6 +191,25 @@ ca_status ca_coord_parse_url(const char *url, char *host_port, size_t hp_cap, ch
     const char *p = url;
     if (strncmp(p, "http://", 7) == 0) p += 7;
     const char *slash = strchr(p, '/');
+    {
+        /* Refuse http://user:secret@host.
+         *
+         * This client ignores userinfo -- it authenticates with a bearer
+         * token and nothing else -- so such a URL could never work, and
+         * would take its credentials on a tour of the places a URL goes:
+         * the Host header, an error message, the line the agent logs when
+         * it dials.  Refusing it is both honest about what is supported
+         * and the end of that leak.  The message deliberately does not
+         * echo the URL. */
+        const char *host_end = slash ? slash : p + strlen(p);
+        for (const char *q = p; q < host_end; q++) {
+            if (*q != '@') continue;
+            ca_set_error("coordinator URL carries credentials; this client "
+                         "authenticates with a bearer token, so pass the plain "
+                         "http://host:port and use --token or --token-file");
+            return CA_ERR_INVALID;
+        }
+    }
     size_t hlen = slash ? (size_t)(slash - p) : strlen(p);
     if (!hlen || hlen >= hp_cap) {
         ca_set_error("%s: no host", url);

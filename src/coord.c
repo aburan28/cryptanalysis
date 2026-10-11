@@ -70,6 +70,16 @@ static size_t coord_job_body(const ca_coord_job *job, char *buf, size_t cap)
         job->base[2], job->base[3], job->target[0], job->target[1], job->target[2], job->target[3],
         job->dp_bits, job->r, job->negation_map, job->unit_size, job->seed);
     if (n < 0 || (size_t)n >= cap) return 0;
+    /* `sh` is written only when it says something, so every job document
+     * written before sharding existed still hashes to the id it already
+     * has.  A reader that does not find it reads 1. */
+    if (job->shards > 1) {
+        int m = snprintf(buf + n, cap - (size_t)n, " sh=%" PRIu32, job->shards);
+        /* Compared in size_t against the room that is left, rather than
+         * summing two ints and widening the total. */
+        if (m < 0 || (size_t)m >= cap - (size_t)n) return 0;
+        n += m;
+    }
     return (size_t)n;
 }
 
@@ -115,6 +125,10 @@ static ca_status coord_job_check_bounds(const ca_coord_job *job)
         ca_set_error("n must be at least 2");
         return CA_ERR_INVALID;
     }
+    if (job->shards == 0 || job->shards > CA_COORD_SHARDS_MAX) {
+        ca_set_error("sh must be in [1, %d]", CA_COORD_SHARDS_MAX);
+        return CA_ERR_INVALID;
+    }
     return CA_OK;
 }
 
@@ -152,6 +166,7 @@ ca_status ca_coord_job_init(ca_coord_job *job, const ca_group *g, const ca_elem 
     job->negation_map = negation_map ? 1 : 0;
     job->unit_size = unit_size ? unit_size : 256;
     job->seed = seed;
+    job->shards = 1;
     ca_status rc = coord_job_check_bounds(job);
     if (rc != CA_OK) return rc;
 
@@ -284,6 +299,17 @@ ca_status ca_coord_job_decode(ca_coord_job *job, const char *line)
     }
     job->kind = (ca_group_kind)kind;
     job->r = (uint32_t)r;
+    job->shards = 1;
+    {
+        uint64_t sh = 0;
+        if (coord_field(line, "sh") && coord_u64(line, "sh", &sh)) {
+            if (sh == 0 || sh > CA_COORD_SHARDS_MAX) {
+                ca_set_error("sh must be in [1, %d]", CA_COORD_SHARDS_MAX);
+                return CA_ERR_INVALID;
+            }
+            job->shards = (uint32_t)sh;
+        }
+    }
     /* Checked before the id is recomputed, so the error names the bound
      * that was broken rather than blaming transit. */
     ca_status rc = coord_job_check_bounds(job);
@@ -430,6 +456,28 @@ double ca_coord_expected_dps(const ca_coord_ctx *ctx)
 static uint32_t coord_index(const ca_coord_ctx *ctx, uint64_t h)
 {
     return (uint32_t)((h >> 32) % ctx->r);
+}
+
+/*
+ * The key a point is filed and routed under.
+ *
+ * Not ca_group_hash itself, and the reason is easy to miss: a point is
+ * distinguished exactly when the low dp_bits of that hash are zero
+ * (ca_coord_is_dp, just below).  So *every* record in the table shares
+ * those bits, and anything that reads them -- a bucket index, a shard
+ * number -- sees a constant.  With dp_bits at a realistic 31 and a shard
+ * count that is a power of two, routing on the raw hash would send an
+ * entire campaign to shard 0 while looking perfectly configured; the
+ * open-addressed table has the same problem one level down, where every
+ * key wants the same bucket.
+ *
+ * ca_mix64 is a bijection, so this changes no point's identity and no
+ * collision probability.  It only puts the entropy back where the low
+ * bits can see it.
+ */
+static uint64_t coord_dp_key(const ca_coord_ctx *ctx, const ca_elem *y)
+{
+    return ca_mix64(ca_group_hash(&ctx->g, y));
 }
 
 int ca_coord_is_dp(const ca_coord_ctx *ctx, const ca_elem *y)
@@ -765,7 +813,54 @@ bad:
     return CA_ERR_INVALID;
 }
 
+/* ---- sharding ---------------------------------------------------------- */
+
+ca_status ca_coord_job_set_shards(ca_coord_job *job, uint32_t shards)
+{
+    if (!job) return CA_ERR_INVALID;
+    if (shards == 0 || shards > CA_COORD_SHARDS_MAX) {
+        ca_set_error("sh must be in [1, %d]", CA_COORD_SHARDS_MAX);
+        return CA_ERR_INVALID;
+    }
+    uint32_t was = job->shards;
+    job->shards = shards;
+    char body[CA_COORD_LINE_MAX];
+    size_t len = coord_job_body(job, body, sizeof(body));
+    if (!len) {
+        job->shards = was;
+        ca_set_error("job does not fit one line");
+        return CA_ERR_INVALID;
+    }
+    /* The count is part of the document, so it is part of the id: agents
+     * that disagree about the topology disagree about the job. */
+    job->id = coord_job_hash(body, len);
+    return CA_OK;
+}
+
+/*
+ * Which hub owns this point.
+ *
+ * The same hash the DP table keys on, taken modulo the shard count.  That
+ * is the whole of it, and the reason it is enough: a collision is two
+ * *equal* points, equal points hash alike, so the two halves of any
+ * collision route to the same shard.  Splitting the space cannot hide a
+ * collision -- it only makes each hub hold less of it.
+ */
+uint32_t ca_coord_shard_of(const ca_coord_ctx *ctx, const ca_coord_dp *dp)
+{
+    if (!ctx || !dp) return 0;
+    if (ctx->job.shards <= 1) return 0;
+    ca_elem y;
+    if (ca_group_encode(&ctx->g, &y, dp->point) != 1) return 0;
+    return (uint32_t)(coord_dp_key(ctx, &y) % ctx->job.shards);
+}
+
 /* ---- the state --------------------------------------------------------- */
+
+/* The default backend, defined with the rest of the table below. */
+static ca_coord_dp_status coord_mem_put(void *self, const ca_coord_dp_record *rec,
+                                        ca_coord_dp_record *prior);
+static uint64_t coord_mem_count(void *self);
 
 ca_status ca_coord_state_init(ca_coord_state **out, const ca_coord_ctx *ctx)
 {
@@ -777,14 +872,33 @@ ca_status ca_coord_state_init(ca_coord_state **out, const ca_coord_ctx *ctx)
         return CA_ERR_INTERNAL;
     }
     st->job_id = ctx->job.id;
-    st->dp_cap = 1024;
-    st->dp = calloc(st->dp_cap, sizeof(*st->dp));
-    if (!st->dp) {
+    st->mem.dp_cap = 1024;
+    st->mem.dp = calloc(st->mem.dp_cap, sizeof(*st->mem.dp));
+    if (!st->mem.dp) {
         pthread_mutex_destroy(&st->lock);
         free(st);
         return CA_ERR_NOMEM;
     }
+    st->store.self = &st->mem;
+    st->store.put = coord_mem_put;
+    st->store.count = coord_mem_count;
+    st->store.close = NULL; /* freed with the state */
     *out = st;
+    return CA_OK;
+}
+
+ca_status ca_coord_state_init_store(ca_coord_state **out, const ca_coord_ctx *ctx,
+                                    const ca_coord_dp_store *store)
+{
+    if (!store || !store->put || !store->count) return CA_ERR_INVALID;
+    ca_status rc = ca_coord_state_init(out, ctx);
+    if (rc != CA_OK) return rc;
+    /* Drop the default backend rather than leave it allocated behind the
+     * one the caller wants. */
+    free((*out)->mem.dp);
+    (*out)->mem.dp = NULL;
+    (*out)->mem.dp_cap = (*out)->mem.dp_count = 0;
+    (*out)->store = *store;
     return CA_OK;
 }
 
@@ -793,7 +907,8 @@ void ca_coord_state_free(ca_coord_state *st)
     if (!st) return;
     for (size_t i = 0; i < st->log_count; i++) free(st->log[i].line);
     free(st->log);
-    free(st->dp);
+    if (st->store.close) st->store.close(st->store.self);
+    free(st->mem.dp);
     free(st->peers);
     free(st->units);
     pthread_mutex_destroy(&st->lock);
@@ -827,70 +942,112 @@ static int coord_peer_index(ca_coord_state *st, const char *name, uint32_t *out,
 
 /* the DP table: grow-only, keyed by the canonical point's hash ------------ */
 
-static int coord_dp_grow(ca_coord_state *st)
+static int coord_dp_grow(coord_mem_store *m)
 {
-    size_t cap = st->dp_cap * 2;
+    size_t cap = m->dp_cap * 2;
     coord_dp_entry *e = calloc(cap, sizeof(*e));
     if (!e) return 0;
-    for (size_t i = 0; i < st->dp_cap; i++) {
-        if (!st->dp[i].used) continue;
-        size_t j = st->dp[i].key & (cap - 1);
+    for (size_t i = 0; i < m->dp_cap; i++) {
+        if (!m->dp[i].used) continue;
+        size_t j = m->dp[i].key & (cap - 1);
         while (e[j].used) j = (j + 1) & (cap - 1);
-        e[j] = st->dp[i];
+        e[j] = m->dp[i];
     }
-    free(st->dp);
-    st->dp = e;
-    st->dp_cap = cap;
+    free(m->dp);
+    m->dp = e;
+    m->dp_cap = cap;
     return 1;
 }
 
 /*
- * Insert one verified point.  A key already present with *different*
- * coefficients is the collision the whole search is for; identical
- * coefficients are the same trail arriving twice (a re-run unit, a
- * duplicated message) and merge as a no-op.  Returns 1 if the instance
- * was solved by this insertion.
+ * The in-process backend.  Identity is the point words, compared byte for
+ * byte: ca_group_decode is canonical for every group here, so equal words
+ * are an equal element and no group is needed to say so.  The key is only
+ * where to start probing.
+ */
+static ca_coord_dp_status coord_mem_put(void *self, const ca_coord_dp_record *rec,
+                                        ca_coord_dp_record *prior)
+{
+    coord_mem_store *m = self;
+    if (m->dp_count * 4 >= m->dp_cap * 3 && !coord_dp_grow(m)) return CA_COORD_DP_ERROR;
+    size_t j = rec->key & (m->dp_cap - 1);
+    while (m->dp[j].used) {
+        const coord_dp_entry *e = &m->dp[j];
+        if (e->key == rec->key && memcmp(e->point, rec->point, sizeof(e->point)) == 0) {
+            if (e->a == rec->a && e->b == rec->b) return CA_COORD_DP_DUPLICATE;
+            if (prior) {
+                prior->key = e->key;
+                memcpy(prior->point, e->point, sizeof(prior->point));
+                prior->a = e->a;
+                prior->b = e->b;
+                prior->walker = e->walker;
+                prior->peer = e->peer;
+            }
+            return CA_COORD_DP_COLLISION;
+        }
+        j = (j + 1) & (m->dp_cap - 1);
+    }
+    coord_dp_entry *e = &m->dp[j];
+    e->used = 1;
+    e->key = rec->key;
+    memcpy(e->point, rec->point, sizeof(e->point));
+    e->a = rec->a;
+    e->b = rec->b;
+    e->walker = rec->walker;
+    e->peer = rec->peer;
+    m->dp_count++;
+    return CA_COORD_DP_FRESH;
+}
+
+static uint64_t coord_mem_count(void *self)
+{
+    return (uint64_t)((coord_mem_store *)self)->dp_count;
+}
+
+/*
+ * Offer one verified point to the backend and act on what it already held.
+ * The same point with *different* coefficients is the collision the whole
+ * search is for; identical coefficients are one trail arriving twice (a
+ * re-run unit, a duplicated message) and merge as a no-op.  Returns 1 if
+ * the instance was solved by this insertion.
+ *
+ * Solving stays here rather than in the backend on purpose: a backend
+ * remembers points, it does not decide what is true.
  */
 static int coord_dp_insert(ca_coord_state *st, const ca_coord_ctx *ctx, const ca_elem *y,
                            const ca_coord_dp *dp, uint32_t peer)
 {
-    if (st->dp_count * 4 >= st->dp_cap * 3 && !coord_dp_grow(st)) return 0;
-    uint64_t key = ca_group_hash(&ctx->g, y);
-    size_t j = key & (st->dp_cap - 1);
-    while (st->dp[j].used) {
-        const coord_dp_entry *e = &st->dp[j];
-        if (e->key == key) {
-            ca_elem stored;
-            if (ca_group_encode(&ctx->g, &stored, e->point) == 1 &&
-                ca_group_equal(&ctx->g, &stored, y)) {
-                if (e->a == dp->a && e->b == dp->b) return 0; /* same trail */
-                uint64_t x;
-                if (ca_coord_solve_collision(ctx, e->a, e->b, dp->a, dp->b, &x)) {
-                    if (!st->have_solution) {
-                        st->have_solution = 1;
-                        st->solution = x;
-                        return 1;
-                    }
-                    return 0;
-                }
-                /* Same point, different coefficients, no solution: the
-                 * sterile case (b1 == b2), worth counting and no more. */
-                st->sterile_collisions++;
-                return 0;
+    ca_coord_dp_record rec, prior;
+    memset(&rec, 0, sizeof(rec));
+    memset(&prior, 0, sizeof(prior));
+    rec.key = coord_dp_key(ctx, y);
+    ca_group_decode(&ctx->g, rec.point, y);
+    rec.a = dp->a;
+    rec.b = dp->b;
+    rec.walker = dp->walker;
+    rec.peer = peer;
+
+    switch (st->store.put(st->store.self, &rec, &prior)) {
+    case CA_COORD_DP_COLLISION: {
+        uint64_t x;
+        if (ca_coord_solve_collision(ctx, prior.a, prior.b, rec.a, rec.b, &x)) {
+            if (!st->have_solution) {
+                st->have_solution = 1;
+                st->solution = x;
+                return 1;
             }
+            return 0;
         }
-        j = (j + 1) & (st->dp_cap - 1);
+        /* Same point, different coefficients, no solution: the sterile
+         * case (b1 == b2), worth counting and no more. */
+        st->sterile_collisions++;
+        return 0;
     }
-    coord_dp_entry *e = &st->dp[j];
-    e->used = 1;
-    e->key = key;
-    memcpy(e->point, dp->point, sizeof(e->point));
-    e->a = dp->a;
-    e->b = dp->b;
-    e->walker = dp->walker;
-    e->peer = peer;
-    st->dp_count++;
-    return 0;
+    case CA_COORD_DP_ERROR: st->rejected_dps++; return 0;
+    case CA_COORD_DP_FRESH:
+    case CA_COORD_DP_DUPLICATE:
+    default: return 0;
+    }
 }
 
 /* unit views -------------------------------------------------------------- */
@@ -1070,7 +1227,7 @@ void ca_coord_progress_get(ca_coord_state *st, const ca_coord_ctx *ctx, uint64_t
     if (!lease_secs) lease_secs = 120;
     pthread_mutex_lock(&st->lock);
     out->steps = st->steps;
-    out->dps_stored = st->dp_count;
+    out->dps_stored = st->store.count(st->store.self);
     out->dead_trails = st->dead_trails;
     out->peers = st->peer_count;
     out->checkins = st->log_count;
@@ -1295,9 +1452,9 @@ static uint64_t coord_now(void) { return (uint64_t)time(NULL); }
 /* Merge our own check-in (no verification: we just made it), then hand
  * it to the transport.  Merging first is what makes the hook's argument
  * a fact and not a proposal. */
-static void coord_emit(const ca_coord_ctx *ctx, ca_coord_state *st, ca_coord_checkin *ci,
-                       void (*on_checkin)(void *, const ca_coord_checkin *), void *user,
-                       ca_coord_lane_result *res)
+static void coord_emit_one(const ca_coord_ctx *ctx, ca_coord_state *st, ca_coord_checkin *ci,
+                           void (*on_checkin)(void *, const ca_coord_checkin *), void *user,
+                           ca_coord_lane_result *res)
 {
     ci->job_id = ctx->job.id;
     ci->seq = ca_coord_next_seq(st, ci->peer);
@@ -1305,6 +1462,62 @@ static void coord_emit(const ca_coord_ctx *ctx, ca_coord_state *st, ca_coord_che
     if (ca_coord_apply(st, ctx, ci, coord_now(), 0, NULL) != CA_OK) return;
     res->checkins++;
     if (on_checkin) on_checkin(user, ci);
+    ci->num_dps = 0;
+    ci->has_solution = 0;
+}
+
+/*
+ * Send what has accumulated, split across shards when there is more than
+ * one hub.
+ *
+ * Three things travel differently, because they are three different kinds
+ * of fact:
+ *
+ *   A distinguished point goes to the shard that owns it, and only there.
+ *   That is the whole point of sharding, and it is safe because equal
+ *   points hash alike -- the two halves of a collision are never parted.
+ *
+ *   Unit progress goes to the shard that owns the *unit* (unit % shards),
+ *   so no hub is special and the bookkeeping is spread like the points.
+ *   An agent is connected to every shard, so it still sees the whole
+ *   unit picture in what is pushed back to it, and still claims against
+ *   a complete view.
+ *
+ *   A solution goes to every shard.  It is one number, it is write-once,
+ *   and anyone still walking deserves to be told to stop.
+ *
+ * Each shard gets its own peer identity, "<lane>#<shard>", and therefore
+ * its own sequence numbers: one lane's check-in to shard 3 and its
+ * check-in to shard 7 carry different records, so they must not claim to
+ * be the same (peer, seq) -- the log is a set keyed on exactly that.
+ */
+static void coord_emit(const ca_coord_ctx *ctx, ca_coord_state *st, ca_coord_checkin *ci,
+                       const char *lane_peer, void (*on_checkin)(void *, const ca_coord_checkin *),
+                       void *user, ca_coord_lane_result *res)
+{
+    uint32_t shards = ctx->job.shards;
+    if (shards <= 1) {
+        snprintf(ci->peer, sizeof(ci->peer), "%s", lane_peer);
+        coord_emit_one(ctx, st, ci, on_checkin, user, res);
+        return;
+    }
+    for (uint32_t sh = 0; sh < shards; sh++) {
+        ca_coord_checkin part;
+        memset(&part, 0, sizeof(part));
+        snprintf(part.peer, sizeof(part.peer), "%s#%" PRIu32, lane_peer, sh);
+        for (uint32_t i = 0; i < ci->num_dps; i++) {
+            if (ca_coord_shard_of(ctx, &ci->dps[i]) != sh) continue;
+            part.dps[part.num_dps++] = ci->dps[i];
+        }
+        if (ci->num_units && (ci->units[0].unit % shards) == sh) {
+            part.num_units = 1;
+            part.units[0] = ci->units[0];
+        }
+        part.has_solution = ci->has_solution;
+        part.solution = ci->solution;
+        if (!part.num_dps && !part.num_units && !part.has_solution) continue;
+        coord_emit_one(ctx, st, &part, on_checkin, user, res);
+    }
     ci->num_dps = 0;
     ci->has_solution = 0;
 }
@@ -1318,6 +1531,19 @@ ca_status ca_coord_lane_run(const ca_coord_ctx *ctx, ca_coord_state *st,
     ca_coord_lane_result res;
     memset(&res, 0, sizeof(res));
     if (!ctx || !st || !p || !coord_peer_name_ok(p->peer)) return CA_ERR_INVALID;
+    if (ctx->job.shards > 1) {
+        /* Every check-in this lane sends is tagged "<lane>#<shard>", and
+         * that has to fit whole: silently truncating it would give two
+         * shards' streams one identity, whose sequence numbers would then
+         * collide and whose check-ins would be discarded as duplicates.
+         * Refuse the name instead, where the caller can see it. */
+        char probe[CA_COORD_PEER_MAX];
+        int n = snprintf(probe, sizeof(probe), "%s#%" PRIu32, p->peer, ctx->job.shards - 1);
+        if (n < 0 || (size_t)n >= sizeof(probe)) {
+            ca_set_error("peer name leaves no room for the shard suffix");
+            return CA_ERR_INVALID;
+        }
+    }
     uint64_t every = p->checkin_every ? p->checkin_every : 64;
     uint64_t lease = p->lease_secs ? p->lease_secs : 120;
     /* The step cap: 20 mean trails.  A walk that has not reached a DP by
@@ -1350,7 +1576,7 @@ ca_status ca_coord_lane_run(const ca_coord_ctx *ctx, ca_coord_state *st,
         ci.units[0].walkers_done = resume;
         /* Announce the claim before walking it: a lane that dies after
          * one walker should still have told everyone which unit it took. */
-        coord_emit(ctx, st, &ci, on_checkin, on_checkin_user, &res);
+        coord_emit(ctx, st, &ci, p->peer, on_checkin, on_checkin_user, &res);
 
         uint64_t since_checkin = 0;
         for (uint64_t k = resume; k < count; k++) {
@@ -1376,7 +1602,7 @@ ca_status ca_coord_lane_run(const ca_coord_ctx *ctx, ca_coord_state *st,
 
             if (since_checkin >= every || ci.num_dps == CA_COORD_DPS_MAX) {
                 since_checkin = 0;
-                coord_emit(ctx, st, &ci, on_checkin, on_checkin_user, &res);
+                coord_emit(ctx, st, &ci, p->peer, on_checkin, on_checkin_user, &res);
                 if (ca_coord_solution(st, &res.solution)) {
                     res.have_solution = 1;
                     break;
@@ -1396,7 +1622,7 @@ ca_status ca_coord_lane_run(const ca_coord_ctx *ctx, ca_coord_state *st,
             ci.has_solution = 1;
             ci.solution = res.solution;
         }
-        coord_emit(ctx, st, &ci, on_checkin, on_checkin_user, &res);
+        coord_emit(ctx, st, &ci, p->peer, on_checkin, on_checkin_user, &res);
         if (res.have_solution) break;
     }
 

@@ -1,0 +1,31 @@
+diff --git a/src/sage/schemes/elliptic_curves/hom_frobenius.py b/src/sage/schemes/elliptic_curves/hom_frobenius.py
+--- a/src/sage/schemes/elliptic_curves/hom_frobenius.py
++++ b/src/sage/schemes/elliptic_curves/hom_frobenius.py
+@@ -253,2 +253,27 @@
+         """
++        # A Koblitz Frobenius endomorphism can use NTL's binary squaring
++        # through the exact point-map path.  Keep the general projective
++        # evaluation for extension-field and custom point classes.
++        mapper = getattr(self, '_binary_batch_map', False)
++        if mapper is False:
++            mapper = None
++            field = self._base_ring
++            if (self._p == 2 and isinstance(field, FiniteField)
++                    and self._domain is self._codomain
++                    and 0 < self._n < field.degree()):
++                a1, a2, a3, a4, a6 = self._domain.ainvs()
++                if a1 == 1 and a2 in (0, 1) and a3 == a4 == 0 and a6 == 1:
++                    from sage.schemes.elliptic_curves.ell_point import EllipticCurvePoint_finite_field
++                    from sage.schemes.elliptic_curves import binary_batch
++                    if (self._domain._point is EllipticCurvePoint_finite_field
++                            and binary_batch._native is not None
++                            and binary_batch._native.supports(field)):
++                        mapper = binary_batch.frobenius_points
++                        self._binary_batch_point_class = EllipticCurvePoint_finite_field
++            self._binary_batch_map = mapper
++        if (mapper is not None
++                and self._domain._point is self._binary_batch_point_class
++                and type(P) is self._binary_batch_point_class
++                and P.curve() is self._domain):
++            return mapper(self._domain, (P,), int(self._n))[0]
+         return self._codomain(*(c**self._degree for c in P))

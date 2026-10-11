@@ -1,0 +1,54 @@
+name: Complete GPU query experiment
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/round10/**'
+      - 'experiments/groebner-perf-20260924/round4/**'
+      - 'experiments/groebner-perf-20260924/round7/**'
+      - 'experiments/pdp-scaling/**'
+      - '.github/workflows/gpu-query.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/round10/**'
+      - 'experiments/groebner-perf-20260924/round4/**'
+      - 'experiments/groebner-perf-20260924/round7/**'
+      - 'experiments/pdp-scaling/**'
+      - '.github/workflows/gpu-query.yml'
+permissions:
+  contents: read
+concurrency:
+  group: gpu-query-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  query:
+    name: Query checks (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Linux dependencies and CPU library
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libm4ri-dev libpng-dev pkg-config clang
+          python experiments/groebner-perf-20260924/round10/build.py --cpu-only
+      - name: Mac dependencies and Metal host compilation
+        if: runner.os == 'macOS'
+        run: |
+          brew install m4ri
+          python experiments/groebner-perf-20260924/round10/build.py --m4ri-prefix "$(brew --prefix m4ri)"
+      - name: Independent query checks on CPU
+        run: python experiments/groebner-perf-20260924/round10/test_query.py
+      - name: Audit retained local GPU evidence
+        run: python experiments/groebner-perf-20260924/round10/audit.py
+      # Metal qualification and timings are local receipts. Hosted CI compiles
+      # the Metal host, executes CPU checks, and audits retained evidence only.

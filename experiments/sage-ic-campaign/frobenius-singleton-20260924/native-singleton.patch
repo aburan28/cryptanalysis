@@ -1,0 +1,56 @@
+diff --git a/src/sage/schemes/elliptic_curves/binary_batch_ntl.pyx b/src/sage/schemes/elliptic_curves/binary_batch_ntl.pyx
+--- a/src/sage/schemes/elliptic_curves/binary_batch_ntl.pyx
++++ b/src/sage/schemes/elliptic_curves/binary_batch_ntl.pyx
+@@ -209 +209,39 @@
+     return output
++
++
++def _frobenius_one(curve, P, Py_ssize_t power):
++    """Map one standard point after restoring its NTL field context."""
++    field = curve.base_ring()
++    if power <= 0 or power >= field.degree():
++        raise ValueError('power must be reduced modulo the field degree')
++    if (curve._point is not EllipticCurvePoint_finite_field
++            or type(P) is not EllipticCurvePoint_finite_field
++            or P.curve() is not curve):
++        raise ValueError('expected a standard point on this curve')
++    cdef FiniteField_ntl_gf2eElement model = field.zero()
++    cdef FiniteField_ntl_gf2eElement x, y, x3, y3
++    cdef GF2E_c result_x, result_y
++    cdef Py_ssize_t j
++    cdef Element point
++    model._cache.F.restore()
++    if not P:
++        return P
++    x, y = P.xy()
++    if x.parent() is not field or y.parent() is not field:
++        raise ValueError('coordinates belong to a different field')
++    result_x = x.x
++    result_y = y.x
++    for j in range(power):
++        sig_check()
++        sqr(result_x, result_x)
++        sqr(result_y, result_y)
++    x3 = model._new()
++    y3 = model._new()
++    x3.x = result_x
++    y3.x = result_y
++    point = EllipticCurvePoint_finite_field.__new__(EllipticCurvePoint_finite_field)
++    point._parent = curve.point_homset()
++    point._codomain = curve
++    point._normalized = True
++    point._coords = (x3, y3, field.one())
++    return point
+diff --git a/src/sage/schemes/elliptic_curves/hom_frobenius.py b/src/sage/schemes/elliptic_curves/hom_frobenius.py
+--- a/src/sage/schemes/elliptic_curves/hom_frobenius.py
++++ b/src/sage/schemes/elliptic_curves/hom_frobenius.py
+@@ -270,3 +270,3 @@
+                             and binary_batch._native.supports(field)):
+-                        mapper = binary_batch.frobenius_points
++                        mapper = binary_batch._native._frobenius_one
+                         self._binary_batch_point_class = EllipticCurvePoint_finite_field
+@@ -277,3 +277,3 @@
+                 and P.curve() is self._domain):
+-            return mapper(self._domain, (P,), int(self._n))[0]
++            return mapper(self._domain, P, int(self._n))
+         return self._codomain(*(c**self._degree for c in P))

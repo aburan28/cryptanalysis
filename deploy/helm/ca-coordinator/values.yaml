@@ -137,6 +137,64 @@ agents:
 
 # A NetworkPolicy that writes the topology down: the coordinator accepts
 # connections, agents only make them.
+# Splitting the point space across several hubs.
+#
+# A hub holds every point it is told about, so one machine's memory is the
+# ceiling on a campaign.  Sharding raises it: the point space is split
+# `count` ways, and this release's coordinator holds shard `index`.
+#
+# Install one release per shard, each with its own index, and give every
+# one of them the same `urls` list -- the agents in each release dial all
+# of the shards, and the Nth URL must be shard N in every release.  Get
+# that order wrong in one release and its points go to the wrong hubs,
+# where their collision partners will never look; the coordinator counts
+# that as carho_misrouted_checkins_total, which is the only sign.
+#
+# `count` must match the `sh=` in the job document, which the chart
+# checks: the number rides inside the job id, so a fleet cannot
+# half-agree about its own topology.
+#
+#   sharding:
+#     count: 4
+#     index: 2
+#     urls:
+#       - http://rho-shard-0:8080
+#       - http://rho-shard-1:8080
+#       - http://rho-shard-2:8080
+#       - http://rho-shard-3:8080
+sharding:
+  count: 1
+  index: 0
+  urls: []
+
+# Other coordinators this one gossips with.
+#
+# Federation is multi-leader and needs no protocol of its own: /v1/sync is
+# already a symmetric anti-entropy exchange, the merge is commutative and
+# idempotent, and every record carries its own proof.  So peers are simply
+# listed, in any shape -- a pair, a ring, a full mesh -- with no leader to
+# elect and no quorum to lose.  A hub that cannot reach a peer keeps
+# working and keeps retrying.
+#
+# Each entry is {name, url}.  Peers share this release's auth.token, which
+# is the usual case: one campaign, one secret.  Point these at the other
+# clusters' coordinator Services or Ingresses:
+#
+#   federation:
+#     peers:
+#       - name: eu-west-1
+#         url: http://rho.eu-west-1.internal:8080
+#       - name: us-east-1
+#         url: https://rho.us-east-1.example.com
+federation:
+  peers: []
+  interval: 5s
+  # How long one exchange may take before it is abandoned and counted as
+  # an error.  This bounds the peer that accepts the connection and then
+  # never answers -- the one failure mode that would otherwise stall a
+  # peer loop silently, rather than showing up as an error to retry.
+  timeout: 30s
+
 networkPolicy:
   enabled: false
   # Extra sources allowed to reach the coordinator (the ingress

@@ -63,7 +63,13 @@ spec:
             # job document from the coordinator, so nothing else here
             # has to know what is being solved.
             - name: CA_COORDINATOR_URL
+              {{- if gt (int .Values.sharding.count) 1 }}
+              # Every shard, in shard order: an agent splits its points
+              # across all of them and must reach each one.
+              value: {{ join "," .Values.sharding.urls | quote }}
+              {{- else }}
               value: {{ include "ca-coordinator.internalURL" . | quote }}
+              {{- end }}
             {{- if include "ca-coordinator.hasToken" . }}
             - name: CA_COORDINATOR_TOKEN
               valueFrom:

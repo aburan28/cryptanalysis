@@ -187,11 +187,67 @@ def checkFactorBase(report):
                % (m, w), len(base) <= cand)
 
 
+def checkPolynomialBasis(report):
+    """The --basis pb path: the normal-basis view it hangs the factor base on,
+    and S_3 in the polynomial basis.  m=13 and 15 have no type-II optimal
+    normal basis, which is the point of the path; 11 has one, for contrast."""
+    rng = random.Random(13)
+    for m in (11, 13, 15):
+        v = curves.NormalView(m)
+        cur = curves.CurvePb(v.pb)
+        mask = (1 << m) - 1
+        viewOk = True
+        for _ in range(100):
+            x = rng.getrandbits(m)
+            c = v.toCoords(x)
+            rot = ((c << 1) | (c >> (m - 1))) & mask
+            if (v.fromCoords(c) != x or v.toCoords(v.pb.sqr(x)) != rot
+                    or v.trace(x) != cur.trace(x)):
+                viewOk = False
+        report('normal-basis view: round trip, sigma is rotation, m=%d' % m,
+               viewOk)
+
+        prog, roots = decomp.buildSystemPb(m, v.taps, v.rowsNbToPb, 2, 12)
+
+        def zero(x1, x2, x3):
+            vals = {('one', 0): 1}
+            for j in range(m):
+                vals[('p0', j)] = (v.toCoords(x1) >> j) & 1
+                vals[('p1', j)] = (v.toCoords(x2) >> j) & 1
+                vals[('r', j)] = (x3 >> j) & 1
+            return all((0 if w is None else w & 1) == 0
+                       for w in prog.evaluate(vals, roots))
+
+        good = wrong = accepted = 0
+        for _ in range(25):
+            P = Q = None
+            while P is None:
+                P = cur.pointFromX(rng.getrandbits(m))
+            while Q is None:
+                Q = cur.pointFromX(rng.getrandbits(m))
+            S = cur.add(P, Q)
+            if S is None:
+                continue
+            if zero(P[0], Q[0], S[0]):
+                good += 1
+            else:
+                wrong += 1
+            if zero(P[0], Q[0], rng.getrandbits(m)):
+                accepted += 1
+        report('pb S_3 vanishes on %d true triples, m=%d' % (good, m), wrong == 0)
+        report('pb S_3 rejects random third coordinates, m=%d' % m, accepted == 0)
+
+
 def checkEndToEnd(report):
     """A target built from factor base points must decompose back to them."""
     import indexcalc
     r = indexcalc.runTrials(11, 3, 3, 3, seed=5, leaf=12, verbose=False, timeout=120)
     report('m=11 decomposition solved %d/3, %d spurious, %d unsat'
+           % (r['solved'], r['spurious'], r['unsat']),
+           r['solved'] == 3 and r['unsat'] == 0)
+    r = indexcalc.runTrials(13, 3, 2, 3, seed=5, leaf=12, verbose=False, timeout=120,
+                            basis='pb')
+    report('m=13 pb decomposition solved %d/3, %d spurious, %d unsat'
            % (r['solved'], r['spurious'], r['unsat']),
            r['solved'] == 3 and r['unsat'] == 0)
 
@@ -210,6 +266,7 @@ def main():
     checkLexLeq(report)
     checkS3(report)
     checkFactorBase(report)
+    checkPolynomialBasis(report)
     checkEndToEnd(report)
     if fails:
         print('%d failure(s)' % len(fails))

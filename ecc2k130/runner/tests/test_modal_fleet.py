@@ -1,7 +1,9 @@
 """Exercise fleet dispatch without contacting Modal or requiring its SDK."""
 import ast
 import json
+import os
 from pathlib import Path
+import time
 import unittest
 import uuid
 import sys
@@ -23,7 +25,8 @@ class FleetTests(unittest.TestCase):
         modules = patch.dict(sys.modules, {'rds_network': SimpleNamespace(cleanup=self.cleanup)})
         modules.start()
         self.addCleanup(modules.stop)
-        names = {'worker': self.worker, 'readiness': self.readiness, 'json': json, 'uuid': uuid, 'print': Mock()}
+        names = {'worker': self.worker, 'readiness': self.readiness, 'json': json, 'time': time,
+                 'uuid': uuid, 'print': Mock()}
         exec(compile(ast.Module(body=functions, type_ignores=[]), str(path), 'exec'), names)
         self.fleet = Mock()
         self.fleet.remote.side_effect = names['fleet']
@@ -45,6 +48,15 @@ class FleetTests(unittest.TestCase):
         for call in calls:
             call.get.assert_called_once()
         self.cleanup.assert_called_once_with(next(iter(rollouts)))
+
+    def test_every_worker_shares_one_rollout_deadline(self):
+        self.worker.spawn.side_effect = [Mock(object_id=f'call-{n}') for n in range(4)]
+        before = time.time()
+        self.main(command='run')
+        after = time.time()
+        deadlines = {call.args[4] for call in self.worker.spawn.call_args_list}
+        self.assertEqual(len(deadlines), 1)
+        self.assertTrue(before + 82800 <= next(iter(deadlines)) <= after + 82800)
 
     def test_failed_readiness_starts_no_workers(self):
         self.readiness.remote.side_effect = RuntimeError('database unavailable')
@@ -81,6 +93,53 @@ class FleetTests(unittest.TestCase):
             self.main(command='run')
         call.get.assert_called_once()
         self.cleanup.assert_called_once()
+
+
+class WorkerDeadlineTests(unittest.TestCase):
+    def setUp(self):
+        path = Path(__file__).resolve().parents[1] / 'modal_worker.py'
+        tree = ast.parse(path.read_text())
+        functions = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'worker']
+        for fn in functions:
+            fn.decorator_list = []
+        self.ensure_access = Mock(return_value={'managed': False})
+        modules = patch.dict(sys.modules, {'rds_network': SimpleNamespace(ensure_access=self.ensure_access)})
+        modules.start()
+        self.addCleanup(modules.stop)
+        self.subprocess = Mock()
+        names = {'json': json, 'os': os, 'time': SimpleNamespace(time=Mock(return_value=1000.0)),
+                 'subprocess': self.subprocess, 'print': Mock()}
+        exec(compile(ast.Module(body=functions, type_ignores=[]), str(path), 'exec'), names)
+        self.worker = names['worker']
+
+    def seconds(self):
+        args = self.subprocess.run.call_args.args[0]
+        return int(args[args.index('--seconds') + 1])
+
+    def test_restarted_worker_runs_only_until_the_rollout_deadline(self):
+        self.worker('run', 82800, False, 'a' * 32, 1000.0 + 3600.5)
+        self.assertEqual(self.seconds(), 3600)
+        self.ensure_access.assert_called_once_with('a' * 32)
+
+    def test_worker_after_the_deadline_starts_nothing(self):
+        self.worker('run', 82800, False, 'a' * 32, 1000.5)
+        self.subprocess.run.assert_not_called()
+        self.ensure_access.assert_not_called()
+
+    def test_first_attempt_keeps_the_requested_duration(self):
+        self.worker('run', 82800, True, '', 1000.0 + 82800)
+        self.assertEqual(self.seconds(), 82800)
+
+    def test_call_without_a_deadline_keeps_its_duration(self):
+        self.worker('run', 600, True)
+        self.assertEqual(self.seconds(), 600)
+
+    def test_client_keeps_four_openmp_threads_under_a_smaller_cpu_request(self):
+        with patch.dict(os.environ, {'OMP_NUM_THREADS': '2', 'ECC_BUCKET': 'bucket'}):
+            self.worker('run', 600, True)
+        env = self.subprocess.run.call_args.kwargs['env']
+        self.assertEqual(env['OMP_NUM_THREADS'], '4')
+        self.assertEqual(env['ECC_BUCKET'], 'bucket')
 
 
 if __name__ == '__main__':

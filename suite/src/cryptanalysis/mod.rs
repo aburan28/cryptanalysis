@@ -47,6 +47,10 @@
 //!   PRF.  These are the classic "is the output statistically
 //!   distinguishable from random?" tests.
 //!
+//! - [`factoring`] — integer factorisation: Pollard rho, p ± 1, the
+//!   quadratic sieve, the general and special number field sieves, the
+//!   classic weak-RSA attacks and a full-factorisation ladder.
+//!
 //! ## How to use it
 //!
 //! 1. Wrap your S-box(es) in [`Sbox::new`] and call [`Sbox::report`]
@@ -102,6 +106,7 @@ pub mod b_seed_profile;
 pub mod binary_isogeny;
 pub mod binary_semaev;
 pub mod binary_semaev_s4;
+pub mod binary_velu;
 pub mod bleichenbacher;
 pub mod boolean;
 pub mod boomerang;
@@ -116,6 +121,7 @@ pub mod coordinate_descent;
 pub mod coordinate_quotients;
 pub mod coordinate_search;
 pub mod crossbred;
+pub mod curve_catalog;
 pub mod degree_reduction;
 pub mod degree_reduction_anf;
 pub mod descent_algebraic;
@@ -123,7 +129,9 @@ pub mod descent_expansion;
 pub mod descent_lowgamma;
 pub mod descent_treewidth;
 pub mod diem_descent;
+pub mod ec_challenges;
 pub mod ec_index_calculus;
+pub mod ec_index_calculus_curves;
 pub mod ec_index_calculus_j0;
 pub mod ec_trapdoor;
 pub mod ecdlp_variants;
@@ -133,10 +141,20 @@ pub mod eds_mov;
 pub mod eds_net;
 pub mod eds_residue;
 pub mod eds_tate;
+pub mod f4_batch;
 pub mod f4_fp;
+pub mod f4_fp_tower;
+pub mod f4_gf2;
+pub mod f4_gpu;
+pub mod factoring;
+pub mod fes_gpu;
 pub mod ffd_harness;
 pub mod fght_snfs;
+pub(crate) mod fx_hash;
 pub mod gaudry_cubic;
+pub mod gaudry_quartic;
+pub mod gf2_elim;
+pub mod gf3m;
 pub mod ghs_descent;
 pub mod ghs_full_attack;
 pub mod groebner_f4;
@@ -145,6 +163,16 @@ pub mod hilbert_class_poly;
 pub mod hnp_ecdsa;
 pub mod hyperelliptic_ic_bench;
 pub mod hyperelliptic_index_calculus;
+pub mod ic_boundary;
+pub mod ic_corpus;
+pub mod ic_descent_degrees;
+pub mod ic_engine;
+pub mod ic_framework;
+pub mod ic_oracle_pricing;
+pub mod ic_progress;
+pub mod ic_run;
+pub mod index_calculus_budget;
+pub mod inherited_f4;
 pub mod invalid_curve_attack;
 pub mod isogeny_class_search;
 pub mod isogeny_degree_search;
@@ -152,14 +180,17 @@ pub mod j0_twists;
 pub mod koblitz_bench;
 pub mod koblitz_factor_base_search;
 pub mod koblitz_fast;
+pub mod koblitz_fast_arith;
 pub mod koblitz_groebner;
 pub mod koblitz_index_calculus;
+pub mod koblitz_isogeny_cost;
 pub mod koblitz_pdp_phase_a;
 pub mod koblitz_relation_solver;
 pub mod koblitz_sparse_la;
 pub mod koblitz_symmetrised;
 pub mod lattice;
 pub mod legacy_curve_attacks;
+pub mod matrix_f5_f2;
 pub mod mazur_tate_sigma;
 pub mod md5_chosen_prefix;
 pub mod md5_differential;
@@ -188,11 +219,14 @@ pub mod pollard_collab;
 pub mod pollard_rho;
 pub mod polynomial_reuse;
 pub mod pq_descent;
+pub mod pq_descent_symbolic;
+pub mod pq_f4_f2;
 pub mod pq_groebner_f2;
 pub mod pq_sparse_la;
 pub mod pq_wiedemann;
 pub mod pq_xl;
 pub mod preprocessing_rho;
+pub mod prime_orbit_index_calculus;
 pub mod quantum_estimator;
 pub mod quasi_subfield;
 pub mod research_bench;
@@ -217,7 +251,9 @@ pub mod tls13_kdf;
 pub mod visual_demos;
 pub mod visualize;
 pub mod wdsat_oracle;
+pub mod weak_curves;
 pub mod weil_charts;
+pub mod wide_groebner;
 
 pub use aut_folded_rho::{
     apply_aut, aut_folded_rho_dlp, canonical_form, AutElt, FoldedRhoOptions, FoldedRhoSolution,

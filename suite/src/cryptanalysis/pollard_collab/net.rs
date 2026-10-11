@@ -16,9 +16,9 @@
 //! choice (a hub everyone syncs with, a ring, a full mesh, …).
 
 use std::collections::BTreeMap;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -56,6 +56,9 @@ pub enum Message {
 /// Cap on one line (a batch) — guards a listener against garbage.
 const MAX_LINE: usize = 64 << 20;
 
+/// Connections served at once; further connections are closed on accept.
+const MAX_CONNECTIONS: usize = 64;
+
 fn send(stream: &mut TcpStream, m: &Message) -> std::io::Result<()> {
     let mut line = serde_json::to_vec(m)?;
     line.push(b'\n');
@@ -63,9 +66,15 @@ fn send(stream: &mut TcpStream, m: &Message) -> std::io::Result<()> {
     stream.flush()
 }
 
-fn recv(reader: &mut BufReader<TcpStream>) -> std::io::Result<Option<Message>> {
+fn recv<R: BufRead>(reader: &mut R) -> std::io::Result<Option<Message>> {
     let mut line = String::new();
-    let n = reader.read_line(&mut line)?;
+    // Bound the read itself: `read_line` alone buffers the whole line before
+    // its length can be checked, so a peer that never sends a newline could
+    // grow this process without limit.
+    let n = reader
+        .by_ref()
+        .take(MAX_LINE as u64 + 1)
+        .read_line(&mut line)?;
     if n == 0 {
         return Ok(None);
     }
@@ -147,15 +156,25 @@ impl PeerServer {
         let local = listener.local_addr()?;
         let stop = Arc::new(AtomicBool::new(false));
         let stop2 = Arc::clone(&stop);
+        let live = Arc::new(AtomicUsize::new(0));
         let handle = std::thread::spawn(move || {
             while !stop2.load(Ordering::Relaxed) {
                 match listener.accept() {
                     Ok((stream, _)) => {
+                        // One thread per connection, bounded: past the cap
+                        // the connection is dropped rather than spawning.
+                        if live.fetch_add(1, Ordering::AcqRel) >= MAX_CONNECTIONS {
+                            live.fetch_sub(1, Ordering::AcqRel);
+                            drop(stream);
+                            continue;
+                        }
                         let _ = stream.set_nonblocking(false);
                         let ctx = Arc::clone(&ctx);
                         let state = Arc::clone(&state);
+                        let live = Arc::clone(&live);
                         std::thread::spawn(move || {
                             let _ = handle(stream, &ctx, &state);
+                            live.fetch_sub(1, Ordering::AcqRel);
                         });
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -265,6 +284,17 @@ pub fn sync_with_peer(
 
 #[cfg(test)]
 mod tests {
+
+    /// A peer that never sends a newline is cut off at the cap instead of
+    /// being buffered without bound.
+    #[test]
+    fn recv_bounds_a_line_without_newline() {
+        let flood = vec![b'a'; MAX_LINE + 4096];
+        let mut r = std::io::BufReader::new(std::io::Cursor::new(flood));
+        let err = recv(&mut r).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    }
+
     use super::super::job::{demo_curve, JobSpec};
     use super::super::worker::{run_lane, LaneOptions};
     use super::*;

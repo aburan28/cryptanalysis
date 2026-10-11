@@ -1,0 +1,26 @@
+{
+  "status": "frozen before measured comparison; the earlier 1024-point smoke is a pilot",
+  "objective": "Rebaseline installed Sage native, CPU-table and Apple Metal complete point calls after the codec and table changes; decide which Metal host stage to optimize next",
+  "source_sha256": {
+    "benchmark.py": "77f72c3b6ab8b0de05bfa6a6fd76647b587030dec46f72d7a86813573c8f0817",
+    "load_hardware.py": "7bf8069c8319968fceeb9ed809098a497bc97c6a1af8dddbc4019dd60b547a07",
+    "binary_hardware.py": "a895cf65a28f52e1b7703a7121213b394f9cb814338bdfe104dd48fa728d2de0",
+    "binary_hardware_metal.mm": "6b51818209aa01b889dcd65fcdd26a87f2bc4dd0f75c4b256a012148f67a33bd",
+    "binary_hardware_codec.pyx": "1a9a4b9b4c17d7f84297552f4cbde3c1577ae0245b433215ae1284a2a89d2ab5",
+    "_binary_hardware_native.dylib": "7ae8510c922b5ba3ee127c6b56333bab5a742fc049fd1b3b37ffa4c4d1ef6a8e",
+    "binary_hardware_codec.cpython-314-darwin.so": "28bb8fab7b63b33b3556ad40a1ce60ef636709f39a301d4f205815c8e97b8522"
+  },
+  "cases": [
+    {"degree": 131, "points": 1024, "power": 65, "seed": 2026092401},
+    {"degree": 131, "points": 4096, "power": 65, "seed": 2026092402},
+    {"degree": 131, "points": 16384, "power": 65, "seed": 2026092403},
+    {"degree": 131, "points": 4096, "power": 1, "seed": 2026092404},
+    {"degree": 131, "points": 1024, "power": 65, "seed": 2026092411},
+    {"degree": 131, "points": 4096, "power": 65, "seed": 2026092412},
+    {"degree": 131, "points": 16384, "power": 65, "seed": 2026092413},
+    {"degree": 131, "points": 4096, "power": 1, "seed": 2026092414}
+  ],
+  "measurement": "Fresh Sage process per cell, twelve balanced orders of native Sage, CPU table and Metal, exact output verification and cleanup charged; keep setup, packed diagnostics and peak RSS",
+  "decision": "Use complete point-call cost and the gap between packed Metal call and device time to select a host-side Metal experiment; do not promote a kernel-only gain",
+  "resource_budget": {"per_cell_seconds": 300, "working_set_bytes": 536870912, "cloud_spend": 0}
+}

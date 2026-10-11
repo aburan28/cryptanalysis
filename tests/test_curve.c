@@ -80,6 +80,14 @@ int main(void)
     by_name("glv-j0-26", CA_CURVE_ENDO_J0, 6, 2.2);
     by_name("glv-j1728-26", CA_CURVE_ENDO_J1728, 4, 2.5);
     by_name("generic-26", CA_CURVE_ENDO_NONE, 2, 3.0);
+    /* Challenge corpus: anomalous (trace 1, negation only), a j = 0 twist
+     * whose subgroup is 1 mod 3, and a supersingular j = 0 curve.  p = 2 mod 3
+     * so the order-6 automorphism is not rational and must not be reported. */
+    /* Small orders: the walk's setup cost dominates sqrt(n), so S sits
+     * well above the large-group constants used above. */
+    by_name("pf-anomalous-b9", CA_CURVE_ENDO_NONE, 2, 40.0);
+    by_name("pf-j0-twist-b27", CA_CURVE_ENDO_J0, 6, 40.0);
+    by_name("pf-ssj0-b7", CA_CURVE_ENDO_NONE, 2, 40.0);
 
     /* The endomorphism must not change the answer: cross-check GLV against a
      * plain solve on the same instance. */

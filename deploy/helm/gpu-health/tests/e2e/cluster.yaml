@@ -1,0 +1,76 @@
+# The stand-ins run.sh applies: a device plugin DaemonSet shaped like the GPU
+# Operator's (its label, its toleration, an init container ahead of the
+# plugin), and two pods the policy must leave alone.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpu-operator
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-device-plugin-daemonset
+  namespace: gpu-operator
+spec:
+  selector:
+    matchLabels:
+      app: nvidia-device-plugin-daemonset
+  template:
+    metadata:
+      labels:
+        app: nvidia-device-plugin-daemonset
+    spec:
+      terminationGracePeriodSeconds: 1
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      initContainers:
+        - name: toolkit-validation
+          image: gpu-health:e2e
+          imagePullPolicy: Never
+          command: ["sh", "-c", "echo the driver and container toolkit are ready"]
+      containers:
+        - name: nvidia-device-plugin
+          image: gpu-health:e2e
+          imagePullPolicy: Never
+          command: ["sh", "-c", "echo advertising nvidia.com/gpu; exec sleep infinity"]
+---
+# In the device plugin's namespace, but not a device plugin.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: not-a-device-plugin
+  namespace: gpu-operator
+spec:
+  terminationGracePeriodSeconds: 1
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: nvidia-dcgm-exporter
+      image: gpu-health:e2e
+      imagePullPolicy: Never
+      command: ["sh", "-c", "exec sleep infinity"]
+---
+# A device plugin's container name, outside the device plugin's namespace.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: device-plugin-elsewhere
+  namespace: default
+spec:
+  terminationGracePeriodSeconds: 1
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: nvidia-device-plugin
+      image: gpu-health:e2e
+      imagePullPolicy: Never
+      command: ["sh", "-c", "exec sleep infinity"]

@@ -16,9 +16,9 @@
 //! What this module ships, honestly:
 //!
 //! 1. **Negation-folded Pollard rho for P-256** — the canonical
-//!    `√2` speedup from `Aut(E) = {±1}`.  Real, well-known, but
-//!    not actually implemented in any open-source toolkit I'm
-//!    aware of for P-256 specifically.
+//!    `√2` speedup from `Aut(E) = {±1}`, published as the
+//!    negation-map speedup by Wiener and Zuccherato (SAC 1998).
+//!    Not novel; see "Novelty assessment" below.
 //!
 //! 2. **Novel hybrid: ECDSA-transcript-filtered rho** — when a
 //!    target's ECDSA signature transcript is available, the
@@ -102,13 +102,29 @@ fn canonical_pt(point: &Pt2, p_mod: &BigInt) -> (Pt2, bool) {
     }
 }
 
+/// Expected number of Floyd tortoise-and-hare iterations before a random
+/// walk on a set of `set_size` elements is caught: about `1.03 · √set_size`
+/// (Knuth, TAOCP vol. 2, §3.1; simulated on random mappings of 2^11–2^15
+/// points: 1.02–1.04).  This is the like-for-like expectation for the
+/// `iterations` counters in this module, which count Floyd iterations.
+/// The expected number of walk steps to the first repeated value,
+/// `√(π · set_size / 2)`, is a different quantity.
+pub fn expected_floyd_iterations(set_size: f64) -> f64 {
+    1.03 * set_size.sqrt()
+}
+
 /// Result of a P-256 rho run.
 #[derive(Clone, Debug)]
 pub struct P256RhoSolution {
     pub d: BigUint,
+    /// Floyd tortoise-and-hare iterations (one tortoise step plus two
+    /// hare steps each), summed over restarts.
     pub iterations: u64,
-    /// Empirical speedup factor relative to the naive `√(πn/4)`
-    /// expected count.
+    /// `expected_floyd_iterations(n)` for the *unfolded* walk on all `n`
+    /// points, divided by `iterations`.  The negation-folded walk runs on
+    /// `n/2` classes, so this approaches `√2 ≈ 1.41` when the fold pays
+    /// in full.  The baseline is a prediction, not a measured unfolded
+    /// run.
     pub speedup_vs_naive: f64,
 }
 
@@ -270,7 +286,7 @@ pub fn p256_negation_rho(
                 let check = pt_scalar_mul(g, &d, a, p_mod);
                 if compare_pt(&check, h) == std::cmp::Ordering::Equal {
                     let n_f = bigint_to_f64(n);
-                    let naive_expected = (std::f64::consts::PI * n_f / 4.0).sqrt();
+                    let naive_expected = expected_floyd_iterations(n_f);
                     let speedup = naive_expected / total_iters as f64;
                     return Ok(P256RhoSolution {
                         d: d_u,
@@ -649,9 +665,9 @@ mod tests {
             n, d_planted, sol.d
         );
         println!(
-            "  Iterations: {}, naive expected: {:.0}, speedup: {:.2}×",
+            "  Iterations: {}, expected unfolded Floyd iterations: {:.0}, speedup vs naive: {:.2}× (√2 ≈ 1.41 if the fold pays in full)",
             sol.iterations,
-            (std::f64::consts::PI * bigint_to_f64(&n) / 4.0).sqrt(),
+            expected_floyd_iterations(bigint_to_f64(&n)),
             sol.speedup_vs_naive
         );
     }

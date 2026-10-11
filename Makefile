@@ -6,8 +6,14 @@ JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 .PHONY: all lib test bench asan tsan valgrind coverage tidy cppcheck analyzer \
         shellcheck format checks rust go python bindings clean install cuda cuda-kernel \
         coordinator coordinator-test fpga fpga-lint fpga-synth ecc2k130 ecc2k130-gpu \
-        ecc2k130-cpu ecc2k130-metal \
-        suite suite-build suite-test suite-lint suite-python
+        ecc2k130-cpu ecc2k130-metal gpu-health gpu-health-image \
+        suite suite-build suite-test suite-lint suite-python \
+        cloud-doctor cloud-all modal-setup modal-bench modal-long modal-sync \
+        modal-sync-loop runpod-start runpod-status runpod-stop \
+        fanout-start fanout-status fanout-stop \
+        modal-sync-ensure modal-sync-status \
+        ingest-start ingest-status ingest-stop \
+        ecc2k130-usecase ecc2k130-helm
 
 all: lib
 
@@ -70,6 +76,14 @@ fpga-lint:
 fpga-synth:
 	$(MAKE) -C fpga synth CORES=1 DIGIT=4
 
+# The live ECC2K-130 S3/Redis/RDS integration. Its unit tests use only the
+# standard library; boto3 and psycopg are deployment dependencies loaded lazily.
+ecc2k130-usecase:
+	python3 -m unittest discover -s usecases/ecc2k130/tests -v
+
+ecc2k130-helm:
+	usecases/ecc2k130/deploy/helm/check.sh
+
 # ---- the ECC2K-130 GPU client (ecc2k130/) ----------------------------------
 # The packed GF(2^131) table walk for CUDA devices with a carry-less
 # multiplier, held to fpga/model's golden model.  `ecc2k130` is the host test
@@ -88,6 +102,17 @@ ecc2k130-cpu:
 
 ecc2k130-metal:
 	$(MAKE) -C ecc2k130 metal
+
+# ---- the GPU health check (deploy/gpu-health/) -----------------------------
+# ec2k-gpu's `health` command and the orchestrator that turns one run per GPU
+# into a verdict.  `gpu-health` runs the orchestrator's tests against scripted
+# stand-ins for ec2k-gpu and nvidia-smi (no GPU); `gpu-health-image` builds
+# the image, which compiles and self-checks ec2k-gpu on the way.
+gpu-health:
+	python3 -m unittest discover -s deploy/gpu-health/tests
+
+gpu-health-image:
+	docker build -f deploy/gpu-health/Dockerfile -t gpu-health:dev .
 
 # ---- the attack suite (suite/) ---------------------------------------------
 # The Rust cryptanalysis library and its tools (ca-suite, ca-ic,
@@ -169,6 +194,62 @@ analyzer:
 
 shellcheck:
 	shellcheck scripts/*.sh deploy/*/*.sh
+
+# ---- cloud ECC2K-130 (Modal + RunPod + ingest MiG) -----------------------
+# See docs/CLOUD_LAUNCH.md. GPU time is billed; these are not CI gates.
+cloud-doctor:
+	./scripts/cloud_launch.sh doctor
+
+cloud-all:
+	./scripts/cloud_launch.sh all
+
+modal-setup:
+	./scripts/cloud_launch.sh modal setup
+
+modal-bench:
+	./scripts/cloud_launch.sh modal bench
+
+modal-long:
+	./scripts/cloud_launch.sh modal long
+
+modal-sync:
+	./scripts/cloud_launch.sh modal sync
+
+modal-sync-loop:
+	./scripts/cloud_launch.sh modal sync-loop
+
+modal-sync-ensure:
+	./scripts/cloud_launch.sh sync ensure
+
+modal-sync-status:
+	./scripts/cloud_launch.sh sync status
+
+runpod-start:
+	./scripts/cloud_launch.sh runpod start
+
+runpod-status:
+	./scripts/cloud_launch.sh runpod status
+
+runpod-stop:
+	./scripts/cloud_launch.sh runpod stop
+
+fanout-start:
+	./scripts/cloud_launch.sh fanout start
+
+fanout-status:
+	./scripts/cloud_launch.sh fanout status
+
+fanout-stop:
+	./scripts/cloud_launch.sh fanout stop
+
+ingest-start:
+	./scripts/cloud_launch.sh ingest start
+
+ingest-status:
+	./scripts/cloud_launch.sh ingest status
+
+ingest-stop:
+	./scripts/cloud_launch.sh ingest stop
 
 # Everything a pull request is gated on, in the order that fails fastest.
 checks: format cppcheck shellcheck tidy analyzer test cli asan tsan

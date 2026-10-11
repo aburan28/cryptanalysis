@@ -301,6 +301,21 @@ def check_model(inst: Instance) -> bool:
     return True
 
 
+def trace_line(F: GF2n, l: int, xR: int) -> str:
+    """Tr(x1) + Tr(x2) + Tr(x3) = Tr(x_R), as one WDSat XOR clause over the core bits.
+
+    On y^2 + xy = x^3 + b over F_2^n with n odd, E(F_2^n)[2^inf] is cyclic, so
+    P -> Tr(x(P)) (O -> 0) is the homomorphism E -> E/2E = Z/2, and it is even
+    under negation; every rational relation R = +-P1 +-P2 +-P3 obeys it.
+    Tr(x) = sum_j v_j Tr(z^j) is linear in the block bits.
+    """
+    tz = [F.trace(1 << j) for j in range(l)]
+    lits = [str(i * l + j + 1) for i in range(3) for j in range(l) if tz[j]]
+    c = F.trace(xR)
+    # an 'x' clause asserts XOR(terms) = 1; we want XOR(lits) = c, so T is added when c = 0
+    return "x " + ("T " if c == 0 else "") + " ".join(lits) + " 0"
+
+
 if __name__ == "__main__":
     import sys
     import time

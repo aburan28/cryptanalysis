@@ -48,7 +48,7 @@ func testFixture(t *testing.T, secret uint64) (*ca.Ctx, uint64) {
 	return ctx, x
 }
 
-func newTestHub(t *testing.T, ctx *ca.Ctx, cfg Config) (*Hub, *ca.State, *httptest.Server) {
+func newTestHub(t *testing.T, ctx *ca.Ctx, cfg *Config) (*Hub, *ca.State, *httptest.Server) {
 	t.Helper()
 	state, err := ca.NewState(ctx)
 	if err != nil {
@@ -88,7 +88,7 @@ func get(t *testing.T, url, token string) (int, string) {
 // a load balancer carries no credential.
 func TestAuthAndRoutes(t *testing.T) {
 	ctx, _ := testFixture(t, 4242)
-	_, _, srv := newTestHub(t, ctx, Config{Token: "s3cret"})
+	_, _, srv := newTestHub(t, ctx, &Config{Token: "s3cret"})
 
 	if code, body := get(t, srv.URL+"/healthz", ""); code != http.StatusOK || !strings.Contains(body, "true") {
 		t.Errorf("healthz needs no token: %d %s", code, body)
@@ -146,7 +146,7 @@ func TestAuthAndRoutes(t *testing.T) {
 // The pollable fallback carries the same facts as the channel.
 func TestSyncRoundTrip(t *testing.T) {
 	ctx, _ := testFixture(t, 31337)
-	_, hubState, srv := newTestHub(t, ctx, Config{})
+	_, hubState, srv := newTestHub(t, ctx, &Config{})
 
 	mine, err := ca.NewState(ctx)
 	if err != nil {
@@ -209,7 +209,7 @@ func TestSyncRoundTrip(t *testing.T) {
 // state.
 func TestForeignJobRefused(t *testing.T) {
 	ctx, _ := testFixture(t, 11)
-	hub, hubState, srv := newTestHub(t, ctx, Config{})
+	hub, hubState, srv := newTestHub(t, ctx, &Config{})
 
 	other, _ := testFixture(t, 12)
 	mine, err := ca.NewState(other)
@@ -249,7 +249,7 @@ func TestCheckinLogRoundTrip(t *testing.T) {
 	}
 	var mu sync.Mutex
 	seen := 0
-	_, hubState, srv := newTestHub(t, ctx, Config{OnCheckIn: func(line string) {
+	_, hubState, srv := newTestHub(t, ctx, &Config{OnCheckIn: func(line string) {
 		mu.Lock()
 		seen++
 		mu.Unlock()
@@ -327,7 +327,7 @@ func TestAgentsConvergeThroughTheHub(t *testing.T) {
 		t.Skip("walks a real instance")
 	}
 	ctx, secret := testFixture(t, 246813)
-	hub, _, srv := newTestHub(t, ctx, Config{Token: "tok", PushInterval: 20 * time.Millisecond})
+	hub, _, srv := newTestHub(t, ctx, &Config{Token: "tok", PushInterval: 20 * time.Millisecond})
 
 	type agent struct {
 		name  string
@@ -444,7 +444,7 @@ func TestAgentsConvergeThroughTheHub(t *testing.T) {
 // its coordinator URL carried.
 func TestRoutesMatchUnderAPrefix(t *testing.T) {
 	ctx, _ := testFixture(t, 31337)
-	_, _, srv := newTestHub(t, ctx, Config{})
+	_, _, srv := newTestHub(t, ctx, &Config{})
 
 	for _, path := range []string{
 		"/healthz",

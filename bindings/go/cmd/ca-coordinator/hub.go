@@ -60,6 +60,35 @@ type Config struct {
 	// goroutine and must be safe for concurrent use.
 	OnCheckIn func(line string)
 	Log       *slog.Logger
+
+	// Other coordinators to gossip with.  Empty is the single-hub case
+	// and costs nothing.  See peer.go for why this needs no protocol of
+	// its own and no leader among hubs.
+	Peers []Peer
+	// How often each peer is synced.  Defaults to 5s.
+	PeerInterval time.Duration
+	// How long one exchange may take before it is abandoned and counted
+	// as an error.  Defaults to 30s.  Without it a peer that accepts the
+	// connection and then says nothing holds its loop forever, which is
+	// worse than one that is plainly down: it is never retried and never
+	// counted, so the region silently stops contributing.
+	PeerTimeout time.Duration
+	// Client used for peer requests; nil means http.DefaultClient.
+	PeerClient *http.Client
+
+	// Which shard of the point space this hub holds; nil for a hub that
+	// is not part of a sharded campaign.  A pointer because shard 0 is a
+	// perfectly good shard and must not be what an unset field means.
+	// Set it and the hub counts records addressed to a different shard.
+	//
+	// That counter is the only warning of a misconfiguration that is
+	// otherwise silent and expensive: if two agents disagree about which
+	// URL is shard 2 -- an easy thing to do with a comma-separated list
+	// -- their points go to different hubs, and the two halves of a
+	// collision never meet.  Everything still looks healthy.  Misrouted
+	// records are kept, not refused: they are verified and real, and
+	// dropping them would turn a configuration mistake into lost work.
+	Shard *int
 }
 
 // Stats are the counters /v1/status and /metrics report.
@@ -70,6 +99,7 @@ type Stats struct {
 	Rejected      int64 `json:"rejected"`
 	Pushed        int64 `json:"pushed"`
 	Unauthorized  int64 `json:"unauthorized"`
+	Misrouted     int64 `json:"misrouted"`
 }
 
 // Hub serves one job.
@@ -85,12 +115,22 @@ type Hub struct {
 	rejected      atomic.Int64
 	pushed        atomic.Int64
 	unauthorized  atomic.Int64
+	misrouted     atomic.Int64
+
+	peers      []*peerCounters
+	httpClient *http.Client
 
 	started time.Time
 }
 
-// NewHub builds a hub over an existing state.
-func NewHub(ctx *ca.Ctx, state *ca.State, cfg Config) *Hub {
+// NewHub builds a hub over an existing state.  The config is taken by
+// pointer and copied: it carries the peer list now, and copying it at every
+// call site is waste the linter is right to object to.
+func NewHub(ctx *ca.Ctx, state *ca.State, in *Config) *Hub {
+	var cfg Config
+	if in != nil {
+		cfg = *in
+	}
 	if cfg.PushInterval <= 0 {
 		cfg.PushInterval = 500 * time.Millisecond
 	}
@@ -100,10 +140,22 @@ func NewHub(ctx *ca.Ctx, state *ca.State, cfg Config) *Hub {
 	if cfg.LeaseSecs == 0 {
 		cfg.LeaseSecs = 120
 	}
+	if cfg.PeerInterval <= 0 {
+		cfg.PeerInterval = 5 * time.Second
+	}
+	if cfg.PeerTimeout <= 0 {
+		cfg.PeerTimeout = 30 * time.Second
+	}
 	if cfg.Log == nil {
 		cfg.Log = slog.Default()
 	}
-	return &Hub{ctx: ctx, state: state, cfg: cfg, log: cfg.Log, started: time.Now()}
+	h := &Hub{ctx: ctx, state: state, cfg: cfg, log: cfg.Log, httpClient: cfg.PeerClient,
+		started: time.Now()}
+	h.peers = make([]*peerCounters, len(cfg.Peers))
+	for i := range h.peers {
+		h.peers[i] = &peerCounters{}
+	}
+	return h
 }
 
 // Stats snapshots the counters.
@@ -115,12 +167,40 @@ func (h *Hub) Stats() Stats {
 		Rejected:      h.rejected.Load(),
 		Pushed:        h.pushed.Load(),
 		Unauthorized:  h.unauthorized.Load(),
+		Misrouted:     h.misrouted.Load(),
 	}
 }
 
 // absorb merges one check-in line and runs the durability hook.  The
 // verification that matters happens inside ApplyLine, in C.
+// checkinShard reads the shard a check-in is addressed to out of its peer
+// name, "<lane>#<shard>", which the library builds.  Returns -1 when the
+// name carries no shard, which is what an unsharded campaign looks like.
+func checkinShard(line string) int {
+	f := strings.Fields(line)
+	if len(f) < 3 {
+		return -1
+	}
+	i := strings.LastIndex(f[2], "#")
+	if i < 0 {
+		return -1
+	}
+	n, err := strconv.Atoi(f[2][i+1:])
+	if err != nil || n < 0 {
+		return -1
+	}
+	return n
+}
+
 func (h *Hub) absorb(line string) (accepted, rejected int) {
+	if h.cfg.Shard != nil {
+		if sh := checkinShard(line); sh != *h.cfg.Shard {
+			// Kept, not refused: the record is verified and real, and
+			// losing it would make a configuration mistake cost work.
+			// The counter is the warning.
+			h.misrouted.Add(1)
+		}
+	}
 	oc, err := h.state.ApplyLine(line)
 	if err != nil {
 		h.rejected.Add(1)
@@ -239,12 +319,14 @@ func (h *Hub) handleStatus(w http.ResponseWriter, r *http.Request) {
 		JobID string  `json:"job_id"`
 		Up    float64 `json:"uptime_seconds"`
 		ca.Progress
-		Hub Stats `json:"hub"`
+		Hub   Stats       `json:"hub"`
+		Peers []PeerStats `json:"peers,omitempty"`
 	}{
 		JobID:    h.ctx.Job().IDString(),
 		Up:       time.Since(h.started).Seconds(),
 		Progress: p,
 		Hub:      h.Stats(),
+		Peers:    h.PeerStats(),
 	})
 }
 
@@ -300,6 +382,7 @@ func (h *Hub) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		{"carho_records_rejected_total", "Records refused: forged point, foreign job, malformed line.", "counter", float64(s.Rejected)},
 		{"carho_checkins_pushed_total", "Check-ins pushed down reverse channels.", "counter", float64(s.Pushed)},
 		{"carho_unauthorized_total", "Requests refused for a bad or missing token.", "counter", float64(s.Unauthorized)},
+		{"carho_misrouted_checkins_total", "Check-ins addressed to a different shard: agents disagree about the URL order, and collisions are being parted.", "counter", float64(s.Misrouted)},
 		{"carho_steps_total", "Group operations walked by the whole fleet.", "counter", float64(p.Steps)},
 		{"carho_expected_steps", "Expected steps to the solve, sqrt(pi n / 2).", "gauge", p.ExpectedSteps},
 		{"carho_progress_fraction", "Steps over expected steps; 1.0 is the median solve time.", "gauge", p.Fraction},
@@ -311,6 +394,36 @@ func (h *Hub) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, e := range m {
 		fmt.Fprintf(w, "# HELP %s %s\n# TYPE %s %s\n%s %g\n", e.name, e.help, e.name, e.typ, e.name, e.value)
+	}
+	// Federation, labelled by peer.  Worth scraping on its own: a peer
+	// whose errors climb is a region that has stopped contributing, and
+	// the aggregate counters above cannot show that.
+	peers := h.PeerStats()
+	if len(peers) == 0 {
+		return
+	}
+	pm := []struct {
+		name, help, typ string
+		pick            func(PeerStats) float64
+	}{
+		{"carho_peer_syncs_total", "Anti-entropy exchanges completed with a peer hub.", "counter",
+			func(s PeerStats) float64 { return float64(s.Syncs) }},
+		{"carho_peer_checkins_out_total", "Check-ins handed to a peer hub.", "counter",
+			func(s PeerStats) float64 { return float64(s.CheckinsOut) }},
+		{"carho_peer_checkins_in_total", "Check-ins taken from a peer hub.", "counter",
+			func(s PeerStats) float64 { return float64(s.CheckinsIn) }},
+		{"carho_peer_dps_accepted_total", "Distinguished points accepted from a peer hub.", "counter",
+			func(s PeerStats) float64 { return float64(s.DPsAccepted) }},
+		{"carho_peer_dps_rejected_total", "Records from a peer hub that failed verification.", "counter",
+			func(s PeerStats) float64 { return float64(s.DPsRejected) }},
+		{"carho_peer_errors_total", "Failed exchanges with a peer hub.", "counter",
+			func(s PeerStats) float64 { return float64(s.Errors) }},
+	}
+	for _, e := range pm {
+		fmt.Fprintf(w, "# HELP %s %s\n# TYPE %s %s\n", e.name, e.help, e.name, e.typ)
+		for _, s := range peers {
+			fmt.Fprintf(w, "%s{peer=%q} %g\n", e.name, s.Name, e.pick(s))
+		}
 	}
 }
 

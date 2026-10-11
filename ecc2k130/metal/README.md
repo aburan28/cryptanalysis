@@ -98,6 +98,25 @@ python3 /Volumes/SSD990/cryptanalysis/ecc2k130/metal/run_walk.py \
   --branches 128 --lanes 128 --cycles 64 --launches 4 --verify-lanes 32
 ```
 
+While the kernel runs, the wrapper streams one line per launch, for example:
+
+```text
+progress launch 2/4: 8192 walk iterations, 0.244 M iterations/s, 0 seed additions, 0.244 M charged group ops/s, 0.033571 GPU s
+```
+
+`iterationsPerSecond` counts completed point-dependent walk updates divided by
+Metal GPU command time. Reseed additions are reported separately and included
+in `chargedGroupOperationsPerSecond`. `wallIterationsPerSecond` also includes
+host dispatch and report-copy overhead. Use `--progress-every N` to print less
+frequently during long runs.
+
+The bounded 128-lane control measured 0.231 million iterations/s overall;
+steady launches measured 0.247--0.250 million iterations/s. Its
+[throughput receipt](evidence/walk128-throughput.json) binds the final state,
+binary, source inputs, GPU time, wall time, and rate arithmetic. This is the
+synthetic correctness kernel's finite rate, not the optimized production
+client's throughput.
+
 Omit `--artifact-dir` to download only `directions.bin` and
 `coefficients.json` from the public catalog. The 20 or 81 GB pair payload is
 not needed by this recurrence. Output paths must be new.
@@ -125,6 +144,94 @@ The runner splits launches into bounded Metal command buffers, measures each
 GPU command, fails closed on report overflow, and writes `state.bin`,
 `reports.bin`, `native.log`, and `result.json`. The results charge reseed point
 additions separately from walk updates.
+
+## Run continuously and upload distinguished points
+
+`continuous_walk.py` runs the same synthetic recurrence in bounded chunks and
+continues until it receives `SIGINT` or `SIGTERM`. After every chunk it uploads
+the complete 80-byte DP records, a state checkpoint, and a manifest. DP and
+state objects have content-addressed names; `latest.json` advances only after
+all three immutable objects are present. Restarting the same command downloads
+that state before launching more GPU work.
+
+Build once, configure the AWS CLI through its normal environment, profile, or
+instance role, and give the process a unique run ID:
+
+```sh
+make -C /Volumes/SSD990/cryptanalysis/ecc2k130/metal
+export ECC_BUCKET=ecc2k130-status-590183823895
+export AWS_DEFAULT_REGION=us-west-2
+
+caffeinate -dimsu -- python3 \
+  /Volumes/SSD990/cryptanalysis/ecc2k130/metal/continuous_walk.py \
+  --work /Volumes/SSD990/ecc2k130-metal/m4pro-01 \
+  --artifact-dir /Volumes/SSD990/cryptanalysis/ecc2k130/research/step_table/pair128-24gb-20260921 \
+  --run-id m4pro-01 \
+  --branches 128 --lanes 128 --cycles 64 --chunk-launches 256 \
+  --dp-weight 32 --progress-every 16
+```
+
+The default prefix for that command is
+`campaigns/ecc2k130-synthetic-metal-h128-v1/m4pro-01`. Supply `--prefix` to
+place the isolated run elsewhere. The AWS identity needs `s3:ListBucket`,
+`s3:GetObject`, and `s3:PutObject` for that prefix. Credentials are read by the
+AWS CLI and are not written into the campaign, checkpoint, logs, or source tree.
+
+Use the same command after a terminal closes, a Mac reboots, or the process is
+stopped. A single Ctrl-C lets the active bounded GPU chunk finish and publishes
+it before exiting. If S3 is unavailable, the supervisor pauses GPU work and
+retries with backoff; Ctrl-C leaves the complete unacknowledged chunk under
+`WORK/pending/`, and the next invocation uploads it before doing more work.
+A conditional S3 lease rejects a second writer using the same prefix.
+
+The prefix contains:
+
+```text
+campaign.json                         immutable run and walk identity
+dp/chunk-...-SHA256-BYTES.bin         immutable 80-byte DP-record delta
+checkpoints/state-...-SHA256.bin      immutable lane checkpoint
+manifests/chunk-...-SHA256.json       immutable DP/state binding
+latest.json                           recovery pointer, written last
+slots/slot-00000.json                 expiring single-writer lease
+```
+
+Inspect the current recovery boundary without downloading the corpus:
+
+```sh
+aws s3 cp \
+  s3://ecc2k130-status-590183823895/campaigns/ecc2k130-synthetic-metal-h128-v1/m4pro-01/latest.json -
+```
+
+Before using S3, a two-chunk directory-backed rehearsal exercises the same
+publication and resume code without credentials:
+
+```sh
+python3 /Volumes/SSD990/cryptanalysis/ecc2k130/metal/continuous_walk.py \
+  --work /private/tmp/ecc2k-metal-rehearsal \
+  --local-store /private/tmp/ecc2k-metal-object-store \
+  --artifact-dir /Volumes/SSD990/cryptanalysis/ecc2k130/research/step_table/pair128-24gb-20260921 \
+  --run-id rehearsal --lanes 8 --cycles 8 --chunk-launches 2 \
+  --dp-weight 64 --verify-lanes 2 --progress-every 1 --max-chunks 2
+```
+
+Weight 64 deliberately produces frequent records for the rehearsal. Its
+objects are a different walk identity and cannot be mixed with weight-32
+records. `--verify-lanes N` independently replays selected resumed lanes in
+every chunk and is optional during a long run. Per-launch and per-chunk output
+continues to report GPU iterations per second.
+
+For multiple Macs, choose one fixed shard count and assign each process a
+different zero-based shard index as well as a different run ID and work path.
+For example, four processes use `--shard-count 4` with `--shard-index 0`, `1`,
+`2`, and `3`. Initial lane seeds are `base + shard-index + lane * shard-count`,
+then advance by `lanes * shard-count`. Each job owns one residue class modulo
+the shard count, so the streams remain disjoint even when the Macs use different
+lane counts. Shard geometry is bound into each checkpoint identity and cannot
+change on resume.
+[The two-shard M4 Pro receipt](evidence/continuous-shard-control.json) records
+65 DP reports with zero seed overlap; two lanes in each bounded shard matched
+independent replay. It uses the directory-backed store and does not claim an
+S3 transport check.
 
 This is a **synthetic unknown-scalar control** using Q=[65537]P. It does not
 join the production Certicom campaign and its checkpoints are a new format.

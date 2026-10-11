@@ -76,6 +76,15 @@ class Reference:
         values += [state[name] for name in ('seed', 'trailSteps', 'walkSteps', 'reseeds', 'trace', 'dpHash', 'dpCount')]
         return STATE.pack(*values)
 
+    @staticmethod
+    def deserialize(raw):
+        values = STATE.unpack(raw)
+        point = (sum(values[i] << (32 * i) for i in range(5)),
+                 sum(values[5 + i] << (32 * i) for i in range(5)))
+        return {'point': point, 'history': list(values[10:13]), 'mode': values[13],
+                **dict(zip(('seed', 'trailSteps', 'walkSteps', 'reseeds', 'trace', 'dpHash', 'dpCount'),
+                           values[14:]))}
+
     def seed_point(self, seed):
         n = len(self.points)
         u = table.mix64(seed ^ 0x736565642d616464) % n
@@ -97,8 +106,9 @@ class Reference:
             d = 2 * (k * self.branches + h) + eps
         raise ValueError('cycle rule exhausted')
 
-    def cycle(self, state, lane, lanes, dp_weight):
+    def cycle(self, state, lane, lanes, dp_weight, seed_stride=None):
         record = None
+        seed_stride = lanes if seed_stride is None else seed_stride
         if state['mode'] >= 2:
             return record
         if state['mode'] == 0:
@@ -113,10 +123,10 @@ class Reference:
                     state['dpHash'] = table.mix64(state['dpHash'] ^ word)
                 state['dpHash'] = table.mix64(state['dpHash'] ^ state['trailSteps'] ^ state['seed'])
                 state['dpCount'] += 1
-                if state['seed'] > MASK - lanes:
+                if state['seed'] > MASK - seed_stride:
                     state['mode'] = 3
                     return record
-                state['seed'] += lanes
+                state['seed'] += seed_stride
                 state['mode'] = 1
             else:
                 tag = self.tag(p, state['history'])
@@ -136,11 +146,16 @@ class Reference:
             state['mode'] = 0 if state['point'] is not None else 2
         return record
 
-    def replay(self, lane, lanes, seed, cycles, dp_weight):
+    def replay(self, lane, lanes, seed, cycles, dp_weight, seed_stride=None):
         state = self.initial(seed + lane)
+        return self.replay_from(self.serialize(state), lane, lanes, cycles,
+                                dp_weight, seed_stride)
+
+    def replay_from(self, raw, lane, lanes, cycles, dp_weight, seed_stride=None):
+        state = self.deserialize(raw)
         records = []
         for _ in range(cycles):
-            record = self.cycle(state, lane, lanes, dp_weight)
+            record = self.cycle(state, lane, lanes, dp_weight, seed_stride)
             if record is not None:
                 records.append(record)
         return self.serialize(state), records

@@ -289,6 +289,22 @@ pub fn gray_incremental_find_all(
         return None;
     }
 
+    let (mut fq, mut fl) = gray_tables(forms, n);
+
+    let mut out = Vec::new();
+    if n >= 4 {
+        gray_ffs_unrolled_l4(&mut fq, &mut fl, n, max_solutions, &mut out);
+    } else {
+        gray_ffs_minimal(&mut fq, &mut fl, n, max_solutions, &mut out);
+    }
+    Some(out)
+}
+
+/// The Gray-code derivative tables for `forms` over `n` variables, one
+/// equation per bit: `fq` the second derivatives (the quadratic
+/// coefficients, plus the fictive entries the focus pointers read), `fl`
+/// the first derivatives with `f(0)` at `fl[0]`.
+fn gray_tables(forms: &[QuadraticForm], n: usize) -> ([u64; 561], [u64; 34]) {
     // Stack tables: Fq through fictive n+1 is at most idxq(0,34)=561; Fl ≤ 34.
     let mut fq = [0u64; 561];
     let mut fl = [0u64; 34];
@@ -318,14 +334,235 @@ pub fn gray_incremental_find_all(
         fq[idxq(i, n + 1)] = fq[idxq(i - 1, i)];
     }
     fq[idxq(n, n + 1)] = 0;
+    (fq, fl)
+}
 
-    let mut out = Vec::new();
-    if n >= 4 {
-        gray_ffs_unrolled_l4(&mut fq, &mut fl, n, max_solutions, &mut out);
-    } else {
-        gray_ffs_minimal(&mut fq, &mut fl, n, max_solutions, &mut out);
+/// `form` with its last `k` variables fixed to the bits of `lane` (bit
+/// `j` of `lane` is variable `n − k + j`): a quadratic form in the first
+/// `n − k` variables.  Fixing a variable folds its quadratic terms into
+/// the linear ones and its linear term into the constant; the quadratic
+/// terms among the free variables do not change, which is what lets
+/// every lane share one second-derivative table.
+fn specialise(form: &QuadraticForm, k: usize, lane: usize) -> QuadraticForm {
+    let n = form.n;
+    let free = n - k;
+    let fixed = |j: usize| (lane >> j) & 1 == 1;
+    let mut constant = form.constant;
+    for j in 0..k {
+        if fixed(j) && form.linear[free + j] {
+            constant = !constant;
+        }
+        for jj in 0..j {
+            if fixed(j) && fixed(jj) && form.quad[free + j][free + jj] {
+                constant = !constant;
+            }
+        }
     }
-    Some(out)
+    let mut linear = form.linear[..free].to_vec();
+    for (i, l) in linear.iter_mut().enumerate() {
+        for j in 0..k {
+            if fixed(j) && form.quad[free + j][i] {
+                *l = !*l;
+            }
+        }
+    }
+    QuadraticForm {
+        n: free,
+        constant,
+        linear,
+        quad: (0..free).map(|i| form.quad[i][..i].to_vec()).collect(),
+    }
+}
+
+/// How many 32-bit lanes [`gray_find_all_wide`] runs on this host: 16
+/// with AVX-512, 8 with AVX2, none otherwise.
+pub fn wide_lanes() -> Option<usize> {
+    #[cfg(target_arch = "x86_64")]
+    {
+        #[cfg(suite_avx512)]
+        if std::is_x86_feature_detected!("avx512f") {
+            return Some(16);
+        }
+        if std::is_x86_feature_detected!("avx2") {
+            return Some(8);
+        }
+    }
+    None
+}
+
+/// **Fast exhaustive search, one Gray-code walk over several sub-cubes
+/// at once** — the vector form of libfes-lite's enumeration.  The last
+/// `k = log₂(lanes)` variables are fixed differently in each 32-bit lane
+/// of a vector register and the remaining `n − k` are walked in Gray
+/// order, so one pair of vector XORs advances every lane: `2^n` points
+/// in `2^{n−k}` steps.  The second-derivative table is shared (fixing a
+/// variable leaves the quadratic part of the free ones alone) and
+/// broadcast on use; the first-derivative table is per lane.
+///
+/// Needs at most 32 equations (one per lane bit), `n − k ≥ 4` for the
+/// unrolled chunk and `n − k ≤ 32`.  Returns `None` when the host has
+/// neither AVX-512 nor AVX2 or the system does not fit, and otherwise the
+/// solutions (bit `i` = `x_i`, in no particular order) and the lane count.
+pub fn gray_find_all_wide(
+    forms: &[QuadraticForm],
+    max_solutions: usize,
+) -> Option<(Vec<u64>, usize)> {
+    let lanes = wide_lanes()?;
+    let n = forms.first()?.n;
+    let k = lanes.trailing_zeros() as usize;
+    if forms.len() > 32 || forms.iter().any(|f| f.n != n) || n < k + 4 || n - k > 32 {
+        return None;
+    }
+    let free = n - k;
+    let mut fq_shared = [0u32; 561];
+    let mut fl_lanes = [[0u32; 16]; 34];
+    for lane in 0..lanes {
+        let spec: Vec<QuadraticForm> = forms.iter().map(|f| specialise(f, k, lane)).collect();
+        let (fq, fl) = gray_tables(&spec, free);
+        for (t, v) in fl.iter().enumerate() {
+            fl_lanes[t][lane] = *v as u32;
+        }
+        if lane == 0 {
+            for (t, v) in fq.iter().enumerate() {
+                fq_shared[t] = *v as u32;
+            }
+        } else {
+            debug_assert!(fq.iter().zip(&fq_shared).all(|(a, b)| *a as u32 == *b));
+        }
+    }
+    let mut out = Vec::new();
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        // SAFETY: `wide_lanes` confirmed the feature each kernel is
+        // compiled for before either is called.
+        #[cfg(suite_avx512)]
+        if lanes == 16 {
+            wide::enumerate_avx512(&fq_shared, &fl_lanes, free, max_solutions, &mut out);
+            return Some((out, lanes));
+        }
+        wide::enumerate_avx2(&fq_shared, &fl_lanes, free, max_solutions, &mut out);
+    }
+    Some((out, lanes))
+}
+
+/// The vector kernels: libfes-lite's unrolled 16-step chunk
+/// ([`gray_ffs_unrolled_l4`]) with the first-derivative table held as
+/// vectors of 32-bit lanes and the second derivatives broadcast.
+#[cfg(target_arch = "x86_64")]
+mod wide {
+    use super::{idxq, Ffs};
+    use std::arch::x86_64::*;
+
+    /// Bit `ℓ` set iff lane `ℓ` of the vector is zero: a solution there.
+    #[cfg(suite_avx512)]
+    macro_rules! zero_lanes_512 {
+        ($v:expr) => {
+            _mm512_cmpeq_epi32_mask($v, _mm512_setzero_si512()) as u32
+        };
+    }
+    macro_rules! zero_lanes_256 {
+        ($v:expr) => {
+            _mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(
+                $v,
+                _mm256_setzero_si256(),
+            ))) as u32
+        };
+    }
+
+    macro_rules! wide_kernel {
+        ($(#[$attr:meta])* $name:ident, $feature:literal, $vec:ty, $load:ident, $set1:ident, $xor:ident, $zero_lanes:ident) => {
+            $(#[$attr])*
+            #[target_feature(enable = $feature)]
+            pub(super) unsafe fn $name(
+                fq: &[u32; 561],
+                fl_lanes: &[[u32; 16]; 34],
+                n: usize,
+                max_solutions: usize,
+                out: &mut Vec<u64>,
+            ) {
+                const L: usize = 4;
+                let mut fl: [$vec; 34] = [std::mem::zeroed(); 34];
+                for (t, lanes) in fl_lanes.iter().enumerate() {
+                    fl[t] = $load(lanes.as_ptr() as *const _);
+                }
+                // `f(x)` for the current point, kept out of the array so it
+                // stays in a register.
+                let mut f0 = fl[0];
+                macro_rules! step {
+                    ($a:expr, $b:expr, $index:expr) => {{
+                        let mask: u32 = $zero_lanes!(f0);
+                        if mask != 0 {
+                            let index: u64 = $index;
+                            let gray = index ^ (index >> 1);
+                            let mut bits = mask;
+                            while bits != 0 {
+                                let lane = bits.trailing_zeros() as u64;
+                                out.push(gray | (lane << n));
+                                bits &= bits - 1;
+                            }
+                            if out.len() >= max_solutions {
+                                return;
+                            }
+                        }
+                        let a: usize = $a;
+                        fl[a] = $xor(fl[a], $set1(fq[$b] as i32));
+                        f0 = $xor(f0, fl[a]);
+                    }};
+                }
+                let mut ffs = Ffs::reset(n - L);
+                let mut k1 = ffs.k1 + L as i32;
+                let iterations = 1u64 << (n - L);
+                for j in 0..iterations {
+                    let alpha = idxq(0, k1 as usize);
+                    ffs.step();
+                    k1 = ffs.k1 + L as i32;
+                    let k2 = ffs.k2 + L as i32;
+                    let beta = (1 + k1) as usize;
+                    let gamma = idxq(k1 as usize, k2 as usize);
+                    let base = j << L;
+                    step!(1, alpha, base);
+                    step!(2, alpha + 1, base + 1);
+                    step!(1, 0, base + 2);
+                    step!(3, alpha + 2, base + 3);
+                    step!(1, 1, base + 4);
+                    step!(2, 2, base + 5);
+                    step!(1, 0, base + 6);
+                    step!(4, alpha + 3, base + 7);
+                    step!(1, 3, base + 8);
+                    step!(2, 4, base + 9);
+                    step!(1, 0, base + 10);
+                    step!(3, 5, base + 11);
+                    step!(1, 1, base + 12);
+                    step!(2, 2, base + 13);
+                    step!(1, 0, base + 14);
+                    step!(beta, gamma, base + 15);
+                }
+            }
+        };
+    }
+
+    // AVX-512 target features are stable from 1.89 (see `build.rs`).
+    #[cfg(suite_avx512)]
+    wide_kernel!(
+        #[clippy::msrv = "1.89"]
+        enumerate_avx512,
+        "avx512f",
+        __m512i,
+        _mm512_loadu_si512,
+        _mm512_set1_epi32,
+        _mm512_xor_si512,
+        zero_lanes_512
+    );
+
+    wide_kernel!(
+        enumerate_avx2,
+        "avx2",
+        __m256i,
+        _mm256_loadu_si256,
+        _mm256_set1_epi32,
+        _mm256_xor_si256,
+        zero_lanes_256
+    );
 }
 
 /// libfes `generic_minimal`: one FFS step per point.
@@ -717,6 +954,65 @@ mod tests {
         c.sort_unstable();
         assert_eq!(a, b);
         assert_eq!(a, c);
+    }
+
+    /// **The vector search finds exactly what the scalar one does.**
+    /// Random quadratic systems with a planted root — and, with few
+    /// equations, many roots of their own in every lane — from the
+    /// smallest size the unrolled chunk takes up to the 32 equations a
+    /// lane holds.
+    #[test]
+    fn the_wide_search_finds_exactly_what_the_scalar_one_does() {
+        use rand::{Rng, SeedableRng};
+        let Some(lanes) = wide_lanes() else {
+            eprintln!("no AVX2 or AVX-512 on this host; the wide search is not exercised");
+            return;
+        };
+        let k = lanes.trailing_zeros() as usize;
+        let mut rng = rand::rngs::StdRng::seed_from_u64(20260923);
+        for trial in 0..48usize {
+            let n = k + 4 + trial % 14;
+            let m = 1 + (trial * 7) % 32;
+            let mut forms: Vec<QuadraticForm> = (0..m)
+                .map(|_| QuadraticForm {
+                    n,
+                    constant: rng.gen(),
+                    linear: (0..n).map(|_| rng.gen()).collect(),
+                    quad: (0..n)
+                        .map(|i| (0..i).map(|_| rng.gen_bool(0.4)).collect())
+                        .collect(),
+                })
+                .collect();
+            // Plant a root: shift each form's constant so it vanishes there.
+            // With few equations the system has many more roots of its own.
+            let planted: u64 = rng.gen::<u64>() & ((1u64 << n) - 1);
+            for f in &mut forms {
+                if f.eval(planted) {
+                    f.constant = !f.constant;
+                }
+            }
+            let mut scalar = gray_incremental_find_all(&forms, usize::MAX).unwrap();
+            let (mut wide, used) =
+                gray_find_all_wide(&forms, usize::MAX).expect("fits the wide search");
+            assert_eq!(used, lanes);
+            scalar.sort_unstable();
+            wide.sort_unstable();
+            assert!(
+                scalar.contains(&planted),
+                "trial {trial}: the scalar search lost the planted root"
+            );
+            assert_eq!(wide, scalar, "trial {trial} (n = {n}, m = {m})");
+        }
+        // Too many equations for a 32-bit lane, or too few variables for
+        // the unrolled chunk: declined, not answered wrongly.
+        let wide_form = |n: usize| QuadraticForm {
+            n,
+            constant: false,
+            linear: vec![false; n],
+            quad: (0..n).map(|i| vec![false; i]).collect(),
+        };
+        assert!(gray_find_all_wide(&vec![wide_form(12); 33], 1).is_none());
+        assert!(gray_find_all_wide(&[wide_form(k + 3)], 1).is_none());
     }
 
     #[test]

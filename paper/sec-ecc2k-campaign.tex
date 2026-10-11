@@ -1,0 +1,103 @@
+\section{ECC2K-130 campaign and structural negatives}
+\label{sec:campaign}
+
+The live campaign is a $\sigma$-walk, not the $20.08$~B/s table-walk
+corpus. Its configuration is \texttt{crypto:ecc2k130/aws/campaign.json}:
+\texttt{dpWeight}${}=32$, batch $16$, 256-thread blocks, two blocks/SM,
+$385{,}024$ workers ${}=6{,}160{,}384$ logical walks, $1{,}024$
+steps/launch, \texttt{maxIters}${}=2^{30}$. Native carry-less
+multiplication is what moved the campaign onto CUDA 13.3 and onto
+batch 16.\art{crypto:ecc2k130/aws/campaign.json}
+
+\subsection{Cutoff 32, $2^{28.41}$ iterations per point}
+
+An earlier fleet-wide ratio of $7.93\cdot 10^{15}$ checkpointed
+iterations against $31.6$~M uploaded points had been quoted as
+$2^{27.9}$ iterations per point. Neither counter was clean: the
+checkpoint sum multiplied every slot's per-walk base by one campaign
+constant, and the point total mixed in the first two slots, which
+walked at weight 34. A ratio of a mis-weighted sum to a mixed count
+is not a measurement of the running cutoff.
+
+The calibration that replaced it reads, from each live worker, the
+client's own two counters --- iterations this run, computed on the
+grid the client built itself, and distinguished points over the same
+interval. Frozen at 2026-09-17 18:47 UTC, 132 workers
+(Table~\ref{tab:cutoff}):\art{crypto:ecc2k130/benchmarks/dp-interval/README.md}
+
+\begin{table}[t]
+\centering
+\small
+\caption{Iterations per distinguished point at cutoff 32. One report
+  per $2^{28.41}=3.56\cdot 10^8$ iterations, the same on every family,
+  per-worker spread $0.04$ in the exponent.}
+\label{tab:cutoff}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+family & workers & iterations & points & it/point \\
+\midrule
+RTX PRO 6000 (g7e) & 38 & $5.606\cdot 10^{15}$ & 15.7~M & $2^{28.41}$ \\
+L40S (g6e) & 34 & $2.723\cdot 10^{15}$ & 7.6~M & $2^{28.41}$ \\
+RTX PRO 4500 (g7) & 48 & $3.081\cdot 10^{15}$ & 8.6~M & $2^{28.41}$ \\
+CPU & 12 & $2.804\cdot 10^{14}$ & 0.79~M & $2^{28.41}$ \\
+all & 132 & $1.169\cdot 10^{16}$ & 32.8~M & $\mathbf{2^{28.41}}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Expected work remains $2^{60.9}=2.15\cdot 10^{18}$ iterations. At
+weight 32 the expected corpus is about $2^{32.5}$ records, $0.19$~TB;
+about $40$ points/s, $3.4$~M points/day, $0.11$~GB/day per GPU at the
+$14.11$~B/s DP34 collection rate of the audited packed
+$\sigma$-walk.\art{crypto:ecc2k130/aws/README.md}
+
+\subsection{Certification and the 124~M-point snapshot}
+
+The storage protocol uses checksummed manifests, pinned
+worker/replay binaries and lease-fenced checkpoint pointers. Every
+walk seed is derived from a 16-bit \texttt{--run-id}; two contributors
+who pick different ids never repeat each other's trail. A distinguished
+point is a 32-byte record; a collision between any two corpora is
+solved by reloading them and replaying both walks. The public
+dashboard publishes aggregates only: not point keys, coefficients,
+seeds, or database URLs. Checkpointed iteration totals --- not just
+point counts --- are the conservative fleet-rate estimator.
+
+The ``$\sim 124$~M points'' figure is a dated storage-recovery
+snapshot, not the expected collision corpus. After ingesting
+$63{,}351{,}803$ rows the store went from $67.6$~M points to
+$124.3$~M, with zero failed or outstanding objects and no
+collision.\art{crypto:ecc2k130/aws/README.md, ingest paragraph}
+No collision is the expected state: $124$~M points at cutoff 32 is
+about $2^{55.3}$ iterations, a fraction of $2^{60.9}$.
+
+\subsection{Structural negatives}
+
+Several alternatives were measured and did not pay. They are listed
+because a later thread that rediscovers them should find the
+measurement rather than the folklore.
+
+\begin{itemize}[leftmargin=1.2em,itemsep=0.4em]
+\item \emph{A $28$~B/s one-addition walk on one GPU.} Below the
+  carry-less-unit floor (Section~\ref{sec:floor28}).
+\item \emph{The table walk as campaign default.} Measured $16.56$~B/s
+  against a pre-declared $17.0$; declined
+  (Section~\ref{sec:tablewalk}).
+\item \emph{A Modal SKU that beats the RTX~PRO~6000.} Surveyed; none
+  did (Table~\ref{tab:survey}).
+\item \emph{Bitsliced rewrite as the path to $20$~B/s.} The generated
+  bitsliced multiplier's instruction ceiling does not reach it; the
+  packed path with \texttt{clmad} is what did.\art{crypto:ecc2k130/THROUGHPUT-CEILING.md}
+\item \emph{Index calculus on the Koblitz curve as an ECC2K-130
+  solver.} The boundary ledger's best Koblitz row at a 39-bit
+  subgroup is $S=58.8$, $300\times$ signed-Frobenius rho
+  (Section~\ref{sec:ic-elliptic}). Meet-in-the-middle point
+  decomposition at ECC2K-130-like $(m,\ell)$ sits $35$--$51$ bits over
+  the per-PDP budget.\art{experiments/pdp-scaling/README.md}
+\item \emph{Quoting $2^{27.9}$ as the cutoff-32 interval.} Accounting
+  error; replaced by $2^{28.41}$ (Table~\ref{tab:cutoff}).
+\end{itemize}
+
+Each is engineering, relabelling, or accounting. None is an advance on
+the generic-group floor, which for this problem is still $\sqrt{\pi
+r/(2\cdot 262)}$ class-walk steps.

@@ -1,0 +1,54 @@
+name: gpueff
+# The workload efficiency score (gpueff/).  Also runs when the worker's metric
+# export or the measured ceilings it builds a machine profile from change.
+on:
+  push:
+    paths: ['gpueff/**', 'ecc2k130/runner/aws/worker.py',
+            'ecc2k130/runner/benchmarks/hardware-limits/result.json', '.github/workflows/gpueff.yml']
+  pull_request:
+    paths: ['gpueff/**', 'ecc2k130/runner/aws/worker.py',
+            'ecc2k130/runner/benchmarks/hardware-limits/result.json', '.github/workflows/gpueff.yml']
+permissions:
+  contents: read
+env:
+  PROMETHEUS_VERSION: 2.55.1
+  PROMETHEUS_SHA256: 19700bdd42ec31ee162e4079ebda4cd0a44432df4daa637141bdbea4b1cd8927
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.9', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install promtool
+        # Without it the test that checks the generated recording rules against
+        # the Python score is skipped; in CI it must run.
+        run: |
+          tarball="prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz"
+          curl -sSfL -o "$RUNNER_TEMP/$tarball" \
+            "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/$tarball"
+          echo "${PROMETHEUS_SHA256}  $RUNNER_TEMP/$tarball" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP"
+          echo "PROMTOOL=$RUNNER_TEMP/prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool" >> "$GITHUB_ENV"
+      - name: Unit tests
+        working-directory: gpueff
+        run: python -m unittest discover -s tests -v
+      - name: Generated rules pass promtool
+        working-directory: gpueff
+        run: |
+          python -m gpueff rules --machine rtx-pro-6000-blackwell-server \
+            --workload ecc2k130-packed-walk > "$RUNNER_TEMP/rules.yml"
+          "$PROMTOOL" check rules "$RUNNER_TEMP/rules.yml"
+      - name: Machine profile matches the probe it was built from
+        working-directory: gpueff
+        run: |
+          python -m gpueff machine-from-probe \
+            ../ecc2k130/runner/benchmarks/hardware-limits/result.json \
+            --source ecc2k130/runner/benchmarks/hardware-limits/result.json \
+            --check profiles/rtx-pro-6000-blackwell-server.json

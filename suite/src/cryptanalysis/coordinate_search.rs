@@ -2182,6 +2182,15 @@ pub struct DescentModel {
     /// Degree of the descended Boolean system, read off the interpolated
     /// polynomial: a monomial `Π v_i^{e_i}` has bit-degree `Σ popcount(e_i)`
     /// because `v ↦ v^{2^k}` is `F_2`-linear.
+    ///
+    /// Counted over **all `m + 1` arguments of the polynomial**, the target
+    /// included — unlike [`Self::unknowns`], which excludes it, since the
+    /// target is known when a decomposition is attempted.  The two fields are
+    /// therefore on different conventions, and a system actually handed to a
+    /// solver has degree one less than this for the polynomials measured here
+    /// (`S₄` in `x`: 7 here, 6 solved; symmetrised: 5 here, 4 solved).  Compare
+    /// only like with like; `semaev_leading_form::boolean_degree` takes the
+    /// symbolic-variable count as an argument and gives the other convention.
     pub boolean_degree: u32,
 }
 

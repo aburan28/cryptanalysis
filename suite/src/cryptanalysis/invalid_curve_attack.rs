@@ -35,10 +35,20 @@
 //!
 //! ## What this module ships
 //!
-//! - [`mount_invalid_curve_attack`] — full end-to-end attack:
-//!   enumerate twists, find smooth ones, simulate the victim's
-//!   black-box `d·P` operation on the twist, run PH on each
-//!   recovered residue, CRT to reconstruct `d`.
+//! - [`mount_invalid_curve_attack_oracle`] — the real end-to-end
+//!   attack against a black-box scalar-multiplication **oracle**
+//!   `Fn(&Point) -> Point`.  The attack code never sees the secret
+//!   `d`: it crafts points of small prime-power order on each smooth
+//!   twist, queries the oracle for `d · P` on the base curve's
+//!   incomplete formulas (which land on the twist), solves the small
+//!   subgroup DLP with [`pohlig_hellman_curve`], CRTs the residues,
+//!   and completes/verifies the candidate against the victim's public
+//!   key `Q` by checking `d · G == Q`.
+//! - [`mount_invalid_curve_attack`] — a convenience wrapper for tests
+//!   and demos that builds an *honest* oracle from a planted `d`
+//!   (`|P| -> d · P`) and its public key `Q = d · G`, then runs the
+//!   oracle attack above.  The oracle closure sees `d`; the attack
+//!   does not.
 //! - [`InvalidCurveAttackReport`] — structured outcome.
 //! - [`format_visualization`] — Markdown attack report.
 //!
@@ -55,6 +65,7 @@ use crate::cryptanalysis::pohlig_hellman::{
     crt_combine, pohlig_hellman_curve, PohligHellmanReport,
 };
 use crate::ecc::curve::CurveParams;
+use crate::ecc::point::Point;
 use crate::visualize::color::{paint, FG_BRIGHT_GREEN, FG_BRIGHT_RED, FG_BRIGHT_YELLOW};
 use num_bigint::BigUint;
 use num_traits::{One, Zero};
@@ -64,40 +75,61 @@ use num_traits::{One, Zero};
 pub struct InvalidCurveAttackReport {
     /// The original (defender's) curve.
     pub base_curve_name: String,
-    /// The defender's secret scalar (revealed iff attack succeeds).
-    pub d_truth: BigUint,
     /// The base-curve generator order — the "full" key-space size.
     pub n_base: BigUint,
     /// Number of twists examined.
     pub twists_total: usize,
-    /// Number of twists actually used (smooth subgroup found).
+    /// Number of independent prime-power subgroups that yielded a
+    /// verified residue (across all twists).
     pub twists_used: usize,
     /// Bits of `d` recovered (= `log₂(product of used twist subgroup sizes)`).
     pub bits_recovered: f64,
     /// `d mod (product of subgroup orders)` (= what the attacker actually learns).
     pub recovered_d_partial: Option<BigUint>,
     /// `d` recovered fully iff the union of subgroup orders covers
-    /// `n_base` (or modular brute-force fills the gap).
+    /// `n_base` (or modular brute-force fills the gap), and the
+    /// candidate is confirmed by `d · G == Q`.
     pub recovered_d_full: Option<BigUint>,
+    /// `true` iff `recovered_d_full` was verified against the victim's
+    /// public key by an independent scalar multiplication `d · G == Q`.
+    pub verified: bool,
     /// Per-twist Pohlig-Hellman reports.
     pub per_twist_reports: Vec<(usize, PohligHellmanReport)>,
 }
 
-/// **Mount the full invalid-curve attack** on a j=0 base curve.
+/// **Mount the full invalid-curve attack** against a black-box scalar
+/// multiplication oracle.
 ///
-/// `base_curve` is the legitimate curve where the victim's `d` lives.
-/// `d_truth` is the (unknown-to-attacker, but known to us in test)
-/// secret scalar.  `smoothness_bound` controls how many bits of each
-/// twist's order we'll attempt to brute-force.
+/// `base_curve` is the legitimate curve where the victim's secret `d`
+/// lives.  `public_point` is the victim's public key `Q = d · G` on the
+/// base curve — the only thing the attack learns `d` against.  `oracle`
+/// is the victim's black box: given any point `P` (which the attacker
+/// crafts to lie on a weak twist), it returns `d · P` computed with the
+/// base curve's incomplete addition law (independent of `b`), so the
+/// result lands on the twist.  The attack code **never** reads `d`.
 ///
-/// Returns a structured report.  The attack succeeds if the union of
-/// recovered subgroup orders (CRT'd) uniquely determines `d` mod
-/// `n_base`.
-pub fn mount_invalid_curve_attack(
+/// The attack, per smooth twist:
+///  1. build a point `P = cofactor · G_twist` of exact order equal to
+///     the twist's smooth part;
+///  2. query `S = oracle(P) = d · P`;
+///  3. solve `d ≡ e (mod smooth_part)` with [`pohlig_hellman_curve`] on
+///     `(P, S)`;
+///  4. CRT the residues across twists.
+///
+/// It then verifies the reconstruction against `public_point`: when the
+/// combined modulus covers `n_base` the residue is reduced mod `n_base`
+/// and confirmed by `d · G == Q`; otherwise the small remaining gap is
+/// completed by a public-key-checked search.  `smoothness_bound` caps
+/// the largest prime subgroup solved per twist.
+pub fn mount_invalid_curve_attack_oracle<F>(
     base_curve: &CurveParams,
-    d_truth: &BigUint,
+    public_point: &Point,
+    oracle: F,
     smoothness_bound: u64,
-) -> InvalidCurveAttackReport {
+) -> InvalidCurveAttackReport
+where
+    F: Fn(&Point) -> Point,
+{
     let twists = enumerate_twists(&base_curve.p, &base_curve.b).unwrap_or_default();
     let mut per_twist_reports: Vec<(usize, PohligHellmanReport)> = Vec::new();
     let mut residues: Vec<(BigUint, BigUint)> = Vec::new();
@@ -107,62 +139,67 @@ pub fn mount_invalid_curve_attack(
         if twist.factorisation.len() == 1 && twist.factorisation[0].1 == 1 {
             continue;
         }
-        // Pick the smooth subgroup: the largest factor of `twist.order`
-        // whose every prime is ≤ smoothness_bound.
+        // Skip twists with no prime factor within the bound.
         let smooth_part = compute_smooth_part(&twist.order, smoothness_bound);
         if smooth_part <= BigUint::one() {
             continue;
         }
-        // Construct the twist curve.
         let twist_curve = construct_twist_curve(base_curve, twist);
         let twist_g = twist_curve.generator();
-        // **Simulate the victim**: the victim, given a point on the
-        // twist, computes d_truth · P using AES coefficients.  We
-        // produce the resulting point S on the twist directly.
-        let s = twist_g.scalar_mul(d_truth, &twist_curve.a_fe());
-        // Map d_truth to "d on the twist of smooth order":
-        // because `d_twist_g = (d mod twist.order) · g_twist`, we have
-        // S = (d mod twist.order) · twist_g.
-        // Project to the smooth subgroup: solve for d mod smooth_part.
-        let cofactor = &twist.order / &smooth_part;
-        let small_g = twist_g.scalar_mul(&cofactor, &twist_curve.a_fe());
-        let small_s = s.scalar_mul(&cofactor, &twist_curve.a_fe());
-        let ph_report = pohlig_hellman_curve(
-            &twist_curve,
-            &small_g,
-            &small_s,
-            &smooth_part,
-            smoothness_bound,
-        );
-        if let Some(d_mod_smooth) = &ph_report.recovered_d {
-            // Decompose smooth_part into its prime-power factors so
-            // CRT operates on pairwise coprime moduli only.  When two
-            // twists give residues at the same prime, keep the
-            // higher-power version (the larger one is at least as
-            // informative).
-            let pp_factors = crate::cryptanalysis::j0_twists::factorise_small(&smooth_part);
-            for (p, e) in pp_factors {
-                let pe = p.pow(e);
-                let d_mod_pe = d_mod_smooth % &pe;
-                // Check whether this prime is already in `residues`;
-                // if so, only keep the higher prime-power.
-                let existing_idx = residues.iter().position(|(m, _)| {
-                    crate::cryptanalysis::j0_twists::factorise_small(m)
-                        .iter()
-                        .any(|(q, _)| q == &p)
-                });
-                if let Some(i) = existing_idx {
-                    if pe > residues[i].0 {
-                        residues[i] = (pe.clone(), d_mod_pe);
+        let a_fe = twist_curve.a_fe();
+        let bound = BigUint::from(smoothness_bound);
+        // Attack one prime-power subgroup at a time.  The twist group can
+        // be non-cyclic (see finding 18), so the constructed base point's
+        // *exact* order — not the twist's nominal smooth part — is what we
+        // solve modulo; each residue is then confirmed against the
+        // oracle's own answer before it is used.
+        for (q, e) in &twist.factorisation {
+            if q > &bound {
+                continue;
+            }
+            let qe = q.pow(*e);
+            // A point whose order divides q^e: P = (order / q^e) · G_twist.
+            let p_pt = twist_g.scalar_mul(&(&twist.order / &qe), &a_fe);
+            let order = point_prime_power_order(&twist_curve, &p_pt, q, *e);
+            if order <= BigUint::one() {
+                continue;
+            }
+            // **Query the oracle**: the victim computes d · P with the base
+            // curve's incomplete law; since P is on the twist and both
+            // curves share `a`, S = d · P lives on the twist.  The attack
+            // learns only S — never d.
+            let s_pt = oracle(&p_pt);
+            let ph_report =
+                pohlig_hellman_curve(&twist_curve, &p_pt, &s_pt, &order, smoothness_bound);
+            let mut used = false;
+            if let Some(d_mod) = &ph_report.recovered_d {
+                // Independent check: the recovered residue must reproduce
+                // the oracle's answer, (d mod order)·P == S.
+                if p_pt.scalar_mul(d_mod, &a_fe) == s_pt {
+                    let residue = d_mod % &order;
+                    // Dedup by prime, keeping the higher prime power.
+                    let existing = residues.iter().position(|(m, _)| {
+                        crate::cryptanalysis::j0_twists::factorise_small(m)
+                            .iter()
+                            .any(|(qq, _)| qq == q)
+                    });
+                    match existing {
+                        Some(i) if order > residues[i].0 => {
+                            residues[i] = (order.clone(), residue);
+                            used = true;
+                        }
+                        Some(_) => {}
+                        None => {
+                            bits_recovered += order.bits() as f64;
+                            residues.push((order.clone(), residue));
+                            used = true;
+                        }
                     }
-                } else {
-                    residues.push((pe.clone(), d_mod_pe));
                 }
             }
-            let bits = (smooth_part.bits() as f64).max(0.0);
-            bits_recovered += bits;
+            let _ = used;
+            per_twist_reports.push((idx, ph_report));
         }
-        per_twist_reports.push((idx, ph_report));
     }
     // Deduplication may have left residues at distinct primes; CRT
     // them now.
@@ -177,16 +214,15 @@ pub fn mount_invalid_curve_attack(
         .fold(BigUint::one(), |acc, (m, _)| acc * m.clone());
     let recovered_d_full = if let Some(partial) = &recovered_d_partial {
         if total_mod >= base_curve.n {
-            // Lift uniquely via mod n_base.
-            Some(partial % &base_curve.n)
+            // Lift uniquely via mod n_base, then confirm against Q.
+            let cand = partial % &base_curve.n;
+            verify_scalar(&cand, public_point, base_curve).then_some(cand)
         } else {
             // The remaining unknown is in [0, n_base / total_mod).
-            // Brute-force completion if cheap.
+            // Complete by a public-key-checked search if cheap.
             let remaining_bits = base_curve.n.bits() as f64 - (total_mod.bits() as f64);
             if remaining_bits <= 24.0 {
-                Some(complete_via_brute_force(
-                    base_curve, partial, &total_mod, d_truth,
-                ))
+                complete_via_public_key(base_curve, partial, &total_mod, public_point)
             } else {
                 None
             }
@@ -194,17 +230,63 @@ pub fn mount_invalid_curve_attack(
     } else {
         None
     };
+    // `recovered_d_full` is `Some` only after `d · G == Q` succeeded.
+    let verified = recovered_d_full.is_some();
     InvalidCurveAttackReport {
         base_curve_name: base_curve.name.to_string(),
-        d_truth: d_truth.clone(),
         n_base: base_curve.n.clone(),
         twists_total: twists.len(),
         twists_used: residues.len(),
         bits_recovered,
         recovered_d_partial,
         recovered_d_full,
+        verified,
         per_twist_reports,
     }
+}
+
+/// **Convenience wrapper**: mount the invalid-curve attack against an
+/// *honest* oracle built from a planted secret `d`.  For tests and the
+/// `--demo` command line only.  The oracle closure captures `d` and
+/// computes `d · P`; the attack in [`mount_invalid_curve_attack_oracle`]
+/// receives only the oracle and the public key `Q = d · G`, so it never
+/// reads `d` directly.
+pub fn mount_invalid_curve_attack(
+    base_curve: &CurveParams,
+    d_truth: &BigUint,
+    smoothness_bound: u64,
+) -> InvalidCurveAttackReport {
+    let a_fe = base_curve.a_fe();
+    let public_point = base_curve.generator().scalar_mul(d_truth, &a_fe);
+    let d = d_truth.clone();
+    let oracle_a = base_curve.a_fe();
+    mount_invalid_curve_attack_oracle(
+        base_curve,
+        &public_point,
+        move |p: &Point| p.scalar_mul(&d, &oracle_a),
+        smoothness_bound,
+    )
+}
+
+/// Independent check that a recovered scalar is the victim's key:
+/// `candidate · G == Q` on the base curve.
+fn verify_scalar(candidate: &BigUint, public_point: &Point, base: &CurveParams) -> bool {
+    &base.generator().scalar_mul(candidate, &base.a_fe()) == public_point
+}
+
+/// The exact order of `p`, known to divide `q^max_e`: the smallest `q^j`
+/// (`j ≤ max_e`) with `q^j · p == O`.
+fn point_prime_power_order(curve: &CurveParams, p: &Point, q: &BigUint, max_e: u32) -> BigUint {
+    let a = curve.a_fe();
+    let mut order = BigUint::one();
+    let mut acc = p.clone();
+    let mut j = 0u32;
+    while j < max_e && !matches!(acc, Point::Infinity) {
+        order *= q;
+        acc = acc.scalar_mul(q, &a);
+        j += 1;
+    }
+    order
 }
 
 /// Compute the largest divisor of `n` whose every prime factor is
@@ -251,28 +333,27 @@ fn construct_twist_curve(base: &CurveParams, twist: &TwistInfo) -> CurveParams {
     }
 }
 
-/// **Brute-force fill the gap**: after CRT recovery to
-/// `d ≡ partial (mod total_mod)`, brute-force the remaining
-/// `[d, d + total_mod, …]` values until one matches the true `d`.
-///
-/// (In a real attack the attacker doesn't know `d_truth` — they'd
-/// instead check by scalar-multing `d_candidate · G_base = Q_base`
-/// against a known public key.  We accept `d_truth` here for test
-/// purposes only.)
-fn complete_via_brute_force(
+/// **Fill the residual gap** by the real attacker's method: after CRT
+/// recovery to `d ≡ partial (mod total_mod)`, walk the coset
+/// `partial, partial + total_mod, …` and accept the first candidate
+/// that reproduces the victim's **public key**, `candidate · G == Q`.
+/// Returns `None` if no coset member below `n` verifies (which cannot
+/// happen when the true `d` lies in the coset, but keeps the search
+/// honest and total).
+fn complete_via_public_key(
     base: &CurveParams,
     partial: &BigUint,
     total_mod: &BigUint,
-    d_truth: &BigUint,
-) -> BigUint {
+    public_point: &Point,
+) -> Option<BigUint> {
     let mut candidate = partial.clone();
     while candidate < base.n {
-        if &candidate == d_truth {
-            return candidate;
+        if verify_scalar(&candidate, public_point, base) {
+            return Some(candidate);
         }
         candidate += total_mod;
     }
-    partial.clone()
+    None
 }
 
 /// Render a Markdown report of an invalid-curve attack.
@@ -311,16 +392,19 @@ pub fn format_visualization(report: &InvalidCurveAttackReport) -> String {
     s.push_str("## Attack outcome\n\n");
     match (&report.recovered_d_full, &report.recovered_d_partial) {
         (Some(d), _) => {
-            let correct = d == &report.d_truth;
             s.push_str(&format!(
                 "  {} **Full key recovered**: `d = {}`{}\n",
-                if correct {
+                if report.verified {
                     paint("✓", FG_BRIGHT_GREEN)
                 } else {
                     paint("✗", FG_BRIGHT_RED)
                 },
                 d,
-                if correct { " (matches truth)" } else { " (MISMATCH!)" },
+                if report.verified {
+                    " (verified: d·G == Q)"
+                } else {
+                    " (UNVERIFIED)"
+                },
             ));
         }
         (None, Some(p)) => s.push_str(&format!(
@@ -360,15 +444,40 @@ mod tests {
     }
 
     /// **Headline test**: invalid-curve attack on the 16-bit j=0
-    /// curve recovers at least partial info on `d`.
+    /// curve recovers the full key from an honest oracle and verifies
+    /// it against the public key — the attack code never sees `d`.
     #[test]
-    fn invalid_curve_attack_recovers_partial_d() {
+    fn invalid_curve_attack_recovers_and_verifies_full_d() {
         let curve = j0_16bit();
         let d_truth = BigUint::from(12345u32);
         let report = mount_invalid_curve_attack(&curve, &d_truth, 16);
         assert!(report.twists_used > 0, "expected at least one usable twist");
-        // Bits recovered must be > 0 if any twist worked.
         assert!(report.bits_recovered > 0.0);
+        assert_eq!(
+            report.recovered_d_full,
+            Some(d_truth.clone()),
+            "should fully recover the planted key"
+        );
+        assert!(report.verified, "recovered key must verify d·G == Q");
+    }
+
+    /// The attack must work against a bare oracle closure with no
+    /// planted-`d` shortcut: only `Q = d·G` and `Fn(&Point)->Point`.
+    #[test]
+    fn oracle_attack_verifies_against_public_key_only() {
+        let curve = j0_16bit();
+        let d_truth = BigUint::from(54321u32);
+        let a_fe = curve.a_fe();
+        let q = curve.generator().scalar_mul(&d_truth, &a_fe);
+        // A wrong candidate must NOT verify.
+        let report = mount_invalid_curve_attack_oracle(
+            &curve,
+            &q,
+            |p: &Point| p.scalar_mul(&d_truth, &curve.a_fe()),
+            16,
+        );
+        assert!(report.verified);
+        assert_eq!(report.recovered_d_full, Some(d_truth));
     }
 
     /// **Smoothness-bound = 0** → no twist is usable.

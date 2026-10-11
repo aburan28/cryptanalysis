@@ -37,7 +37,9 @@
 //! §5 regardless of how fast one Macaulay matrix reduces.
 
 use cryptanalysis_suite::cryptanalysis::koblitz_groebner::{
-    f4_profile, f4_profile_reset, F4Profile, FieldStructure, SolverEngine,
+    f4_build_subprofile, f4_build_subprofile_reset, f4_layout_stats, f4_layout_stats_reset,
+    f4_profile, f4_profile_reset, split_rule_default, F4Profile, FieldStructure, SolveOptions,
+    SolverEngine,
 };
 use cryptanalysis_suite::cryptanalysis::koblitz_index_calculus::{
     build_frobenius_factor_base, groebner_decompose, KoblitzCurve,
@@ -53,6 +55,8 @@ struct Instance {
     factor_index: usize,
     m: usize,
     targets: u32,
+    /// Index of the first target scalar (`target_scalar(first + i)`).
+    first: u32,
 }
 
 /// The ladder.  `K_1/2^21` and `K_1/2^23` are the instances the Koblitz
@@ -64,49 +68,14 @@ struct Instance {
 /// within the size caps (72 F4 calls over two targets, no oversize) but
 /// materialising its 261,745-point factor base costs 4.7 s against a
 /// sub-second stage, so it would price setup rather than the stage.
+#[rustfmt::skip]
 const LADDER: &[Instance] = &[
-    Instance {
-        a: 0,
-        n: 9,
-        factor_index: 0,
-        m: 2,
-        targets: 40,
-    },
-    Instance {
-        a: 0,
-        n: 9,
-        factor_index: 0,
-        m: 3,
-        targets: 16,
-    },
-    Instance {
-        a: 0,
-        n: 13,
-        factor_index: 0,
-        m: 2,
-        targets: 40,
-    },
-    Instance {
-        a: 1,
-        n: 15,
-        factor_index: 0,
-        m: 2,
-        targets: 32,
-    },
-    Instance {
-        a: 1,
-        n: 17,
-        factor_index: 0,
-        m: 2,
-        targets: 32,
-    },
-    Instance {
-        a: 1,
-        n: 23,
-        factor_index: 0,
-        m: 2,
-        targets: 16,
-    },
+    Instance { a: 0, n: 9, factor_index: 0, m: 2, targets: 40, first: 0 },
+    Instance { a: 0, n: 9, factor_index: 0, m: 3, targets: 16, first: 0 },
+    Instance { a: 0, n: 13, factor_index: 0, m: 2, targets: 40, first: 0 },
+    Instance { a: 1, n: 15, factor_index: 0, m: 2, targets: 32, first: 0 },
+    Instance { a: 1, n: 17, factor_index: 0, m: 2, targets: 32, first: 0 },
+    Instance { a: 1, n: 23, factor_index: 0, m: 2, targets: 16, first: 0 },
 ];
 
 /// The holdout ladder, selected with `--ladder holdout`: instances that
@@ -115,21 +84,92 @@ const LADDER: &[Instance] = &[
 /// regime the oracle reaches here — a few hundred rows against a couple
 /// of thousand columns — which is where a blocked elimination is most at
 /// risk of costing more than it saves.
+#[rustfmt::skip]
 const HOLDOUT: &[Instance] = &[
-    Instance {
-        a: 0,
-        n: 19,
-        factor_index: 0,
-        m: 2,
-        targets: 12,
-    },
-    Instance {
-        a: 1,
-        n: 17,
-        factor_index: 1,
-        m: 2,
-        targets: 24,
-    },
+    Instance { a: 0, n: 19, factor_index: 0, m: 2, targets: 12, first: 0 },
+    Instance { a: 1, n: 17, factor_index: 1, m: 2, targets: 24, first: 0 },
+];
+
+/// The chained ladder, selected with `--ladder chain`: `m ≥ 3` cells,
+/// where the variables of the chain's intermediate points enter the
+/// system and the split order and linear elimination of
+/// `research/notes/ecc2k130/RESEARCH_CHAIN_SPLIT_ORDER.md` act.  These are
+/// the cells that change was found on (its §1 lists the exploratory runs),
+/// so they are its tuning set, not its evidence.
+#[rustfmt::skip]
+const CHAIN: &[Instance] = &[
+    Instance { a: 0, n: 9, factor_index: 0, m: 3, targets: 16, first: 0 },
+    Instance { a: 0, n: 13, factor_index: 0, m: 3, targets: 8, first: 0 },
+    Instance { a: 0, n: 15, factor_index: 0, m: 3, targets: 8, first: 0 },
+    Instance { a: 1, n: 17, factor_index: 0, m: 3, targets: 4, first: 0 },
+    Instance { a: 0, n: 9, factor_index: 0, m: 4, targets: 8, first: 0 },
+];
+
+/// The chained holdout, selected with `--ladder chain-holdout`: cells no
+/// arm of that change was run on before it was registered — other curves,
+/// other degrees, and fresh targets on two tuning cells.  A cell whose
+/// curve or factor base does not exist, or whose cofactor makes `m`
+/// inadmissible, is skipped by the harness as on every ladder.
+#[rustfmt::skip]
+const CHAIN_HOLDOUT: &[Instance] = &[
+    Instance { a: 1, n: 9, factor_index: 0, m: 3, targets: 16, first: 0 },
+    Instance { a: 0, n: 11, factor_index: 0, m: 3, targets: 8, first: 0 },
+    Instance { a: 1, n: 11, factor_index: 0, m: 3, targets: 8, first: 0 },
+    Instance { a: 1, n: 13, factor_index: 0, m: 3, targets: 8, first: 0 },
+    Instance { a: 1, n: 15, factor_index: 0, m: 3, targets: 8, first: 0 },
+    Instance { a: 0, n: 17, factor_index: 0, m: 3, targets: 4, first: 0 },
+    Instance { a: 1, n: 9, factor_index: 0, m: 4, targets: 8, first: 0 },
+    Instance { a: 0, n: 15, factor_index: 0, m: 4, targets: 8, first: 0 },
+    Instance { a: 1, n: 15, factor_index: 0, m: 4, targets: 8, first: 0 },
+    Instance { a: 0, n: 13, factor_index: 0, m: 3, targets: 8, first: 1000 },
+    Instance { a: 1, n: 17, factor_index: 0, m: 3, targets: 4, first: 1000 },
+];
+
+/// The supplementary holdout, selected with `--ladder chain-holdout-2`:
+/// every cell of `examples/chain_ladder_screen.rs`'s grid that exists, is
+/// admissible for its `m`, fits in 64 unknowns and on which no arm of the
+/// change had run when it was registered (§5 of
+/// `RESEARCH_CHAIN_SPLIT_ORDER.md`); the first registered holdout lost seven
+/// of its eleven cells to admissibility.
+#[rustfmt::skip]
+const CHAIN_HOLDOUT_2: &[Instance] = &[
+    Instance { a: 1, n: 11, factor_index: 0, m: 4, targets: 4, first: 0 },
+    Instance { a: 0, n: 15, factor_index: 1, m: 3, targets: 8, first: 0 },
+    Instance { a: 0, n: 15, factor_index: 1, m: 4, targets: 8, first: 0 },
+    Instance { a: 0, n: 15, factor_index: 2, m: 3, targets: 8, first: 0 },
+    Instance { a: 0, n: 15, factor_index: 2, m: 4, targets: 8, first: 0 },
+    Instance { a: 1, n: 15, factor_index: 1, m: 4, targets: 8, first: 0 },
+    Instance { a: 1, n: 15, factor_index: 2, m: 4, targets: 8, first: 0 },
+    Instance { a: 0, n: 23, factor_index: 0, m: 3, targets: 4, first: 0 },
+    Instance { a: 0, n: 23, factor_index: 1, m: 3, targets: 4, first: 0 },
+];
+
+/// The round-2 holdout, selected with `--ladder r2-holdout`
+/// (`RESEARCH_SUPPORT_LOCAL_MULTIPLIERS.md` §2): the four admissible cells
+/// the widened screen found that no ladder had used, and fresh targets
+/// (`5000…`) on every admissible cell of the original screen.  Registered
+/// before any arm ran on it.
+#[rustfmt::skip]
+const R2_HOLDOUT: &[Instance] = &[
+    Instance { a: 0, n: 31, factor_index: 0, m: 3, targets: 8, first: 0 },
+    Instance { a: 0, n: 31, factor_index: 1, m: 3, targets: 8, first: 0 },
+    Instance { a: 0, n: 31, factor_index: 5, m: 3, targets: 8, first: 0 },
+    Instance { a: 1, n: 29, factor_index: 0, m: 4, targets: 8, first: 0 },
+    Instance { a: 0, n: 9, factor_index: 0, m: 3, targets: 16, first: 5000 },
+    Instance { a: 0, n: 9, factor_index: 0, m: 4, targets: 8, first: 5000 },
+    Instance { a: 1, n: 9, factor_index: 0, m: 4, targets: 8, first: 5000 },
+    Instance { a: 1, n: 11, factor_index: 0, m: 4, targets: 4, first: 5000 },
+    Instance { a: 0, n: 13, factor_index: 0, m: 3, targets: 8, first: 5000 },
+    Instance { a: 0, n: 15, factor_index: 0, m: 4, targets: 8, first: 5000 },
+    Instance { a: 0, n: 15, factor_index: 1, m: 3, targets: 8, first: 5000 },
+    Instance { a: 0, n: 15, factor_index: 1, m: 4, targets: 8, first: 5000 },
+    Instance { a: 0, n: 15, factor_index: 2, m: 3, targets: 8, first: 5000 },
+    Instance { a: 0, n: 15, factor_index: 2, m: 4, targets: 8, first: 5000 },
+    Instance { a: 1, n: 15, factor_index: 0, m: 4, targets: 8, first: 5000 },
+    Instance { a: 1, n: 15, factor_index: 1, m: 4, targets: 8, first: 5000 },
+    Instance { a: 1, n: 15, factor_index: 2, m: 4, targets: 8, first: 5000 },
+    Instance { a: 0, n: 23, factor_index: 0, m: 3, targets: 4, first: 5000 },
+    Instance { a: 0, n: 23, factor_index: 1, m: 3, targets: 4, first: 5000 },
 ];
 
 /// Deterministic target scalars: a fixed multiplier sequence, so every
@@ -150,14 +190,25 @@ fn main() {
         .map(|w| w[1].clone())
         .unwrap_or_else(|| "unlabelled".into());
 
-    let ladder = match args
+    let (ladder, ladder_name) = match args
         .windows(2)
         .find(|w| w[0] == "--ladder")
         .map(|w| w[1].as_str())
     {
-        Some("holdout") => HOLDOUT,
-        _ => LADDER,
+        Some("holdout") => (HOLDOUT, "holdout"),
+        Some("chain") => (CHAIN, "chain"),
+        Some("chain-holdout") => (CHAIN_HOLDOUT, "chain-holdout"),
+        Some("chain-holdout-2") => (CHAIN_HOLDOUT_2, "chain-holdout-2"),
+        Some("r2-holdout") => (R2_HOLDOUT, "r2-holdout"),
+        _ => (LADDER, "frozen"),
     };
+
+    // `--rung i` runs only the ladder's `i`-th entry (0-based, counting
+    // inadmissible entries too), so a profiler can price one rung.
+    let only: Option<usize> = args
+        .windows(2)
+        .find(|w| w[0] == "--rung")
+        .and_then(|w| w[1].parse().ok());
 
     let mut rows = Vec::new();
     println!();
@@ -172,7 +223,10 @@ fn main() {
          ---------:|----------:|--------:|-------:|"
     );
 
-    for inst in ladder {
+    for (position, inst) in ladder.iter().enumerate() {
+        if only.is_some_and(|i| i != position) {
+            continue;
+        }
         let Some(kc) = KoblitzCurve::new(inst.a, inst.n) else {
             continue;
         };
@@ -189,12 +243,16 @@ fn main() {
         let g = kc.generator().clone();
 
         f4_profile_reset();
+        f4_layout_stats_reset();
+        f4_build_subprofile_reset();
         let mut verdicts: Vec<String> = Vec::new();
         let mut decomposed = 0u32;
         let mut stats_total = (0usize, 0usize, 0usize, 0usize, 0usize);
+        let mut eliminated = 0usize;
+        let mut exhausted = 0u32;
         let wall = Instant::now();
         for i in 0..inst.targets {
-            let target = kc.mul(&g, &target_scalar(i));
+            let target = kc.mul(&g, &target_scalar(inst.first + i));
             let (idxs, stats) = groebner_decompose(
                 &kc,
                 &fb,
@@ -219,9 +277,13 @@ fn main() {
             stats_total.2 += stats.propagations;
             stats_total.3 += stats.splits;
             stats_total.4 += stats.oversize;
+            eliminated += stats.eliminated;
+            exhausted += u32::from(stats.exhausted);
         }
         let wall_ns = wall.elapsed().as_nanos();
         let p: F4Profile = f4_profile();
+        let (layout_hits, layout_misses) = f4_layout_stats();
+        let (row_build_ns, matrix_pack_ns) = f4_build_subprofile();
         let digest = blake3::hash(verdicts.join("|").as_bytes())
             .to_hex()
             .to_string();
@@ -245,6 +307,7 @@ fn main() {
         rows.push(serde_json::json!({
             "curve": format!("K_{}/2^{}", inst.a, inst.n),
             "a": inst.a, "n": inst.n, "m": inst.m,
+            "factor_index": inst.factor_index,
             "ell": fb.ell,
             "factor_base_points": fb.points.len(),
             "targets": inst.targets,
@@ -258,12 +321,22 @@ fn main() {
             "build_ns": p.build_ns,
             "reduce_ns": p.reduce_ns,
             "readback_ns": p.readback_ns,
+            "rows_pruned": p.rows_pruned,
+            "criterion_word_ops": p.criterion_word_ops,
+            "specialise_word_ops": p.specialise_word_ops,
+            "layout_hits": layout_hits,
+            "layout_misses": layout_misses,
+            "row_build_ns": row_build_ns,
+            "matrix_pack_ns": matrix_pack_ns,
             "wall_ns": wall_ns,
             "reductions": stats_total.0,
             "infeasible_branches": stats_total.1,
             "propagations": stats_total.2,
             "splits": stats_total.3,
             "oversize": stats_total.4,
+            "exhausted": exhausted,
+            "eliminated": eliminated,
+            "first_target": inst.first,
         }));
     }
 
@@ -285,8 +358,27 @@ fn main() {
             "unit": "64-bit word XORs in the Macaulay elimination",
             "scope": "decomposition-oracle stage only; not an end-to-end ECDLP cost",
             "threads": 1,
-            "ladder": if std::ptr::eq(ladder, HOLDOUT) { "holdout" } else { "frozen" },
+            "ladder": ladder_name,
+            // The retained controls of RESEARCH_CHAIN_SPLIT_ORDER.md, as
+            // set for this run (unset means the engine's default).
+            "policy": {
+                "KIC_F4_MULTIPLIERS": std::env::var("KIC_F4_MULTIPLIERS").ok(),
+                "KIC_F4_DROP": std::env::var("KIC_F4_DROP").ok(),
+                "KIC_LINEAR_ELIM": std::env::var("KIC_LINEAR_ELIM").ok(),
+                "KIC_CHAIN_ORDER": std::env::var("KIC_CHAIN_ORDER").ok(),
+            },
             "reducer": std::env::var("F4_F2_RREF").unwrap_or_else(|_| "m4ri".into()),
+            // The engine actually run: `SolverEngine::default()` after the
+            // retained-control overrides, so a saved run names its variant.
+            "engine": format!("{:?}", SolverEngine::default().effective()),
+            "split_rule": format!(
+                "{:?}",
+                SolveOptions { split_rule: split_rule_default(), ..SolveOptions::default() }
+                    .resolve()
+                    .split_rule
+            ),
+            "criterion": std::env::var("KIC_F4_CRITERION").unwrap_or_else(|_| "none".into()),
+            "inherit_root": std::env::var("KIC_F4_INHERIT_ROOT").unwrap_or_else(|_| "ref".into()),
             "rows": rows,
         });
         std::fs::write(&path, serde_json::to_string_pretty(&doc).unwrap()).unwrap();

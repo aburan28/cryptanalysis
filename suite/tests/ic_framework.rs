@@ -123,6 +123,99 @@ fn schema_unknown_fields_and_ambiguous_abstract_coordinates_are_rejected() {
     assert_eq!(report["status"], "invalid");
 }
 #[test]
+fn boundary_ledger_quick_run_prices_every_regime_and_verifies() {
+    let (ok, v) = command(&["boundary", "--quick", "--oracles"]);
+    assert!(ok, "{}", v["status"]);
+    assert_eq!(v["operation"], "boundary");
+    assert_eq!(v["status"], "complete");
+    assert_eq!(v["all_verified"], true);
+    let instances = v["ledger"]["instances"].as_array().unwrap();
+    let regimes: std::collections::BTreeSet<&str> = instances
+        .iter()
+        .map(|i| i["regime"].as_str().unwrap())
+        .collect();
+    assert_eq!(regimes.len(), 3, "{regimes:?}");
+    for inst in instances {
+        assert_eq!(inst["rho_verified_all"], true, "{}", inst["curve"]["name"]);
+        assert!(inst["floor_s"].as_f64().unwrap() > 0.0);
+        assert!(inst["calibration"]["ns_per_add"].as_f64().unwrap() > 0.0);
+        for var in inst["variants"].as_array().unwrap() {
+            assert_eq!(var["verified"], true, "{}", var["name"]);
+            assert!(var["s"].as_f64().unwrap() > 0.0);
+            assert!(var["ratio_to_floor"].as_f64().unwrap() > 1.0);
+            assert!(var["relations"]["native"]["trials"].as_u64().unwrap() > 0);
+            // The family shape law is reported per row at that row's own
+            // table fold and column fold, and `S` divided by it is the
+            // `vs family` column of the note and the scoreboard.
+            let fam = var["family_optimum_s"].as_f64().unwrap();
+            assert!(fam > 0.0, "{}", var["name"]);
+            let ratio = var["ratio_to_family_optimum"].as_f64().unwrap();
+            assert!(
+                (ratio - var["s"].as_f64().unwrap() / fam).abs() < 1e-6,
+                "{}: ratio_to_family_optimum is not S / family_optimum_s",
+                var["name"]
+            );
+            assert!(var["family_optimum_base"].as_f64().unwrap() > 0.0);
+            // A relation search that is pinned by decomposing one group
+            // element twice is measuring a collision, not relations
+            // (§10.2); it must not happen on any row.
+            assert_eq!(
+                var["linear_algebra"]["native"]["repeated_column_rows"], 0,
+                "{}",
+                var["name"]
+            );
+        }
+    }
+    assert_eq!(v["oracle_pricing"]["all_agree"], true);
+    assert!(v["markdown"].as_str().unwrap().contains("| regime |"));
+}
+#[test]
+fn corpus_writes_certified_instances_in_every_format() {
+    let dir = std::env::temp_dir().join(format!("ic-corpus-{}", std::process::id()));
+    let (ok, v) = command(&[
+        "corpus",
+        "--degree",
+        "13",
+        "--dimension",
+        "4",
+        "--sat",
+        "1",
+        "--unsat",
+        "1",
+        "--dir",
+        dir.to_str().unwrap(),
+    ]);
+    assert!(ok, "{v}");
+    assert_eq!(v["status"], "complete");
+    let instances = v["instances"].as_array().unwrap();
+    assert_eq!(instances.len(), 2);
+    assert!(instances
+        .iter()
+        .all(|i| i["label_checked_by_own_solver"] == true));
+    assert_eq!(v["written"].as_array().unwrap().len(), 10);
+    assert!(dir.join("n13l4-1-S.cnf").exists());
+    let info = std::fs::read_to_string(dir.join("INFOn13l4-1-S")).unwrap();
+    assert!(info.contains("satisfiable true"));
+    let dimacs = std::fs::read_to_string(dir.join("n13l4-1-S.dimacs")).unwrap();
+    assert!(dimacs.starts_with("p cnf ") && dimacs.contains("\nx "));
+    // Never overwrite.
+    let (again, _) = command(&[
+        "corpus",
+        "--degree",
+        "13",
+        "--dimension",
+        "4",
+        "--sat",
+        "1",
+        "--unsat",
+        "0",
+        "--dir",
+        dir.to_str().unwrap(),
+    ]);
+    assert!(!again);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+#[test]
 fn supported_larger_fixture_completes_and_reports_resources() {
     // Control accounting: one column per Frobenius orbit, fixed surplus,
     // serial trials — the historical 91 + 4 relations.
@@ -940,4 +1033,100 @@ fn subfield_curves_run_precompute_and_descend_with_bound_documents() {
         "2",
     ]);
     assert!(!ok);
+}
+
+#[test]
+fn budget_charges_a_degree_far_past_the_curve_constructors_reach() {
+    // Nothing is constructed, so the 63 cap on the run commands does not apply.
+    let (ok, v) = command(&["budget", "--degree", "571", "--max-arity", "5"]);
+    assert!(ok, "{v}");
+    assert_eq!(v["operation"], "budget");
+    assert_eq!(v["status"], "complete");
+    assert_eq!(v["evidence_scope"], "analytic_cost_model");
+    let degrees = v["degrees"].as_array().unwrap();
+    assert_eq!(degrees.len(), 1);
+    assert_eq!(degrees[0]["degree"], 571);
+    assert!(!degrees[0]["cells"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn budget_reports_arity_two_as_losing_even_to_a_free_decomposition_oracle() {
+    let (ok, v) = command(&["budget", "--standard", "--summands", "2"]);
+    assert!(ok, "{v}");
+    for degree in v["degrees"].as_array().unwrap() {
+        let cell = &degree["cells"].as_array().unwrap()[0];
+        assert_eq!(
+            cell["free_oracle_loses"], true,
+            "degree {} unexpectedly left an arity-2 budget",
+            degree["degree"]
+        );
+        assert!(cell["log2_budget"].as_f64().unwrap() < 0.0);
+    }
+}
+
+#[test]
+fn budget_separates_a_system_too_large_to_build_from_one_merely_hard_to_solve() {
+    // ECC2K-130's degree: arity 4 has a positive budget and is still blocked,
+    // because forming the descended system already exceeds it.
+    let (ok, v) = command(&["budget", "--degree", "131", "--summands", "4"]);
+    assert!(ok, "{v}");
+    let cell = &v["degrees"].as_array().unwrap()[0]["cells"]
+        .as_array()
+        .unwrap()[0];
+    assert!(cell["log2_budget"].as_f64().unwrap() > 0.0);
+    assert_eq!(cell["free_oracle_loses"], false);
+    assert_eq!(cell["anf_blocks"], true);
+    assert_eq!(cell["viable"], false);
+    assert!(cell["log2_anf_deficit"].as_f64().unwrap() > 0.0);
+}
+
+#[test]
+fn budget_finds_the_two_degrees_where_the_system_fits_inside_the_budget() {
+    let (ok, v) = command(&["budget", "--standard", "--summands", "4"]);
+    assert!(ok, "{v}");
+    let fitting: Vec<u64> = v["degrees"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|d| d["cells"].as_array().unwrap()[0]["viable"] == true)
+        .map(|d| d["degree"].as_u64().unwrap())
+        .collect();
+    assert_eq!(fitting, vec![409, 571]);
+}
+
+#[test]
+fn budget_shows_what_the_orbit_quotient_buys_by_withholding_it() {
+    // Crediting the quotient may only help; at 113 it is what moves the
+    // smallest viable arity from 4 down to 3.
+    let (ok, with) = command(&["budget", "--degree", "113"]);
+    assert!(ok, "{with}");
+    let (ok, without) = command(&["budget", "--degree", "113", "--no-frobenius"]);
+    assert!(ok, "{without}");
+    assert_eq!(with["frobenius_orbit_quotient_credited"], true);
+    assert_eq!(without["frobenius_orbit_quotient_credited"], false);
+    assert_eq!(with["degrees"][0]["minimum_viable_arity"], 3);
+    assert_eq!(without["degrees"][0]["minimum_viable_arity"], 4);
+}
+
+#[test]
+fn budget_refuses_a_factor_base_spanning_the_whole_field() {
+    let (ok, v) = command(&[
+        "budget",
+        "--degree",
+        "131",
+        "--summands",
+        "4",
+        "--dimension",
+        "131",
+    ]);
+    assert!(!ok);
+    assert_eq!(v["operation"], "error");
+}
+
+#[test]
+fn budget_refuses_a_degree_it_was_not_given() {
+    let (ok, v) = command(&["budget", "--summands", "4"]);
+    assert!(!ok);
+    assert_eq!(v["operation"], "error");
+    assert!(v["message"].as_str().unwrap().contains("--degree"));
 }

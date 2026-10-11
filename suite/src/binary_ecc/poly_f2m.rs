@@ -145,10 +145,14 @@ impl F2mPoly {
     /// `self + other`.  In `F_{2^m}` this is XOR coefficient-wise.
     pub fn add(&self, other: &Self) -> Self {
         debug_assert_eq!(self.m, other.m);
-        let n = self.coeffs.len().max(other.coeffs.len());
-        let mut out = Vec::with_capacity(n);
-        for i in 0..n {
-            out.push(self.coeff(i).add(&other.coeff(i)));
+        let (long, short) = if self.coeffs.len() >= other.coeffs.len() {
+            (self, other)
+        } else {
+            (other, self)
+        };
+        let mut out = long.coeffs.clone();
+        for (o, c) in out.iter_mut().zip(&short.coeffs) {
+            o.add_assign(c);
         }
         let mut p = Self {
             m: self.m,
@@ -186,8 +190,7 @@ impl F2mPoly {
                 if cj.is_zero() {
                     continue;
                 }
-                let prod = ci.mul(cj, irr);
-                out[i + j] = out[i + j].add(&prod);
+                out[i + j].add_assign(&ci.mul(cj, irr));
             }
         }
         let mut p = Self {
@@ -236,32 +239,54 @@ impl F2mPoly {
     /// Polynomial long division: returns `(q, r)` with
     /// `self = q · divisor + r` and `deg r < deg divisor`.
     /// Panics if `divisor` is zero.
+    ///
+    /// In place on one copy of the dividend: each quotient term costs
+    /// `deg divisor` field multiplications and no allocation beyond
+    /// the products themselves.  A monic divisor skips the scaling
+    /// multiply as well.
     pub fn divrem(&self, divisor: &Self, irr: &IrreduciblePoly) -> (Self, Self) {
-        assert!(!divisor.is_zero(), "division by zero polynomial");
         let m = self.m;
-        let mut r = self.clone();
-        let mut q = Self::zero(m);
-        let d_deg = divisor.degree().unwrap();
-        let d_lead_inv = divisor.lead().flt_inverse(irr).expect("non-zero lead");
-        while let Some(r_deg) = r.degree() {
-            if r_deg < d_deg {
-                break;
+        let d_deg = divisor.degree().expect("division by zero polynomial");
+        let lead = &divisor.coeffs[d_deg];
+        let monic = *lead == F2mElement::one(m);
+        let d_lead_inv = if monic {
+            None
+        } else {
+            Some(lead.flt_inverse(irr).expect("non-zero lead"))
+        };
+        let r_deg = match self.degree() {
+            Some(d) if d >= d_deg => d,
+            _ => {
+                let mut r = self.clone();
+                r.trim();
+                return (Self::zero(m), r);
             }
-            // Compute the coefficient and degree of the next term of q.
-            let coef = r.coeffs[r_deg].mul(&d_lead_inv, irr);
-            let shift = r_deg - d_deg;
-            // q += coef · x^shift
-            if q.coeffs.len() <= shift {
-                q.coeffs.resize(shift + 1, F2mElement::zero(m));
+        };
+        let mut r: Vec<F2mElement> = self.coeffs[..=r_deg].to_vec();
+        let mut q = vec![F2mElement::zero(m); r_deg - d_deg + 1];
+        let low = &divisor.coeffs[..d_deg];
+        for i in (d_deg..=r_deg).rev() {
+            if r[i].is_zero() {
+                continue;
             }
-            q.coeffs[shift] = q.coeffs[shift].add(&coef);
-            // r -= (coef · x^shift) · divisor
-            let term = Self::monomial(coef, shift);
-            let sub = term.mul(divisor, irr);
-            r = r.add(&sub);
-            r.trim();
+            let coef = match &d_lead_inv {
+                None => r[i].clone(),
+                Some(inv) => r[i].mul(inv, irr),
+            };
+            let shift = i - d_deg;
+            for (j, dj) in low.iter().enumerate() {
+                if !dj.is_zero() {
+                    r[shift + j].add_assign(&coef.mul(dj, irr));
+                }
+            }
+            r[i] = F2mElement::zero(m);
+            q[shift] = coef;
         }
+        r.truncate(d_deg);
+        let mut q = Self { m, coeffs: q };
+        let mut r = Self { m, coeffs: r };
         q.trim();
+        r.trim();
         (q, r)
     }
 
@@ -321,7 +346,8 @@ impl F2mPoly {
         // Horner's rule.
         let mut acc = F2mElement::zero(self.m);
         for c in self.coeffs.iter().rev() {
-            acc = acc.mul(x_val, irr).add(c);
+            acc = acc.mul(x_val, irr);
+            acc.add_assign(c);
         }
         acc
     }
@@ -432,6 +458,48 @@ mod tests {
         assert!(r.is_zero());
         assert_eq!(q.degree(), Some(0));
         assert_eq!(q.coeff(0), F2mElement::one(m));
+    }
+
+    #[test]
+    fn divrem_random_nonmonic_163() {
+        // In-place long division against the defining identity, with
+        // non-monic and monic divisors and sparse (zero) coefficients.
+        let irr = IrreduciblePoly::deg_163();
+        let m = 163;
+        let mut s = 0x2545_F491_4F6C_DD1Du64;
+        let mut elem = |zero_every: u64| {
+            s ^= s << 13;
+            s ^= s >> 7;
+            s ^= s << 17;
+            if zero_every != 0 && s.is_multiple_of(zero_every) {
+                return F2mElement::zero(m);
+            }
+            let words = [s, s.rotate_left(21) ^ 0x9E37_79B9, s.rotate_left(43)];
+            let pos: Vec<u32> = (0..m)
+                .filter(|&i| (words[(i / 64) as usize] >> (i % 64)) & 1 == 1)
+                .collect();
+            F2mElement::from_bit_positions(&pos, m)
+        };
+        for (da, db, monic) in [
+            (20usize, 7usize, false),
+            (9, 9, false),
+            (12, 4, true),
+            (3, 6, false),
+        ] {
+            let mut ac: Vec<F2mElement> = (0..=da).map(|_| elem(4)).collect();
+            ac[da] = F2mElement::one(m);
+            let mut bc: Vec<F2mElement> = (0..=db).map(|_| elem(3)).collect();
+            bc[db] = if monic { F2mElement::one(m) } else { elem(0) };
+            let a = F2mPoly::from_coeffs(ac, m);
+            let b = F2mPoly::from_coeffs(bc, m);
+            let (q, r) = a.divrem(&b, &irr);
+            assert!(q.mul(&b, &irr).add(&r).eq_poly(&a), "da={da} db={db}");
+            assert!(r.degree().is_none_or(|d| d < db));
+            if da < db {
+                assert!(q.is_zero());
+                assert!(r.eq_poly(&a));
+            }
+        }
     }
 
     #[test]

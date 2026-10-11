@@ -11,7 +11,7 @@ struct ArtifactState {
     ulong seed, trailSteps, walkSteps, reseeds, trace, dpHash, dpCount;
 };
 struct ArtifactDp { ulong seed, steps, lane; uint xy[10], history[3], pad; };
-struct ArtifactArgs { uint lanes, cycles, branches, dpCap; int dpWeight; uint pad; };
+struct ArtifactArgs { uint lanes, cycles, branches, dpCap; int dpWeight; uint seedStride; };
 
 static P131 azero() { P131 r = {}; return r; }
 static P131 aone() { P131 r = {}; r.v[0] = 1; return r; }
@@ -156,8 +156,8 @@ kernel void artifact_walk(device ArtifactState *states [[buffer(0)]],
                         for(uint w=0;w<10;++w)s.dpHash=amix(s.dpHash^s.xy[w]);
                         for(uint w=0;w<3;++w)s.dpHash=amix(s.dpHash^s.history[w]);
                         s.dpHash=amix(s.dpHash^s.trailSteps^s.seed);++s.dpCount;
-                        if (s.seed>0xfffffffffffffffful-args.lanes) s.mode=3;
-                        else { s.seed+=args.lanes;s.mode=1; }
+                        if (s.seed>0xfffffffffffffffful-args.seedStride) s.mode=3;
+                        else { s.seed+=args.seedStride;s.mode=1; }
                     } else {
                         uint tag=atag(cx,p.y,weight,args.branches,s.history[0],s.history[1],s.history[2],constants);
                         s.history[2]=s.history[1];s.history[1]=s.history[0];s.history[0]=tag;

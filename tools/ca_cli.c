@@ -9,6 +9,8 @@
  *   ca gpu-info
  *   ca curve --name NAME | (--group ec --p P --a A --b B [--order N]) | --list
  *            report a curve's endomorphism structure (GLV) and chosen solver
+ *   cryptanalysis bsgs|rho --group zp|ec --p P --order N --g G --h H
+ *   cryptanalysis rho --curve ecc2k130 [campaign walk options]
  *   ca solve --alg bsgs|rho|kangaroo|grumpy|precomp|glv|dlog|gpu-rho --group zp|ec --p P [--a A --b
  * B]
  *            --order N --g G --h H [--lo L --hi U] [--threads T] [--seed S]
@@ -71,6 +73,7 @@
 #include "ca_internal.h" /* ca_now: the CLI already links the static library */
 
 #include <fcntl.h>
+#include <limits.h>
 #include <pthread.h>
 #include <signal.h>
 #include <time.h>
@@ -147,7 +150,11 @@ static _Noreturn void usage(void)
 {
     fprintf(
         stderr,
-        "usage: ca <command> [options]\n"
+        "usage: cryptanalysis <command> [options]  (ca is a compatible alias)\n"
+        "  bsgs  --group zp|ec --p P --order N --g G --h H [--lo L --hi U]\n"
+        "  rho   --group zp|ec --p P --order N --g G --h H [--threads T]\n"
+        "  rho   --curve ecc2k130 [--run-id R --dp-file F --checkpoint F ...]\n"
+        "        --check [--kat F] runs the ECC2K-130 host known-answer check\n"
         "  version | factor N | prime N | ec-order --p P --a A --b B | gpu-info\n"
         "  gen   --group zp|ec --p P [--a A --b B] [--order N] [--x X] [--seed S]\n"
         "  solve --alg bsgs|rho|kangaroo|grumpy|precomp|glv|dlog|gpu-rho --group zp|ec --p P [--a "
@@ -159,6 +166,7 @@ static _Noreturn void usage(void)
         "--alpha X)\n"
         "  ic    --p P --g G --h H [--method lsieve|rexp] [--B B] [--C C] [--threads T] "
         "[--verbose]\n"
+        "        index calculus in the multiplicative group of a prime field\n"
         "  num   powmod|invmod|gcd|isqrt|iroot|sqrtmod|legendre|crt|next-prime|order|\n"
         "        primitive-root|sieve|mont  (see the header comment for each op's options)\n"
         "  group exp|div|order|generator|random|lift-x --group zp|ec --p P [--a A --b B] ...\n"
@@ -257,11 +265,12 @@ static int cmd_gen(void)
     return 0;
 }
 
-static int cmd_solve(void)
+static int cmd_solve(const char *selected_alg)
 {
     ca_group g;
     make_group(&g);
-    const char *alg = opt("--alg");
+    if (selected_alg && opt("--alg")) die("--alg belongs to solve, not an algorithm subcommand");
+    const char *alg = selected_alg ? selected_alg : opt("--alg");
     if (!alg) die("--alg is required");
     ca_elem base, target;
     parse_elem(&g, opt("--g"), &base);
@@ -432,6 +441,52 @@ static int cmd_solve(void)
     return 0;
 }
 
+/* The campaign's GF(2^131) walk uses a specialized CUDA kernel and fixed
+ * public instance. Keep the backend private to the package; the stable user
+ * entry point is `cryptanalysis rho --curve ecc2k130`. This is a walk, not a
+ * general arbitrary-target DLP solver. */
+static int cmd_ecc2k130_rho(void)
+{
+    char self[PATH_MAX];
+#ifdef __linux__
+    ssize_t n = readlink("/proc/self/exe", self, sizeof(self) - 1);
+    if (n > 0) {
+        self[n] = '\0';
+    } else if (!realpath(argv_g[0], self)) {
+        die("cannot locate cryptanalysis executable");
+    }
+#else
+    if (!realpath(argv_g[0], self)) die("cannot locate cryptanalysis executable");
+#endif
+    char *slash = strrchr(self, '/');
+    if (!slash) die("cannot locate cryptanalysis executable directory");
+    *slash = '\0';
+    char backend[PATH_MAX];
+    int npath =
+        snprintf(backend, sizeof(backend), "%s/../libexec/cryptanalysis/ecc2k130-rho-kernel", self);
+    if (npath < 0 || (size_t)npath >= sizeof(backend)) die("backend path is too long");
+    if (access(backend, X_OK) != 0)
+        die("ECC2K-130 rho kernel is not installed beside cryptanalysis");
+    char **args = calloc((size_t)argc_g + 1, sizeof(*args));
+    if (!args) die("cannot allocate backend arguments");
+    int j = 0;
+    args[j++] = backend;
+    if (flag("--check") && flag("--bench")) die("choose only one of --check and --bench");
+    args[j++] = flag("--check") ? "check" : flag("--bench") ? "bench" : "walk";
+    for (int i = 2; i < argc_g; ++i) {
+        if (!strcmp(argv_g[i], "--check") || !strcmp(argv_g[i], "--bench")) continue;
+        if (!strcmp(argv_g[i], "--curve")) {
+            ++i;
+            if (i >= argc_g || strcmp(argv_g[i], "ecc2k130")) die("--curve must be ecc2k130");
+            continue;
+        }
+        args[j++] = argv_g[i];
+    }
+    args[j] = NULL;
+    execv(backend, args);
+    die("cannot execute ECC2K-130 rho kernel");
+}
+
 static int cmd_cheon(void)
 {
     ca_group g;
@@ -557,7 +612,7 @@ static int cmd_num(void)
     }
     if (!strcmp(op, "legendre")) {
         uint64_t p = opt_u64("--p", 0);
-        if (p < 3) die("--p must be an odd prime");
+        if (p < 3 || !ca_is_prime(p)) die("--p must be an odd prime");
         printf("{\"result\":%d}\n", ca_legendre(opt_u64("--a", 0), p));
         return 0;
     }
@@ -584,7 +639,8 @@ static int cmd_num(void)
     }
     if (!strcmp(op, "order")) {
         uint64_t p = opt_u64("--p", 0);
-        if (p < 2) die("--p must be a prime at least 2");
+        /* ca_mult_order works in (Z/pZ)^* of order p - 1: prime p only. */
+        if (p < 2 || !ca_is_prime(p)) die("--p must be a prime");
         uint64_t o = ca_mult_order(opt_u64("--a", 0), p);
         if (o == 0) {
             printf("{\"defined\":false}\n");
@@ -768,6 +824,41 @@ static const char *coord_url(void)
     return env && *env ? env : NULL;
 }
 
+/*
+ * Split --coordinator on commas: one URL per shard, in shard order.
+ *
+ * Order is the interface, not a convenience.  The Nth URL is shard N, and
+ * a fleet that disagrees about which hub is shard 2 splits the point space
+ * two different ways -- every hub holding a fraction of a fraction, and
+ * collisions parted between them.  So the count is checked against the job
+ * document, which carries the number of shards inside its id.
+ */
+static size_t coord_url_split(const char *list, char **out, size_t max)
+{
+    size_t n = 0;
+    const char *p = list;
+    while (p && *p && n < max) {
+        while (*p == ' ' || *p == ',') p++;
+        if (!*p) break;
+        const char *end = strchr(p, ',');
+        size_t len = end ? (size_t)(end - p) : strlen(p);
+        while (len && (p[len - 1] == ' ')) len--;
+        if (!len) {
+            if (!end) break;
+            p = end + 1;
+            continue;
+        }
+        char *dup = malloc(len + 1);
+        if (!dup) break;
+        memcpy(dup, p, len);
+        dup[len] = 0;
+        out[n++] = dup;
+        if (!end) break;
+        p = end + 1;
+    }
+    return n;
+}
+
 static void coord_print_job(const ca_coord_job *job, const ca_coord_ctx *ctx, const char *out)
 {
     printf("{\"status\":\"ok\",\"job_id\":\"%016" PRIx64 "\",\"order\":%" PRIu64
@@ -794,6 +885,15 @@ static int cmd_coord_job(void)
         (uint32_t)opt_u64("--r", 0), flag("--negation"), opt_u64("--unit-size", 0),
         opt_u64("--seed", 0));
     if (rc != CA_OK) die_status(rc);
+    /* How many hubs the point space is split across.  It goes into the
+     * document, so it goes into the id: a fleet cannot half-agree about
+     * its own topology. */
+    uint64_t shards = opt_u64("--shards", 1);
+    if (shards != 1) {
+        if (shards == 0 || shards > CA_COORD_SHARDS_MAX) die("--shards out of range");
+        rc = ca_coord_job_set_shards(&job, (uint32_t)shards);
+        if (rc != CA_OK) die_status(rc);
+    }
     ca_coord_ctx *ctx = NULL;
     rc = ca_coord_ctx_open(&ctx, &job);
     if (rc != CA_OK) die_status(rc);
@@ -861,11 +961,17 @@ static void coord_on_signal(int sig)
 }
 
 /* One worker lane in its own thread. */
+/* The agents this process holds: one per shard, in shard order. */
+typedef struct work_fleet {
+    ca_coord_agent **agent;
+    size_t count;
+} work_fleet;
+
 typedef struct work_lane {
     pthread_t thread;
     const ca_coord_ctx *ctx;
     ca_coord_state *st;
-    ca_coord_agent *agent;
+    work_fleet *fleet;
     char peer[CA_COORD_PEER_MAX];
     uint64_t max_walkers;
     uint64_t checkin_every;
@@ -875,9 +981,30 @@ typedef struct work_lane {
 
 static volatile sig_atomic_t work_stop;
 
+/*
+ * Send a check-in to the hub that owns it.
+ *
+ * The library has already split the work by shard and said so in the peer
+ * name it built, "<lane>#<shard>", so the shard is read back from there
+ * rather than recomputed: one definition of the routing, in the library,
+ * and the transport only obeys it.  An unsharded run has no suffix and one
+ * agent.
+ */
 static void work_publish(void *user, const ca_coord_checkin *ci)
 {
-    if (user) ca_coord_agent_publish((ca_coord_agent *)user, ci);
+    work_fleet *f = user;
+    if (!f || !f->count) return;
+    size_t which = 0;
+    const char *hash = strrchr(ci->peer, '#');
+    if (hash && hash[1]) {
+        char *end = NULL;
+        unsigned long v = strtoul(hash + 1, &end, 10);
+        if (end && *end == 0 && v < f->count)
+            which = (size_t)v;
+        else
+            return; /* a name we did not build: drop rather than misfile */
+    }
+    if (f->agent[which]) ca_coord_agent_publish(f->agent[which], ci);
 }
 
 static int work_should_stop(void *user)
@@ -894,8 +1021,8 @@ static void *work_lane_main(void *arg)
     p.max_walkers = w->max_walkers;
     if (w->checkin_every) p.checkin_every = w->checkin_every;
     if (w->lease_secs) p.lease_secs = w->lease_secs;
-    ca_coord_lane_run(w->ctx, w->st, &p, w->agent ? work_publish : NULL, w->agent, work_should_stop,
-                      NULL, &w->res);
+    ca_coord_lane_run(w->ctx, w->st, &p, w->fleet && w->fleet->count ? work_publish : NULL,
+                      w->fleet, work_should_stop, NULL, &w->res);
     return NULL;
 }
 
@@ -971,12 +1098,40 @@ static int cmd_work(void)
     /* The reverse channel.  Started before the lanes, so the first
      * check-in already has somewhere to go; it connects in the
      * background, so an unreachable hub delays no walking. */
-    ca_coord_agent *agent = NULL;
-    if (coord_url()) {
-        ca_status rc = ca_coord_agent_start(&agent, coord_url(), coord_token(), node, ctx, st);
-        if (rc != CA_OK) die_status(rc);
-        fprintf(stderr, "[agent] dialling %s as %s%s\n", coord_url(), node,
-                coord_token() ? "" : " (no token)");
+    uint32_t shards = ca_coord_ctx_job(ctx)->shards;
+    char *urls[CA_COORD_SHARDS_MAX];
+    size_t nurl = 0;
+    if (coord_url()) nurl = coord_url_split(coord_url(), urls, CA_COORD_SHARDS_MAX);
+    if (nurl && nurl != (size_t)shards) {
+        char msg[192];
+        snprintf(msg, sizeof(msg),
+                 "this job has %u shard(s), so --coordinator needs %u comma-separated URLs "
+                 "in shard order (got %zu)",
+                 shards, shards, nurl);
+        die(msg);
+    }
+
+    work_fleet fleet;
+    memset(&fleet, 0, sizeof(fleet));
+    if (nurl) {
+        fleet.agent = calloc(nurl, sizeof(ca_coord_agent *));
+        if (!fleet.agent) die("out of memory");
+        fleet.count = nurl;
+        for (size_t i = 0; i < nurl; i++) {
+            /* Each shard is dialled under its own identity, matching the
+             * peer names the library builds, so a hub's view of who is
+             * talking to it lines up with what it is being told. */
+            char who[CA_COORD_PEER_MAX];
+            if (shards > 1)
+                snprintf(who, sizeof(who), "%s#%zu", node, i);
+            else
+                snprintf(who, sizeof(who), "%s", node);
+            ca_status rc =
+                ca_coord_agent_start(&fleet.agent[i], urls[i], coord_token(), who, ctx, st);
+            if (rc != CA_OK) die_status(rc);
+            fprintf(stderr, "[agent] shard %zu: dialling %s as %s%s\n", i, urls[i], who,
+                    coord_token() ? "" : " (no token)");
+        }
     } else {
         fprintf(stderr, "[agent] no --coordinator: walking alone\n");
     }
@@ -988,11 +1143,19 @@ static int cmd_work(void)
     for (uint64_t i = 0; i < threads; i++) {
         lanes[i].ctx = ctx;
         lanes[i].st = st;
-        lanes[i].agent = agent;
+        lanes[i].fleet = &fleet;
         lanes[i].max_walkers = max_walkers;
         lanes[i].checkin_every = checkin_every;
         lanes[i].lease_secs = lease_secs;
-        lane_peer(lanes[i].peer, sizeof(lanes[i].peer), node, i);
+        /* When the campaign is sharded the library appends "#<shard>" to
+         * this name, so the budget here has to leave room for it: a name
+         * truncated there would give two shards' streams one identity. */
+        size_t room = sizeof(lanes[i].peer);
+        if (shards > 1) {
+            char tail[16];
+            room -= (size_t)snprintf(tail, sizeof(tail), "#%u", shards - 1);
+        }
+        lane_peer(lanes[i].peer, room, node, i);
         if (pthread_create(&lanes[i].thread, NULL, work_lane_main, &lanes[i]) != 0)
             die("cannot start a lane");
     }
@@ -1019,7 +1182,8 @@ static int cmd_work(void)
     /* Drain before exiting: the queue lives in this process, and the
      * last check-in is the one carrying the solution. */
     int flushed = 1;
-    if (agent) flushed = ca_coord_agent_flush(agent, 10000);
+    for (size_t i = 0; i < fleet.count; i++)
+        if (!ca_coord_agent_flush(fleet.agent[i], 10000)) flushed = 0;
 
     uint64_t steps = 0, dps = 0, walkers = 0;
     for (uint64_t i = 0; i < threads; i++) {
@@ -1029,16 +1193,28 @@ static int cmd_work(void)
     }
     uint64_t x = 0;
     int have = ca_coord_solution(st, &x);
+    /* Summed across shards: one line for the process, whatever the
+     * topology underneath it. */
     ca_coord_agent_stats as;
     memset(&as, 0, sizeof(as));
-    if (agent) ca_coord_agent_stats_get(agent, &as);
+    for (size_t i = 0; i < fleet.count; i++) {
+        ca_coord_agent_stats one;
+        ca_coord_agent_stats_get(fleet.agent[i], &one);
+        as.received += one.received;
+        as.sent += one.sent;
+        as.connects += one.connects;
+        as.rejected += one.rejected;
+        as.reconnects += one.reconnects;
+    }
     printf("{\"status\":\"ok\",\"solved\":%s,\"x\":%" PRIu64 ",\"node\":\"%s\",\"lanes\":%" PRIu64
            ",\"walkers\":%" PRIu64 ",\"steps\":%" PRIu64 ",\"dps\":%" PRIu64
            ",\"seconds\":%.3f,\"received\":%" PRIu64 ",\"sent\":%" PRIu64 ",\"connects\":%" PRIu64
-           ",\"flushed\":%s}\n",
+           ",\"flushed\":%s,\"shards\":%u}\n",
            have ? "true" : "false", x, node, threads, walkers, steps, dps, ca_now() - start,
-           as.received, as.sent, as.connects, flushed ? "true" : "false");
-    if (agent) ca_coord_agent_stop(agent);
+           as.received, as.sent, as.connects, flushed ? "true" : "false", shards);
+    for (size_t i = 0; i < fleet.count; i++) ca_coord_agent_stop(fleet.agent[i]);
+    free(fleet.agent);
+    for (size_t i = 0; i < nurl; i++) free(urls[i]);
     free(lanes);
     ca_coord_state_free(st);
     ca_coord_ctx_close(ctx);
@@ -1165,7 +1341,18 @@ int main(int argc, char **argv)
         return 0;
     }
     if (!strcmp(cmd, "gen")) return cmd_gen();
-    if (!strcmp(cmd, "solve")) return cmd_solve();
+    if (!strcmp(cmd, "solve")) return cmd_solve(NULL);
+    if (!strcmp(cmd, "bsgs")) return cmd_solve("bsgs");
+    if (!strcmp(cmd, "rho")) {
+        const char *curve = opt("--curve");
+        if (flag("--curve")) {
+            if (!curve || strcmp(curve, "ecc2k130")) die("--curve must be ecc2k130");
+            return cmd_ecc2k130_rho();
+        }
+        if (flag("--check") || flag("--bench") || flag("--kat"))
+            die("--check, --bench, and --kat require --curve ecc2k130");
+        return cmd_solve("rho");
+    }
     if (!strcmp(cmd, "cheon")) return cmd_cheon();
     if (!strcmp(cmd, "ic")) return cmd_ic();
     if (!strcmp(cmd, "coord-job")) return cmd_coord_job();

@@ -48,8 +48,13 @@ using eccPacked131::P131;
 // with the campaign's table.
 static const int CAMPAIGN_DP_WEIGHT = 32;
 // The campaign restarts a lane that has walked this many steps without a
-// report (about 2^1.6 times the expected 2^28.41 at weight 32).
-static const unsigned long long CAMPAIGN_MAX_ITERS = 1ull << 30;
+// report (about 12 times the expected 2^28.41 at weight 32).  A restarted
+// lane's steps are lost, so the limit sits far out in the tail: 2^30, three
+// mean trails, cut 4.9% of honest trails and 15.6% of all steps
+// (github.com/aburan28/crypto ecc2k130/WALK-CONSTANT.md section 6); 2^32 cuts
+// 0.0006%.  The limit decides which trails are abandoned, never which points
+// a walk reaches, so it does not change the points or the records.
+static const unsigned long long CAMPAIGN_MAX_ITERS = 1ull << 32;
 
 // Certicom's published ECC2K-130 base point P and target Q, in the model's
 // representation (coefficient of beta_i at bit i-1).  The limbs are those of

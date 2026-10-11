@@ -123,6 +123,13 @@ static void test_count_points_larger(void)
 
 static void test_count_points_64bit(void)
 {
+    /* y^2 = x^3 + x + 7 over F_{2^64-59} has more than 2^64 points: the
+     * order must be refused, not returned modulo 2^64 (it used to come back
+     * as 3062714050). */
+    {
+        uint64_t n = 0;
+        CHECK(ca_ec_count_points(18446744073709551557ULL, 1, 7, &n, NULL) != CA_OK);
+    }
     /* Primes above 2^63: the Hasse interval must not overflow. */
     const uint64_t ps[2] = {ca_next_prime(1ULL << 63), 18446744073709551557ULL};
     for (int i = 0; i < 2; i++) {

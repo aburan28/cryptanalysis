@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# package.sh - build ec2k-gpu for release and pack it with what a downloader
-# needs to check it.
+# package.sh - build the unified CLI and its ECC2K-130 CUDA rho backend.
 #
 #   scripts/package.sh VERSION [OUTDIR]        (from ecc2k130/, OUTDIR default dist)
 #
-# Produces OUTDIR/ec2k-gpu-VERSION-linux-ARCH.tar.gz and its .sha256.  The
-# tarball holds the campaign build (WALK=sigma) compiled for every GPU
+# Produces cryptanalysis-VERSION-linux-ARCH.tar.gz and, temporarily, the
+# legacy ec2k-gpu-VERSION-linux-ARCH.tar.gz. Both have .sha256 files. The
+# private backend holds the campaign build (WALK=sigma) compiled for every GPU
 # generation with a carry-less multiplier, plus PTX for later ones; the
 # known-answer file its `check --kat` replays; the README and the licence.
 #
@@ -47,6 +47,39 @@ if ldd "$BIN" | grep -q libcudart; then
     exit 1
 fi
 
+# The public command uses the generic C solvers and dispatches this curve's
+# rho walk to the private, curve-specific CUDA backend in the same archive.
+CLI_BUILD=../build/release-cli
+cmake -S .. -B "$CLI_BUILD" -DCMAKE_BUILD_TYPE=Release \
+    -DCA_BUILD_SHARED=OFF -DCA_BUILD_TESTS=OFF -DCA_WERROR=ON
+cmake --build "$CLI_BUILD" --target cryptanalysis_cli -j "${BUILD_JOBS:-2}"
+CLI="$CLI_BUILD/cryptanalysis"
+"$CLI" bsgs --group zp --p 1000003 --order 166667 --g 533154 --h 579795 | grep -q '"x":12345'
+"$CLI" rho --group zp --p 1000003 --order 166667 --g 533154 --h 579795 --seed 1 | grep -q '"x":12345'
+
+CANONICAL="cryptanalysis-$VERSION-linux-$MACHINE"
+CANONICAL_STAGE="$OUT/$CANONICAL"
+rm -rf "$CANONICAL_STAGE"
+mkdir -p "$CANONICAL_STAGE/bin" "$CANONICAL_STAGE/libexec/cryptanalysis" \
+    "$CANONICAL_STAGE/share/cryptanalysis"
+cp "$CLI" "$CANONICAL_STAGE/bin/cryptanalysis"
+cp "$BIN" "$CANONICAL_STAGE/libexec/cryptanalysis/ecc2k130-rho-kernel"
+cp tests/campaign-kat.hex "$CANONICAL_STAGE/share/cryptanalysis/"
+cp README.md "$CANONICAL_STAGE/share/cryptanalysis/ECC2K130-README.md"
+cp ../LICENSE "$CANONICAL_STAGE/LICENSE"
+cat >"$CANONICAL_STAGE/VERSION" <<EOF
+cryptanalysis $VERSION, linux-$MACHINE
+source: $(git rev-parse HEAD 2>/dev/null || echo unknown)
+ECC2K-130 walk: sigma
+nvcc: $("$NVCC" --version | tail -1)
+arch: sm_80 sm_86 sm_89 sm_90 sm_100 sm_120, compute_120 PTX
+EOF
+"$CANONICAL_STAGE/bin/cryptanalysis" rho --curve ecc2k130 --check \
+    --kat "$CANONICAL_STAGE/share/cryptanalysis/campaign-kat.hex"
+tar -C "$OUT" -czf "$OUT/$CANONICAL.tar.gz" "$CANONICAL"
+(cd "$OUT" && sha256sum "$CANONICAL.tar.gz" >"$CANONICAL.tar.gz.sha256")
+rm -rf "$CANONICAL_STAGE"
+
 NAME="ec2k-gpu-$VERSION-linux-$MACHINE"
 STAGE="$OUT/$NAME"
 rm -rf "$STAGE"
@@ -63,3 +96,4 @@ tar -C "$OUT" -czf "$OUT/$NAME.tar.gz" "$NAME"
 (cd "$OUT" && sha256sum "$NAME.tar.gz" >"$NAME.tar.gz.sha256")
 rm -rf "$STAGE"
 echo "$OUT/$NAME.tar.gz"
+echo "$OUT/$CANONICAL.tar.gz"

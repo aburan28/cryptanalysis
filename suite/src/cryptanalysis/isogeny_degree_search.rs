@@ -4,7 +4,7 @@
 //! `K_0 : y² + xy = x³ + 1` over `F_{2^131}`.  Index calculus against it
 //! goes through a *point-decomposition problem* solved by Gröbner basis,
 //! and the cost of that solve is governed by the **solving degree** `D*`
-//! (operationally, the first fall degree `D_ff`).  Isogenies move us to
+//! (distinct from the first fall degree `D_ff` measured here). Isogenies move us to
 //! a different curve `E'` in the same isogeny class, with the *same*
 //! group order, so the ECDLP transfers.  Does some `E'` in that class
 //! present a lower `D*`?
@@ -22,8 +22,8 @@
 //! | **E3** | the `ℓ`-isogeny neighbourhood of ECC2K-130 itself at `n = 131` | [`walk_isogeny_ball`], [`ball::rational_isogeny_degrees`] — structural screens, since `D*` is unobservable there |
 //! | **E4** | the `≈ 2^65` class members E1–E3 cannot touch | [`certify_leading_form_invariance`] — a machine-checked *derivation*, not a sample |
 //!
-//! E1 is a strict superset of E2, so a null result there settles the
-//! isogeny question for every class over the field at once.
+//! E1 is a superset of E2. A null result covers the tested fixed-presentation
+//! FFD statistic at those sizes; it does not settle useful-PDP solver costs.
 //!
 //! ## The structural result E4 rests on
 //!
@@ -35,8 +35,8 @@
 //!
 //! and the curve enters it **only through `b`** (the `a`-dependence lives
 //! in the Artin–Schreier side condition, not in the polynomial).  Since
-//! `b = 1/j`, walking the isogeny graph *is* varying `b`; nothing else
-//! about the presentation changes.
+//! `b = 1/j`, changing the curve varies `b`. The certificate fixes all
+//! other inputs; actual transport may change the target and factor base.
 //!
 //! Now Weil-restrict.  Writing `x_i = Σ_t u_{i,t} z^t` makes each `x_i`
 //! **linear** in the Boolean unknowns, and squaring is `F_2`-linear in
@@ -51,7 +51,7 @@
 //! Setting every unknown to zero leaves exactly `b`.  Therefore:
 //!
 //! > **Leading-form invariance.**  For a fixed target `x_R`, field,
-//! > basis and decomposition size `m`, any two curves `E_b`, `E_{b'}`
+//! > basis, subspace and explicit S3-chain size `m`, curves `E_b`, `E_{b'}`
 //! > over `F_{2^n}` give point-decomposition systems whose
 //! > positive-degree parts are **identical**; the systems differ by the
 //! > constant vector `coords(b) + coords(b')` alone.
@@ -59,8 +59,9 @@
 //! `d_reg` in this literature is defined on the **homogeneous system
 //! built from the generators' top-degree components**, so it is a
 //! function of those components alone.  They are `b`-free, hence
-//! **isogeny-invariant**, hence *every* curve in the isogeny class — all
-//! `≈ 2^65` of them — has the same degree of regularity as ECC2K-130.
+//! unchanged for those fixed inputs. This is not an isogeny-invariance
+//! theorem for affine solving degree: actual target transport and new factor
+//! bases change inputs outside the certificate.
 //! [`certify_leading_form_invariance`] checks the step mechanically at
 //! each `n` rather than asking the reader to trust the derivation.
 //!
@@ -75,20 +76,19 @@
 //! component is.  That residual freedom is exactly what E1 and E2
 //! measure exhaustively.
 //!
-//! ## The second structural result: there is nowhere to walk *to*
+//! ## The second structural result: no new proper-subfield j-invariant
 //!
-//! The only lever known to lower `D*` on these systems is **L1**,
+//! One measured lever in the archived toy systems is **L1**,
 //! subfield structure (`research/notes/index-calculus/RESEARCH_DEGREE_REDUCTION.md` §2: Subfield mean
-//! `D*` 2.04 vs Random 3.53).  A curve over `F_{2^n}` has that structure
-//! iff it is `F_{2^n}`-isomorphic to one defined over a proper subfield,
-//! which for ordinary curves means `j(E') ∈ F_{2^d}` for some `d | n`,
-//! `d < n`.  With `n = 131` **prime**, the only proper subfield is `F_2`,
+//! `D*` 2.04 vs Random 3.53 in that experiment). A necessary condition
+//! for a model defined over a proper subfield is
+//! `j(E') ∈ F_{2^d}` for some `d | n`, `d < n`.  With `n = 131` **prime**, the only proper subfield is `F_2`,
 //! whose two elements give `j = 0` (supersingular — a different isogeny
 //! class) and `j = 1`, i.e. `b = 1`, i.e. **ECC2K-130 itself**.
 //!
 //! So the subfield lever is not something an isogeny walk can reach: the
-//! attacker already stands on the unique point of the class that has it,
-//! and every isogeny step strictly loses structure.  [`subfield_members`]
+//! attacker already stands on the unique j-invariant in the class that has it.
+//! A distinct j loses this particular property; other cost advantages remain open.  [`subfield_members`]
 //! enumerates the reachable subfield curves for any `n`, and the
 //! `n = 131` answer is a set of size one.
 //!
@@ -101,9 +101,8 @@
 //!   [`cross_check_ffd_oracles`] verifies the two agree.
 //! - The isogeny *walk* tracks `j`-invariants only; it does not build the
 //!   explicit morphism `φ: E → E'` (see
-//!   [`crate::cryptanalysis::binary_isogeny`] for why).  That is harmless
-//!   here: the thread's conclusion is that no reachable `E'` is worth
-//!   transporting a DLP to, so the transport map is never needed.
+//!   [`crate::cryptanalysis::binary_isogeny`] for why). Transport cost and
+//!   useful-PDP behavior of transported targets/bases remain unmeasured.
 //! - `n ≤ 32` for the algebraic sweeps: the Boolean engine packs
 //!   monomials into a `u64`, so the `2n`-variable full-field system caps
 //!   there, and the Macaulay ranks cap it far lower in practice.
@@ -194,9 +193,9 @@ pub fn present(
 
 /// The `F_2`-basis `1, z, …, z^{n−1}` of the whole field — the
 /// "no factor base" presentation, which is the one every member of an
-/// isogeny class admits.  (A Frobenius-invariant *subspace* basis exists
-/// only for the subfield members, which is the point of
-/// [`subfield_members`].)
+/// isogeny class admits. Frobenius-invariant field subspaces exist
+/// independently of the curve; their rational-point support and useful
+/// relation yield require separate checks.
 pub fn full_field_basis(n: u32) -> Vec<F2mElement> {
     (0..n)
         .map(|k| F2mElement::from_bit_positions(&[k], n))
@@ -207,9 +206,9 @@ pub fn full_field_basis(n: u32) -> Vec<F2mElement> {
 
 /// A fingerprint of everything in a system *except* its constant terms.
 ///
-/// Two systems with equal signatures have identical leading forms at
-/// every degree, hence identical degree of regularity; they can differ
-/// only in the affine tail.
+/// Two systems with equal signatures have identical positive-degree
+/// generators and the same statistic defined solely by their highest
+/// homogeneous parts. Affine ideal structure and solver cost can differ.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LeadingFormSignature {
     /// Per equation, the sorted monomial masks of **positive** degree.
@@ -276,10 +275,9 @@ pub struct InvarianceCertificate {
 ///    whose coordinates are directly readable, so claim 2 is checked on
 ///    that link alone and claim 1 on the whole system).
 ///
-/// Passing this at every reachable `n` is what licenses the claim for
-/// the `≈ 2^65` class members no sweep can reach: the argument is
-/// uniform in `n`, and the certificate is a mechanical check of the step
-/// the argument makes.
+/// The algebraic argument is uniform in `n`; this bounded certificate
+/// checks its implementation for fixed target, basis and explicit S3-chain
+/// encoding. It makes no claim about transported instances or affine cost.
 pub fn certify_leading_form_invariance(
     n: u32,
     irr: &IrreduciblePoly,
