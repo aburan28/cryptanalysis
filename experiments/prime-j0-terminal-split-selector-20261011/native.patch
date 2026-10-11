@@ -1,11 +1,9 @@
 --- a/src/bin/eisenstein_fixed/unit_orbit_windows.rs
 +++ b/src/bin/eisenstein_fixed/unit_orbit_windows.rs
-@@ -5387,6 +5387,16 @@
-     let b = path.representative.1.to_bigint();
-     let norm = &a * &a + BigInt::from(3) * &a * &b + BigInt::from(3) * &b * &b;
+@@ -5389,6 +5389,16 @@
      (path.proxy, path.part_count, !path.baseline, norm, a, b, path.parts)
-+}
-+
+ }
+ 
 +fn split_terminal_better(option: &SplitTerminalPath, current: &SplitTerminalPath) -> bool {
 +    let first = (option.proxy, option.part_count, !option.baseline);
 +    let second = (current.proxy, current.part_count, !current.baseline);
@@ -14,9 +12,11 @@
 +        return option.parts < current.parts;
 +    }
 +    split_terminal_rank(option) < split_terminal_rank(current)
- }
- 
++}
++
  fn split_terminal_paths(
+     representative: (Signed192, Signed192), baseline: bool, tables: &DualRhoTables,
+ ) -> Vec<SplitTerminalPath> {
 @@ -5449,23 +5459,44 @@
      }).collect()
  }
@@ -95,3 +95,56 @@
                  best = Some(option);
              }
          }
+@@ -7501,6 +7529,52 @@
+ 
+ 
+ 
++
++    #[test]
++    fn split_terminal_incremental_corners_match_direct_formula() {
++        let panel: serde_json::Value = serde_json::from_str(include_str!(concat!(
++            env!("CARGO_MANIFEST_DIR"), "/split-terminal-inputs.json"
++        ))).unwrap();
++        let scalars = panel["scalars_hex"].as_array().unwrap();
++        let mut inputs: Vec<[u64; 4]> = scalars.iter().map(|text| {
++            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
++            super::super::scalar_words_256(&scalar).unwrap()
++        }).collect();
++        inputs.extend([[0u64; 4], [1, 0, 0, 0], [u64::MAX; 4]]);
++        for (index, words) in inputs.into_iter().enumerate() {
++            let scalar = super::super::Uint(words);
++            let reduced = if bool::from(scalar.ct_lt(&super::super::SCALAR_ORDER_WORDS)) {
++                scalar
++            } else {
++                super::super::U256::sbb(&scalar, &super::super::SCALAR_ORDER_WORDS).0
++            };
++            let (corners, baseline) = split_terminal_fixed_corners(reduced.0);
++            let (fw, _) = super::super::reciprocal_cell_limbs_from_words_512(
++                reduced.0, &super::super::RECIP_V1);
++            let (fv, _) = super::super::reciprocal_cell_limbs_from_words_512(
++                reduced.0, &super::super::RECIP_MINUS_W1);
++            let basis = &*super::super::FIXED_SCALAR_LATTICE;
++            let direct = std::array::from_fn(|corner| {
++                let (dw, dv) = [(0, 0), (1, 0), (0, 1), (1, 1)][corner];
++                let qw = super::super::add_one_192(fw, dw);
++                let qv = super::super::add_one_192(fv, dv);
++                let a = super::super::sub_384(
++                    super::super::add_384([reduced.0[0], reduced.0[1], reduced.0[2],
++                                           reduced.0[3], 0, 0],
++                                          super::super::mul_192(qv, basis.u1)),
++                    super::super::mul_192(qw, basis.w0));
++                let b = super::super::sub_384(
++                    super::super::mul_192(qw, basis.minus_w1),
++                    super::super::mul_192(qv, basis.v1));
++                (super::super::signed_192_from_twos_complement(a),
++                 super::super::signed_192_from_twos_complement(b))
++            });
++            assert_eq!(corners, direct, "corners {index}");
++            assert_eq!(baseline,
++                       super::super::hexagonal_certified_fixed_choice_words(reduced.0).0,
++                       "baseline {index}");
++        }
++    }
+ 
+     #[test]
+     fn split_terminal_selector_matches_frozen_panel_and_binary_points() {
