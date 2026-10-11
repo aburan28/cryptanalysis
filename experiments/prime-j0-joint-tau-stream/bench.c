@@ -40,8 +40,9 @@ int main(int argc, char **argv)
     if (argc != 4 || (strcmp(argv[1], "generic") && strcmp(argv[1], "split") &&
                        strcmp(argv[1], "joint") && strcmp(argv[1], "orbit") &&
                        strcmp(argv[1], "hot64") && strcmp(argv[1], "paired") &&
-                       strcmp(argv[1], "paired5") && strcmp(argv[1], "paired2"))) {
-        fputs("usage: ca_joint_tau_bench generic|split|joint|orbit|hot64|paired|paired5|paired2 glv-j0-32|j0-56 pairs.bin\n", stderr);
+                       strcmp(argv[1], "paired5") && strcmp(argv[1], "paired2") &&
+                       strcmp(argv[1], "paired2-gauge"))) {
+        fputs("usage: ca_joint_tau_bench generic|split|joint|orbit|hot64|paired|paired5|paired2|paired2-gauge glv-j0-32|j0-56 pairs.bin\n", stderr);
         return 2;
     }
     int large = strcmp(argv[2], "j0-56") == 0;
@@ -81,7 +82,8 @@ int main(int argc, char **argv)
                strcmp(argv[1], "orbit") == 0 ? 3 :
                strcmp(argv[1], "hot64") == 0 ? 4 :
                strcmp(argv[1], "paired") == 0 ? 5 :
-               strcmp(argv[1], "paired5") == 0 ? 6 : 7;
+               strcmp(argv[1], "paired5") == 0 ? 6 :
+               strcmp(argv[1], "paired2") == 0 ? 7 : 8;
     ca_tau4_joint_precomp pre;
     ca_tau4_orbit_precomp orbit;
     ca_tau4_hot_precomp hot;
@@ -110,7 +112,10 @@ int main(int argc, char **argv)
             ca_group_op(&g, &outputs[i], &left, &right);
         } else {
             ca_tau4_joint_counts one = {0};
-            int ok = mode == 7
+            int ok = mode == 8
+                ? ca_ec_tau4_paired_two_gauge_mul_profile(&g, &pre, &outputs[i],
+                                                          pairs[i].a, pairs[i].b, &one)
+                : mode == 7
                 ? ca_ec_tau4_paired_two_mul_profile(&g, &pre, &outputs[i],
                                                     pairs[i].a, pairs[i].b, &one)
                 : mode == 6
@@ -143,6 +148,7 @@ int main(int argc, char **argv)
             total.pair_scores += one.pair_scores;
             total.selected_changed += one.selected_changed;
             total.lattice_points_checked += one.lattice_points_checked;
+            total.gauge_selected += one.gauge_selected;
         }
     }
     double online_ms = 1000.0 * (ca_now() - start);
@@ -179,6 +185,7 @@ int main(int argc, char **argv)
            " overlaps=%" PRIu64 " fused_hits=%" PRIu64
            " recode_attempts=%" PRIu64 " pair_scores=%" PRIu64
            " selected_changed=%" PRIu64 " lattice_points_checked=%" PRIu64
+           " gauge_selected=%" PRIu64
            " verified=1\n",
            argv[1], argv[2], PAIRS, words[0], words[1],
            partner_words[0], partner_words[1], input_digest, output_digest,
@@ -188,6 +195,6 @@ int main(int argc, char **argv)
            total.tau_steps, total.doubles, total.mixed_adds, total.full_adds,
            total.rotations, total.inversions, total.overlaps, total.fused_hits,
            total.recode_attempts, total.pair_scores, total.selected_changed,
-           total.lattice_points_checked);
+           total.lattice_points_checked, total.gauge_selected);
     return 0;
 }
