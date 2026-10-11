@@ -30,8 +30,8 @@ on:
         required: true
         default: true
         type: boolean
-      runpod_smoke:
-        description: "Launch one temporary RTX PRO 6000 pod and run one CUDA launch"
+      runpod_campaign:
+        description: "Launch one RTX PRO 6000 S3-backed ECC2K-130 worker"
         required: true
         default: false
         type: boolean
@@ -104,22 +104,27 @@ jobs:
             echo "CUDA SMs: \`${ECC_CUDA_ARCHES}\`"
           } >> "${GITHUB_STEP_SUMMARY}"
 
-  runpod-smoke:
-    name: RunPod RTX PRO 6000 CUDA smoke test
+  runpod-campaign:
+    name: RunPod RTX PRO 6000 ECC2K-130 worker
     needs: image
-    # The branch clause is a one-time validation lane for this isolated branch;
+    # The branch clause starts the requested worker on this isolated branch;
     # normal users opt in with workflow_dispatch instead of paying for every push.
     if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.runpod_smoke) ||
+      (github.event_name == 'workflow_dispatch' && inputs.runpod_campaign) ||
       (github.event_name == 'push' && github.ref == 'refs/heads/codex/ecc2k130-gpu-container-20261011')
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     permissions:
       contents: read
       packages: read
     env:
       RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
       RUNPOD_SSH_PRIVATE_KEY: ${{ secrets.RUNPOD_SSH_PRIVATE_KEY }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: us-west-2
+      ECC_BUCKET: ${{ secrets.ECC_BUCKET }}
+      ECC_PREFIX: campaigns/ecc2k130-frobenius32-120k-v1
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
@@ -137,11 +142,15 @@ jobs:
         run: |
           set -euo pipefail
           [[ -n "${RUNPOD_API_KEY:-}" ]] || {
-            echo "RUNPOD_API_KEY repository secret is required for runpod_smoke" >&2
+            echo "RUNPOD_API_KEY repository secret is required for runpod_campaign" >&2
             exit 1
           }
           [[ -n "${RUNPOD_SSH_PRIVATE_KEY:-}" ]] || {
-            echo "RUNPOD_SSH_PRIVATE_KEY repository secret is required for runpod_smoke" >&2
+            echo "RUNPOD_SSH_PRIVATE_KEY repository secret is required for runpod_campaign" >&2
+            exit 1
+          }
+          [[ -n "${AWS_ACCESS_KEY_ID:-}" && -n "${AWS_SECRET_ACCESS_KEY:-}" && -n "${ECC_BUCKET:-}" ]] || {
+            echo "AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and ECC_BUCKET repository secrets are required" >&2
             exit 1
           }
           export HOME="${RUNNER_TEMP}/home"
@@ -162,7 +171,7 @@ jobs:
             'import json, os; print(json.loads(os.environ["REGISTRY_JSON"])["id"])')"
           echo "registry_id=${registry_id}" >> "${GITHUB_OUTPUT}"
 
-      - name: Launch and verify the exact image on RTX PRO 6000
+      - name: Launch the live ECC2K-130 worker on RTX PRO 6000
         id: pod
         env:
           REGISTRY_ID: ${{ steps.registry.outputs.registry_id }}
@@ -170,17 +179,36 @@ jobs:
           set -euo pipefail
           owner="${GITHUB_REPOSITORY_OWNER,,}"
           image="ghcr.io/${owner}/ecc2k130-runner:sha-${GITHUB_SHA}"
+          start_command='python3 /opt/ecc2k130/cloud.py run --seconds 82800 --s3-only'
+          export ECC_START_COMMAND="${start_command}"
+          env_json="$(python3 - <<'PY'
+          import json, os
+          values = {
+              "AWS_ACCESS_KEY_ID": os.environ["AWS_ACCESS_KEY_ID"],
+              "AWS_SECRET_ACCESS_KEY": os.environ["AWS_SECRET_ACCESS_KEY"],
+              "AWS_DEFAULT_REGION": os.environ["AWS_DEFAULT_REGION"],
+              "ECC_BUCKET": os.environ["ECC_BUCKET"],
+              "ECC_PREFIX": os.environ["ECC_PREFIX"],
+              "ECC_START_COMMAND": os.environ["ECC_START_COMMAND"],
+          }
+          if os.environ.get("AWS_SESSION_TOKEN"):
+              values["AWS_SESSION_TOKEN"] = os.environ["AWS_SESSION_TOKEN"]
+          print(json.dumps(values))
+          PY
+          )"
+          started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           pod_json="$(runpodctl pod create \
             --image "${image}" \
             --gpu-id "NVIDIA RTX PRO 6000 Blackwell Server Edition" \
-            --name "ecc2k130-container-smoke-${GITHUB_RUN_ID}" \
+            --name "ecc2k130-frobenius32-pro6000-${GITHUB_RUN_ID}" \
             --container-disk-in-gb 30 --ports "22/tcp" \
             --registry-auth-id "${REGISTRY_ID}" \
-            --env '{"ECC_START_COMMAND":"sleep 900"}' \
+            --env "${env_json}" \
             --wait --wait-timeout 10m -o json)"
           pod_id="$(POD_JSON="${pod_json}" python3 -c \
             'import json, os; print(json.loads(os.environ["POD_JSON"])["id"])')"
           echo "pod_id=${pod_id}" >> "${GITHUB_OUTPUT}"
+          echo "started_at=${started_at}" >> "${GITHUB_OUTPUT}"
 
           info_json="$(runpodctl ssh info "${pod_id}" -o json)"
           eval "$(INFO_JSON="${info_json}" python3 -c '
@@ -199,16 +227,57 @@ jobs:
           )
           ssh "${ssh_opts[@]}" "${SSH_USER}@${SSH_HOST}" 'set -euo pipefail
             nvidia-smi --query-gpu=name,compute_cap --format=csv,noheader
-            /opt/ecc2k130/deploy/entrypoint.sh \
-              /opt/ecc2k130/ecc2k130 --curve 131 --packed --bench \
-              --launches 1 --steps 1 --device 0'
+            pgrep -af "cloud.py|ecc2k130" || true'
 
-      - name: Tear down temporary RunPod resources
-        if: always()
+          echo "Pod ${pod_id} is live and running the S3-backed worker."
+          echo "pod_id=${pod_id}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "S3 prefix=${ECC_BUCKET}/${ECC_PREFIX}" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Confirm a fresh checkpoint or DP upload
         env:
           POD_ID: ${{ steps.pod.outputs.pod_id }}
+          STARTED_AT: ${{ steps.pod.outputs.started_at }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet 'boto3>=1.38,<2'
+          for attempt in 1 2 3 4 5; do
+            if STARTED_AT="${STARTED_AT}" python3 - <<'PY'
+          import boto3, datetime, os, sys
+          bucket=os.environ["ECC_BUCKET"]
+          prefix=os.environ["ECC_PREFIX"] + "/"
+          since=datetime.datetime.fromisoformat(os.environ["STARTED_AT"].replace("Z", "+00:00"))
+          s3=boto3.client("s3")
+          fresh=[]
+          token=None
+          while True:
+              args={"Bucket":bucket,"Prefix":prefix,"MaxKeys":1000}
+              if token: args["ContinuationToken"]=token
+              page=s3.list_objects_v2(**args)
+              fresh.extend(o for o in page.get("Contents", []) if o["LastModified"] >= since)
+              if not page.get("IsTruncated"): break
+              token=page.get("NextContinuationToken")
+              if len(fresh) >= 1: break
+          relevant=[o for o in fresh if "/ckpt/" in o["Key"] or "/dp/" in o["Key"]]
+          if relevant:
+              print("fresh_uploads", [(o["Key"], o["Size"]) for o in relevant[:5]])
+              sys.exit(0)
+          print("no fresh checkpoint or DP object yet")
+          sys.exit(1)
+          PY
+            then
+              echo "Confirmed a fresh S3 upload for ${POD_ID}."
+              exit 0
+            fi
+            sleep 60
+          done
+          echo "Worker is running, but no fresh S3 checkpoint/DP object appeared yet." >&2
+          runpodctl pod logs "${POD_ID}" --tail 80 --source container || true
+          exit 1
+
+      - name: Remove temporary registry credential
+        if: always()
+        env:
           REGISTRY_ID: ${{ steps.registry.outputs.registry_id }}
         run: |
           set +e
-          [[ -n "${POD_ID:-}" ]] && runpodctl pod delete "${POD_ID}"
           [[ -n "${REGISTRY_ID:-}" ]] && runpodctl registry delete "${REGISTRY_ID}"
