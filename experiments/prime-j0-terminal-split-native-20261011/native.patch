@@ -1,0 +1,217 @@
+--- a/src/bin/eisenstein_fixed/unit_orbit_windows.rs
++++ b/src/bin/eisenstein_fixed/unit_orbit_windows.rs
+@@ -5368,6 +5368,146 @@
+     scalar_words: [u64; 4],
+ ) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+     multiply_u256_tau_dual_rho0_with(scalar_words, true)
++}
++
++#[derive(Clone)]
++struct SplitTerminalPath {
++    representative: (Signed192, Signed192),
++    choices: [(usize, usize, usize); 14],
++    parts: [(i32, i32); 2],
++    part_count: usize,
++    proxy: usize,
++    nonidentity: usize,
++    baseline: bool,
++}
++
++fn split_terminal_rank(path: &SplitTerminalPath) ->
++    (usize, usize, bool, BigInt, BigInt, BigInt, [(i32, i32); 2]) {
++    let a = path.representative.0.to_bigint();
++    let b = path.representative.1.to_bigint();
++    let norm = &a * &a + BigInt::from(3) * &a * &b + BigInt::from(3) * &b * &b;
++    (path.proxy, path.part_count, !path.baseline, norm, a, b, path.parts)
++}
++
++fn split_terminal_paths(
++    representative: (Signed192, Signed192), baseline: bool, tables: &DualRhoTables,
++) -> Vec<SplitTerminalPath> {
++    let (mut a, mut b) = representative;
++    let mut choices = [(0usize, 0usize, 0usize); 14];
++    for choice in choices.iter_mut().take(12) {
++        let ra = a.rem_euclid_power_of_two(10);
++        let rb = b.rem_euclid_power_of_two(10);
++        let (digit, seed, exponent, unit) = tables.full.digit_residue(ra, rb);
++        assert!(exponent < 3);
++        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(10);
++        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(10);
++        *choice = (seed, exponent, unit);
++    }
++    let terminal = (a.to_small_i32(), b.to_small_i32());
++    let limit = 149_i64 * 149;
++    let mut parts = Vec::new();
++    if norm(terminal) < limit {
++        parts.push(([terminal, (0, 0)], 1));
++    } else if norm(terminal) < 4 * limit {
++        let xs = [terminal.0.div_euclid(2), (terminal.0 + 1).div_euclid(2)];
++        let ys = [terminal.1.div_euclid(2), (terminal.1 + 1).div_euclid(2)];
++        for x in xs { for y in ys {
++            let pair = [(x, y), (terminal.0 - x, terminal.1 - y)];
++            if pair[0] != (0, 0) && pair[1] != (0, 0) &&
++               pair.iter().all(|&p| norm(p) < limit) &&
++               !parts.iter().any(|&(prior, _)| prior == pair) {
++                parts.push((pair, 2));
++            }
++        }}
++    }
++    parts.into_iter().map(|(terminal_parts, part_count)| {
++        let mut encoded = choices;
++        for index in 0..part_count {
++            let part = terminal_parts[index];
++            let (digit, seed, exponent, unit) = tables.terminal.digit_exact(part.0, part.1);
++            assert_eq!(digit, part);
++            assert!(exponent < 3);
++            encoded[12 + index] = (seed, exponent, unit);
++        }
++        let mut masks = [0u8; 3];
++        let mut nonidentity = 0usize;
++        for &(seed, exponent, unit) in &encoded {
++            if seed != 0 {
++                nonidentity += 1;
++                masks[exponent] |= 1 << (unit / 2);
++            }
++        }
++        let occupied = masks.iter().filter(|&&mask| mask != 0).count();
++        let rotations: usize = masks.iter().filter(|&&mask| mask != 0).map(|&mask|
++            mask.count_ones() as usize - 1 + usize::from(mask & 1 == 0)).sum();
++        let proxy = 11 * (nonidentity - occupied) +
++            14 * occupied.saturating_sub(1) +
++            6 * usize::from(masks[1] != 0) +
++            10 * usize::from(masks[2] != 0) + rotations;
++        SplitTerminalPath { representative, choices: encoded, parts: terminal_parts,
++                            part_count, proxy, nonidentity, baseline }
++    }).collect()
++}
++
++fn multiply_u256_tau_split_terminal(
++    scalar_words: [u64; 4],
++) -> (String, SplitTerminalPath) {
++    let scalar = super::Uint(scalar_words);
++    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
++        scalar
++    } else {
++        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
++    };
++    let bytes: Vec<u8> = residue.0.iter().flat_map(|limb| limb.to_le_bytes()).collect();
++    let scalar_big = BigInt::from_bytes_le(num_bigint::Sign::Plus, &bytes);
++    let corners = hexagonal_four_corner_choices(&scalar_big);
++    assert_eq!(corners.len(), 4);
++    let tables = &*DUAL_RHO_TABLES;
++    let mut best: Option<SplitTerminalPath> = None;
++    for (index, (a, b)) in corners.iter().enumerate() {
++        let rep = (Signed192::from_bigint(a), Signed192::from_bigint(b));
++        for option in split_terminal_paths(rep, index == 0, tables) {
++            if best.as_ref().is_none_or(|current|
++                option.proxy < current.proxy ||
++                (option.proxy == current.proxy &&
++                 split_terminal_rank(&option) < split_terminal_rank(current))) {
++                best = Some(option);
++            }
++        }
++    }
++    let chosen = best.expect("original representative has a terminal entry");
++    let mut buckets = [U256XYZZ::identity(); 3];
++    for exponent in 0..3 {
++        let mut gauge = None;
++        for power in [1usize, 2, 0] {
++            if !chosen.choices.iter().any(|&(seed, bucket, unit)|
++                                   seed != 0 && bucket == exponent && unit / 2 == power) {
++                continue;
++            }
++            if let Some(previous) = gauge {
++                let delta = (previous + 3 - power) % 3;
++                if delta != 0 && !buckets[exponent].is_identity() {
++                    buckets[exponent] = buckets[exponent].rotate_power_solinas(delta);
++                }
++            }
++            gauge = Some(power);
++            for (index, &(seed, bucket, unit)) in chosen.choices.iter().enumerate() {
++                if seed == 0 || bucket != exponent || unit / 2 != power { continue; }
++                let window = index.min(12);
++                buckets[exponent] = buckets[exponent].add_mixed(
++                    tables.windows[window][seed].unit_solinas(unit & 1));
++            }
++        }
++        if let Some(power) = gauge {
++            if power != 0 && !buckets[exponent].is_identity() {
++                buckets[exponent] = buckets[exponent].rotate_power_solinas(power);
++            }
++        }
++    }
++    let point = buckets[0].add_xyzz(
++        buckets[1].add_xyzz(buckets[2].tau()).tau()
++    ).affine_hex_binary_inverse();
++    (point, chosen)
+ }
+ 
+ fn multiply_u256_sector_with<const N: usize>(
+@@ -7340,6 +7480,67 @@
+ 
+ 
+ 
++
++    #[test]
++    fn split_terminal_selector_matches_frozen_panel_and_binary_points() {
++        let panel: serde_json::Value = serde_json::from_str(include_str!(concat!(
++            env!("CARGO_MANIFEST_DIR"), "/split-terminal-inputs.json"
++        ))).unwrap();
++        let scalars = panel["scalars_hex"].as_array().unwrap();
++        let certificates: Vec<&str> = include_str!(concat!(
++            env!("CARGO_MANIFEST_DIR"), "/split-terminal-paths.jsonl"
++        )).lines().collect();
++        assert_eq!(scalars.len(), 4096);
++        assert_eq!(certificates.len(), scalars.len());
++        let mut proxy = 0usize;
++        let mut terms = 0usize;
++        let mut splits = 0usize;
++        for (index, text) in scalars.iter().enumerate() {
++            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
++            let words = super::super::scalar_words_256(&scalar).unwrap();
++            let (point, chosen) = multiply_u256_tau_split_terminal(words);
++            let control = multiply_u256_tau_dual_rho0_direct_gauge_xyzz_tau(words);
++            assert_eq!(point, control.0, "point {index}");
++            let certificate: serde_json::Value =
++                serde_json::from_str(certificates[index]).unwrap();
++            assert_eq!(certificate["index"].as_u64().unwrap(), index as u64);
++            let selected_index = certificate["selected_option"].as_u64().unwrap() as usize;
++            let selected = &certificate["options"][selected_index];
++            assert_eq!(chosen.proxy as u64,
++                       selected["metrics"]["point_proxy_units"].as_u64().unwrap(),
++                       "proxy {index}");
++            assert_eq!(chosen.nonidentity as u64,
++                       selected["metrics"]["terms"].as_u64().unwrap(),
++                       "terms {index}");
++            let parts = selected["terminal_parts"].as_array().unwrap();
++            assert_eq!(chosen.part_count, parts.len(), "part count {index}");
++            for (part_index, part) in parts.iter().enumerate() {
++                assert_eq!(chosen.parts[part_index],
++                           (part[0].as_i64().unwrap() as i32,
++                            part[1].as_i64().unwrap() as i32),
++                           "terminal part {index}:{part_index}");
++            }
++            for window in 0..12 {
++                let row = &selected["path"]["digits"][window];
++                assert_eq!(chosen.choices[window],
++                           (row[2].as_u64().unwrap() as usize,
++                            row[3].as_u64().unwrap() as usize,
++                            row[4].as_u64().unwrap() as usize),
++                           "digit choice {index}:{window}");
++            }
++            if index < 128 {
++                let reduced = &scalar % &SCALAR_LATTICE.n;
++                assert_eq!(point, independent_binary_point(&reduced).affine_hex(),
++                           "independent binary {index}");
++            }
++            proxy += chosen.proxy;
++            terms += chosen.nonidentity;
++            splits += usize::from(chosen.part_count == 2);
++        }
++        assert_eq!((proxy, terms, splits), (609_671, 54_528, 1_280));
++        println!("split_terminal_native_cases=4096 point_proxy={proxy} terms={terms} splits={splits} retained_bytes={}",
++                 DUAL_RHO_TABLES.retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES);
++    }
+ 
+     #[test]
+     fn budget_optimal_tau_cover_matches_disjoint_holdout_and_binary_points() {
