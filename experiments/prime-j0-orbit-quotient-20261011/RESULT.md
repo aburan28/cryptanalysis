@@ -37,6 +37,16 @@ including separate binary checks on the first 128 cases. It reported
 49,152 mixed additions, 16,546 grouped rotations, and the retained
 size shown above.
 
+The source-pinned native suite passed all 138 tests, and the native
+command-line mode passed all 10 edge-fixture cases with an independent
+point-stream replay. The [receipt validator](verify.py) checks source,
+atlas, panel, materialization, and raw-log hashes. The
+[native materialization](native-materialization.json),
+[targeted test](native-targeted.json),
+[full suite](native-full-suite.json), and
+[edge check](native-edge-check.json) retain the exact artifacts and
+outcomes. Compressed raw logs are preserved beside these receipts.
+
 The quotient decoder canonicalizes six unit images and computes a rank
 for each full digit. These operations are part of the scalar evaluation
 and must be charged in any runtime comparison. The RunPod CPU's L3 is
