@@ -1,6 +1,6 @@
 # Joint target equation rejects partial pair-output combinations; exact prefixes arrive too late
 
-A sound binary-linear relaxation of **two still-variable exact pair outputs and their shared public S3 equation** rejects 58 of 64 independently sampled N131 W18 pair combinations with 32 low coordinate bits unresolved in each output. Both pair-local relaxations accept all 64 by construction. At 36 unresolved bits, all 64 pass the joint relaxation. The archived positive four-atom block passes at every tested width. An independent checked-Sage audit reproduces selected ranks, the positive, a rejected control, and a surviving false positive.
+A sound binary-linear relaxation of **two still-variable exact pair outputs and their shared S3 output** rejects 58 of 64 independently sampled N131 W18 pair combinations with 32 low coordinate bits unresolved in each output. Both pair-local relaxations accept all 64 by construction. At 36 unresolved bits, all 64 pass the joint relaxation. The archived positive four-atom block passes at every tested width. An independent checked-Sage audit reproduces selected ranks, the positive, a rejected control, and a surviving false positive. The N41 S3 output is derived from the frozen public-point witness; the N131 output is a supplied constructed four-atom block coordinate, so this N131 panel measures component pruning rather than an ordinary public-point search.
 
 The decisive generation check is exact: among the **65,868 fixed-seed W18 pair outputs** per rotation, the high 99-bit prefix at width 32 is unique for every output in both rotated domains. The high 95-bit prefix at width 36 is also unique. Thus a solver that obtains these prefixes by enumerating valid pair outputs has already selected each pair leaf before this gate can reject its combination. This experiment identifies a useful joint constraint for a symbolic solver, with a precise point where an explicit-prefix implementation loses its early-pruning advantage.
 
@@ -12,7 +12,7 @@ For a pair with rotated source-reciprocal seed `s` and product `p`, its output `
 
 At fixed nonzero seed, `p=a²+sa` for one source-mask coordinate `a`. This map has kernel `{0,s}`, so its W6 or W18 image has dimension `d−1`. Choose a basis `b_j` of that exact product image. Write the proposed pair coordinate as `c=c₀+Σδ_i e_i`, with `k` coordinate bits `δ_i` still unknown. Expanding the pair equation and treating the products `δ_i p_j` as separate binary variables gives a sound linear relaxation. Any exact pair assignment satisfies it.
 
-For two pair outputs `c,d` and a fixed target reciprocal `z`, add the standard S3 equation
+For two pair outputs `c,d` and a fixed sum-output reciprocal `z`, add the standard S3 equation
 
 `z²+(cd)²z²+cdz+c²+d²=0`.
 
