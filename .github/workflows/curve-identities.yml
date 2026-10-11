@@ -8,6 +8,7 @@ on:
       - 'tests/test_benchmark_export.py'
       - '.github/workflows/curve-identities.yml'
   push:
+    branches: [main]
     paths:
       - 'tools/curve_identity.py'
       - 'tools/export_benchmark_snapshot.py'
@@ -16,6 +17,10 @@ on:
       - '.github/workflows/curve-identities.yml'
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   metadata:
     runs-on: ubuntu-latest

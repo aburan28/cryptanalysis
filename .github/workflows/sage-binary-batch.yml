@@ -10,6 +10,7 @@ on:
       - 'experiments/sage-binary-storage/**'
       - '.github/workflows/sage-binary-batch.yml'
   push:
+    branches: [main]
     paths:
       - 'experiments/sage-binary-batch/**'
       - 'experiments/sage-binary-native-addition/**'
@@ -21,6 +22,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   recorded-evidence:

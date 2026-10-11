@@ -3,9 +3,14 @@ on:
   pull_request:
     paths: ['groebner_compare/**', 'experiments/pdp-scaling/**', '.github/workflows/groebner-comparison.yml']
   push:
+    branches: [main]
     paths: ['groebner_compare/**', 'experiments/pdp-scaling/**', '.github/workflows/groebner-comparison.yml']
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   protocol:
     runs-on: ubuntu-latest
