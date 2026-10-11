@@ -47,6 +47,13 @@ atlas, panel, materialization, and raw-log hashes. The
 [edge check](native-edge-check.json) retain the exact artifacts and
 outcomes. Compressed raw logs are preserved beside these receipts.
 
+The [Linux replay dispatch](remote-dispatch.json) pins commit
+`fd36668f4a14037210a8af25fc8b8af8e06d726e` and the staged script
+hash. It is queued in the serial RunPod runner behind its current job;
+the replay will recheck the construction, panel, native suite, and edge
+fixture on Linux. This receipt records the queued state, not a completed
+Linux result.
+
 The quotient decoder canonicalizes six unit images and computes a rank
 for each full digit. These operations are part of the scalar evaluation
 and must be charged in any runtime comparison. The RunPod CPU's L3 is
