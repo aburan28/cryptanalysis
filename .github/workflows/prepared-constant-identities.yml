@@ -1,14 +1,23 @@
 name: Prepared constant identity checking
 
 on:
+  merge_group:
+  workflow_dispatch:
   pull_request:
     paths:
+      - ".github/ci/**"
+      - ".github/actions/ci-scope/**"
+      - "scripts/ci_scope.py"
       - 'experiments/groebner-perf-20260924/**'
       - 'experiments/pdp-scaling/**'
       - 'experiments/pdp-degree-heuristics/**'
       - '.github/workflows/prepared-constant-identities.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
+      - ".github/ci/**"
+      - ".github/actions/ci-scope/**"
+      - "scripts/ci_scope.py"
       - 'experiments/groebner-perf-20260924/**'
       - 'experiments/pdp-scaling/**'
       - 'experiments/pdp-degree-heuristics/**'
@@ -18,28 +27,54 @@ permissions:
   contents: read
 
 concurrency:
-  group: prepared-constant-identities-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Select affected jobs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      selected: ${{ steps.scope.outputs.selected }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/actions/ci-scope/
+            /.github/ci/
+            /scripts/ci_scope.py
+      - id: scope
+        uses: ./.github/actions/ci-scope
+        with:
+          workflow: prepared-constant-identities.yml
+
   correctness:
+    needs: changes
+    if: ${{ !cancelled() }}
     name: Prepared constant identity checking (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 90 }}
     steps:
       - uses: actions/checkout@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         with:
           persist-credentials: false
       - uses: actions/setup-python@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         with:
           python-version: '3.12'
       - name: Install numerical dependency
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         run: python -m pip install numpy==2.4.0
       - name: Build portable dependencies and selected backend
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         shell: bash
         run: |
           mkdir -p prepared-constant-identities-evidence
@@ -61,7 +96,7 @@ jobs:
           python experiments/groebner-perf-20260924/round66/build.py > prepared-constant-identities-evidence/kernel-build.log 2>&1
           python experiments/groebner-perf-20260924/round66/native_build.py "${flags[@]}" > prepared-constant-identities-evidence/native-build.log 2>&1
       - name: Detect actual Metal availability
-        if: runner.os == 'macOS'
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false')) && (runner.os == 'macOS')
         working-directory: experiments/groebner-perf-20260924/round66
         run: |
           python - <<'PYTHON'
@@ -79,12 +114,14 @@ jobs:
                   output.write('INDEPENDENT_TEST_METAL=1\n')
           PYTHON
       - name: Exercise kernels and complete certificate failures
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         shell: bash
         run: |
           experiments/groebner-perf-20260924/round66/build/test-constant > prepared-constant-identities-evidence/test-constant.log 2>&1
           experiments/groebner-perf-20260924/round66/build/test-constant-ubsan > prepared-constant-identities-evidence/test-constant-ubsan.log 2>&1
           python -m unittest discover -s experiments/groebner-perf-20260924/round66 -p 'test_checker.py' -v > prepared-constant-identities-evidence/unit-tests.log 2>&1
       - name: Validate fresh complete queries
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         shell: bash
         run: |
           flags=()
@@ -93,7 +130,7 @@ jobs:
           fi
           python -u experiments/groebner-perf-20260924/round66/validate_queries.py "${flags[@]}" --output prepared-constant-identities-evidence/correctness.json.gz > prepared-constant-identities-evidence/validation.log 2>&1
       - name: Retain rebuilt binaries and actual runner identity
-        if: always()
+        if: ${{ (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false')) && (!cancelled()) }}
         run: |
           python - <<'PY'
           import json, os, pathlib, platform, shutil, subprocess
@@ -111,9 +148,10 @@ jobs:
               shutil.copytree(kernel, out / 'native' / 'pdp-degree-heuristics', dirs_exist_ok=True)
           PY
       - name: Audit retained sources, binaries and original polynomial identities
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         run: python -u experiments/groebner-perf-20260924/round66/audit.py --evidence prepared-constant-identities-evidence --output prepared-constant-identities-evidence/retained-artifact-audit.json > prepared-constant-identities-evidence/retained-artifact-audit.log 2>&1
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false')) && (!cancelled()) }}
         with:
           name: prepared-constant-identities-${{ matrix.os }}
           path: prepared-constant-identities-evidence/

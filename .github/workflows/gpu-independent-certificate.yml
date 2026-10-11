@@ -9,6 +9,7 @@ on:
       - 'experiments/pdp-scaling/**'
       - '.github/workflows/gpu-independent-certificate.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - 'experiments/groebner-perf-20260924/round16/**'
       - 'experiments/groebner-perf-20260924/round15/**'
@@ -19,7 +20,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: gpu-independent-certificate-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   evidence:

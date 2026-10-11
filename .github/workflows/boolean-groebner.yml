@@ -6,6 +6,7 @@ on:
       - 'experiments/groebner-perf-20260924/**'
       - '.github/workflows/boolean-groebner.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - 'experiments/pdp-scaling/**'
       - 'experiments/groebner-perf-20260924/**'
@@ -13,7 +14,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: boolean-groebner-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   certificate:

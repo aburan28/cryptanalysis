@@ -1,14 +1,23 @@
 name: Tiled independent Boolean transform
 
 on:
+  merge_group:
+  workflow_dispatch:
   pull_request:
     paths:
+      - ".github/ci/**"
+      - ".github/actions/ci-scope/**"
+      - "scripts/ci_scope.py"
       - 'experiments/groebner-perf-20260924/**'
       - 'experiments/pdp-scaling/**'
       - 'experiments/pdp-degree-heuristics/**'
       - '.github/workflows/tiled-independent-checker.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
+      - ".github/ci/**"
+      - ".github/actions/ci-scope/**"
+      - "scripts/ci_scope.py"
       - 'experiments/groebner-perf-20260924/**'
       - 'experiments/pdp-scaling/**'
       - 'experiments/pdp-degree-heuristics/**'
@@ -18,28 +27,54 @@ permissions:
   contents: read
 
 concurrency:
-  group: tiled-independent-checker-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Select affected jobs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      selected: ${{ steps.scope.outputs.selected }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/actions/ci-scope/
+            /.github/ci/
+            /scripts/ci_scope.py
+      - id: scope
+        uses: ./.github/actions/ci-scope
+        with:
+          workflow: tiled-independent-checker.yml
+
   correctness:
+    needs: changes
+    if: ${{ !cancelled() }}
     name: Tiled independent checker (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 60 }}
     steps:
       - uses: actions/checkout@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         with:
           persist-credentials: false
       - uses: actions/setup-python@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         with:
           python-version: '3.12'
       - name: Install numerical dependency
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         run: python -m pip install numpy==2.4.0
       - name: Build portable dependencies and selected backend
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         shell: bash
         run: |
           mkdir -p tiled-checker-evidence
@@ -56,6 +91,7 @@ jobs:
           python experiments/groebner-perf-20260924/round45/build.py > tiled-checker-evidence/build-45.log 2>&1
           python experiments/groebner-perf-20260924/round47/build.py > tiled-checker-evidence/build-47.log 2>&1
       - name: Detect actual Metal availability
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         shell: bash
         run: |
           cd experiments/groebner-perf-20260924/round44
@@ -77,9 +113,11 @@ jobs:
           PY
           fi
       - name: Exercise proof semantics and charged failure boundaries
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         working-directory: experiments/groebner-perf-20260924/round47
         run: python -u run_tests.py > ../../../tiled-checker-evidence/unit-tests.log 2>&1
       - name: Validate frozen systems and complete-query ablation
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         shell: bash
         run: |
           flags=()
@@ -88,9 +126,10 @@ jobs:
           fi
           python -u experiments/groebner-perf-20260924/round47/validate_native.py "${flags[@]}" --output tiled-checker-evidence/correctness.json.gz > tiled-checker-evidence/validation.log 2>&1
       - name: Independently audit complete proofs from original equations
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         run: python -u experiments/groebner-perf-20260924/round47/audit_queries.py --input tiled-checker-evidence/correctness.json.gz --output tiled-checker-evidence/independent-audit.json > tiled-checker-evidence/independent-audit.log 2>&1
       - name: Retain actual native binaries and runner identity
-        if: always()
+        if: ${{ (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false')) && (!cancelled()) }}
         run: |
           python - <<'PY'
           import json, os, pathlib, platform, shutil
@@ -103,7 +142,7 @@ jobs:
               shutil.copytree(build, out / 'native' / build.parent.name, dirs_exist_ok=True)
           PY
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false')) && (!cancelled()) }}
         with:
           name: tiled-checker-${{ matrix.os }}
           path: tiled-checker-evidence/

@@ -8,6 +8,7 @@ on:
       - 'experiments/pdp-scaling/**'
       - '.github/workflows/gpu-query.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - 'experiments/groebner-perf-20260924/round10/**'
       - 'experiments/groebner-perf-20260924/round4/**'
@@ -17,7 +18,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: gpu-query-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   query:

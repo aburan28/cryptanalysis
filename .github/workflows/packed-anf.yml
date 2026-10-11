@@ -1,22 +1,53 @@
 name: Packed ANF query boundary
 on:
+  merge_group:
+  workflow_dispatch:
   pull_request:
     paths:
+      - ".github/ci/**"
+      - ".github/actions/ci-scope/**"
+      - "scripts/ci_scope.py"
       - 'experiments/groebner-perf-20260924/**'
       - 'experiments/pdp-scaling/**'
       - '.github/workflows/packed-anf.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
+      - ".github/ci/**"
+      - ".github/actions/ci-scope/**"
+      - "scripts/ci_scope.py"
       - 'experiments/groebner-perf-20260924/**'
       - 'experiments/pdp-scaling/**'
       - '.github/workflows/packed-anf.yml'
 permissions:
   contents: read
 concurrency:
-  group: packed-anf-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
+  changes:
+    name: Select affected jobs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      selected: ${{ steps.scope.outputs.selected }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/actions/ci-scope/
+            /.github/ci/
+            /scripts/ci_scope.py
+      - id: scope
+        uses: ./.github/actions/ci-scope
+        with:
+          workflow: packed-anf.yml
+
   packed:
+    needs: changes
+    if: ${{ !cancelled() }}
     name: Packed coefficients (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -30,16 +61,22 @@ jobs:
       CXX: ${{ matrix.cxx }}
     steps:
       - uses: actions/checkout@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').packed) != 'false'))
       - uses: actions/setup-python@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').packed) != 'false'))
         with:
           python-version: '3.12'
       - name: Restore frozen comparison inputs
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').packed) != 'false'))
         run: python experiments/groebner-perf-20260924/unpack_evidence.py
       - name: Build original baseline and packed libraries
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').packed) != 'false'))
         run: |
           python experiments/groebner-perf-20260924/build_portable.py
           python experiments/groebner-perf-20260924/round4/build.py
       - name: Packed input, sanitizer, workspace, equation and curve checks
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').packed) != 'false'))
         run: python experiments/groebner-perf-20260924/round4/test_packed.py -v
       - name: Verify measured source bytes and paired correctness records
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').packed) != 'false'))
         run: python experiments/groebner-perf-20260924/round4/audit.py

@@ -7,6 +7,7 @@ on:
       - 'ecc2k130/runner/research/table-walk-small-blocks-20261005/**'
       - '.github/workflows/ecc2k130-root-policy.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - 'ecc2k130/runner/include/collective_inverse.cuh'
       - 'ecc2k130/runner/include/collective_root_policy.h'
@@ -14,6 +15,10 @@ on:
       - '.github/workflows/ecc2k130-root-policy.yml'
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   portable-root-policy:
     runs-on: ubuntu-latest

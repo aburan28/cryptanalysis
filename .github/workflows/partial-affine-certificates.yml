@@ -7,6 +7,7 @@ on:
       - 'experiments/groebner-perf-20260924/round40/fixtures/**'
       - '.github/workflows/partial-affine-certificates.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - 'experiments/groebner-perf-20260924/round43/**'
       - 'experiments/groebner-perf-20260924/round40/fixtures/**'
@@ -16,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: partial-affine-certificates-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:

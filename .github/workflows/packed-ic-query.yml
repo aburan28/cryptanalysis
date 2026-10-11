@@ -15,13 +15,14 @@ on:
       - 'experiments/ic-candidate-catalog/**'
       - '.github/workflows/packed-ic-query.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - 'experiments/groebner-perf-20260924/round20/**'
       - '.github/workflows/packed-ic-query.yml'
 permissions:
   contents: read
 concurrency:
-  group: packed-ic-query-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   correctness:
