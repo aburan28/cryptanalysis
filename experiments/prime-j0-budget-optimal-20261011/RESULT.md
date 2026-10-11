@@ -14,3 +14,9 @@ transforms over the same residue space. The full atlas is 1,733,640 bytes;
 the projected native retained footprint is **67,108,820 bytes**, leaving
 44 bytes of the 64 MiB budget. The frozen fresh panel and native point
 replay are the next measurement step under [the protocol](PROTOCOL.md).
+
+The first frozen panel is retained as a source-binding preflight. Its path
+and independent checks passed, while `phase_cost.py` exposed a stale key
+before phase counts could be produced. The corrected source is frozen
+again before drawing the final panel, which excludes those preflight
+scalars.
