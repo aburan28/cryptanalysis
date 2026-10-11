@@ -34,3 +34,11 @@ The preexisting 4,096-scalar panel is a path and correctness control. The
 prospective fixture and matched complete-operation run are the performance
 experiment. A passing `probe` plus the runner's noise, correctness, and paired
 uncertainty gates are required before a timing ratio becomes a measured result.
+
+The existing RunPod pod was probed on 2026-10-11 with runner SHA-256
+`f17ac062246de7bd68f0e8e94d941ee25cffb7a06d8d846700dc754403f39bc4`.
+Its [raw host probe](runpod-probe.json) records a Docker cgroup-v1 process,
+no visible isolated CPU partition, and no `nohz_full` CPUs. A separate
+CryptoMiniSat solve was active on the pod during inspection. The scalar
+benchmark was therefore not submitted there; the prospective fixture remains
+unused for performance tuning.
