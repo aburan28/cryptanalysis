@@ -57,13 +57,17 @@ itself supplies the fourth trace condition; it cannot distinguish first
 pair candidates. The N41 computation explicitly covers the exceptional
 coordinate checks for all 63 seed sums in this frozen source policy.
 
-The [N131 transfer check](transfer.json) verifies that every basis vector
-of `W18=span(t,...,t^18)` has zero reciprocal trace on the exact challenge
-field. The public raw target preimages have traces `[0,1,0,1]`, leaving
-indices `0` and `2` under the already established trace gate. For either
-admissible preimage, the same additive argument makes a trace-only fourth
-output automatic from three trace-zero pair outputs. This is an exact
-necessary-condition statement; it does not enumerate N131 pair outputs.
+The [corrected N131 transfer check](transfer_corrected.json) verifies that
+every basis vector of `W18=span(t,...,t^18)` has zero trace on the exact
+challenge field. With the S3 circuit's standard reciprocal `z=1/x`, the four
+public raw preimages have traces **`[0,0,1,1]`**, leaving indices **`0,1`**.
+The independent field and group replay checks their point coordinates and
+quadrupling to the public target. For either admissible preimage, the same
+additive argument makes a trace-only fourth output automatic from three
+trace-zero pair outputs. The earlier [archived transfer](transfer.json)
+used the input file's `1/(x+1)` coordinate and therefore reported a
+different, inapplicable split `[0,1,0,1]` and indices `0,2`. The N41
+relaxation and sparse-product gate measurements above are unaffected.
 
 ## Sparse-product linear gate at a known fourth output
 

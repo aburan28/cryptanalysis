@@ -1,5 +1,7 @@
 # Exact trace propagation on the frozen N131 W18 query
 
+**Coordinate-binding correction (2026-10-11).** This variant inherits the parent query's shifted public input `1/(x+1)`, whereas its S3 circuit expects `1/x`. Its trace partition, excluded indices, and capped search therefore describe the misbound formula, not the saved public point. The W18 source trace propagation and constructed relation control remain valid. See the [corrected standard-reciprocal query](../../n131_w18_cubic_correct_target_20261011/RESULT.md) for a public-point-bound run.
+
 The W18 reciprocal source forces **trace zero at every pair output, middle output, and reachable raw target preimage**. Exposing those consequences to CryptoMiniSat excludes two of the four raw preimages of the frozen public point. On the same one-worker, 600-second, 4-GiB query, the trace-gated formula entered active search and ended `BOUNDED_UNKNOWN`; its known eight-point relation passed every constraint.
 
 For the halftrace-cubic S3 link, `Tr(a+b+c)=0`. Each source W18 reciprocal has zero trace, so induction through the seven-link sum tree gives `Tr(c)=0` at every internal output and at the raw target. The [trace proof receipt](../trace_gate_result.json) checks the 18 source basis traces and all four public raw preimages: indices `0,2` have trace zero; `1,3` have trace one. The [variant circuit](run_trace.py) adds six direct trace equations and a unit constraint on the target flag that selects `z+1`. These constraints preserve every relation in the declared source law.

@@ -1,5 +1,7 @@
 # Exact halftrace-cubic eight-slot formula on the frozen N131 public point
 
+**Coordinate-binding correction (2026-10-11).** The circuit's seven S3 links use the standard reciprocal `z=1/x`, while the archived public preimage file's `reciprocal_x_z` values are `1/(x+1)`. For each of its four saved points, direct field multiplication gives `(x+1)*reciprocal_x_z=1` and `x*reciprocal_x_z=reciprocal_x_z+1`. Thus the capped public formula and its terminal audit below are reproducible solver evidence for a **misbound input**, not a query on the saved public point. The constructed relation control and source geometry remain valid. The [corrected public-point experiment](../n131_w18_cubic_correct_target_20261011/RESULT.md) derives `1/x` from each point and independently checks that quadrupling every preimage gives the declared public point.
+
 The N41 halftrace-cubic encoding now reaches the **full N131 W18 eight-slot public query** with exact rational-mask membership and distinct signed-Frobenius columns. Its formula has 288,483 AND gates, 808,360 variables, and 30,717,854 XCNF bytes. A constructed eight-point group relation satisfies every clause and native-XOR row, and checked Sage independently verifies all eight raw source points, their subgroup projections, and their sum. The unpinned frozen public query entered search and ended `BOUNDED_UNKNOWN` at its 600-second solver cap plus 15-second parent margin.
 
 ## Source policy and circuit
