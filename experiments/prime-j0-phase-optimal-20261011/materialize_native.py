@@ -130,7 +130,7 @@ def main():
                        check=True, capture_output=True)
     else:
         shutil.copytree(args.base_crate.resolve(), output,
-                        ignore=shutil.ignore_patterns("repo-assets", "target"))
+                        ignore=shutil.ignore_patterns("target"))
     parent_raw = (output / "materialization.json").read_bytes()
     shutil.copyfile(atlas, output / ATLAS)
     shutil.copyfile(HERE / "holdout-inputs.json", output / PANEL)
