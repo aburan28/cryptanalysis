@@ -4,15 +4,22 @@ The radix-1024 secp256k1 fixed-generator cover has 174,764 six-unit
 classes in 513 cycles under the norm-three endomorphism `tau`. A full-window
 seed contributes up to three classes, through `tau^0`, `tau^1`, and `tau^2`.
 The native layout stores twelve 64-byte affine points and four atlas bytes
-per additional full-window seed, or **772 retained bytes**. Starting from
-the independently replayed 73,417-seed layout at 59,032,928 retained bytes,
-a 64 MiB limit admits at most
+per additional full-window seed, or **772 payload bytes**. Its aligned
+`DR20` atlas also has up to four bytes of end padding. Starting from the
+independently replayed 73,417-seed layout at 59,032,928 retained bytes,
+the payload bound admits at most
 
 `floor((67,108,864 - 59,032,928) / 772) = 10,461`
 
-more seeds. Thus the maximum count in this format is **83,878** seeds.
-The native replay must confirm the projected retained size; the calculation
-alone is a layout bound.
+more seeds. The actual native layout counts an eight-byte-aligned atlas:
+
+`T(S) = 64(12S + 9,288) + round_up_8(16 + 8(174,764) + 4S) + 362,440`.
+
+It gives `T(83,878) = 67,108,816` bytes and
+`T(83,879) = 67,109,592` bytes, so **83,878** is the exact maximum
+seed count in this layout. The constructor's payload-only projection is
+67,108,820 bytes; the four-byte difference is atlas padding removed at
+this seed count. The native point replay confirms the exact size.
 
 Two `tau` cycles each contain one class, represented by residues `0` and
 `512`. They each consume a seed but can contribute only one distinct
