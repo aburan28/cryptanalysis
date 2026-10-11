@@ -62,13 +62,18 @@ RHO_METHOD = '''    // Direct degree-seven endomorphism rho=1+tau in XYZZ coordi
 
 
 def main() -> None:
-    assert len(sys.argv) == 2, "usage: materialize.py OUTPUT_DIRECTORY"
+    assert len(sys.argv) in (2, 3), "usage: materialize.py OUTPUT_DIRECTORY [PANEL_JSON]"
     output = Path(sys.argv[1]).resolve()
     assert not output.exists(), "output directory already exists"
     subprocess.run([sys.executable, str(PARENT / "materialize_priority_native.py"),
                     str(output)], check=True, capture_output=True)
     parent_raw = (output / "materialization.json").read_bytes()
     parent = json.loads(parent_raw)
+    if len(sys.argv) == 3:
+        panel = Path(sys.argv[2]).resolve()
+        target = output / "dual-rho0-fresh-inputs.json"
+        target.write_bytes(panel.read_bytes())
+        parent["assets_sha256"][target.name] = digest(target)
     path = output / WINDOW
     source = path.read_text()
     xyzz = source.index("impl U256XYZZ {")
