@@ -35,15 +35,32 @@ would still need the fourth leaf to land in the exact base, so this result
 does not by itself supply the free-leaf pair search required by the IC
 pipeline.
 
+## Degree-131 work screen for two fixed leaves
+
+For a target-independent choice of the first two base points and a uniform
+nonidentity subgroup target, at most `C(B+1,2)` unordered pairs can complete
+that choice. On the exact N131 W<=6 base, `B=6,559,634,788`,
+`K=25,036,774`, and subgroup order
+`r=680564733841876926932320129493409985129`. Thus the expected pair
+representations per fixed-pair query are at most
+`C(B+1,2)/(r-1) = 3.16126e-20`. Even if every match is found and every
+relation adds rank, reaching expected rank `K` needs at least
+`ceil(K(r-1)/C(B+1,2)) = 791987786991768740772708352` such queries,
+or `2^89.36` queries. This is **28.36 exponent bits** above `2^61`
+before any pair lookup, factor-base construction, matrix work, or target
+descent. It is a necessary query-count screen for this target-independent
+fixed-pair law, not a complete-solve work estimate. Target-guided first-pair
+selection is outside the bound and requires its own measured input law.
+
 The proposal retains `candidate_id: null`, `run_id: null`, and
 `isogeny: "none"` (`ISO0`). The freeze SHA-256 is
 `f04d45966ba2a2574bf90998dcc8c909fa5791e4c1fba2f33016adb20e9177fa`.
 The saved `audit.json` records both PASS rows. Move it aside before
 rerunning `python3 audit.py`, which refuses to overwrite its output.
 
-Next, use the two-root first-pair enumeration with two free leaves and an
-exact pair lookup, then compare that target-local search with the matched
-Q1400/Q1416 pair-index work model on identical curve, base, and target
-records. Charge pair-index construction, probes, relation verification,
-rank novelty, matrix solving, and target descent before assigning any
-complete-solve exponent.
+The next search should test target-guided first-pair selection on frozen
+ordinary N53/N83 queries, with the exact pair lookup and the matched
+Q1400/Q1416 pair-index model as controls. Measure verified relation yield
+and novel rank, including zero-yield cells, before extrapolating. Charge
+index construction, probes, relation verification, final matrix solving,
+and target descent before assigning a complete-solve exponent.
