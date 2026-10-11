@@ -126,7 +126,11 @@ for that anchor is 2.54, the bounded solver returned no model after
 115 seconds. This is a censored search diagnostic on a reused formula, not
 an online IC measurement. A single point anchor therefore supplies no
 evidence to relax the target-coupled pair-domain gate; the full R3 worker
-continues separately.
+later ended with
+[`INTERRUPTED_RUNNER_LOST_RAW_SOLVER_OUTPUT_RETAINED`](n131_w2_m15_official_single_target_4g_r3_20261004/runs/IC1N131Ckb1fb3668PDP15satRCdirectLAgaussTDdirectISO0h9bb927d6e658W3c1992b7c92fR3/result.json).
+Its recorded precomputation rank is 0/14 and the parent/solver processes are
+absent. Treat this attempt as terminal censored evidence; any successor needs
+a new frozen, supervised run rather than waiting on R3.
 
 The independently checked [degree-five single-leaf rank result](N41_DEGREE5_SINGLE_LEAF_RESULT.md)
 also reaches the exact syzygy rank ceiling after 42 degree-at-most-three
@@ -317,3 +321,26 @@ ended `CENSORED_TIME` at 580.12 seconds. The acceptance signal for the next
 encoding is therefore verified target-dependent elimination of free pair
 choices and an ordinary row, with static formula geometry retained as a
 diagnostic.
+
+The [N131 W18 product-span inverse](n41_n131_universal_product_linearized_20261011/RESULT.md)
+now recovers pair seeds from a supplied reciprocal coordinate with one
+19-variable binary solve. Its 196-case N131 panel and exhaustive N41 pair
+control preserve exact source witnesses. A separate
+[53-column joint-linear implementation](n131_w18_joint_linear_inverse_20261011/RESULT.md)
+independently replayed two positive coordinates with checked Sage and
+exercised a complete lower-rank fallback. Use the 19-variable method as the
+reference supplied-coordinate checker; neither method generates the
+coordinate from the public target.
+
+The [N41 suffix-seed quadratic rank certificate](n41_suffix_seed_quadratic_rank_20261011/RESULT.md)
+then reaches full rank **1,379/1,379** on exact two-free-pair x coordinates
+and both six-bit seed sums. Its 1,379 witness rows are independently replayed
+through group addition and column rules. Thus no universal degree-at-most-two
+Boolean equation in those 52 variable bits can select a suffix seed-bin
+pair for this geometry. The existing per-bin interpolation filters remain
+exact, but their literal N131 table fails the work and memory gate. The next
+joint operator must keep finite seed-conditioned output sets or stronger
+nonlinear/group information while the public target constrains at least
+four free pair domains. Measure whole-family rejection before source-mask
+expansion on the unpinned N41 public point, then apply the frozen N131
+600-second/4-GiB source-bound gate.
