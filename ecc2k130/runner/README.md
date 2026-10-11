@@ -316,13 +316,50 @@ The older `modal_app.py` remains available for engine validation, tuning and
 Modal Volume experiments. Its `search`/`fanout` commands **do not use the new
 S3/RDS worker**. Likewise `run.sh` is the older Volume-based experiment launcher.
 
+## Portable GPU container
+
+`deploy/Dockerfile` builds the validated production Frobenius walk as one CUDA
+fat binary for `sm_80`, `sm_86`, `sm_89`, `sm_90`, `sm_100`, and `sm_120`, plus
+forward-compatible `compute_120` PTX. The entrypoint queries the first visible
+GPU at startup and refuses unsupported hardware before the worker can claim a
+campaign slot. The CUDA driver then loads the native cubin for the detected
+architecture; no `nvcc` or source checkout is needed on the host.
+
+The supported list can be narrowed or extended only to architectures already
+validated by this tree:
+
+```sh
+docker build --platform linux/amd64 \
+  -f ecc2k130/runner/deploy/Dockerfile \
+  --build-arg 'ECC_CUDA_ARCHES=80 86 89 90 100 120' \
+  -t YOUR_REGISTRY/ecc2k130:runner ecc2k130/runner
+```
+
+At runtime, use the NVIDIA Container Toolkit and expose the utility capability
+so the entrypoint can identify the card:
+
+```sh
+docker run --rm --gpus all \
+  -e ECC_BUCKET=... -e AWS_DEFAULT_REGION=... \
+  -e RHO_DP_DSN=... YOUR_REGISTRY/ecc2k130:runner \
+  python3 /opt/ecc2k130/cloud.py preflight
+```
+
+`ECC_DEVICE_INDEX` selects a visible device (default `0`) without changing the
+supervisor's `ECC_GPU` campaign index. `ECC_GPU_ARCH=8.9` is an explicit test
+override; `ECC_SKIP_GPU_CHECK=1` is intended only for image/command tests.
+Production collection requires compute capability 8.0 or newer. T4/sm_75 is
+not included because the production kernel's carry-less-multiply path starts at
+sm_80.
+
 ## Runpod (GPU Pod)
 
 Build an amd64 image and publish it to a registry you use with Runpod:
 
 ```sh
 docker build --platform linux/amd64 \
-  -f ecc2k130/runner/deploy/Dockerfile --build-arg CUDA_ARCH=120 \
+  -f ecc2k130/runner/deploy/Dockerfile \
+  --build-arg 'ECC_CUDA_ARCHES=80 86 89 90 100 120' \
   -t YOUR_REGISTRY/ecc2k130:runner ecc2k130/runner
 docker push YOUR_REGISTRY/ecc2k130:runner
 ```

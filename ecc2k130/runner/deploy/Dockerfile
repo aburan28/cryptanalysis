@@ -16,15 +16,24 @@ COPY src/ src/
 COPY include/ include/
 COPY generated/ generated/
 COPY codegen/ codegen/
-# Preserve the legacy Frobenius walk used by the shared ecc2k-130 campaign.
+# Preserve the legacy Frobenius walk used by the shared ecc2k-130 campaign,
+# while shipping native cubins for every supported GPU family.  CUDA_ARCH is
+# retained as a compatibility build argument for existing Modal launchers;
+# ECC_CUDA_ARCHES controls the fat binary contents.
 ARG CUDA_ARCH=120
-RUN test "$CUDA_ARCH" = "120" && make gpu-production
+ARG ECC_CUDA_ARCHES="80 86 89 90 100 120"
+COPY deploy/build_production.sh deploy/entrypoint.sh deploy/
+RUN chmod +x deploy/build_production.sh deploy/entrypoint.sh \
+    && deploy/build_production.sh "$ECC_CUDA_ARCHES"
 COPY aws/worker.py aws/rds_gpu.py aws/rds_network.py aws/
 COPY cloud.py build.json ./
 COPY aws/campaign.json aws/campaign.json
 ENV ECC_ROOT=/workspace/ecc2k130 ECC_CLIENT=/opt/ecc2k130/ecc2k130
 ENV ECC_PREFIX=campaigns/ecc2k130-frobenius32-120k-v1
+ENV ECC_SUPPORTED_SMS="$ECC_CUDA_ARCHES" \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    CUDA_DEVICE_ORDER=PCI_BUS_ID
 STOPSIGNAL SIGTERM
 # Exec form delivers Pod shutdown directly to the supervisor.
-ENTRYPOINT []
+ENTRYPOINT ["/opt/ecc2k130/deploy/entrypoint.sh"]
 CMD ["python3", "/opt/ecc2k130/cloud.py", "run", "--seconds", "82800"]

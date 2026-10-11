@@ -165,6 +165,9 @@ ARCH    ?= -gencode arch=compute_80,code=sm_80 \
            -gencode arch=compute_89,code=sm_89 \
            -gencode arch=compute_90,code=sm_90 \
            -gencode arch=compute_120,code=sm_120
+# A production image may pass a CUDA fat-binary list here.  Keep the
+# single-architecture default for local builds and old callers.
+PRODUCTION_ARCH ?= -gencode arch=compute_120,code=sm_120
 # clang emits PTX for CLANGARCH; ptxas then compiles that PTX for SMARCH, which
 # may be newer than any architecture clang itself knows about (e.g. sm_120).
 CLANGARCH ?= sm_90
@@ -771,6 +774,7 @@ gpu-goal22:
 .PHONY: check-cloud
 check-cloud:
 	python3 -m unittest discover -s tests -v
+	python3 -m unittest tests.test_deploy_entrypoint -v
 	python3 -m unittest discover -s aws -p 'test*.py' -v
 	python3 codegen/checkcli.py modal_worker.py
 	python3 codegen/checkcli.py modal_ingest.py
@@ -789,7 +793,7 @@ LEGACY_PRODUCTION_FLAGS = BATCH=16 THREADS=256 MINBLOCKS=2 \
 
 .PHONY: gpu-production check-production-gpu
 gpu-production:
-	$(MAKE) -B ecc2k130 'ARCH=-gencode arch=compute_120,code=sm_120' $(FROBENIUS_120K_FLAGS)
+	$(MAKE) -B ecc2k130 "ARCH=$(PRODUCTION_ARCH)" $(FROBENIUS_120K_FLAGS)
 
 check-production-gpu:
 	$(MAKE) test-packed-cuda test-packed-storage-cuda test-shared-sigma-cuda \

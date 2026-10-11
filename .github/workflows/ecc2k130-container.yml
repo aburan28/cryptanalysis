@@ -1,0 +1,100 @@
+name: ECC2K-130 container
+
+# Build the production runner in GitHub's x86_64 builder.  The image contains
+# native cubins for every supported production GPU, so RunPod only needs to
+# select the card; the entrypoint checks its compute capability at startup.
+#
+# Pull requests build and smoke-test the image without publishing it.  Pushes
+# and manual runs publish ghcr.io/<owner>/ecc2k130-runner.  A manual run can
+# override the architecture list when a new CUDA target is added.
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "ecc2k130/runner/**"
+      - ".github/workflows/ecc2k130-container.yml"
+  pull_request:
+    paths:
+      - "ecc2k130/runner/**"
+      - ".github/workflows/ecc2k130-container.yml"
+  workflow_dispatch:
+    inputs:
+      ecc_cuda_arches:
+        description: "Space-separated CUDA SMs to compile into the image"
+        required: false
+        default: "80 86 89 90 100 120"
+        type: string
+      push_image:
+        description: "Publish the image to GHCR"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ecc2k130-container-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  image:
+    name: build and smoke-test linux/amd64 image
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    env:
+      ECC_CUDA_ARCHES: ${{ inputs.ecc_cuda_arches || '80 86 89 90 100 120' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build image
+        env:
+          DOCKER_BUILDKIT: "1"
+        run: |
+          set -euo pipefail
+          docker build \
+            --platform linux/amd64 \
+            --file ecc2k130/runner/deploy/Dockerfile \
+            --build-arg "ECC_CUDA_ARCHES=${ECC_CUDA_ARCHES}" \
+            --tag ecc2k130-runner:ci \
+            ecc2k130/runner
+
+      - name: Smoke-test entrypoint and image metadata
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --env ECC_SKIP_GPU_CHECK=1 \
+            --env ECC_CLIENT=/bin/true \
+            ecc2k130-runner:ci /bin/true
+          docker image inspect ecc2k130-runner:ci \
+            --format 'image={{.Id}} size={{.Size}} bytes'
+
+      - name: Publish to GHCR
+        if: github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.push_image)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          image="ghcr.io/${owner}/ecc2k130-runner"
+          echo "${GH_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+          docker tag ecc2k130-runner:ci "${image}:sha-${GITHUB_SHA}"
+          docker push "${image}:sha-${GITHUB_SHA}"
+          if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            docker tag ecc2k130-runner:ci "${image}:latest"
+            docker push "${image}:latest"
+          fi
+          {
+            echo "### ECC2K-130 image"
+            echo
+            echo "Published: \`${image}:sha-${GITHUB_SHA}\`"
+            echo "CUDA SMs: \`${ECC_CUDA_ARCHES}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
