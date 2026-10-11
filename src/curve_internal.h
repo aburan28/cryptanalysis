@@ -41,8 +41,8 @@ static inline uint32_t ca_j0_factored_hash_class_reduce(const ca_group *g, ca_el
     x[0] = Y->w[0];
     x[1] = ca_mont_mul(&g->mont, g->endo_c_mont, x[0]);
     x[2] = ca_mont_mul(&g->mont, g->endo_c_mont, x[1]);
-    uint64_t y[2] = {Y->w[1], Y->w[1] ? g->p - Y->w[1] : 0};
-    uint64_t yh[2] = {ca_mix64(y[0]), ca_mix64(y[1])};
+    const uint64_t y[2] = {Y->w[1], Y->w[1] ? g->p - Y->w[1] : 0};
+    const uint64_t yh[2] = {ca_mix64(y[0]), ca_mix64(y[1])};
     uint64_t best_hash = ca_mix64(x[0] * UINT64_C(0x9E3779B97F4A7C15) ^ yh[0]);
     uint32_t best_k = 0;
     for (uint32_t k = 1; k < 6; k++) {
