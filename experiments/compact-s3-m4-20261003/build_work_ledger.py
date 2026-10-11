@@ -6928,6 +6928,61 @@ def main():
         "rows"]] == [1, 1, 0, 0, 0, 0]
     assert all(row["baseline"] is not None for row in q1476_audit["rows"])
     assert q1476_audit["complete_n131_log2_work"] is None
+    q1477_dir = HERE / "q1477_n53_online_target"
+    q1477_protocol_path = q1477_dir / "protocol.json"
+    q1477_audit_path = q1477_dir / "audit_result.json"
+    q1477_protocol = json.loads(q1477_protocol_path.read_text())
+    q1477_audit = json.loads(q1477_audit_path.read_text())
+    assert q1477_protocol["proposal_id"] == q1477_audit[
+        "proposal_id"] == "Q1477"
+    assert q1477_protocol["candidate_id"] is q1477_audit[
+        "candidate_id"] is None
+    assert q1477_protocol["run_id"] is q1477_audit["run_id"] is None
+    assert q1477_protocol["isogeny"] == q1477_audit["isogeny"] == "none"
+    assert q1477_audit["status"] == "passed"
+    assert q1477_audit["stage_config_id"] == q1477_protocol["stage_config_id"]
+    assert q1477_audit["stage_run_id"] == q1477_protocol["stage_run_id"]
+    assert q1477_audit["workload_id"] == q1477_protocol["workload_id"]
+    assert q1477_audit["attempt_status_counts"] == {
+        "found": 1, "absent": 10, "censored": 0}
+    assert q1477_audit["attempt_count"] == 11
+    assert sum(q1477_audit["phase_wall_ns_exploratory"].values()) == \
+        q1477_audit["online_wall_ns_exploratory"]
+    assert q1477_audit["fixture_scalar_matched"]
+    assert q1477_audit["protocol_sha256"] == sha(q1477_protocol_path)
+    assert q1477_audit["auditor_source_sha256"] == sha(q1477_dir / "audit.py")
+    assert q1477_audit["input_validation_sha256"] == sha(
+        q1477_dir / "input_validation.json")
+    assert q1477_audit["complete_n131_log2_work"] is None
+    q1478_dir = HERE / "q1478_n53_rho_reference"
+    q1478_protocol_path = q1478_dir / "protocol.json"
+    q1478_audit_path = q1478_dir / "audit_result.json"
+    q1478_protocol = json.loads(q1478_protocol_path.read_text())
+    q1478_audit = json.loads(q1478_audit_path.read_text())
+    assert q1478_protocol["proposal_id"] == q1478_audit[
+        "proposal_id"] == "Q1478"
+    assert q1478_protocol["candidate_id"] is q1478_audit[
+        "candidate_id"] is None
+    assert q1478_protocol["run_id"] is q1478_audit["run_id"] is None
+    assert q1478_protocol["isogeny"] == q1478_audit["isogeny"] == "none"
+    assert q1478_audit["status"] == "passed"
+    assert q1478_audit["rho_reference_id"] == q1478_protocol[
+        "rho_reference_id"]
+    assert q1478_audit["workload_id"] == q1478_protocol[
+        "workload_id"] == q1477_audit["workload_id"]
+    assert q1478_protocol["workload_record"] == q1477_protocol[
+        "workload_record"]
+    assert q1478_audit["recovered_scalar"] == q1477_audit[
+        "recovered_scalar"]
+    assert q1478_audit["collision_certificate_replayed"]
+    assert q1478_audit["independent_walk_prefix_replays"] == 3
+    assert sum(q1478_audit["phase_wall_ns_exploratory"].values()) == \
+        q1478_audit["online_wall_ns_exploratory"]
+    assert q1478_audit["protocol_sha256"] == sha(q1478_protocol_path)
+    assert q1478_audit["auditor_source_sha256"] == sha(q1478_dir / "audit.py")
+    assert q1478_audit["control_result_sha256"] == sha(
+        q1478_dir / "control_result.json")
+    assert q1478_audit["complete_n131_log2_work"] is None
     q1479_dir = HERE / "q1479_target_mid_domain"
     q1479_protocol_path = q1479_dir / "protocol.json"
     q1479_audit_path = q1479_dir / "archive_audit.json"
@@ -9387,6 +9442,99 @@ def main():
             "protocol_sha256": sha(q1476_protocol_path),
             "archive_audit_sha256": sha(q1476_audit_path),
         },
+        "q1477_n53_one_target_online_comparator": {
+            "proposal_id": "Q1477", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "curve_id": q1477_protocol["curve_id"],
+            "stage_config_id": q1477_protocol["stage_config_id"],
+            "stage_run_id": q1477_protocol["stage_run_id"],
+            "workload_id": q1477_protocol["workload_id"],
+            "factor_base_actual_B": 2756,
+            "folded_columns_K": 26,
+            "point_decomposition_stage_code": "PDP4mitm",
+            "attempt_status_counts": q1477_audit["attempt_status_counts"],
+            "online_wall_ns_exploratory": q1477_audit[
+                "online_wall_ns_exploratory"],
+            "exclusive_phase_wall_ns_exploratory": q1477_audit[
+                "phase_wall_ns_exploratory"],
+            "exclusive_phase_field_calls": q1477_audit[
+                "phase_field_calls"],
+            "target_independent_setup_table_wall_ns_exploratory":
+                q1477_audit["setup_table_wall_ns_exploratory"],
+            "target_independent_setup_table_field_calls":
+                q1477_audit["setup_table_field_calls"],
+            "recovered_scalar_verified": True,
+            "strict_target_from_input_online_wall_ns": None,
+            "preclock_target_subgroup_validation_timing_ns": None,
+            "matched_one_target_rho_reference_id": q1478_protocol[
+                "rho_reference_id"],
+            "matched_one_target_rho_online_ms_exploratory":
+                q1478_audit["online_wall_ns_exploratory"] / 1000000,
+            "controlled_wall_speedup": None,
+            "is_compact_s3_solver_measurement": False,
+            "successful_unpinned_N83_cost": None,
+            "complete_n131_log2_work": None,
+            "challenge_run_admitted": False,
+            "decision": (
+                "Q1477 recovers one previously unseen N53 target with "
+                "Q1473's precomputed base logs and a Q1468-style complete "
+                "pair table. Ten complete absent attempts and one verified "
+                "relation are charged to one contiguous online interval; "
+                "all five exclusive phase clocks sum to the query-through-"
+                "replay interval. A pre-clock target subgroup check was "
+                "not timed separately, so strict target-from-input online "
+                "cost is still unknown. This measures N53 descent and "
+                "replay for this explicit-table comparator only. The host "
+                "lacks an isolation receipt and a fully charged IC timing "
+                "boundary despite Q1478's paired rho run. The N83 "
+                "compact solver and complete N131 projection remain open."
+            ),
+            "protocol_sha256": sha(q1477_protocol_path),
+            "audit_result_sha256": sha(q1477_audit_path),
+        },
+        "q1478_n53_same_point_rho_reference": {
+            "proposal_id": "Q1478", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "curve_id": q1478_protocol["curve_id"],
+            "rho_reference_id": q1478_protocol["rho_reference_id"],
+            "rho_run_id": q1478_protocol["rho_run_id"],
+            "workload_id": q1478_protocol["workload_id"],
+            "same_public_point_as_q1477": True,
+            "worker_count": 1,
+            "walk_steps": q1478_audit["walk_steps"],
+            "walk_count": q1478_audit["walk_count"],
+            "distinguished_points_stored": q1478_audit[
+                "distinguished_points_stored"],
+            "collision_certificate_replayed": True,
+            "recovered_scalar_verified": True,
+            "online_wall_ns_exploratory": q1478_audit[
+                "online_wall_ns_exploratory"],
+            "exclusive_phase_wall_ns_exploratory": q1478_audit[
+                "phase_wall_ns_exploratory"],
+            "exclusive_phase_field_calls": q1478_audit[
+                "phase_field_calls"],
+            "exclusive_phase_point_additions": q1478_audit[
+                "phase_point_additions"],
+            "exclusive_phase_point_doublings": q1478_audit[
+                "phase_point_doublings"],
+            "paired_ic_strict_online_wall_ns": None,
+            "controlled_online_speedup": None,
+            "complete_n131_log2_work": None,
+            "challenge_run_admitted": False,
+            "decision": (
+                "Q1478 solves Q1477's exact single public target with "
+                "one worker and no cross-target state, preserving all "
+                "walk work and a checked-Sage collision certificate. Its "
+                "target validation, jump preparation, walk search, and "
+                "scalar replay are all within one native online interval. "
+                "The host is not isolated, Q1477's pre-clock target check "
+                "was not timed separately, and the IC online denominator "
+                "and controlled speedup remain unknown. Neither N83 "
+                "compact decomposition nor N131 complete work is measured."
+            ),
+            "protocol_sha256": sha(q1478_protocol_path),
+            "audit_result_sha256": sha(q1478_audit_path),
+        },
         "q1479_target_midpoint_domain_compact_stage": {
             "proposal_id": "Q1479", "candidate_id": None,
             "run_id": None, "isogeny": "none",
@@ -9957,6 +10105,17 @@ def main():
                 "S3 links and verifies both pinned controls, but all four "
                 "free-leaf cases again censor without a relation and the "
                 "matched N83 exact target-join counts remain one each; "
+                "Q1477 recovers one fresh N53 public target after ten "
+                "complete absent shifts, charging query generation, "
+                "decomposition, relation check, descent, and replay in "
+                "one contiguous interval for the explicit pair-table "
+                "comparator, while a pre-clock target subgroup check "
+                "leaves strict online cost unknown; "
+                "Q1478 solves that same public point with one-worker "
+                "rho and an independently replayed collision after "
+                "10732337 walk steps, but unisolated timings and the "
+                "missing strict IC denominator prohibit a controlled "
+                "online speedup ratio; "
                 "Q1479's target-conditioned partial midpoint domains "
                 "pass exhaustive F8 guards and both pinned controls, "
                 "but the four free-leaf cases still censor without a "
@@ -9967,8 +10126,9 @@ def main():
                 "useful-row or late-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
                 "but conversions, hashing, memory and arithmetic types still "
-                "lack a common calibrated unit; complete relation collection, "
-                "final matrix solve, target descent, and scalar replay are absent"
+                "lack a common calibrated unit; complete N83/N131 relation "
+                "collection, final matrix work, and target descent remain "
+                "unmeasured"
             ),
             "balanced_random_quotient_pair_table_heuristic": {
                 "assumption": "independent uniform pair-sum orbit keys of size approximately r/(2n); one expected match when table_samples*query_samples approximately r/(2n)",

@@ -1,0 +1,44 @@
+{
+  "kind": "q1478_n53_one_target_rho_design",
+  "proposal_id": "Q1478",
+  "candidate_id": null,
+  "run_id": null,
+  "isogeny": "none",
+  "question": "What is a measured single-target rho reference on Q1477's exact public N53 point under one worker and no cross-target table?",
+  "exact_instance": {
+    "curve_id": "EC1N53Ckb1hf77aab617904",
+    "subgroup_order": 21044858204113,
+    "public_target_source": "experiments/compact-s3-m4-20261003/q1477_n53_online_target/target.txt",
+    "workload_id": "a4f7b6242393"
+  },
+  "rho_method": {
+    "family": "distinguished_point_parallel_walk_rho",
+    "worker_count": 1,
+    "partition_count": 16,
+    "partition_rule": "low four native normal-basis x-coordinate bits of the current group point",
+    "transition": "R <- R + alpha_i G + beta_i Q; update both known coefficients modulo r",
+    "random_seed": 14780053,
+    "distinguished_bits": 10,
+    "distinguished_rule": "low ten native normal-basis x-coordinate bits are zero",
+    "walk_start": "fresh deterministic nonzero coefficients a,b, starting at aG+bQ",
+    "collision_recovery": "for equal distinguished points, solve (a_old-a_new)/(b_new-b_old) modulo prime r and independently replay kG=Q",
+    "cross_target_state": "none",
+    "stop_rule": "verified scalar, 50000000 walk steps, or 1800 seconds of native online time",
+    "external_safeguard_seconds": 1850
+  },
+  "measurement": {
+    "target_count": 1,
+    "online_start": "immediately before target-dependent validation and partition-point construction; process launch and point decoding are outside",
+    "online_stop": "after recovered scalar replays to the same public target, or declared cap",
+    "operation_counts": "all field mul/sqr/inv, point additions/doublings, walk steps, failed walks, distinguished-point records, and collision checks",
+    "memory": "peak child RSS and distinguished-point table size",
+    "wall_claim": "exploratory without an isolated-host receipt",
+    "comparison_limit": "Q1477's target subgroup check was before its query-through-replay clock, so do not report a controlled primary speedup ratio"
+  },
+  "controls": [
+    "pre-run known-scalar toy collision tests on small exact curves",
+    "source-bound point arithmetic inherited from Q1468 and exact N53 field data",
+    "independent checked-Sage replay of the collision equation, recovered scalar, same Q1477 public point, and workload binding"
+  ],
+  "claim_scope": "paired N53 single-target rho reference only; no N83 compact solver, N131 complete work, or speedup promotion"
+}
