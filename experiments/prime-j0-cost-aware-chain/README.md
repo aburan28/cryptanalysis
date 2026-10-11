@@ -204,3 +204,11 @@ digit and operation agreement while retaining the original modeled saving.
 The first attempted fixture was invalidated because its seed permuted the
 older files; both the failure and replacement are recorded. Isolated CPU
 speed is still unknown.
+
+The [two-digit τ-pair shortest-path format](TAIL_DOUBLE_PAIR.md) permits a
+second prepared digit in selected τ pairs to trade additions for fewer
+triplings. Its disjoint 32,768-output panel verifies exact scalar recovery
+and saves another 2.39%–2.49% weighted evaluation operations on `glv-j0-32`
+and 0.99%–1.04% on `j0-56` beyond the one-digit tail oracle. It adds no
+prepared points but increases static policy data to 106,087 bytes. Isolated
+CPU speed and rho impact are unmeasured.

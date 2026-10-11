@@ -15,6 +15,7 @@
 #include "generated/tau4_residue_atlas.h"
 #include "generated/tau_tail_oracle.h"
 #include "generated/tau_tail_gate.h"
+#include "generated/tau_tail_double.h"
 #include "generated/tau8_orbit_map.h"
 #include "generated/tau8_hot_map.h"
 #include "generated/tau8_pair_map.h"
@@ -434,6 +435,35 @@ static int tau_tail_step(ca_i128 *x, ca_i128 *y, unsigned phase, const ca_tau4_d
            *y <= CA_TAU_TAIL_BOUND;
 }
 
+static int tau_double_step(ca_i128 *x, ca_i128 *y, unsigned phase, const ca_tau4_digit table[81],
+                           uint8_t *even, uint8_t *odd)
+{
+    uint16_t action =
+        ca_tau_double_action[phase][(int)*x + CA_TAU_DOUBLE_BOUND][(int)*y + CA_TAU_DOUBLE_BOUND];
+    if (action == UINT16_C(0xfefe)) return 0;
+    *even = (uint8_t)(action >> 8);
+    *odd = (uint8_t)action;
+    ca_i128 da = 0, db = 0;
+    if (*even != 255) {
+        ca_tau4_digit digit = table[*even];
+        if (digit.seed < 0) return 0;
+        da += digit.a;
+        db += digit.b;
+    }
+    if (*odd != 255) {
+        ca_tau4_digit digit = table[*odd];
+        if (digit.seed < 0) return 0;
+        da -= 3 * (ca_i128)digit.b;
+        db += (ca_i128)digit.a + 3 * (ca_i128)digit.b;
+    }
+    ca_i128 ax = *x - da, by = *y - db;
+    if (ax % 3 || by % 3) return 0;
+    *x = 2 * (ax / 3) + by;
+    *y = -(ax + by) / 3;
+    return *x >= -CA_TAU_DOUBLE_BOUND && *x <= CA_TAU_DOUBLE_BOUND && *y >= -CA_TAU_DOUBLE_BOUND &&
+           *y <= CA_TAU_DOUBLE_BOUND;
+}
+
 /* A small offline shortest-path oracle changes only the low-coefficient tail.
  * Each two-tau step keeps the width-four one-digit-per-pair property and uses
  * the same 18 prepared seed/odd-seed points.  Recode cost is charged online;
@@ -487,8 +517,8 @@ baseline_fallback:
 
 /* The gate compares the full canonical tail with the bounded oracle offline.
  * It preserves mode 3's digit stream while emitting the shared prefix once. */
-static size_t gen_tau4_digits_tail_gated(ca_i128 x, ca_i128 y, const ca_tau4_digit table[81],
-                                         uint8_t digits[256])
+static size_t gen_tau4_digits_tail_gated_impl(ca_i128 x, ca_i128 y, const ca_tau4_digit table[81],
+                                              uint8_t digits[256], int double_policy)
 {
     ca_i128 original_x = x, original_y = y;
     const ca_i128 limit = (ca_i128)1 << 55;
@@ -519,12 +549,15 @@ static size_t gen_tau4_digits_tail_gated(ca_i128 x, ca_i128 y, const ca_tau4_dig
         size_t pos =
             ((nd / 2) % 3 * CA_TAU_TAIL_SIDE + (size_t)(x + CA_TAU_TAIL_BOUND)) * CA_TAU_TAIL_SIDE +
             (size_t)(y + CA_TAU_TAIL_BOUND);
-        if (ca_tau_tail_gate[pos >> 3] & (uint8_t)(1u << (pos & 7))) {
+        uint8_t gate = double_policy ? ca_tau_double_gate[pos >> 3] : ca_tau_tail_gate[pos >> 3];
+        if (gate & (uint8_t)(1u << (pos & 7))) {
             while (x || y) {
                 if (nd > 253) goto canonical_fallback;
                 uint8_t even, odd;
-                if (!tau_tail_step(&x, &y, (unsigned)((nd / 2) % 3), table, &even, &odd))
-                    goto canonical_fallback;
+                unsigned phase = (unsigned)((nd / 2) % 3);
+                int good = double_policy ? tau_double_step(&x, &y, phase, table, &even, &odd)
+                                         : tau_tail_step(&x, &y, phase, table, &even, &odd);
+                if (!good) goto canonical_fallback;
                 digits[nd++] = even;
                 digits[nd++] = odd;
             }
@@ -542,6 +575,18 @@ canonical_fallback:
     return gen_tau4_digits_fast(original_x, original_y, table, digits);
 }
 
+static size_t gen_tau4_digits_tail_gated(ca_i128 x, ca_i128 y, const ca_tau4_digit table[81],
+                                         uint8_t digits[256])
+{
+    return gen_tau4_digits_tail_gated_impl(x, y, table, digits, 0);
+}
+
+static size_t gen_tau4_digits_double_gated(ca_i128 x, ca_i128 y, const ca_tau4_digit table[81],
+                                           uint8_t digits[256])
+{
+    return gen_tau4_digits_tail_gated_impl(x, y, table, digits, 1);
+}
+
 int ca_ec_tau4_tail_recode_compare_scalar(const ca_tau4_precomp *pre, uint64_t k)
 {
     if (!pre || !pre->g) return 0;
@@ -552,6 +597,34 @@ int ca_ec_tau4_tail_recode_compare_scalar(const ca_tau4_precomp *pre, uint64_t k
     size_t a = gen_tau4_digits_tail(x, y, pre->digit, original);
     size_t b = gen_tau4_digits_tail_gated(x, y, pre->digit, gated);
     return a == b && memcmp(original, gated, a) == 0;
+}
+
+int ca_ec_tau4_double_recode_verify_scalar(const ca_tau4_precomp *pre, uint64_t k)
+{
+    if (!pre || !pre->g) return 0;
+    ca_i128 x, y;
+    reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y}, pre->det,
+                        k % pre->g->order, &x, &y);
+    uint8_t prior[256], candidate[256];
+    size_t old_nd = gen_tau4_digits_tail_gated(x, y, pre->digit, prior);
+    size_t new_nd = gen_tau4_digits_double_gated(x, y, pre->digit, candidate);
+    if ((!old_nd || !new_nd) && (x || y)) return 0;
+    if (tau4_weighted_cost(candidate, new_nd, pre->digit) >
+        tau4_weighted_cost(prior, old_nd, pre->digit))
+        return 0;
+    ca_i128 a = 0, b = 0;
+    for (size_t i = new_nd; i-- > 0;) {
+        ca_i128 next_a = -3 * b, next_b = a + 3 * b;
+        if (candidate[i] != 255) {
+            ca_tau4_digit digit = pre->digit[candidate[i]];
+            if (digit.seed < 0) return 0;
+            next_a += digit.a;
+            next_b += digit.b;
+        }
+        a = next_a;
+        b = next_b;
+    }
+    return a == x && b == y;
 }
 
 /* Four width-4 decisions in one lookup.  Congruence modulo 81 preserves the
@@ -730,7 +803,8 @@ static int tau4_mul_prepared_impl(const ca_group *g, const ca_tau4_precomp *pre,
         ca_i128 x, y;
         reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y}, pre->det,
                             k, &x, &y);
-        nd = recoder == 4   ? gen_tau4_digits_tail_gated(x, y, pre->digit, digits)
+        nd = recoder == 5   ? gen_tau4_digits_double_gated(x, y, pre->digit, digits)
+             : recoder == 4 ? gen_tau4_digits_tail_gated(x, y, pre->digit, digits)
              : recoder == 3 ? gen_tau4_digits_tail(x, y, pre->digit, digits)
              : recoder == 2 ? gen_tau4_digits_atlas(x, y, pre->digit, digits)
                             : gen_tau4_digits_fast(x, y, pre->digit, digits);
@@ -748,7 +822,23 @@ static int tau4_mul_prepared_impl(const ca_group *g, const ca_tau4_precomp *pre,
         int has_odd = odd < nd && digits[odd] != 255;
         int slot = has_odd ? digits[odd] : digits[even];
         if (slot == 255) continue;
-        if (has_odd && digits[even] != 255) return 0;
+        if (has_odd && digits[even] != 255) {
+            if (recoder != 5) return 0;
+            ca_tau4_digit first = pre->digit[digits[even]];
+            ca_elem first_seed = pre->seed[first.seed];
+            if (!first_seed.w[2]) {
+                int first_power = (first.power + (int)(qi % 3)) % 3;
+                int first_sign = first.sign * ((qi & 1) ? -1 : 1);
+                nr += first_power != 0;
+                if (first_power == 1)
+                    first_seed.w[0] = fm(g, pre->beta, first_seed.w[0]);
+                else if (first_power == 2)
+                    first_seed.w[0] = fm(g, pre->beta2, first_seed.w[0]);
+                if (first_sign < 0 && first_seed.w[1]) first_seed.w[1] = g->p - first_seed.w[1];
+                acc = jac_add_mixed(g, acc, &first_seed);
+                na++;
+            }
+        }
         ca_tau4_digit d = pre->digit[slot];
         ca_elem seed = has_odd ? pre->tau_seed[d.seed] : pre->seed[d.seed];
         if (seed.w[2]) continue;
@@ -786,7 +876,7 @@ int ca_ec_tau4_mul_prepared_profile(const ca_group *g, const ca_tau4_precomp *pr
                                     uint64_t k, int recoder, uint64_t *triples, uint64_t *adds,
                                     uint64_t *rotations)
 {
-    if (recoder < 0 || recoder > 4) return 0;
+    if (recoder < 0 || recoder > 5) return 0;
     return tau4_mul_prepared_impl(g, pre, out, k, triples, adds, rotations, recoder);
 }
 

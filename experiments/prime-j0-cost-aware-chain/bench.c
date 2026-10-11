@@ -91,7 +91,8 @@ static int select_mode(const char *name)
                                   "tapered-residue-packed-batch128",
                                   "tapered-residue-wavefront-batch128",
                                   "tail-oracle",
-                                  "tail-oracle-gated"};
+                                  "tail-oracle-gated",
+                                  "tail-double"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -112,7 +113,7 @@ int main(int argc, char **argv)
                 "fused-hot-steer-batch128|fused-hot-steer-gated2-batch128|"
                 "tapered-residue-orbit-batch128|tapered-residue-graph-batch128|"
                 "tapered-residue-packed-batch128|tapered-residue-wavefront-batch128|"
-                "tail-oracle|tail-oracle-gated "
+                "tail-oracle|tail-oracle-gated|tail-double "
                 "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
@@ -256,7 +257,8 @@ int main(int argc, char **argv)
     }
     uint64_t triples = 0, adds = 0, rotations = 0, output_inversions = 0;
     uint64_t fallbacks = 0, second_recodes = 0, steered_blocks = 0;
-    size_t static_map_bytes = mode == 24              ? 3 * 129 * 129 + (3 * 129 * 129 + 7) / 8
+    size_t static_map_bytes = mode == 25              ? 2 * 3 * 129 * 129 + (3 * 129 * 129 + 7) / 8
+                              : mode == 24            ? 3 * 129 * 129 + (3 * 129 * 129 + 7) / 8
                               : mode == 23            ? 3 * 129 * 129
                               : tapered               ? ca_ec_tau_wide_static_bytes(wide_schedule)
                               : steer || gated2_steer ? ca_ec_tau8_steer_static_bytes()
@@ -309,7 +311,8 @@ int main(int argc, char **argv)
             } else {
                 uint64_t t = 0, a = 0, r = 0;
                 if (!ca_ec_tau4_mul_prepared_profile(&group, &pre, &outputs[i], scalars[i],
-                                                     mode == 24   ? 4
+                                                     mode == 25   ? 5
+                                                     : mode == 24 ? 4
                                                      : mode == 23 ? 3
                                                      : mode == 11 ? 2
                                                                   : mode == 2,
@@ -328,6 +331,7 @@ int main(int argc, char **argv)
     double verify_start = ca_now();
     uint64_t output_digest = FNV_OFFSET;
     uint64_t tail_stream_checks = 0;
+    uint64_t tail_double_checks = 0;
     for (size_t i = 0; i < SCALARS; i++) {
         if (mode != 0) {
             if (mode == 11 && !ca_ec_tau4_recode_compare_scalar(&pre, scalars[i])) {
@@ -341,6 +345,12 @@ int main(int argc, char **argv)
                 return 1;
             }
             tail_stream_checks += mode == 24;
+            if (mode == 25 && !ca_ec_tau4_double_recode_verify_scalar(&pre, scalars[i])) {
+                fprintf(stderr, "double-pair digit reconstruction mismatch at index %zu\n", i);
+                free(outputs);
+                return 1;
+            }
+            tail_double_checks += mode == 25;
             ca_elem expected;
             ca_group_mul(&group, &expected, &point, scalars[i], NULL);
             if (!ca_group_equal(&group, &outputs[i], &expected)) {
@@ -372,7 +382,7 @@ int main(int argc, char **argv)
            " prep_batch_denominators=%" PRIu64 " prep_affine_exceptions=%" PRIu64
            " prep_affine_doublings=%" PRIu64 " prep_affine_edge_mults_model=%" PRIu64
            " prep_affine_edge_squarings_model=%" PRIu64 " online_scratch_bytes=%zu"
-           " tail_stream_checks=%" PRIu64 " verified=1\n",
+           " tail_stream_checks=%" PRIu64 " tail_double_checks=%" PRIu64 " verified=1\n",
            argv[2], argv[3], SCALARS, point_words[0], point_words[1], group.endo_lambda,
            input_digest, output_digest, online_ms, prep_ms, verify_ms, prep_triples, prep_adds,
            prep_rotations, prep_layer_inversions, prep_bytes, prep_temp_heap_bytes, prep_repeats,
@@ -381,6 +391,6 @@ int main(int argc, char **argv)
            wavefront_stats.denominators, wavefront_stats.exceptional_edges,
            wavefront_stats.doubling_edges, 5 * wavefront_stats.denominators,
            wavefront_stats.denominators + wavefront_stats.doubling_edges, online_scratch_bytes,
-           tail_stream_checks);
+           tail_stream_checks, tail_double_checks);
     return 0;
 }
