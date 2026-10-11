@@ -34,7 +34,12 @@ reconstructs every scalar, checks each digit and terminal, and computes
 | Occupied buckets | 11,781 | **9,984** |
 
 The [phase receipt](phase-cost.json) reports the paired per-scalar
-rotation-difference distribution. These are algorithmic operation counts.
+rotation-difference distribution. The mean change is **-0.518 grouped unit
+rotations per scalar** (normal 95% confidence interval [-0.548, -0.488]);
+2,041 cases improve, 1,522 tie, and 533 regress. Tau-squared digit use
+falls by a mean **1.413 per scalar** (normal 95% confidence interval
+[-1.451, -1.376]); 3,119 cases improve, 865 tie, and 112 regress. These
+are paired algorithmic operation counts, not CPU timing ratios.
 The source-pinned native release replay passed all **4,096** cases against
 the independent control and checked the first **128** against a separate
 binary multiplication path. It reported 49,152 additions, 16,102 grouped
