@@ -34,7 +34,14 @@ atlas outputs, grouped tau buckets, and independent binary point
 multiplication for every scalar. A source-pinned native Rust test passed
 all 4,096 cases against the two-image control and checked the first 128
 with a separate binary point path. It reported 49,152 mixed additions,
-17,518 grouped rotations, and the exact retained-byte count above.
+17,518 grouped rotations, and the exact retained-byte count above. The
+[targeted receipt](native-targeted.json) binds that output to the native
+source and atlas hashes; its complete output is archived in
+`native-targeted-tests.log.gz`. The [full native suite](native-full-suite.json)
+passed **137 tests, 0 failed**, with its raw output archived in
+`native-full-tests.log.gz`. The [exact-mode edge fixture](native-edge-check.json)
+verified ten cases against the frozen expected points, with its output
+archived in `native-edge.stdout.gz`.
 
 The cache capacity is shared by the host, and the current pod has no
 host-wide isolation receipt. Its capacity therefore defines a design
