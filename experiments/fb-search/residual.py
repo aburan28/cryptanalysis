@@ -1,0 +1,494 @@
+#!/usr/bin/env python3
+"""The residual bilinear system left above the linearization limit, and how hard it really is.
+
+After the linear solve of the half-trace oracle (htsolver.py), what remains for one target S and
+one eps in {0, 1} is: find t in F_2^d and X in V (l bits) with
+
+    X^2 + u(t) X + p(u(t)) = 0,   u(t) = u0 + sum_k t_k f_k,  p affine in t,
+
+whose only nontrivial part lies in V^(2): an overdetermined bilinear system of 2l - 1 equations
+in l + d unknowns.  Generic counting (ABOVE_LIMIT.md, Sec. 3) says nothing beats enumerating
+the 2^d values of t.  This script asks whether *our* system is generic: it builds the Boolean
+system for real targets, runs the MXL degree scan on it, and records the solving degree and cost
+next to 2^d enumeration and the generic overdetermined-bilinear degree prediction.
+
+    python3 residual.py --n 41 --l 15 16 17 --family geomtraceu --targets 30
+"""
+
+from __future__ import annotations
+
+import argparse
+import math
+import random
+import sys
+from pathlib import Path
+
+import numpy as np
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent / "pdp-degree-heuristics"))
+sys.path.insert(0, str(HERE.parent / "ic-bench"))
+
+import kernel  # noqa: E402
+import macaulay  # noqa: E402
+import opcount  # noqa: E402
+from descent import BooleanSystem  # noqa: E402
+from factor_base import FactorBase  # noqa: E402
+from htsolver import HalfTraceSolver, _affine_solve  # noqa: E402
+from toycurve import ToyCurve, canonical  # noqa: E402
+
+
+def residual_systems(sv: HalfTraceSolver, S: int) -> list[dict]:
+    """For each eps whose projected linear system is consistent: the residual Boolean system."""
+    K, n, l = sv.K, sv.n, sv.l
+    inv_s = K.inv(S)
+    c0 = K.mul(sv.sqrt_b, inv_s)
+    cols = [K.mul(S, h) for h in sv.ht_sq]
+    const_ht = K.mul(S, K.half_trace(K.sqr(c0)))
+    out = []
+    for eps in (0, 1):
+        const = const_ht ^ (S if eps else 0)
+        rows = [(sum(sv._dot(h, a) << j for j, a in enumerate(cols)), sv._dot(h, const)) for h in sv.checks]
+        rows.append((sum(K.trace(v) << j for j, v in enumerate(sv.basis)), K.trace(c0)))
+        sol = _affine_solve(rows, l)
+        if sol is None:
+            continue
+        u0c, free = sol
+
+        def field(coef: int) -> int:
+            z = 0
+            for j, v in enumerate(sv.basis):
+                if (coef >> j) & 1:
+                    z ^= v
+            return z
+
+        u0 = field(u0c)
+        fs = [field(f) for f in free]
+        d = len(fs)
+        N = l + d
+        # p(u) = S * (HT((u + c0)^2) + eps) = A(u) + const, A(u) = S * HT(u^2)
+        p_u0 = K.mul(S, K.half_trace(K.sqr(u0 ^ c0)) ^ (1 if eps else 0))
+        mono: dict[int, int] = {0: p_u0}
+        for i, v in enumerate(sv.basis):
+            mono[1 << i] = mono.get(1 << i, 0) ^ K.sqr(v) ^ K.mul(u0, v)
+        for k, f in enumerate(fs):
+            mono[1 << (l + k)] = mono.get(1 << (l + k), 0) ^ K.mul(S, K.half_trace(K.sqr(f)))
+            for i, v in enumerate(sv.basis):
+                m = (1 << i) | (1 << (l + k))
+                mono[m] = mono.get(m, 0) ^ K.mul(f, v)
+        system = None
+        if N <= 32:
+            masks = np.array(sorted(mono), dtype=np.uint32)
+            coeffs = np.array([mono[int(m)] for m in masks], dtype=np.uint64)
+            system = BooleanSystem(N, n, masks, coeffs)
+        out.append({"eps": eps, "d": d, "N": N, "system": system, "mono": mono, "u0": u0, "fs": fs})
+    return out
+
+
+def bilinear_equations(sv: HalfTraceSolver, S: int, eps_sys: dict) -> tuple[int, int, list[list[tuple[int, int]]]]:
+    """The residual system as Boolean equations, each a list of monomials (x_mask, t_mask) with
+    x_mask of weight <= 1: the coordinate functions of X^2 + u(t) X + p(u(t)) over F_2."""
+    s = eps_sys["system"]
+    l, d, n = sv.l, eps_sys["d"], sv.n
+    xs_mask, t_shift = (1 << l) - 1, l
+    eqs = []
+    for bit in range(n):
+        sel = ((s.coeffs >> np.uint64(bit)) & np.uint64(1)).astype(bool)
+        if not sel.any():
+            continue
+        eqs.append([(int(m) & xs_mask, int(m) >> t_shift) for m in s.masks[sel].tolist()])
+    return l, d, eqs
+
+
+def y_xl(l: int, d: int, eqs, k_max: int = 4, max_cols: int = 2_000_000) -> dict:
+    """y-XL in the t variables (arXiv 2006.09442): rows f * t^S for |S| <= k, X kept linear.
+    Returns the smallest k at which 1 is in the row space (a refutation), and the matrix sizes."""
+    from itertools import combinations
+
+    import kernel as _k
+
+    out = {"k_refute": None, "per_k": []}
+    for k in range(0, k_max + 1):
+        tmon = [0]
+        for r in range(1, k + 2):
+            tmon += [sum(1 << i for i in c) for c in combinations(range(d), r)]
+        # columns: (x part, t part); degree order so that the constant is column 0
+        cols = sorted({(xm, tm) for xm in [0] + [1 << i for i in range(l)] for tm in tmon},
+                      key=lambda c: (bin(c[0]).count("1") + bin(c[1]).count("1"), c[0], c[1]))
+        if len(cols) > max_cols:
+            out["per_k"].append({"k": k, "cols": len(cols), "status": "budget"})
+            break
+        col = {c: i for i, c in enumerate(cols)}
+        mults = [0] + [sum(1 << i for i in c) for r in range(1, k + 1) for c in combinations(range(d), r)]
+        words = (len(cols) + 63) // 64
+        ech = _k.Echelon(len(cols))
+        rows_total = 0
+        for f in eqs:
+            batch = np.zeros((len(mults), words), dtype=np.uint64)
+            for ri, mt in enumerate(mults):
+                acc: dict[int, int] = {}
+                for xm, tm in f:
+                    key = col[(xm, tm | mt)]
+                    acc[key] = acc.get(key, 0) ^ 1
+                for c_, v in acc.items():
+                    if v:
+                        batch[ri, c_ >> 6] ^= np.uint64(1) << np.uint64(c_ & 63)
+            ech.add(batch, stop_on_unit=True)
+            rows_total += len(mults)
+            if ech.has_unit:
+                break
+        rec = {"k": k, "cols": len(cols), "rows": rows_total, "rank": ech.rank, "xors": ech.xors,
+               "unit": ech.has_unit}
+        out["per_k"].append(rec)
+        if ech.has_unit:
+            out["k_refute"] = k
+            break
+    return out
+
+
+def boolean_equations(n: int, mono: dict[int, int]) -> list[list[int]]:
+    """Coordinate functions over F_2 of sum_m mono[m] * m, as lists of 64-bit monomial masks."""
+    eqs = []
+    for bit in range(n):
+        f = [m for m, c in mono.items() if (c >> bit) & 1]
+        if f:
+            eqs.append(sorted(f))
+    return eqs
+
+
+_SMXL = None
+
+
+def tmxl(N: int, l: int, eqs: list[list[int]], d_max: int = 5, max_cols: int = 2_000_000) -> dict:
+    """Mutant closure in the residual variables t only (bits l..N-1), on the columns of x-degree <= 1:
+    a y-MXL in the sense of arXiv 2006.09442 applied to the residual bilinear system."""
+    import ctypes
+
+    smxl(1, [[0]], 0, 1)  # load the library
+    flat = np.array([m for f in eqs for m in f], dtype=np.uint64)
+    off = np.zeros(len(eqs) + 1, dtype=np.int32)
+    off[1:] = np.cumsum([len(f) for f in eqs])
+    out = np.zeros(8, dtype=np.int64)
+    P = ctypes.POINTER
+    xm = (1 << l) - 1
+    tm = ((1 << N) - 1) ^ xm
+    cap = N + 1
+    lin = np.zeros(2 * cap, dtype=np.uint64)
+    _SMXL.smxl_run_restricted(ctypes.c_int(N), flat.ctypes.data_as(P(ctypes.c_uint64)),
+                              off.ctypes.data_as(P(ctypes.c_int32)), ctypes.c_int(len(eqs)), ctypes.c_int(d_max),
+                              ctypes.c_longlong(max_cols), ctypes.c_uint64(tm), ctypes.c_uint64(xm), ctypes.c_int(1),
+                              out.ctypes.data_as(P(ctypes.c_longlong)), lin.ctypes.data_as(P(ctypes.c_uint64)),
+                              ctypes.c_int(cap))
+    status = {1: "refuted", 0: "degree_limit", -1: "budget", -2: "memory"}[int(out[0])]
+    k = min(int(out[6]), cap)
+    return {"status": status, "degree": int(out[1]), "cols": int(out[2]), "rank": int(out[3]),
+            "xors": int(out[4]), "rows_in": int(out[5]), "linear_pivots": int(out[6]),
+            "linear_rows": [(int(lin[2 * i]), int(lin[2 * i + 1])) for i in range(k)]}
+
+
+def smxl(N: int, eqs: list[list[int]], d_max: int = 5, max_cols: int = 120_000, mult_vars: int | None = None) -> dict:
+    """Sparse-column MXL closure (smxl.c), up to 64 variables."""
+    import ctypes
+    import subprocess
+
+    global _SMXL
+    if _SMXL is None:
+        so = HERE / "build" / "libsmxl.so"
+        src = HERE / "smxl.c"
+        if not so.exists() or so.stat().st_mtime < src.stat().st_mtime:
+            so.parent.mkdir(exist_ok=True)
+            subprocess.run(["cc", "-O3", "-march=native", "-shared", "-fPIC", "-o", str(so), str(src)], check=True)
+        _SMXL = ctypes.CDLL(str(so))
+        _SMXL.smxl_run.restype = ctypes.c_longlong
+        _SMXL.smxl_run_masked.restype = ctypes.c_longlong
+        _SMXL.smxl_run_restricted.restype = ctypes.c_longlong
+    flat = np.array([m for f in eqs for m in f], dtype=np.uint64)
+    off = np.zeros(len(eqs) + 1, dtype=np.int32)
+    off[1:] = np.cumsum([len(f) for f in eqs])
+    out = np.zeros(8, dtype=np.int64)
+    P = ctypes.POINTER
+    mv = (1 << 64) - 1 if mult_vars is None else mult_vars
+    _SMXL.smxl_run_masked(ctypes.c_int(N), flat.ctypes.data_as(P(ctypes.c_uint64)),
+                          off.ctypes.data_as(P(ctypes.c_int32)), ctypes.c_int(len(eqs)), ctypes.c_int(d_max),
+                          ctypes.c_longlong(max_cols), ctypes.c_uint64(mv), out.ctypes.data_as(P(ctypes.c_longlong)))
+    status = {1: "refuted", 0: "degree_limit", -1: "budget", -2: "memory"}[int(out[0])]
+    return {"status": status, "degree": int(out[1]), "cols": int(out[2]), "rank": int(out[3]),
+            "xors": int(out[4]), "rows_in": int(out[5]), "linear_pivots": int(out[6])}
+
+
+def cms_solve(N: int, eqs: list[list[int]], threads: int = 1) -> dict:
+    """CryptoMiniSat with native XOR clauses (Gauss-Jordan) on the residual system: one variable
+    per bit, one AND-gate variable per degree-2 monomial, one XOR clause per equation."""
+    import time
+
+    import pycryptosat
+
+    s = pycryptosat.Solver(threads=threads)
+    aux: dict[int, int] = {}
+    nxt = N + 1
+
+    def var(m: int) -> int:
+        nonlocal nxt
+        if bin(m).count("1") == 1:
+            return m.bit_length()
+        if m not in aux:
+            a = nxt
+            nxt += 1
+            i, j = [k + 1 for k in range(N) if (m >> k) & 1]
+            s.add_clause([-a, i])
+            s.add_clause([-a, j])
+            s.add_clause([a, -i, -j])
+            aux[m] = a
+        return aux[m]
+
+    for f in eqs:
+        rhs = False  # XOR of the non-constant monomials equals the constant term
+        vs = []
+        for m in f:
+            if m == 0:
+                rhs = not rhs
+            else:
+                vs.append(var(m))
+        if vs:
+            s.add_xor_clause(vs, rhs)
+        elif rhs:
+            return {"status": "refuted", "wall_ns": 0}
+    t0 = time.perf_counter_ns()
+    sat, model = s.solve()
+    wall = time.perf_counter_ns() - t0
+    bits = [bool(model[i + 1]) for i in range(N)] if sat else None
+    return {"status": "sat" if sat else "refuted", "wall_ns": wall, "aux_vars": len(aux), "bits": bits}
+
+
+def verify_model(sv: HalfTraceSolver, rs: dict, bits: list[bool], R: tuple[int, int]) -> bool:
+    """Rebuild X, Y from a residual solution and check that signed lifts sum to R."""
+    from htsolver import _reduce, _signed
+
+    K, l = sv.K, sv.l
+    X = 0
+    for i, v in enumerate(sv.basis):
+        if bits[i]:
+            X ^= v
+    u = rs["u0"]
+    for k, f in enumerate(rs["fs"]):
+        if bits[l + k]:
+            u ^= f
+    Y = X ^ u
+    if _reduce(sv.V, X) or _reduce(sv.V, Y):
+        return False
+    return any(K.add(P, Q) == R for P in _signed(K, X) for Q in _signed(K, Y))
+
+
+_HTENUM = None
+_TABLES: dict = {}
+
+
+def _htlib():
+    import ctypes
+    import subprocess
+
+    global _HTENUM
+    if _HTENUM is None:
+        so = HERE / "build" / "libhtenum.so"
+        src = HERE / "htenum.c"
+        if not so.exists() or so.stat().st_mtime < src.stat().st_mtime:
+            so.parent.mkdir(exist_ok=True)
+            subprocess.run(["cc", "-O3", "-march=native", "-mpclmul", "-shared", "-fPIC", "-o", str(so), str(src)],
+                           check=True)
+        _HTENUM = ctypes.CDLL(str(so))
+        for fn in ("ht_enum", "ht_attempt_batch", "ec_walk_batch"):
+            getattr(_HTENUM, fn).restype = ctypes.c_longlong
+    return _HTENUM
+
+
+def _httables(sv: HalfTraceSolver):
+    """Byte tables of HT and of the V-syndrome, the trace mask, and the parity checks of V^(2)."""
+    from factor_base import _columns_of_rows, kernel_basis
+
+    K, n = sv.K, sv.n
+    key = (n, tuple(sv.basis))
+    if key not in _TABLES:
+        nb = (n + 7) // 8
+        ht = np.zeros(nb * 256, dtype=np.uint64)
+        checks = kernel_basis(_columns_of_rows(sv.basis, n), n)
+        syn = np.zeros(nb * 256, dtype=np.uint64)
+        for j in range(nb):
+            for b in range(256):
+                z = (b << (8 * j)) & ((1 << n) - 1)
+                ht[j * 256 + b] = K.half_trace(z) if z else 0
+                syn[j * 256 + b] = sum((bin(h & z).count("1") & 1) << r for r, h in enumerate(checks))
+        trmask = sum(K.trace(1 << j) << j for j in range(n))
+        _TABLES[key] = (ht, syn, trmask)
+    return _TABLES[key]
+
+
+def htenum(sv: HalfTraceSolver, rs: dict, S: int) -> dict:
+    """Optimized C enumeration of the residual space of one eps branch (htenum.c)."""
+    import ctypes
+    import time
+
+    lib = _htlib()
+    K, n = sv.K, sv.n
+    ht, syn, trmask = _httables(sv)
+    c0 = K.mul(sv.sqrt_b, K.inv(S))
+    eps = rs["eps"]
+    u0, fs = rs["u0"], rs["fs"]
+    d = len(fs)
+    p0 = K.mul(S, K.half_trace(K.sqr(u0 ^ c0)) ^ (1 if eps else 0))
+    pk = np.array([K.mul(S, K.half_trace(K.sqr(f))) for f in fs] or [0], dtype=np.uint64)
+    sk = np.array([K.sqr(f) for f in fs] or [0], dtype=np.uint64)
+    fa = np.array(fs or [0], dtype=np.uint64)
+    hits = np.zeros(64, dtype=np.uint64)
+    cand = ctypes.c_longlong(0)
+    P = ctypes.POINTER
+    U = ctypes.c_uint64
+    mod = sv.C.mod
+    t0 = time.perf_counter_ns()
+    nh = lib.ht_enum(ctypes.c_int(n), U(mod & ((1 << n) - 1)), ctypes.c_int(d), U(u0), U(p0), U(K.sqr(u0)),
+                         fa.ctypes.data_as(P(U)), pk.ctypes.data_as(P(U)), sk.ctypes.data_as(P(U)),
+                         ht.ctypes.data_as(P(U)), syn.ctypes.data_as(P(U)), U(trmask),
+                         hits.ctypes.data_as(P(U)), ctypes.c_int(64), ctypes.byref(cand))
+    wall = time.perf_counter_ns() - t0
+    return {"hits": int(nh), "candidates": int(cand.value), "wall_ns": wall,
+            "u_hits": [int(h) for h in hits[: min(nh, 64)]]}
+
+
+def ht_attempts(sv: HalfTraceSolver, xs: list[int]) -> dict:
+    """Whole PDP2ht attempts in C (projection for both eps, then the residual enumeration) for the
+    target abscissae xs, in one call; per-target hits and the wall time of the call."""
+    import ctypes
+    import time
+
+    lib = _htlib()
+    K, n, l = sv.K, sv.n, sv.l
+    ht, syn, trmask = _httables(sv)
+    U, P = ctypes.c_uint64, ctypes.POINTER
+    basis = np.array(sv.basis, dtype=np.uint64)
+    ht_sq = np.array(sv.ht_sq, dtype=np.uint64)
+    checks = np.array(sv.checks or [0], dtype=np.uint64)
+    trrow = sum(K.trace(v) << j for j, v in enumerate(sv.basis))
+    Ss = np.array(xs, dtype=np.uint64)
+    hits = np.zeros(len(xs), dtype=np.int64)
+    t0 = time.perf_counter_ns()
+    cand = lib.ht_attempt_batch(ctypes.c_int(n), U(sv.C.mod & ((1 << n) - 1)), ctypes.c_int(l),
+                                basis.ctypes.data_as(P(U)), ht_sq.ctypes.data_as(P(U)),
+                                checks.ctypes.data_as(P(U)), ctypes.c_int(len(sv.checks)), U(trrow), U(sv.sqrt_b),
+                                ht.ctypes.data_as(P(U)), syn.ctypes.data_as(P(U)), U(trmask),
+                                Ss.ctypes.data_as(P(U)), ctypes.c_int(len(xs)),
+                                hits.ctypes.data_as(P(ctypes.c_longlong)))
+    wall = time.perf_counter_ns() - t0
+    return {"hits": [int(h) for h in hits], "candidates": int(cand), "wall_ns": wall}
+
+
+def ec_walk(C, walks: list[tuple[int, int]], table: list[tuple[int, int]], rounds: int) -> dict:
+    """Batched affine r-adding walks in C (htenum.c ec_walk_batch): the rho step on this host."""
+    import ctypes
+    import time
+
+    lib = _htlib()
+    U, P = ctypes.c_uint64, ctypes.POINTER
+    X = np.array([p[0] for p in walks], dtype=np.uint64)
+    Y = np.array([p[1] for p in walks], dtype=np.uint64)
+    TX = np.array([p[0] for p in table], dtype=np.uint64)
+    TY = np.array([p[1] for p in table], dtype=np.uint64)
+    t0 = time.perf_counter_ns()
+    adds = lib.ec_walk_batch(ctypes.c_int(C.n), U(C.mod & ((1 << C.n) - 1)), U(C.a2), ctypes.c_int(len(walks)),
+                             ctypes.c_int(rounds), X.ctypes.data_as(P(U)), Y.ctypes.data_as(P(U)),
+                             TX.ctypes.data_as(P(U)), TY.ctypes.data_as(P(U)), ctypes.c_int(len(table)))
+    wall = time.perf_counter_ns() - t0
+    return {"adds": int(adds), "wall_ns": wall, "ns_per_add": wall / max(1, adds),
+            "final": [(int(x), int(y)) for x, y in zip(X, Y)]}
+
+
+def bilinear_degree(nx: int, ny: int, m: int) -> int | None:
+    """Generic y-semiregular degree for an overdetermined bilinear system (arXiv 2006.09442):
+    ceil(n_x (n_y - 1) / (m - n_x)) + 1, multiplying by y-monomials only."""
+    if m <= nx:
+        return None
+    return math.ceil(nx * max(0, ny - 1) / (m - nx)) + 1
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--n", type=int, required=True)
+    ap.add_argument("--l", type=int, nargs="+", required=True)
+    ap.add_argument("--family", default="geomtraceu")
+    ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--targets", type=int, default=30)
+    ap.add_argument("--mode", default="mxl", choices=macaulay.MODES)
+    ap.add_argument("--d-max", type=int, default=6)
+    ap.add_argument("--max-cols", type=int, default=400_000)
+    ap.add_argument("--solver", default="mxl", choices=("mxl", "yxl", "smxl", "tmxl"),
+                    help="mxl: degree scan of the residual Boolean system (N <= 26); yxl: y-XL in t")
+    ap.add_argument("--k-max", type=int, default=4)
+    ap.add_argument("--only-refutations", action="store_true", help="skip decomposable targets")
+    ap.add_argument("--no-truth", dest="truth", action="store_false",
+                    help="skip the 2^d half-trace check of decomposability (large d)")
+    ap.add_argument("--out", default="")
+    args = ap.parse_args()
+    C = ToyCurve(args.n)
+    limits = macaulay.Limits(d_max=args.d_max, max_cols=args.max_cols, max_rows=4_000_000)
+    for l in args.l:
+        if args.truth:
+            fb = FactorBase(C, args.family, l, args.seed)
+        else:
+            # the residual algebra needs only the basis; enumerating 2^l points is skipped
+            from types import SimpleNamespace
+
+            from factor_base import family_basis
+            from toycurve import sha256_hex
+
+            basis, _ = family_basis(C, args.family, l, args.seed)
+            fb = SimpleNamespace(curve=C, basis=basis, l=l, digest=sha256_hex([args.family, l, args.seed, basis]))
+        sv = HalfTraceSolver(fb)
+        rng = random.Random(f"residual|{fb.digest}")
+        for _ in range(args.targets):
+            _, R = C.random_subgroup_point(rng)
+            truth = bool(sv.decompose(R)) if args.truth else None
+            if truth and args.only_refutations:
+                continue
+            for rs in residual_systems(sv, R[0]):
+                s = rs["system"]
+                if args.solver in ("smxl", "tmxl"):
+                    eqs = boolean_equations(sv.n, rs["mono"])
+                    sm = (smxl(rs["N"], eqs, args.d_max, args.max_cols) if args.solver == "smxl"
+                          else tmxl(rs["N"], l, eqs, args.d_max, args.max_cols))
+                    rec = {"n": args.n, "l": l, "family": args.family, "eps": rs["eps"], "d": rs["d"], "N": rs["N"],
+                           "equations": len(eqs), "decomposable": truth, "solver": args.solver, **sm,
+                           "enum_candidates": 2 ** rs["d"], "generic_deg_y_t": bilinear_degree(l, rs["d"], len(eqs))}
+                    print(canonical(rec), flush=True)
+                    if args.out:
+                        with open(args.out, "a") as fh:
+                            fh.write(canonical(rec) + "\n")
+                    continue
+                if args.solver == "yxl":
+                    _, d, eqs = bilinear_equations(sv, R[0], rs)
+                    yx = y_xl(l, d, eqs, args.k_max)
+                    last = yx["per_k"][-1]
+                    rec = {"n": args.n, "l": l, "family": args.family, "eps": rs["eps"], "d": d, "N": rs["N"],
+                           "equations": len(eqs), "decomposable": truth, "solver": "y-XL(t)",
+                           "k_refute": yx["k_refute"], "cols": last["cols"], "rows": last.get("rows"),
+                           "xors": sum(r.get("xors", 0) for r in yx["per_k"]), "enum_candidates": 2 ** d,
+                           "generic_deg_y_t": bilinear_degree(l, d, len(eqs))}
+                    print(canonical(rec), flush=True)
+                    if args.out:
+                        with open(args.out, "a") as fh:
+                            fh.write(canonical(rec) + "\n")
+                    continue
+                m_eqs = len(s.equations)
+                scan = macaulay.degree_scan(s, (lambda s=s: s.solutions()[0]) if rs["N"] <= 26 else None,
+                                            limits, mode=args.mode)
+                rec = {"n": args.n, "l": l, "family": args.family, "eps": rs["eps"], "d": rs["d"], "N": rs["N"],
+                       "equations": m_eqs, "decomposable": truth, "status": scan["status"],
+                       "D_solve": scan["D_solve"], "mac_ops": scan["xors"] + scan["build_ops"],
+                       "final_cols": scan["final_cols"], "enum_candidates": 2 ** rs["d"],
+                       "generic_deg_y_t": bilinear_degree(l, rs["d"], m_eqs),
+                       "generic_deg_y_x": bilinear_degree(rs["d"], l, m_eqs)}
+                print(canonical(rec), flush=True)
+                if args.out:
+                    with open(args.out, "a") as fh:
+                        fh.write(canonical(rec) + "\n")
+
+
+if __name__ == "__main__":
+    main()

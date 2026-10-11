@@ -210,12 +210,40 @@ multiplications, and hands out no work.  Therefore:
   storage form, so the file is greppable text, and replay is safe at any
   time because the merge is idempotent.  In the chart this is
   `coordinator.persistence.enabled`.
-* **The token is access control, not integrity.** It keeps an
-  unauthenticated stranger from flooding the log; every record in the
-  log is still self-verifying, so a credentialled liar can still only
-  waste their own time.  It is compared in constant time and carried by
-  plain HTTP, so TLS belongs in a terminator in front — an `https://`
-  URL is refused rather than silently downgraded.
+* **The token is access control, not integrity, and it is now required
+  by default.** The hub refuses to start without one unless
+  `-allow-anonymous` (alias `-insecure`) is passed, and then it warns at
+  startup; an unauthenticated hub is a deliberate, loud choice. The token
+  keeps an unauthenticated stranger from reaching the log at all. It is
+  compared in constant time and carried by plain HTTP, so TLS belongs in a
+  terminator in front — an `https://` URL is refused rather than silently
+  downgraded (see §8a).
+
+* **What a credentialled peer can and cannot do.** Every distinguished
+  point is self-verifying — `a·G + b·H` is recomputed on arrival — so no
+  authenticated peer can inject a *false* DP, poison the answer (a claimed
+  solution is checked against the target), or corrupt another peer's
+  points. The earlier claim that "a participant who lies can only waste
+  their own time" was **not accurate** and is corrected here: a check-in
+  is deduplicated on `(peer, seq)`, and that pair is self-asserted. A
+  credentialled peer can therefore still **grief** the fleet — pre-claim
+  another peer's `(name, seq)` values so that the victim's genuine
+  check-ins are dropped as duplicates, or inflate the progress and unit
+  counters (advisory bookkeeping, not the result). It cannot make the
+  search reach a wrong answer; it can waste effort and distort the
+  dashboard. Two defences are in place, and one gap remains:
+  - A random **per-process instance tag** is folded into each agent's node
+    name (`ca_coord_node_instanced`), so two agents that share a `--node`
+    no longer collide *by accident*, and a *blind* forger who does not know
+    the victim's tag cannot guess its identity.
+  - The **token gate above** means only credentialled peers reach the log.
+  - **Residual, not closed:** the instance tag is not a secret — names and
+    version vectors are broadcast in the clear — so a credentialled peer
+    that *observes* another's `(name, instance, seq)` can still replay it.
+    Closing this needs per-peer **signed check-ins** (a key per agent, a
+    signature over the canonical line, unsigned peers rejected); that is
+    the future work in §10 and is not implemented here. Until then, run a
+    campaign only among peers you would trust with each other's progress.
 
 ## 7a. More than one hub: federation
 
@@ -403,6 +431,48 @@ A backend that cannot store is counted (`rejected_dps`) and is not fatal.
 | forged progress (`completed`) | that unit's start points are never walked; costs parallelism, not the answer, and the DP table is unaffected |
 | network partition | each side keeps working its own units (index ranges are disjoint by construction); the tables merge when it heals, and any cross-partition collision is found then |
 
+## 8a. TLS: terminate it in a sidecar
+
+The agent's HTTP client (`coord_net.c`, the `ca work` / `ca coord-status`
+CLI) speaks **plain HTTP only**. Setting `CA_COORDINATOR_URL=https://…` is
+refused, not silently downgraded — a built-in TLS client is deliberately
+out of scope. This is not a contradiction with the "EC2 + nginx" picture
+in §1: TLS is terminated by a proxy in front of the hub, and it is also
+terminated by a **local sidecar in front of the agent**. The agent talks
+plain HTTP to `127.0.0.1`; the sidecar wraps it in TLS and dials the
+public `https://` endpoint.
+
+```
+  ca work ──http──► 127.0.0.1:8443 (stunnel/nginx/socat) ──https──► rho.example.com
+      CA_COORDINATOR_URL=http://127.0.0.1:8443            (the public hub + its TLS)
+```
+
+The public `https://` URL is what the **sidecar** dials, never what
+`CA_COORDINATOR_URL` holds. A minimal `stunnel` client, for example:
+
+```ini
+# /etc/stunnel/rho.conf  —  run: stunnel /etc/stunnel/rho.conf
+[rho]
+client = yes
+accept  = 127.0.0.1:8443            ; the agent connects here, plain HTTP
+connect = rho.example.com:443       ; the public TLS hub
+verifyChain = yes
+CAfile  = /etc/ssl/certs/ca-certificates.crt
+```
+
+```sh
+# On every agent, alongside the sidecar above:
+export CA_COORDINATOR_URL=http://127.0.0.1:8443
+export CA_COORDINATOR_TOKEN=…
+ca work --node "$(hostname)" --threads "$(nproc)"
+```
+
+`socat TCP-LISTEN:8443,fork,reuseaddr OPENSSL-CONNECT:rho.example.com:443`
+is the one-liner equivalent for a quick test; `nginx` with a `stream {}`
+`proxy_pass` to an `ssl`-enabled upstream is the same idea for a host that
+already runs it. A built-in TLS client for the agent is a possible future
+change, noted but not done here.
+
 ## 9. Cost and tuning
 
 Expected work is `sqrt(pi n / 2)` group operations (`/sqrt 2` with the
@@ -459,12 +529,14 @@ ca coord-job --group zp --p 4503599627372423 --order 2251799813686211 \
     --seed 21 --out job.txt
 
 # 2. On the reachable host: the coordinator (a Go binary; build it with
-#    `go build ./cmd/ca-coordinator` from bindings/go).
+#    `go build ./cmd/ca-coordinator` from bindings/go).  A token is required
+#    by default; pass -allow-anonymous to serve without one (trusted nets).
 ca-coordinator -job job.txt -listen :8080 -token-file /etc/ca/token \
-    -require-token -log /var/lib/ca/checkins.log
+    -log /var/lib/ca/checkins.log
 
-# 3. On every agent, anywhere.  The URL is the whole configuration.
-export CA_COORDINATOR_URL=https://rho.example.com
+# 3. On every agent, anywhere.  The agent speaks plain HTTP to a local TLS
+#    sidecar (see §8a), which dials the public https:// hub.
+export CA_COORDINATOR_URL=http://127.0.0.1:8443
 export CA_COORDINATOR_TOKEN=…
 ca work --node "$(hostname)" --threads "$(nproc)"
 
