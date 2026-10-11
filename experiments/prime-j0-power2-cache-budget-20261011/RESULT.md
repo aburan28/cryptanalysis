@@ -49,3 +49,6 @@ budget, not a demonstrated cache hit rate. The next experiment pairs
 this candidate with the minimum-memory three-image control on the same
 frozen panel in an auditable isolated environment, charging all table
 construction and setup separately from the evaluation interval.
+The [source-pinned Linux correctness replay](remote-dispatch.json) is
+queued on the existing serial RunPod runner; its status and raw outputs
+will be recorded when that queue reaches the job.
