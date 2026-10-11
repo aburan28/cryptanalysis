@@ -1,6 +1,6 @@
 FROM nvidia/cuda:13.3.1-devel-ubuntu24.04
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends \
-    build-essential python3 python3-venv ca-certificates curl \
+    build-essential python3 python3-venv ca-certificates curl openssh-server \
     && rm -rf /var/lib/apt/lists/*
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH" PYTHONUNBUFFERED=1 AWS_EC2_METADATA_DISABLED=true
@@ -22,8 +22,8 @@ COPY codegen/ codegen/
 # ECC_CUDA_ARCHES controls the fat binary contents.
 ARG CUDA_ARCH=120
 ARG ECC_CUDA_ARCHES="80 86 89 90 100 120"
-COPY deploy/build_production.sh deploy/entrypoint.sh deploy/
-RUN chmod +x deploy/build_production.sh deploy/entrypoint.sh \
+COPY deploy/build_production.sh deploy/entrypoint.sh deploy/start.sh deploy/
+RUN chmod +x deploy/build_production.sh deploy/entrypoint.sh deploy/start.sh \
     && deploy/build_production.sh "$ECC_CUDA_ARCHES"
 COPY aws/worker.py aws/rds_gpu.py aws/rds_network.py aws/
 COPY cloud.py build.json ./
@@ -35,5 +35,5 @@ ENV ECC_SUPPORTED_SMS="$ECC_CUDA_ARCHES" \
     CUDA_DEVICE_ORDER=PCI_BUS_ID
 STOPSIGNAL SIGTERM
 # Exec form delivers Pod shutdown directly to the supervisor.
-ENTRYPOINT ["/opt/ecc2k130/deploy/entrypoint.sh"]
+ENTRYPOINT ["/opt/ecc2k130/deploy/start.sh"]
 CMD ["python3", "/opt/ecc2k130/cloud.py", "run", "--seconds", "82800"]
