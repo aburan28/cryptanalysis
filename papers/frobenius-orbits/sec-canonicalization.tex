@@ -1,0 +1,187 @@
+\section{Canonicalization by cyclic zero gaps}
+\label{sec:canonicalization}
+
+Computing $\kappa(P)$ is the inner loop of every phase-aware pipeline:
+each candidate $x$ produced by the decomposition stage has to be
+canonicalized before it can be looked up, and in the probe-heavy
+regimes of Section~\ref{sec:benchmarks} there are $10^6$ to $10^7$
+candidates per target. In a normal basis the problem is exactly the
+classical \emph{necklace} or \emph{least rotation} problem on an
+$n$-bit cyclic word, and the baseline implementation does what the
+definition says: form all $n$ rotations and keep the least. This
+section gives an exact shortcut, proves it, and specifies its behaviour
+on the exceptional words of Remark~\ref{rem:short}.
+
+\subsection{The lemma}
+
+For $w\in\{0,1\}^n$ let $\rot_j(w)$ be the left rotation by $j$ (so
+that $\rot_j(w)$ begins with $w_j$), $\val(w)\in[0,2^n)$ the integer
+with $w_0$ as most significant bit, and $\lead(w)$ the number of
+leading zeros. A \emph{cyclic zero run} of $w$ is a maximal set of
+cyclically consecutive positions holding $0$; its \emph{start} is the
+position after the preceding $1$.
+
+\begin{lemma}[Zero gaps]
+\label{lem:zerogap}
+Let $w\ne0^n,1^n$ and let $Z$ be the length of a longest cyclic zero
+run of $w$. Then every $j$ minimizing $\val(\rot_j(w))$ is the start of
+a cyclic zero run of length $Z$. Consequently
+\[
+  \min_j\val(\rot_j(w))=\min\{\val(\rot_j(w)):\ j\text{ starts a zero run of length }Z\}.
+\]
+\end{lemma}
+\begin{proof}
+If $\lead(u)=z<n$ then $2^{\,n-z-1}\le\val(u)<2^{\,n-z}$, because the
+first one bit of $u$ sits at position $z$. Hence $\lead(u)>\lead(u')$
+implies $\val(u)<\val(u')$. For any $j$, $\lead(\rot_j(w))\le Z$, with
+equality exactly when $j$ starts a zero run of length $Z$; such a $j$
+exists because $w\ne1^n$ has a zero run and $w\ne0^n$ makes runs finite.
+A rotation not starting at such a $j$ has strictly fewer leading
+zeros than one that does, hence a strictly larger value, so it is not
+a minimizer.
+\end{proof}
+
+\begin{corollary}[Uniqueness for prime $n$]
+\label{cor:unique}
+If $n$ is prime and $w\ne0^n,1^n$, the minimizing $j$ is unique.
+\end{corollary}
+\begin{proof}
+$\val(\rot_i(w))=\val(\rot_j(w))$ with $i\ne j$ means
+$\rot_{j-i}(w)=w$, so $w$ has period $\gcd(j-i,n)=1$ and is constant.
+\end{proof}
+
+\subsection{Two implementations}
+\label{sec:canon-impl}
+
+Lemma~\ref{lem:zerogap} leaves the implementation a choice of how to
+find the longest zero runs. The two code bases make different choices,
+both exact, and both are measured in Section~\ref{sec:bench-canon}.
+
+\paragraph{Variant A: bit-parallel run growth (one machine word, $n\le63$).}
+Let $z=\lnot w$ (masked to $n$ bits). The word
+$Z_1=z$ has a one at every zero of $w$; $Z_k=Z_{k-1}\wedge\rot_{k-1}(z)$
+has a one at position $p$ exactly when bits $p,p-1,\dots,p-k+1$ of
+$w$ are all zero. Growing $k$ until $Z_{k+1}=0$ takes $Z$ steps of one
+AND and one rotate, about $\log_2 n$ for a random word, and leaves in
+$Z_Z$ the top position of every longest run. The candidates are then
+rotated and compared one by one; ties take the smallest shift. This is
+\texttt{FrobeniusCanon::least\_rotation} in the sibling
+repository.\art{crypto:src/cryptanalysis/koblitz_fast.rs, least_rotation}
+On $2\times10^6$ uniform $61$-bit words $72.6\%$ have one longest run,
+$17.9\%$ two, so the candidate loop usually runs
+once.\art{crypto:research/canon_laned_keys_20261008/README.md}
+
+\paragraph{Variant B: set-bit scan (two limbs, $n=83$).}
+Algorithm~\ref{alg:zerogap} enumerates the set bits of $w$ with
+count-trailing-zeros, computes each cyclic gap between consecutive
+ones, and keeps a running maximum. It rotates the word at every gap
+that equals or exceeds the running maximum, in scan order, and keeps
+the least rotation, breaking ties by the smaller shift; the wrap-around
+gap between the last and the first one bit is handled last. The two
+constant words are detected first and return phase $0$, the
+convention Remark~\ref{rem:short} requires. This is
+\texttt{canonical\_gap} in the $n=83$ index.\art{experiments/koblitz-n83-index-design-20260929/packed_index_e1_canonical_20261009/native_packed_index.rs, canonical_gap}
+Rotating at running maxima rather than only at the final maxima
+avoids a second pass over the gaps and costs a few extra rotations:
+the expected number of records in a sequence of $t$ gaps is
+$H_t\approx\ln t$, and with ties the measured figure is $4.78$
+rotations per word at $n=83$.
+
+\begin{algorithm}[t]
+\caption{Zero-gap canonicalization, variant B, of an $n$-bit normal-basis word.}
+\label{alg:zerogap}
+\begin{algorithmic}[1]
+\Require $w\in\{0,1\}^n$; $n$ prime
+\Ensure $(\hat w,k)$ with $\hat w=\rot_k(w)=\min_j\rot_j(w)$ and $k$ least
+\If{$w=0^n$ or $w=1^n$} \Return $(w,0)$ \Comment{exceptional: $x\in\FF_2$}
+\EndIf
+\State $(\hat w,k,G)\gets(w,0,0)$ \Comment{best word, best shift, best gap}
+\State $p_{\mathrm{first}}\gets\mathrm{ctz}(w)$;\quad $p\gets p_{\mathrm{first}}$;\quad clear bit $p$ of a copy $w'$ of $w$
+\While{$w'\ne0$}
+  \State $p'\gets\mathrm{ctz}(w')$;\quad $g\gets p'-p-1$;\quad \Call{Consider}{$g$, $p'$};\quad $p\gets p'$;\quad clear bit $p'$ of $w'$
+\EndWhile
+\State \Call{Consider}{$p_{\mathrm{first}}+n-p-1$, $p_{\mathrm{first}}$} \Comment{cyclic wrap-around gap}
+\State \Return $(\hat w,k)$
+\Procedure{Consider}{$g$, $q$} \Comment{$g$ zeros end just below the one bit at $q$}
+  \If{$g=0$ or $g<G$} \Return \EndIf
+  \State $j\gets(n-q)\bmod n$;\quad $u\gets\rot_j(w)$ \Comment{one rotation of the whole word}
+  \If{$g>G$ or $u<\hat w$ or ($u=\hat w$ and $j<k$)} $(\hat w,k,G)\gets(u,j,g)$ \EndIf
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{Variant C: the exhaustive scan, vectorized.}
+On AVX-512 the exhaustive $n-1$ rotate-and-minimum chain on sixteen
+keys at once has no data-dependent branch. Alone it is slower than
+variant~A ($16.6$ against $13.4$~ns a key at $n=53$), but inside the
+decomposition scan it is faster, $39$--$41$ against $61$~ns a summand,
+because variant~A's two data-dependent loop exits (the run-length
+growth and the candidate loop) mispredict on most keys and stop the
+out-of-order core from overlapping consecutive independent
+keys.\art{crypto:src/cryptanalysis/koblitz_fast.rs, canon_many; crypto:research/canon_laned_keys_20261008/README.md}
+A branch-free laned form of variant~A (binary lifting with selects)
+recovers part of this on the portable path
+(Section~\ref{sec:bench-canon}).
+
+\begin{proposition}[Cost]
+\label{prop:cost}
+Let $L=\lceil n/64\rceil$ and $c(w)$ the number of longest zero runs
+of $w$. Variant~A performs $Z(w)\le n$ AND-rotate steps and $c(w)$
+rotate-and-compare steps; variant~B one popcount, one ctz scan over
+the $t\le n$ one bits, and one rotate-and-compare per running-maximum
+gap. The exhaustive scan performs $n-1$ rotate-and-compare steps. For
+$w$ uniform on $\{0,1\}^n$, $\mathbb E[Z(w)]=O(\log n)$,
+$\mathbb E[c(w)]=O(1)$ and the expected number of running maxima is
+$O(\log n)$, so both variants perform $O(L\log n)$ word operations
+against $\Theta(nL)$ for the exhaustive scan, and the number of
+whole-word rotations falls from $n-1$ to $O(1)$ (variant~A) or
+$O(\log n)$ (variant~B).
+\end{proposition}
+
+The measured constants are in Section~\ref{sec:bench-canon}: on
+$8\times10^6$ words at $n=83$ variant~B performed $4.78$ full
+rotations per word against the exhaustive scan's $82$, a $17.1\times$
+reduction in rotations, and returned the identical $(\hat w,k)$ on
+every word.
+
+\subsection{Correctness, including the exceptional words}
+\label{sec:canon-correctness}
+
+\begin{theorem}
+\label{thm:canon}
+For prime $n$, variants A and B return, for every $w\in\{0,1\}^n$,
+the same pair $(\hat w,k)$ as the exhaustive scan that evaluates all
+$n$ rotations and keeps the first minimum.
+\end{theorem}
+\begin{proof}
+For $w\in\{0^n,1^n\}$ all rotations are equal, the exhaustive scan
+keeps $k=0$, and so do both variants. Otherwise
+Lemma~\ref{lem:zerogap} says the minimum is attained among the starts
+of the longest zero runs; variant~A visits exactly those, and
+variant~B visits a superset of them (every running-maximum gap,
+including all gaps equal to the final maximum, since a gap equal to
+the current best is not skipped). Corollary~\ref{cor:unique} says the
+minimum is attained once, so whichever candidates are compared, the
+least word is the same and its shift is unique.
+\end{proof}
+
+Variant~B is checked against the exhaustive scan on every word of
+lengths $3,5,7,11$ and on $10^5$ fixed-seed $83$-bit words; variant~A
+is checked on every word of composite lengths $8,12,16,20$ as well,
+where periodic words make several rotations tie and the smallest shift
+must win,\art{crypto:src/cryptanalysis/koblitz_fast.rs, the_least_rotation_partitions_exactly_as_the_squaring_chain}
+and the end-to-end runs of Section~\ref{sec:bench-canon} compare the
+complete set of canonical keys and shifts produced by the two arms on
+$8\times10^6$ words.\art{experiments/koblitz-n83-index-design-20260929/packed_index_e1_canonical_20261009/README.md}
+
+\begin{remark}[Why not a linear-time least-rotation algorithm]
+Booth's and Duval's algorithms find the least rotation of a string in
+$O(n)$ character comparisons. On an $83$- or $131$-bit word held in two
+or three limbs they are not the right tool: their $O(n)$ is in
+\emph{bit} comparisons with data-dependent branches, whereas a limb
+rotation plus compare is a handful of straight-line instructions, so
+the question is how many whole-word rotations are needed, not how many
+bits are touched. Lemma~\ref{lem:zerogap} reduces that number to the
+number of longest zero runs, and in the measured workload that is
+under five.
+\end{remark}

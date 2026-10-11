@@ -1,0 +1,142 @@
+\section{The signed-Frobenius representation}
+\label{sec:representation}
+
+\subsection{Definition}
+
+Fix a total order $\prec$ on $K=\Fq$; in the implementation it is the
+numeric order of the normal-basis coordinate vector read most
+significant bit first, but nothing in this section depends on the
+choice. Fix also a \emph{sign chooser}: a function
+$\sigma:E_a(K)\setminus\{O,(0,1)\}\to\{0,1\}$ with
+$\sigma(-P)=1-\sigma(P)$.
+
+\begin{definition}[Signed-Frobenius canonical form]
+\label{def:sf}
+Let $P=(x,y)\in G\setminus\{O\}$ under the hypothesis of
+Lemma~\ref{lem:free}. The \emph{phase} of $P$ is the unique
+$k=\kappa(P)\in\{0,\dots,n-1\}$ such that $x^{2^k}$ is the
+$\prec$-least element of $\{x^{2^i}:0\le i<n\}$. Let
+$P'=\tau^{k}(P)$ and $\epsilon=(-1)^{\sigma(P')}$. The \emph{canonical
+representative} of $P$ is $\hat P=\epsilon P'$, and the
+\emph{signed-Frobenius representation} of $P$ is the triple
+\[
+  \can(P)=(\hat P,\ \epsilon,\ k),\qquad\text{so that}\qquad
+  P=\epsilon\,\tau^{-k}(\hat P)=\epsilon\,\tau^{\,n-k}(\hat P).
+\]
+\end{definition}
+
+Uniqueness of $k$ is Lemma~\ref{lem:free}: the $n$ conjugates of $x$
+are distinct, so exactly one of them is $\prec$-least. By construction
+$\hat P$ depends only on the orbit $\Gamma P$: every $P''\in\Gamma P$
+has the same set of conjugate $x$-coordinates, hence the same least
+one, hence the same $P'$ up to sign, and the sign chooser fixes the
+sign. So $\can$ is a section of the orbit map, and the \emph{orbit
+identifier} of $P$ may be taken to be $x(\hat P)$ alone: the
+canonical $x$-coordinate determines $\hat P$ because $\sigma$ decides
+between the two points above it.
+
+\begin{proposition}[Logarithm transport]
+\label{prop:transport}
+With $\can(P)=(\hat P,\epsilon,k)$ and any generator $P_0$ of $G$,
+\[
+  \log_{P_0}P\;=\;\epsilon\,\lambda^{\,n-k}\log_{P_0}\hat P
+  \;=\;\epsilon\,\lambda^{-k}\log_{P_0}\hat P\pmod r .
+\]
+\end{proposition}
+\begin{proof}
+$\tau^{n-k}$ acts on $G$ as $[\lambda^{n-k}]$, and
+$\lambda^n\equiv1$.
+\end{proof}
+
+\subsection{A Frobenius-invariant sign chooser}
+
+The sign chooser can be anything deterministic, since in
+Definition~\ref{def:sf} it is evaluated after the rotation. There is,
+however, a chooser that commutes with $\tau$, which lets an
+implementation decide the sign before, after, or independently of the
+rotation, and store it as one bit next to the canonical $x$.
+
+\begin{lemma}[Trace sign]
+\label{lem:tracesign}
+Let $n$ be odd and $P=(x,y)$ with $x\ne0$. Define
+$\sigma(P)=\Tr_{K/\FF_2}(y/x)$. Then
+$\sigma(-P)=1-\sigma(P)$ and $\sigma(\tau P)=\sigma(P)$.
+\end{lemma}
+\begin{proof}
+$-P=(x,x+y)$ and $\Tr((x+y)/x)=\Tr(1)+\Tr(y/x)=n\bmod 2+\Tr(y/x)
+=1+\Tr(y/x)$. The trace is invariant under squaring,
+$\Tr(z^2)=\Tr(z)$, and $\tau P=(x^2,y^2)$ has $y^2/x^2=(y/x)^2$.
+\end{proof}
+
+Writing $z=y/x$, the curve equation becomes $z^2+z=x+a+x^{-2}$, so
+$\sigma$ is the bit that the curve equation leaves free: it is the
+standard point-compression bit of binary curves, computed in a trace
+form. The cost is one field inversion (or one division) per point,
+which is why the pipelines of Section~\ref{sec:pipeline} compute it
+only for the points that are actually stored, not for every candidate
+root. The decomposition stage works on $x$-coordinates alone: a
+summation-polynomial root is an $x$, and the two points above it are
+$\pm P$, so the sign is not known until a $y$ is recovered. Lemma~\ref{lem:tracesign} says the sign can then be attached to the
+representative without undoing the rotation.
+
+\subsection{Phase-aware relations}
+\label{sec:phase-aware}
+
+A decomposition of $R=[\alpha]P_0+[\beta]Q$ into
+$R=\sum_{i=1}^m\epsilon'_iP_i$ with $P_i\in F$ is first obtained as a
+set of $x$-coordinates $x_i$ (roots of the restricted summation
+polynomial) together with a sign pattern $\epsilon'_i$ fixed by
+checking the point sum. The \emph{phase-aware relation} is obtained by
+canonicalizing each $x_i$:
+\[
+  \can(P_i)=(\hat P_{c(i)},\epsilon_i,k_i),\qquad
+  \alpha+\beta s\;\equiv\;\sum_{i=1}^m \epsilon'_i\epsilon_i\lambda^{-k_i}
+  \,\ell_{c(i)}\pmod r,
+\]
+where $\ell_c=\log_{P_0}\hat P_c$ are the unknowns and $s=\log_{P_0}Q$.
+Two points of the same orbit in one decomposition (possible, and at
+small $n$ common) simply add their coefficients in the same column; a
+point whose column coefficient becomes $0\bmod r$ contributes nothing.
+
+\begin{theorem}[Correctness of phase-aware reconstruction]
+\label{thm:reconstruct}
+Assume the hypothesis of Lemma~\ref{lem:free}. Let $\mathcal R$ be a
+set of phase-aware relations whose coefficient matrix over $\ZZ/r\ZZ$
+has full column rank on the columns it touches, and let
+$(\ell_c)$ be the solution. Then for every $P\in F$ with
+$\can(P)=(\hat P_c,\epsilon,k)$,
+$\log_{P_0}P=\epsilon\lambda^{-k}\ell_c$, and $s$ is the value
+obtained from any relation with $\beta\ne0$. If moreover each relation
+was verified as a point identity before being admitted, then every
+recovered logarithm satisfies $[\log_{P_0}P]P_0=P$.
+\end{theorem}
+\begin{proof}
+Each admitted relation is a true identity in $G$ by construction, and
+Proposition~\ref{prop:transport} shows that substituting the true
+logarithms $\ell_c^\ast=\log_{P_0}\hat P_c$ satisfies it. Full column
+rank makes the solution unique, so $\ell_c=\ell_c^\ast$, and
+transport gives the remaining logarithms. Verification as a point
+identity is exactly the statement $[\log]P_0=P$.
+\end{proof}
+
+The theorem is elementary, and that is the point: once the three
+pieces of $\can(P)$ are carried through, there is nothing left to
+prove about the linear algebra. The engineering content is in making
+$\can$ cheap and in not losing $k$ between the decomposition stage
+(which sees only $x$), the table (which stores only $\hat x$) and the
+matrix (which needs $\lambda^{-k}$). Section~\ref{sec:pipeline}
+describes where each piece lives, and Section~\ref{sec:benchmarks}
+reports complete runs in which every logarithm was checked.
+
+\begin{remark}[Composite $n$ and the general case]
+If $n$ is composite or the hypothesis of Lemma~\ref{lem:free} fails,
+the phase is only defined modulo the length $d\mid n$ of the
+$x$-orbit, and $\lambda^d\equiv1$ need not hold on the points in
+question (they are outside $G$). The representation remains correct if
+$\kappa$ returns the \emph{least} $k$ achieving the minimum and the
+pipeline rejects points outside $G$ at verification time, which it
+must do anyway: a relation involving a point of the wrong order is not
+an identity in $G$ and fails the point check. We implement the general
+rule (least shift) and test the prime case, which is the only one
+used.
+\end{remark}
