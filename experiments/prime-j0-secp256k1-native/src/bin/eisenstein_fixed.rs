@@ -1003,6 +1003,99 @@ fn short_representative_choices(scalar: &BigInt, count: usize) -> Vec<(BigInt, B
     choices.into_iter().map(|(_, _, a, b)| (a, b)).collect()
 }
 
+// Nearby lattice representatives occupy at most 130 bits per coordinate.
+// Keep each tau recoding in three stack limbs instead of repeated BigInt division.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct Signed192 {
+    negative: bool,
+    limbs: [u64; 3],
+}
+
+impl Signed192 {
+    fn from_bigint(value: &BigInt) -> Self {
+        let (sign, bytes) = value.to_bytes_le();
+        assert!(bytes.len() <= 24, "scalar representative exceeds 192 bits");
+        let mut limbs = [0u64; 3];
+        for (index, chunk) in bytes.chunks(8).enumerate() {
+            let mut word = [0u8; 8];
+            word[..chunk.len()].copy_from_slice(chunk);
+            limbs[index] = u64::from_le_bytes(word);
+        }
+        Self { negative: sign == Sign::Minus && limbs != [0; 3], limbs }
+    }
+
+    fn from_i8(value: i8) -> Self {
+        Self { negative: value < 0, limbs: [u64::from(value.unsigned_abs()), 0, 0] }
+    }
+
+    fn is_zero(self) -> bool { self.limbs == [0; 3] }
+
+    fn neg(mut self) -> Self {
+        if !self.is_zero() { self.negative = !self.negative; }
+        self
+    }
+
+    fn magnitude_less(self, rhs: Self) -> bool {
+        for index in (0..3).rev() {
+            if self.limbs[index] != rhs.limbs[index] {
+                return self.limbs[index] < rhs.limbs[index];
+            }
+        }
+        false
+    }
+
+    fn add(self, rhs: Self) -> Self {
+        let mut limbs = [0u64; 3];
+        let negative;
+        if self.negative == rhs.negative {
+            let mut carry = 0u128;
+            for (index, word) in limbs.iter_mut().enumerate() {
+                let sum = u128::from(self.limbs[index]) + u128::from(rhs.limbs[index]) + carry;
+                *word = sum as u64;
+                carry = sum >> 64;
+            }
+            assert_eq!(carry, 0, "scalar recoding addition overflow");
+            negative = self.negative;
+        } else {
+            let (larger, smaller) = if self.magnitude_less(rhs) { (rhs, self) } else { (self, rhs) };
+            let mut borrow = 0u128;
+            for (index, word) in limbs.iter_mut().enumerate() {
+                let left = u128::from(larger.limbs[index]);
+                let right = u128::from(smaller.limbs[index]) + borrow;
+                *word = if left >= right { (left - right) as u64 }
+                        else { ((1u128 << 64) + left - right) as u64 };
+                borrow = u128::from(left < right);
+            }
+            assert_eq!(borrow, 0);
+            negative = larger.negative;
+        }
+        Self { negative: negative && limbs != [0; 3], limbs }
+    }
+
+    fn sub(self, rhs: Self) -> Self { self.add(rhs.neg()) }
+
+    fn rem_euclid_small(self, divisor: u8) -> u8 {
+        let mut rem = 0u128;
+        for &word in self.limbs.iter().rev() {
+            rem = ((rem << 64) | u128::from(word)) % u128::from(divisor);
+        }
+        let rem = rem as u8;
+        if self.negative && rem != 0 { divisor - rem } else { rem }
+    }
+
+    fn div_exact_small(self, divisor: u8) -> Self {
+        let mut rem = 0u128;
+        let mut limbs = [0u64; 3];
+        for index in (0..3).rev() {
+            let value = (rem << 64) | u128::from(self.limbs[index]);
+            limbs[index] = (value / u128::from(divisor)) as u64;
+            rem = value % u128::from(divisor);
+        }
+        assert_eq!(rem, 0, "scalar recoding quotient is not integral");
+        Self { negative: self.negative && limbs != [0; 3], limbs }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 struct Unit {
     sign: i8,
@@ -1929,6 +2022,68 @@ fn recode_tau_width_six(
     (digits, None)
 }
 
+#[derive(Clone, Copy)]
+struct PackedTauSixStream {
+    codes: [u16; 162],
+    len: usize,
+}
+
+impl PackedTauSixStream {
+    fn digits(self) -> Vec<Option<WidthSixDigit>> {
+        self.codes[..self.len].iter().map(|&code| {
+            (code != u16::MAX).then(|| unpack_width_six_digit(code))
+        }).collect()
+    }
+
+    fn cover_score(self, table: &SparseComb13) -> Option<usize> {
+        let mut nonzero = 0usize;
+        let mut max_column = 0usize;
+        let mut top_count = 0usize;
+        let mut repairs = 0usize;
+        for (index, &code) in self.codes[..self.len].iter().enumerate() {
+            if code == u16::MAX { continue; }
+            nonzero += 1;
+            max_column = max_column.max(index % 13);
+            if index >= 156 {
+                top_count += 1;
+                repairs += usize::from(table.top_slots[unpack_width_six_digit(code).orbit] == u8::MAX);
+            }
+        }
+        (top_count <= 1).then_some(5 * max_column + 11 * (nonzero.saturating_sub(1) + repairs))
+    }
+}
+
+fn recode_tau_width_six_packed(a: &BigInt, b: &BigInt) -> Option<PackedTauSixStream> {
+    let mut a = Signed192::from_bigint(a);
+    let mut b = Signed192::from_bigint(b);
+    let mut stream = PackedTauSixStream { codes: [u16::MAX; 162], len: 0 };
+    while !a.is_zero() || !b.is_zero() {
+        if a.rem_euclid_small(3) != 0 {
+            let slot = usize::from(a.rem_euclid_small(27)) * 27
+                + usize::from(b.rem_euclid_small(27));
+            let digit = WIDTH_SIX_DIGITS[slot].expect("nonzero width-six residue");
+            if stream.len >= 162 { return None; }
+            stream.codes[stream.len] = pack_width_six_digit(digit);
+            let (da, db) = digit.coefficients();
+            if a == Signed192::from_i8(da) && b == Signed192::from_i8(db) {
+                stream.len += 1;
+                return Some(stream);
+            }
+            if stream.len + 6 > 162 { return None; }
+            a = a.sub(Signed192::from_i8(da)).div_exact_small(27).neg();
+            b = b.sub(Signed192::from_i8(db)).div_exact_small(27).neg();
+            stream.len += 6;
+        } else {
+            if stream.len >= 162 { return None; }
+            let next_a = a.add(b);
+            b = a.div_exact_small(3).neg();
+            a = next_a;
+            stream.len += 1;
+        }
+    }
+    Some(stream)
+}
+
 fn width_two_unit(a: &BigInt, b: &BigInt) -> Option<Unit> {
     let residue = (mod_three(a), mod_three(b));
     match residue {
@@ -2394,6 +2549,28 @@ fn scalar_multiply_width_six_comb13_cover(
     evaluate_width_six_comb13_sparse(a, b, digits, true)
 }
 
+fn scalar_multiply_width_six_comb13_cover25(
+    scalar: &BigInt,
+) -> (Jacobian, BigInt, BigInt, usize, [usize; 81], bool, usize, usize) {
+    let lattice = &*SCALAR_LATTICE;
+    let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
+    let table = &*WIDTH_SIX_COMB13_POINTS;
+    let mut best: Option<(usize, usize, BigInt, BigInt, PackedTauSixStream)> = None;
+    let mut valid = 0;
+    for (rank, (a, b)) in short_representative_choices(&residue, 25).into_iter().enumerate() {
+        let Some(stream) = recode_tau_width_six_packed(&a, &b) else { continue; };
+        let Some(cost) = stream.cover_score(table) else { continue; };
+        valid += 1;
+        if best.as_ref().is_none_or(|entry| cost < entry.0) {
+            best = Some((cost, rank, a, b, stream));
+        }
+    }
+    let (_, rank, a, b, stream) = best.expect("nearest lattice representative is valid");
+    let (point, a, b, tau_steps, orbit_counts, repaired) =
+        evaluate_width_six_comb13_sparse(a, b, stream.digits(), true);
+    (point, a, b, tau_steps, orbit_counts, repaired, rank, valid)
+}
+
 fn scalar_multiply_width_six_comb13_coset3(
     scalar: &BigInt,
 ) -> (Jacobian, BigInt, BigInt, usize, [usize; 81], bool, usize, usize) {
@@ -2499,6 +2676,7 @@ fn check_generator_case(
     glv_rows: usize,
     coset_three: bool,
     cover_top: bool,
+    cover_twentyfive: bool,
 ) {
     let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("read fixture"))
         .expect("parse fixture");
@@ -2545,7 +2723,9 @@ fn check_generator_case(
     }
     let scalar = scalar_from_hex(scalar_hex);
     let start = Instant::now();
-    let point = if cover_top {
+    let point = if cover_twentyfive {
+        scalar_multiply_width_six_comb13_cover25(&scalar).0
+    } else if cover_top {
         scalar_multiply_width_six_comb13_cover(&scalar).0
     } else if coset_three {
         scalar_multiply_width_six_comb13_coset3(&scalar).0
@@ -2567,7 +2747,9 @@ fn check_generator_case(
     let actual = point.affine_hex();
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if cover_top {
+    let mode = if cover_twentyfive {
+        "eisenstein_w6_comb13_cover25_fixed"
+    } else if cover_top {
         "eisenstein_w6_comb13_cover_fixed"
     } else if coset_three {
         "eisenstein_w6_comb13_coset3_fixed"
@@ -2630,6 +2812,8 @@ fn main() {
             || args[0] == "--check-scalar-w6-comb13-coset3-fixed-case"
             || args[0] == "--benchmark-scalar-w6-comb13-cover-fixed-case"
             || args[0] == "--check-scalar-w6-comb13-cover-fixed-case"
+            || args[0] == "--benchmark-scalar-w6-comb13-cover25-fixed-case"
+            || args[0] == "--check-scalar-w6-comb13-cover25-fixed-case"
             || args[0] == "--benchmark-scalar-glv-comb8-fixed-case"
             || args[0] == "--check-scalar-glv-comb8-fixed-case"
             || args[0] == "--benchmark-scalar-glv-comb10-fixed-case"
@@ -2664,7 +2848,8 @@ fn main() {
                 0
             },
             args[0].contains("w6-comb13-coset3"),
-            args[0].contains("w6-comb13-cover"),
+            args[0].contains("w6-comb13-cover-fixed"),
+            args[0].contains("w6-comb13-cover25"),
         );
         return;
     }
@@ -2684,9 +2869,10 @@ fn main() {
             || args == ["--scalar-w6-comb13-sparse-fixed"]
             || args == ["--scalar-w6-comb13-coset3-fixed"]
             || args == ["--scalar-w6-comb13-cover-fixed"]
+            || args == ["--scalar-w6-comb13-cover25-fixed"]
             || args == ["--scalar-glv-comb8-fixed"]
             || args == ["--scalar-glv-comb10-fixed"],
-        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2|--scalar-w3|--scalar-w3-fixed|--scalar-w4-redundant|--scalar-w4-coalescent|--scalar-w6-fixed|--scalar-w6-comb4-fixed|--scalar-w6-comb8-fixed|--scalar-w6-comb12-fixed|--scalar-w6-comb13-sparse-fixed|--scalar-w6-comb13-coset3-fixed|--scalar-w6-comb13-cover-fixed|--scalar-glv-comb8-fixed|--scalar-glv-comb10-fixed]"
+        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2|--scalar-w3|--scalar-w3-fixed|--scalar-w4-redundant|--scalar-w4-coalescent|--scalar-w6-fixed|--scalar-w6-comb4-fixed|--scalar-w6-comb8-fixed|--scalar-w6-comb12-fixed|--scalar-w6-comb13-sparse-fixed|--scalar-w6-comb13-coset3-fixed|--scalar-w6-comb13-cover-fixed|--scalar-w6-comb13-cover25-fixed|--scalar-glv-comb8-fixed|--scalar-glv-comb10-fixed]"
     );
     let tau_mode = args == ["--tau"];
     let scalar_mode = args == ["--scalar"]
@@ -2702,6 +2888,7 @@ fn main() {
         || args == ["--scalar-w6-comb13-sparse-fixed"]
         || args == ["--scalar-w6-comb13-coset3-fixed"]
         || args == ["--scalar-w6-comb13-cover-fixed"]
+        || args == ["--scalar-w6-comb13-cover25-fixed"]
         || args == ["--scalar-glv-comb8-fixed"]
         || args == ["--scalar-glv-comb10-fixed"];
     let width_two = args == ["--scalar-w2"];
@@ -2716,7 +2903,7 @@ fn main() {
         8
     } else if args == ["--scalar-w6-comb12-fixed"] {
         12
-    } else if args == ["--scalar-w6-comb13-sparse-fixed"] || args == ["--scalar-w6-comb13-coset3-fixed"] || args == ["--scalar-w6-comb13-cover-fixed"] {
+    } else if args == ["--scalar-w6-comb13-sparse-fixed"] || args == ["--scalar-w6-comb13-coset3-fixed"] || args == ["--scalar-w6-comb13-cover-fixed"] || args == ["--scalar-w6-comb13-cover25-fixed"] {
         13
     } else {
         0
@@ -2763,7 +2950,14 @@ fn main() {
                 orbit_counts,
                 alternate_uses,
                 recoding_work,
-            ) = if args == ["--scalar-w6-comb13-cover-fixed"] {
+            ) = if args == ["--scalar-w6-comb13-cover25-fixed"] {
+                let (point, a, b, tau_steps, orbit_counts, repaired, rank, valid) =
+                    scalar_multiply_width_six_comb13_cover25(&scalar);
+                (point, a, b, tau_steps, orbit_counts.iter().sum(),
+                 Some(json!(orbit_counts.to_vec())), None,
+                 Some(json!({"top_repaired": repaired, "coset_rank": rank,
+                             "valid_representatives": valid, "attempted_representatives": 25})))
+            } else if args == ["--scalar-w6-comb13-cover-fixed"] {
                 let (point, a, b, tau_steps, orbit_counts, repaired) =
                     scalar_multiply_width_six_comb13_cover(&scalar);
                 (
@@ -2877,7 +3071,7 @@ fn main() {
                     "orbit_counts": orbit_counts,
                     "alternate_uses": alternate_uses,
                     "recoding_work": recoding_work,
-                    "radix": if args == ["--scalar-w6-comb13-cover-fixed"] { "orbit-w6-comb13-cover-fixed" } else if args == ["--scalar-w6-comb13-coset3-fixed"] { "orbit-w6-comb13-coset3-fixed" } else if comb_rows == 4 { "orbit-w6-comb4-fixed" } else if comb_rows == 8 { "orbit-w6-comb8-fixed" } else if comb_rows == 12 { "orbit-w6-comb12-fixed" } else if comb_rows == 13 { "orbit-w6-comb13-sparse-fixed" } else if width_six { "orbit-w6-fixed" } else if coalescent_four { "orbit-w4-coalescent" } else if redundant_four { "orbit-w4-redundant" } else if affine_fixed { "orbit-w3-fixed" } else if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
+                    "radix": if args == ["--scalar-w6-comb13-cover25-fixed"] { "orbit-w6-comb13-cover25-fixed" } else if args == ["--scalar-w6-comb13-cover-fixed"] { "orbit-w6-comb13-cover-fixed" } else if args == ["--scalar-w6-comb13-coset3-fixed"] { "orbit-w6-comb13-coset3-fixed" } else if comb_rows == 4 { "orbit-w6-comb4-fixed" } else if comb_rows == 8 { "orbit-w6-comb8-fixed" } else if comb_rows == 12 { "orbit-w6-comb12-fixed" } else if comb_rows == 13 { "orbit-w6-comb13-sparse-fixed" } else if width_six { "orbit-w6-fixed" } else if coalescent_four { "orbit-w4-coalescent" } else if redundant_four { "orbit-w4-redundant" } else if affine_fixed { "orbit-w3-fixed" } else if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
                 })
             );
             continue;
@@ -3442,6 +3636,50 @@ mod eisenstein_tau_tests {
         assert!(same_point(original.0, covered.0));
         assert!(same_point(covered.0, scalar_multiply(&scalar).0));
         assert!(covered.3 <= 12);
+    }
+
+    #[test]
+    fn fixed_width_tau_recode_matches_bigint_for_nearby_cosets() {
+        for value in -100i64..=100 {
+            let fixed = Signed192::from_bigint(&BigInt::from(value));
+            assert_eq!(fixed.rem_euclid_small(3), value.rem_euclid(3) as u8);
+            assert_eq!(fixed.rem_euclid_small(27), value.rem_euclid(27) as u8);
+            for offset in [-37i64, 0, 43] {
+                assert_eq!(fixed.add(Signed192::from_bigint(&BigInt::from(offset))),
+                           Signed192::from_bigint(&BigInt::from(value + offset)));
+            }
+            if value % 27 == 0 {
+                assert_eq!(fixed.div_exact_small(27),
+                           Signed192::from_bigint(&BigInt::from(value / 27)));
+            }
+        }
+        let n = SCALAR_LATTICE.n.clone();
+        let miss = scalar_from_hex("291a4b1cec292deb928a94385017b681693459cc424b1a9be19f9511ff968bc7");
+        for scalar in [BigInt::ZERO, BigInt::from(1), n.clone() - 1,
+                       BigInt::from(1) << 255, miss] {
+            let residue = ((&scalar % &n) + &n) % &n;
+            for (a, b) in short_representative_choices(&residue, 25) {
+                let (mut original, terminal) = recode_tau_width_six(a.clone(), b.clone());
+                if let Some(digit) = terminal { original.push(Some(digit)); }
+                let packed = recode_tau_width_six_packed(&a, &b);
+                if original.len() > 162 {
+                    assert!(packed.is_none());
+                } else {
+                    let packed = packed.expect("fitting stream");
+                    let codes: Vec<_> = original.iter().map(|digit| {
+                        digit.map_or(u16::MAX, pack_width_six_digit)
+                    }).collect();
+                    assert_eq!(&packed.codes[..packed.len], codes);
+                }
+            }
+            let chosen = scalar_multiply_width_six_comb13_cover25(&scalar);
+            let nearest = scalar_multiply_width_six_comb13_cover(&scalar);
+            assert!(same_point(chosen.0, nearest.0));
+            assert!(chosen.6 < 25 && (1..=25).contains(&chosen.7));
+            let chosen_cost = 5 * chosen.3 + 11 * chosen.4.iter().sum::<usize>();
+            let nearest_cost = 5 * nearest.3 + 11 * nearest.4.iter().sum::<usize>();
+            assert!(chosen_cost <= nearest_cost);
+        }
     }
 
     #[test]
