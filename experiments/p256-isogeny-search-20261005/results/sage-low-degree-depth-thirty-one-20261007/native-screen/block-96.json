@@ -1,0 +1,628 @@
+{
+  "backend": {
+    "field": "suite P256FieldElement fixed-limb Montgomery arithmetic",
+    "partition": "affine x mod 16 after 64-way batch normalization",
+    "point_addition": "Renes-Costello-Batina Algorithm 1 with dynamic a and 3b",
+    "scalar_tracking": "U256 modular addition modulo the P-256 group order",
+    "table_size": 16,
+    "walks": 64
+  },
+  "baseline_candidate_id": "p256-root",
+  "benchmark": "native matched P-256-field batch-normalized r-adding walk",
+  "benchmark_design": {
+    "candidate_order": "rotating Latin-square positions; reversed on alternate full blocks",
+    "comparison": "paired per-trial log2 iteration-rate ratio",
+    "comparison_ci": "two-sided Student-t interval",
+    "execution_order_by_trial": [
+      [
+        "p256-root",
+        "p256-j-fada5c524612d7b5fcc125af200ce34983db339401ea1d8f0dacb10e08ece770",
+        "p256-j-fe8c031b815a3a0fbcf6fd1565cfb0adbaadd11185bdb13b8974851886ea36f0",
+        "p256-j-dcd4dd7687b352ff5e89564bce66501135c7e1db6a872d497798fa76071a06b4",
+        "p256-j-ae5503502676454e37b8d9488846b69a44e14598bddda7db94fc1900a1e4dc9a",
+        "p256-j-f35efc051df801ae8252a3cac8171a38a64385891a76b449971b2c1513352234",
+        "p256-j-032a26e41924eeac724a711a9322b6ce03f83a9665b88eb6bb18716406ed1f53"
+      ],
+      [
+        "p256-j-fada5c524612d7b5fcc125af200ce34983db339401ea1d8f0dacb10e08ece770",
+        "p256-j-fe8c031b815a3a0fbcf6fd1565cfb0adbaadd11185bdb13b8974851886ea36f0",
+        "p256-j-dcd4dd7687b352ff5e89564bce66501135c7e1db6a872d497798fa76071a06b4",
+        "p256-j-ae5503502676454e37b8d9488846b69a44e14598bddda7db94fc1900a1e4dc9a",
+        "p256-j-f35efc051df801ae8252a3cac8171a38a64385891a76b449971b2c1513352234",
+        "p256-j-032a26e41924eeac724a711a9322b6ce03f83a9665b88eb6bb18716406ed1f53",
+        "p256-root"
+      ],
+      [
+        "p256-j-fe8c031b815a3a0fbcf6fd1565cfb0adbaadd11185bdb13b8974851886ea36f0",
+        "p256-j-dcd4dd7687b352ff5e89564bce66501135c7e1db6a872d497798fa76071a06b4",
+        "p256-j-ae5503502676454e37b8d9488846b69a44e14598bddda7db94fc1900a1e4dc9a",
+        "p256-j-f35efc051df801ae8252a3cac8171a38a64385891a76b449971b2c1513352234",
+        "p256-j-032a26e41924eeac724a711a9322b6ce03f83a9665b88eb6bb18716406ed1f53",
+        "p256-root",
+        "p256-j-fada5c524612d7b5fcc125af200ce34983db339401ea1d8f0dacb10e08ece770"
+      ],
+      [
+        "p256-j-dcd4dd7687b352ff5e89564bce66501135c7e1db6a872d497798fa76071a06b4",
+        "p256-j-ae5503502676454e37b8d9488846b69a44e14598bddda7db94fc1900a1e4dc9a",
+        "p256-j-f35efc051df801ae8252a3cac8171a38a64385891a76b449971b2c1513352234",
+        "p256-j-032a26e41924eeac724a711a9322b6ce03f83a9665b88eb6bb18716406ed1f53",
+        "p256-root",
+        "p256-j-fada5c524612d7b5fcc125af200ce34983db339401ea1d8f0dacb10e08ece770",
+        "p256-j-fe8c031b815a3a0fbcf6fd1565cfb0adbaadd11185bdb13b8974851886ea36f0"
+      ],
+      [
+        "p256-j-ae5503502676454e37b8d9488846b69a44e14598bddda7db94fc1900a1e4dc9a",
+        "p256-j-f35efc051df801ae8252a3cac8171a38a64385891a76b449971b2c1513352234",
+        "p256-j-032a26e41924eeac724a711a9322b6ce03f83a9665b88eb6bb18716406ed1f53",
+        "p256-root",
+        "p256-j-fada5c524612d7b5fcc125af200ce34983db339401ea1d8f0dacb10e08ece770",
+        "p256-j-fe8c031b815a3a0fbcf6fd1565cfb0adbaadd11185bdb13b8974851886ea36f0",
+        "p256-j-dcd4dd7687b352ff5e89564bce66501135c7e1db6a872d497798fa76071a06b4"
+      ],
+      [
+        "p256-j-f35efc051df801ae8252a3cac8171a38a64385891a76b449971b2c1513352234",
+        "p256-j-032a26e41924eeac724a711a9322b6ce03f83a9665b88eb6bb18716406ed1f53",
+        "p256-root",
+        "p256-j-fada5c524612d7b5fcc125af200ce34983db339401ea1d8f0dacb10e08ece770",
+        "p256-j-fe8c031b815a3a0fbcf6fd1565cfb0adbaadd11185bdb13b8974851886ea36f0",
+        "p256-j-dcd4dd7687b352ff5e89564bce66501135c7e1db6a872d497798fa76071a06b4",
+        "p256-j-ae5503502676454e37b8d9488846b69a44e14598bddda7db94fc1900a1e4dc9a"
+      ],
+      [
+        "p256-j-032a26e41924eeac724a711a9322b6ce03f83a9665b88eb6bb18716406ed1f53",
+        "p256-root",
+        "p256-j-fada5c524612d7b5fcc125af200ce34983db339401ea1d8f0dacb10e08ece770",
+        "p256-j-fe8c031b815a3a0fbcf6fd1565cfb0adbaadd11185bdb13b8974851886ea36f0",
+        "p256-j-dcd4dd7687b352ff5e89564bce66501135c7e1db6a872d497798fa76071a06b4",
+        "p256-j-ae5503502676454e37b8d9488846b69a44e14598bddda7db94fc1900a1e4dc9a",
+        "p256-j-f35efc051df801ae8252a3cac8171a38a64385891a76b449971b2c1513352234"
+      ]
+    ],
+    "host_cpu_isolation": "unverified; wall-time results are exploratory",
+    "seconds_per_trial": 0.5,
+    "trials_per_candidate": 7,
+    "warmup_seconds_per_candidate": 0.05
+  },
+  "elapsed_wall_seconds": 27.274873873,
+  "inputs": [
+    "experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-thirty-one-20261007/candidates-delta.json"
+  ],
+  "results": [
+    {
+      "candidate_id": "p256-root",
+      "checksum_low_64_by_trial": [
+        8251761346192312119,
+        10266573784095203422,
+        10318982369878671442,
+        6257922782564348263,
+        14705817131831069779,
+        7213766775757486124,
+        11925112755690427344
+      ],
+      "iterations_by_trial": [
+        339968,
+        290304,
+        342016,
+        297472,
+        346112,
+        323584,
+        335360
+      ],
+      "iterations_per_second": 649474.6951535075,
+      "linear_relation_verified_every_trial": true,
+      "paired_log2_speedup_95_percent_ci": [
+        0.0,
+        0.0
+      ],
+      "paired_log2_speedup_mean": 0.0,
+      "paired_relative_iteration_speed": 1.0,
+      "paired_relative_iteration_speed_95_percent_ci": [
+        1.0,
+        1.0
+      ],
+      "paired_speedup_significant_at_95_percent": false,
+      "path_degree_product": 1,
+      "path_degrees": [],
+      "rate_95_percent_ci": [
+        607994.5587168366,
+        690954.8315901784
+      ],
+      "rate_trials": [
+        679932.7145651233,
+        580601.3381802458,
+        683859.017861432,
+        594830.7894248335,
+        692145.0124111836,
+        645342.8362278378,
+        669611.157403897
+      ]
+    },
+    {
+      "candidate_id": "p256-j-fada5c524612d7b5fcc125af200ce34983db339401ea1d8f0dacb10e08ece770",
+      "checksum_low_64_by_trial": [
+        5509863331752125906,
+        5636919160489647753,
+        14834382694936183906,
+        9769193133335722780,
+        14423501267785870796,
+        1712994849408786198,
+        9829718296121838794
+      ],
+      "iterations_by_trial": [
+        349696,
+        356352,
+        325120,
+        304640,
+        324096,
+        312320,
+        318464
+      ],
+      "iterations_per_second": 653858.1530381882,
+      "linear_relation_verified_every_trial": true,
+      "paired_log2_speedup_95_percent_ci": [
+        -0.11497435980967662,
+        0.13635089739444134
+      ],
+      "paired_log2_speedup_mean": 0.010688268792382365,
+      "paired_relative_iteration_speed": 1.0074360545332317,
+      "paired_relative_iteration_speed_95_percent_ci": [
+        0.9233987216186721,
+        1.0991215172946822
+      ],
+      "paired_speedup_significant_at_95_percent": false,
+      "path_degree_product": 9496646911311586163,
+      "path_degrees": [
+        3,
+        5,
+        11,
+        11,
+        11,
+        11,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13
+      ],
+      "rate_95_percent_ci": [
+        618653.1747891775,
+        689063.131287199
+      ],
+      "rate_trials": [
+        699027.8288700492,
+        711830.1416578377,
+        649937.499589566,
+        608857.5101205823,
+        647510.0527725806,
+        623763.5099712748,
+        636080.5282854274
+      ]
+    },
+    {
+      "candidate_id": "p256-j-fe8c031b815a3a0fbcf6fd1565cfb0adbaadd11185bdb13b8974851886ea36f0",
+      "checksum_low_64_by_trial": [
+        12418818910865228366,
+        7229133591841305671,
+        12755167120823147758,
+        9614446098684745667,
+        15458419590585191246,
+        4474124562550893186,
+        3654451263701930270
+      ],
+      "iterations_by_trial": [
+        353280,
+        359424,
+        284672,
+        297472,
+        358400,
+        308224,
+        337408
+      ],
+      "iterations_per_second": 656316.7161897753,
+      "linear_relation_verified_every_trial": true,
+      "paired_log2_speedup_95_percent_ci": [
+        -0.1449933358753874,
+        0.169895663533128
+      ],
+      "paired_log2_speedup_mean": 0.012451163828870283,
+      "paired_relative_iteration_speed": 1.0086678391461383,
+      "paired_relative_iteration_speed_95_percent_ci": [
+        0.9043835550973089,
+        1.1249771228074463
+      ],
+      "paired_speedup_significant_at_95_percent": false,
+      "path_degree_product": 9496646911311586163,
+      "path_degrees": [
+        3,
+        5,
+        11,
+        11,
+        11,
+        11,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13
+      ],
+      "rate_95_percent_ci": [
+        598643.2555860974,
+        713990.1767934532
+      ],
+      "rate_trials": [
+        705776.6472068387,
+        718236.9699531299,
+        568696.3265398083,
+        594908.1389373848,
+        716487.7775541508,
+        615431.1686219923,
+        674679.9845151218
+      ]
+    },
+    {
+      "candidate_id": "p256-j-dcd4dd7687b352ff5e89564bce66501135c7e1db6a872d497798fa76071a06b4",
+      "checksum_low_64_by_trial": [
+        5985851561548629248,
+        1832849387792952895,
+        10334990078072461680,
+        1757278320252617353,
+        11926400585643023109,
+        13876968459866443446,
+        11819543007628638261
+      ],
+      "iterations_by_trial": [
+        364032,
+        364032,
+        305664,
+        350720,
+        317952,
+        322560,
+        337920
+      ],
+      "iterations_per_second": 674523.345594614,
+      "linear_relation_verified_every_trial": true,
+      "paired_log2_speedup_95_percent_ci": [
+        -0.11067976783059746,
+        0.22012911745114105
+      ],
+      "paired_log2_speedup_mean": 0.0547246748102718,
+      "paired_relative_iteration_speed": 1.0386608654297829,
+      "paired_relative_iteration_speed_95_percent_ci": [
+        0.9261515757497989,
+        1.1648378317576704
+      ],
+      "paired_speedup_significant_at_95_percent": false,
+      "path_degree_product": 7869356518148319717,
+      "path_degrees": [
+        3,
+        5,
+        11,
+        11,
+        11,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13
+      ],
+      "rate_95_percent_ci": [
+        631813.1658598351,
+        717233.525329393
+      ],
+      "rate_trials": [
+        727719.3986668328,
+        727208.2751152568,
+        610783.0154172676,
+        700695.8693950529,
+        635131.9450399844,
+        644462.3107447894,
+        675662.6047831142
+      ]
+    },
+    {
+      "candidate_id": "p256-j-ae5503502676454e37b8d9488846b69a44e14598bddda7db94fc1900a1e4dc9a",
+      "checksum_low_64_by_trial": [
+        18226135664069523844,
+        8101999221247350530,
+        11180860661889591202,
+        3099505389800621501,
+        13485335972210604811,
+        3199703472935493191,
+        17309972569445011919
+      ],
+      "iterations_by_trial": [
+        362496,
+        350720,
+        303616,
+        266240,
+        290816,
+        327680,
+        289280
+      ],
+      "iterations_per_second": 625336.4873046965,
+      "linear_relation_verified_every_trial": true,
+      "paired_log2_speedup_95_percent_ci": [
+        -0.2372562517779612,
+        0.11856535069138643
+      ],
+      "paired_log2_speedup_mean": -0.059345450543287374,
+      "paired_relative_iteration_speed": 0.9596994353466746,
+      "paired_relative_iteration_speed_95_percent_ci": [
+        0.8483572029488613,
+        1.085654725395483
+      ],
+      "paired_speedup_significant_at_95_percent": false,
+      "path_degree_product": 7869356518148319717,
+      "path_degrees": [
+        3,
+        5,
+        11,
+        11,
+        11,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13
+      ],
+      "rate_95_percent_ci": [
+        560422.0568721609,
+        690250.917737232
+      ],
+      "rate_trials": [
+        724351.0102014566,
+        700739.9481784507,
+        606153.7676166259,
+        532137.708804464,
+        581560.2854749569,
+        654709.6036232455,
+        577703.0872336754
+      ]
+    },
+    {
+      "candidate_id": "p256-j-f35efc051df801ae8252a3cac8171a38a64385891a76b449971b2c1513352234",
+      "checksum_low_64_by_trial": [
+        5472172223726051482,
+        16221031245275070277,
+        4255025997847587891,
+        9694369973781977042,
+        10221717278884157468,
+        8824490210875745719,
+        15609774828003594001
+      ],
+      "iterations_by_trial": [
+        349696,
+        345600,
+        299008,
+        295936,
+        310272,
+        352768,
+        278528
+      ],
+      "iterations_per_second": 637285.5345139133,
+      "linear_relation_verified_every_trial": true,
+      "paired_log2_speedup_95_percent_ci": [
+        -0.20248167166792494,
+        0.14280445079956436
+      ],
+      "paired_log2_speedup_mean": -0.029838610434180297,
+      "paired_relative_iteration_speed": 0.9795298682541287,
+      "paired_relative_iteration_speed_95_percent_ci": [
+        0.8690543610263446,
+        1.1040491893611992
+      ],
+      "paired_speedup_significant_at_95_percent": false,
+      "path_degree_product": 12654102080304296323,
+      "path_degrees": [
+        3,
+        5,
+        11,
+        11,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13
+      ],
+      "rate_95_percent_ci": [
+        581592.8058835204,
+        692978.2631443063
+      ],
+      "rate_trials": [
+        698808.7518538228,
+        691041.2761113726,
+        597856.5205774229,
+        591740.3874699805,
+        619698.4326432301,
+        705382.3931085471,
+        556470.9798330177
+      ]
+    },
+    {
+      "candidate_id": "p256-j-032a26e41924eeac724a711a9322b6ce03f83a9665b88eb6bb18716406ed1f53",
+      "checksum_low_64_by_trial": [
+        17619939663152517562,
+        14388231813923084610,
+        5101600351436590786,
+        3077649763266876873,
+        7173048625717336006,
+        5969625486896922366,
+        18368972742097694735
+      ],
+      "iterations_by_trial": [
+        344064,
+        273920,
+        351744,
+        292352,
+        323584,
+        345088,
+        335872
+      ],
+      "iterations_per_second": 647218.073887041,
+      "linear_relation_verified_every_trial": true,
+      "paired_log2_speedup_95_percent_ci": [
+        -0.07127226670018713,
+        0.056308604624928094
+      ],
+      "paired_log2_speedup_mean": -0.0074818310376295214,
+      "paired_relative_iteration_speed": 0.9948274140452394,
+      "paired_relative_iteration_speed_95_percent_ci": [
+        0.9517982673256077,
+        1.0398018337612405
+      ],
+      "paired_speedup_significant_at_95_percent": false,
+      "path_degree_product": 12654102080304296323,
+      "path_degrees": [
+        3,
+        5,
+        11,
+        11,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13,
+        13
+      ],
+      "rate_95_percent_ci": [
+        592194.2414510403,
+        702241.9063230417
+      ],
+      "rate_trials": [
+        688123.5794941253,
+        546948.7208059082,
+        703209.5318382302,
+        584123.3078324777,
+        646565.915233471,
+        689863.0560421615,
+        671692.4059629131
+      ]
+    }
+  ],
+  "schema_version": 1
+}
