@@ -36,11 +36,18 @@ empty stderr. `native-receipt.json` records the tested binary, generated
 source, raw logs, fixtures, and output hashes; `verify.py` checks their
 binding to the frozen construction and input commits.
 
+The [paired source-operation diagnostic](OPS_DIAGNOSTIC.md) counted
+1,480,701 fewer modeled limb products and 4,096 fewer logical point-row
+loads for radix 944 on those same 4,096 scalars. It also counted 212,992
+wide constant `/59` operations where the control used 131,072 wide
+constant `/5` operations. The larger table and different quotient work
+remain part of the format decision.
+
 `materialize_native.py OUTPUT_DIRECTORY` applies the mode-158 base patch and
 the [mode-159 delta](native-delta.patch) in a separate Cargo crate. Its
 source receipt records both patch hashes and the generated source hashes.
-The shared native evaluator is reserved by Conductor task T-546. Complete
-source-level operation accounting must include the radix-944 quotient work,
-table lookup, bucket merge, and final inversion. The current RunPod Pod fails
+The shared native evaluator is reserved by Conductor task T-546. A
+full-operation cost comparison must charge quotient implementation, table
+lookup, bucket merge, and final inversion. The current RunPod Pod fails
 the host-level isolation preflight, so CPU wall-time ratios remain unmeasured
 until a qualifying host executes a paired full-operation panel.

@@ -109,6 +109,8 @@ def main():
         result = check_fixture(label, fixture, output, count)
         assert result == native["cli"][label]
         assert (HERE / f"{label}.stderr").read_bytes() == b""
+    subprocess.run([sys.executable, str(HERE / "ops_receipt.py")],
+                   cwd=ROOT, capture_output=True, check=True)
     print(json.dumps({"status": "passed", "cases": 4096,
                       "point_slots": 993_953, "retained_bytes": 71_450_736,
                       "native_binary_sha256": native["binary_sha256"]},
