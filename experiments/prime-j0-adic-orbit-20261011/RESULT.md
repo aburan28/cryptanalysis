@@ -16,6 +16,17 @@ binds the sources and assets.
 The [exhaustive atlas replay](atlas-check.json) decoded every full
 residue and found **zero differences** from the prior quotient decoder
 in seed, tau exponent, unit, or signed digit. The exponent-two residue
-count remains 64,674. Native point replay and retained-size
-measurement are the next gates; this construction result contains no
-CPU wall-time comparison.
+count remains 64,674.
+
+The [new disjoint input panel](input-check.json) contains 4,096 full
+range scalars. The [paired group replay](group-check.json) verified
+integer reconstruction and independently computed points on every
+scalar. Both formats produced the same point-output hash,
+49,152 mixed additions, 16,539 grouped gauge rotations, and 6,384
+outer tau images. The source-pinned native direct-index mode passed
+its 4,096-case targeted test against the quotient, direct-code, and
+two-image controls, including 128 separate binary point checks. Its
+measured retained size is **65,596,552 bytes**, 196,648 bytes below
+the quotient mode, leaving 1,512,312 bytes below the RunPod CPU's
+reported 64 MiB L3 capacity. This is representation accounting; the
+L3 is shared and the current pod lacks host-level isolation evidence.
