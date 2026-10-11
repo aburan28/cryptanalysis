@@ -44,7 +44,11 @@ norm-seven branch work has not entered a native runtime comparison.
 ## Replay state
 
 The local targeted native test passed 1/1 with 4,096 cases. The local
-edge-fixture verifier passed 10/10. The complete native suite is running.
+edge-fixture verifier passed 10/10. The complete local native suite passed
+141/141 on the preceding materialization; the final materialization changes
+only the test's paired operation-count reporting, and its targeted and
+edge checks passed. The queued Linux replay runs that final materialization's
+entire suite.
 The source-pinned Linux correctness job is queued as
 `20261011T042142Z_prime-j0-dual-rho0-linux-1d8826c_dbExex` at commit
 `1d8826c3bce244eea8bc9f844d630bcd909dab15`. Its runner permits one
