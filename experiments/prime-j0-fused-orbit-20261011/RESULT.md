@@ -20,11 +20,16 @@ host-isolated runtime measurements.
 The fused record removes runtime seed-table access and tau-digit
 reconstruction from each full digit. The point-table seed and terminal
 data remain available for construction and exact final handling. The
-native targeted replay passed all 4,096 fresh cases against direct-index
-and independent scalar controls. Its native retained-byte accounting is
+[native targeted replay](native-targeted.json) passed all 4,096 fresh cases
+against direct-index and independent scalar controls. Its native
+retained-byte accounting is
 **66,470,376 bytes**: the construction projection above plus four bytes
-of aligned-static padding. The full native suite and source-pinned Linux
-correctness replay are the next evidence gates. Runtime comparison
+of aligned-static padding. The [full native suite](native-full-suite.json)
+passed **140 of 140** tests, and the [edge fixture](native-edge-check.json)
+verified ten cases against the independent point verifier. The
+[receipt validator](verify.py) checks the source and asset hashes,
+compressed raw test logs, binary digest, and point stream. Source-pinned
+Linux correctness remains the next evidence gate. Runtime comparison
 requires the host isolation receipt described in the [protocol](PROTOCOL.md).
 
 The Linux correctness replay was [submitted](remote-dispatch.json) to
