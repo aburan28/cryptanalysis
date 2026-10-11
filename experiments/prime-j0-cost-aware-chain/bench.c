@@ -114,7 +114,8 @@ static int select_mode(const char *name)
                                   "tau3-scatter-direct-pos",
                                   "tau3-scatter-atlas-pos",
                                   "endo-radix8-pos",
-                                  "joint-window4-pos"};
+                                  "joint-window4-pos",
+                                  "joint-window4-hot-pos"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -142,7 +143,7 @@ int main(int argc, char **argv)
                 "tail-pair-mixed-full-digits|fixed-comb9|pos-compact|tau3-fused-pos|"
                 "tau3-atlas-pos|tau3-sparse-pos|tau3-radix27-pos|tau3-scatter-pos|"
                 "tau3-scatter-direct-pos|tau3-scatter-atlas-pos|endo-radix8-pos|"
-                "joint-window4-pos "
+                "joint-window4-pos|joint-window4-hot-pos "
                 "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
@@ -176,7 +177,8 @@ int main(int argc, char **argv)
     int scatter_atlas = mode == 43;
     int scatter = mode == 41 || scatter_direct || scatter_atlas;
     int endo_radix8 = mode == 44;
-    int joint_window4 = mode == 45;
+    int joint_window4 = mode == 45 || mode == 46;
+    int joint_window4_hot = mode == 46;
     int periodic_policy = mode == 32 ? 2 : (mode == 31 ? 1 : 0);
     int pair_complete = mode == 29 || pair_periodic || pair_mixed;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
@@ -303,8 +305,15 @@ int main(int argc, char **argv)
                 return 2;
             }
         } else if (joint_window4) {
-            if (!ca_ec_joint_window4_prepare(&group, &point, &joint_window4_pre, &prep_doubles,
-                                             &prep_adds, &prep_rotations, &prep_layer_inversions)) {
+            int prepared =
+                joint_window4_hot
+                    ? ca_ec_joint_window4_hot_prepare(&group, &point, &joint_window4_pre,
+                                                      &prep_doubles, &prep_adds, &prep_rotations,
+                                                      &prep_layer_inversions)
+                    : ca_ec_joint_window4_prepare(&group, &point, &joint_window4_pre, &prep_doubles,
+                                                  &prep_adds, &prep_rotations,
+                                                  &prep_layer_inversions);
+            if (!prepared) {
                 free(outputs);
                 return 2;
             }
@@ -407,7 +416,8 @@ int main(int argc, char **argv)
     uint64_t fallbacks = 0, second_recodes = 0, steered_blocks = 0;
     uint64_t sparse_cold_pairs = 0, radix27_dp_states = 0, radix27_dp_options = 0;
     uint64_t scatter_pairs = 0;
-    size_t static_map_bytes = joint_window4           ? ca_ec_joint_window4_static_bytes()
+    size_t static_map_bytes = joint_window4_hot       ? ca_ec_joint_window4_hot_static_bytes()
+                              : joint_window4         ? ca_ec_joint_window4_static_bytes()
                               : scatter_atlas         ? ca_ec_tau3_scatter_atlas_static_bytes()
                               : scatter               ? ca_ec_tau3_scatter_static_bytes()
                               : radix27               ? ca_ec_tau3_radix27_static_bytes()
