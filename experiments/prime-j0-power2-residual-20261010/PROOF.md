@@ -64,7 +64,8 @@ residues and 80,521 terminal pairs, checks each decoded value, recomputes
 the two minimum-cover counts, and checks both binary hashes. The full atlas
 is 4,543,844 bytes. Twelve copies of its 87,383 seed points plus 10,061
 terminal seed points have a 67,754,048-byte affine payload. Adding the two
-atlas binaries and 400 bytes of native metadata gives 72,663,400 bytes.
+atlas binaries and the native metadata gives 72,663,424 retained bytes in
+the source-pinned Rust implementation.
 
 For row base `G_i=[1024^i]G`, a seed pair `(u,v)` stores
 `[u+v lambda_tau]G_i`. The six-unit automorphisms and tau commute with
