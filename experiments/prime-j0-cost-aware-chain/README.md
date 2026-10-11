@@ -326,3 +326,11 @@ mixed additions against compact width-four positional tau on the two curves,
 with no fallbacks, but used 43,904 and 76,832 point-table bytes plus a
 9,826-byte static map. Unisolated local online timing was slower in every
 case; controlled CPU speed and one-target rho impact remain unknown.
+
+The [six-step tau quotient atlas](TAU3_QUOTIENT_ATLAS.md) replaces six
+successive width-three digit decisions with one exact correction lookup per
+block. Its new disjoint 32,768-scalar panel verified all 16 outputs and
+passed all eight operation-equivalence gates with zero fallbacks. It keeps
+the same point table and group-operation counts as the fused width-three
+mode while adding a 26,244-byte static atlas. Local online times varied
+widely, so a controlled CPU speedup remains unknown.

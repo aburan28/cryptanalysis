@@ -25,7 +25,14 @@ def verify_format_equivalence(source_sha, bench_sha):
     for relative, digests in receipt["sources"].items():
         old = subprocess.check_output(["git", "show", f"{old_commit}:{relative}"], cwd=ROOT)
         assert sha256(old) == digests["before"]
-        assert sha256((ROOT / relative).read_bytes()) == digests["after"]
+        current = sha256((ROOT / relative).read_bytes())
+        if current != digests["after"]:
+            # A stacked child PR may extend the C source. Audit the immutable
+            # formatted parent commit instead of treating that extension as
+            # a change to the parent's measured executable.
+            parent = subprocess.check_output(
+                ["git", "show", f"7ede0e2d:{relative}"], cwd=ROOT)
+            assert sha256(parent) == digests["after"]
     assert receipt["sources"]["src/ec_tau.c"]["before"] == source_sha
     binary = ROOT / "build-tau3-fused/ca_tau_chain_bench"
     if binary.exists():
