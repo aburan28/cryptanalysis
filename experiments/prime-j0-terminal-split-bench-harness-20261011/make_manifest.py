@@ -22,6 +22,9 @@ def main():
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--fixture", type=Path, required=True)
     parser.add_argument("--runner", type=Path, required=True)
+    parser.add_argument("--native-receipt-name", choices=("benchmark-materialization.json",
+                                                          "selector-materialization.json"),
+                        default="benchmark-materialization.json")
     parser.add_argument("--tier", choices=("tier0_host", "tier1_instance"), required=True)
     parser.add_argument("--cpus", required=True)
     parser.add_argument("--execution-cpu", type=int, required=True)
@@ -44,7 +47,7 @@ def main():
     data = json.loads(fixture.read_text())
     if data["schema"] != 1 or data["kind"] != "prospective-terminal-split" or len(data["cases"]) != 9:
         raise SystemExit("unexpected fixture contents")
-    receipt_path = crate / "benchmark-materialization.json"
+    receipt_path = crate / args.native_receipt_name
     receipt = json.loads(receipt_path.read_text())
     if (receipt["status"] != "materialized" or
             receipt["top_sha256"] != digest(crate / "src/bin/eisenstein_fixed.rs") or
@@ -57,6 +60,18 @@ def main():
                  crate / "src/bin/eisenstein_fixed/unit_orbit_windows.rs",
                  crate / "Cargo.toml", crate / "Cargo.lock",
                  repo / "suite/src/ct_bignum.rs", HERE / "make_manifest.py"]
+    if args.native_receipt_name == "selector-materialization.json":
+        selector = repo / "experiments/prime-j0-terminal-split-selector-20261011"
+        canonical_receipt = selector / "selector-materialization.json"
+        if (digest(receipt_path) != digest(canonical_receipt) or
+                receipt["input_sha256"] != digest(crate / "split-terminal-inputs.json") or
+                receipt["certificate_sha256"] != digest(crate / "split-terminal-paths.jsonl") or
+                receipt["patch_sha256"] != digest(selector / "native.patch") or
+                receipt["materializer_sha256"] != digest(selector / "materialize.py")):
+            raise SystemExit("selector materialization differs from pinned artifacts")
+        artifacts += [canonical_receipt, selector / "native.patch",
+                      selector / "materialize.py", crate / "split-terminal-inputs.json",
+                      crate / "split-terminal-paths.jsonl"]
     if args.tier == "tier0_host":
         if not args.mem_nodes or not args.cgroup:
             raise SystemExit("Tier 0 requires NUMA node and exclusive cgroup")
@@ -83,7 +98,10 @@ def main():
                       "expected_result": point,
                       "reference": [str(binary), REFERENCE] + suffix,
                       "candidate": [str(binary), CANDIDATE] + suffix})
-    manifest = {"schema": 1, "name": "secp256k1-split-terminal-prospective",
+    name = ("secp256k1-split-terminal-selector-prospective" if
+            args.native_receipt_name == "selector-materialization.json" else
+            "secp256k1-split-terminal-prospective")
+    manifest = {"schema": 1, "name": name,
                 "measurement_tier": args.tier, "workdir": str(repo),
                 "isolation": isolation,
                 "artifacts": [str(path) for path in artifacts],
