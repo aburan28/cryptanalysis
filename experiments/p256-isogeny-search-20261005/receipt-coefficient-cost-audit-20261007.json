@@ -1,0 +1,60 @@
+{
+  "artifacts": {
+    "results/coefficient-cost-audit-20261007/audit.json": "64989f70d70acae22048e0cc97ce95434bab8a1dddc14b2dd12d377938764ddb",
+    "results/coefficient-cost-audit-20261007/summary.md": "7e70da968164e9bca2bc810263f33815681246453da38fcfc6a64f1097493226"
+  },
+  "claim": "All 2,226 retained curves were reconstructed and normalized to a=1 or a=3. The smallest normalized 3b addition-chain lower bound was 242 operations, so no candidate passed the conservative 32-operation gate for a coefficient-specialized native benchmark.",
+  "commands": {
+    "audit": "python3 scripts/audit_retained_coefficients.py --output results/coefficient-cost-audit-20261007/audit.json",
+    "verify": "python3 scripts/verify_retained_coefficient_audit.py"
+  },
+  "cost_accounting": {
+    "coefficient_operation_bounds": "deterministic and reusable",
+    "discovery_and_normalization": "replay over frozen registries; wall time is not used as a performance claim",
+    "native_coefficient_benchmark": "not run because zero candidates passed the pre-implementation operation-count gate",
+    "new_per_key_isogeny_mapping": null,
+    "new_per_key_online_attack_cost": null
+  },
+  "decision": "No coefficient-specialized candidate advances to native timing.",
+  "exploration_boundary": {
+    "complete_retained_registry": 2226,
+    "low_degree_path_depth": 17,
+    "one_hop_prime_degree_bound": 199,
+    "scope": "normalized short-Weierstrass a in {1,3} and the 3b coefficient in the retained complete-addition formula"
+  },
+  "formula_gate": {
+    "eligible_candidates": 0,
+    "maximum_addition_chain_lower_bound_operations": 32,
+    "minimum_observed_addition_chain_lower_bound": 242,
+    "minimum_observed_binary_double_and_add_upper_bound": 352,
+    "note": "The gate screens implementation candidates; it is not a user-supplied numerical definition of dramatic."
+  },
+  "limitations": [
+    "the retained registry is not the entire finite isogeny-class orbit",
+    "operation-count bounds do not constitute a wall-time benchmark",
+    "no candidate passed the gate, so no coefficient-specialized rho implementation was built",
+    "other coordinate systems, formula families, deeper paths, and unknown ECDLP algorithms remain outside this audit",
+    "no new per-key transfer timing or full P-256 collision was performed"
+  ],
+  "protocol_id": "p256-isogeny-search-exploratory-v1",
+  "result": {
+    "all_normalizations_and_generator_transports_verified": true,
+    "minimum_bit_length": 243,
+    "minimum_bit_length_candidate": "p256-j-fbe5cc136a3e66f86e18fef95bd5eff35462e62134910796d01daf68e255c07a",
+    "minimum_binary_upper_bound": 352,
+    "minimum_binary_upper_bound_candidate": "p256-j-a6abe6e03e490339f47ecb3a6465cfd55f4a06f4c3085a178390c12d45985fe0",
+    "minimum_popcount": 100,
+    "p256_root_binary_upper_bound": 374,
+    "p256_root_bit_length": 251,
+    "records_reconstructed": 2226
+  },
+  "run_completed_at": "2026-10-07T02:21:43Z",
+  "schema_version": 1,
+  "source": {
+    "local_parent_commit": "cad79bfe3c4184ec055a0542299b14574efa2b78",
+    "manifest": "source-coefficient-cost-audit-20261007.sha256",
+    "manifest_sha256": "4e8e11af95663e1a64b8b59aa3a788d58d524a67be7ab3bd8e1aed1f72a0e50d",
+    "pr_parent_remote_commit": "6ec553f3fc8782a1ba285f727d3bd71a66068fcc"
+  },
+  "status": "verified_retrospective_coefficient_cost_audit"
+}
