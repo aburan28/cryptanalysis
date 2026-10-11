@@ -80,6 +80,18 @@ The
 contains the derivation, raw results, and limits.  Set
 `-DCA_J0_RHO_COVARIANT_WALK=OFF` to build the former walk.
 
+## Elliptic-curve surface tools
+
+[`tools/ecdlp-surfaces`](tools/ecdlp-surfaces/README.md) is a standalone Rust
+crate with three command-line tools: `surface_search` enumerates containing
+quadrics, `transfer_check` checks the transported group law and prime subgroup,
+and `frobenius_filter` applies necessary conditions to supplied abelian-surface
+polynomials. Point arithmetic uses small prime fields, up to 10,000. Equivalent
+embeddings preserve the ECDLP; no destination-solver speedup is established.
+The [report](docs/ecdlp-surfaces/REPORT.md) includes the diagram, PDF, fixtures,
+and native identity certificates. Run `tools/ecdlp-surfaces/check.sh` to validate
+the crate and replay its examples.
+
 ## Build
 
 Local Sage experiments use the optimized workspace build through `./sage`:
