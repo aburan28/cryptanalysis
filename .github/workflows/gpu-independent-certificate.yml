@@ -1,0 +1,48 @@
+name: Independent GPU certificate experiment
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/round16/**'
+      - 'experiments/groebner-perf-20260924/round15/**'
+      - 'experiments/groebner-perf-20260924/round14/**'
+      - 'experiments/groebner-perf-20260924/round4/**'
+      - 'experiments/pdp-scaling/**'
+      - '.github/workflows/gpu-independent-certificate.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/round16/**'
+      - 'experiments/groebner-perf-20260924/round15/**'
+      - 'experiments/groebner-perf-20260924/round14/**'
+      - 'experiments/groebner-perf-20260924/round4/**'
+      - 'experiments/pdp-scaling/**'
+      - '.github/workflows/gpu-independent-certificate.yml'
+permissions:
+  contents: read
+concurrency:
+  group: gpu-independent-certificate-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  evidence:
+    name: GPU certificate evidence (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile Metal host and UBSan variant
+        if: runner.os == 'macOS'
+        run: python experiments/groebner-perf-20260924/round16/build.py
+      - name: Timing admission rejects busy hosts before numerical work
+        run: python -m unittest discover -s experiments/groebner-perf-20260924/round16 -p 'test_admission.py' -v
+      - name: Audit retained local GPU evidence and source identities
+        run: python experiments/groebner-perf-20260924/round16/verify_evidence.py
+      # Hosted CI does not execute a Metal device. Shader execution and CPU/GPU
+      # correctness are local evidence, and no qualified GPU speedup is claimed.
