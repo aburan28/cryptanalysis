@@ -1,0 +1,95 @@
+\section{Introduction}
+\label{sec:intro}
+
+A Koblitz curve $E_a:y^2+xy=x^3+ax^2+1$ is defined over $\FF_2$ and used
+over $\FF_{2^n}$, so the $2$-power Frobenius $\tau(x,y)=(x^2,y^2)$ is an
+endomorphism that acts on the prime-order subgroup $G$ as
+multiplication by a known scalar $\lambda$. Together with negation it
+generates a group $\Gamma$ of order $2n$, and every algorithm for the
+discrete logarithm in $G$ can work on $\Gamma$-orbits instead of
+points. For Pollard rho that is worth $\sqrt{2n}$
+\citep{wienerzuccherato1998,glv2001}; for index calculus with a
+$\Gamma$-invariant factor base it is worth $2n$ in the number of
+relations and $(2n)^2$ in the linear algebra
+\citep{ggmp2020}. Both facts are classical and neither is claimed
+here.
+
+What is claimed is narrower and, we think, more useful to someone who
+has to build the thing. The $2n$ saving is a statement about counts.
+To collect it, a pipeline has to map every decomposed point $P$ to its
+orbit representative $\hat P$ \emph{and} to the sign $\epsilon$ and
+phase $k$ with $P=\epsilon\tau^{-k}\hat P$, because the relation
+coefficient is $\epsilon\lambda^{-k}$ and not $1$. It has to do this
+for every candidate the decomposition produces, not only the ones that
+turn into relations, since the candidates are what the tables are
+probed with. The tables have to be keyed by representatives, so that
+they shrink by $2n$ too, and a hit in such a table has to give back
+the actual summands, which means recovering a phase that was never
+stored. And at the end every logarithm has to verify, which it does
+only if nothing was lost on the way. Each of these steps has a cost,
+and in the implementations we measured that cost has at various times
+been the majority of the pipeline, the majority of the \emph{reference}
+the pipeline was compared with, and the difference between a reported
+win and a reported loss.
+
+\paragraph{Contributions.}
+\begin{enumerate}[leftmargin=1.6em,itemsep=0.25em]
+\item \emph{A representation with proofs
+  (Sections~\ref{sec:prelim}--\ref{sec:representation}).} The
+  signed-Frobenius form $\can(P)=(\hat P,\epsilon,k)$; a proof that
+  $\Gamma$ acts freely on $G\setminus\{O\}$ whenever
+  $r\nmid\#E_a(\FF_{2^d})$ for proper divisors $d\mid n$, so that for
+  prime $n$ the only exceptional words a canonicalizer meets are
+  $x\in\FF_2$; a Frobenius-invariant sign chooser $\Tr(y/x)$ for odd
+  $n$; and the reconstruction theorem that makes phase-aware relation
+  collection correct.
+\item \emph{An exact canonicalization shortcut
+  (Section~\ref{sec:canonicalization}).} The least rotation of a
+  binary necklace begins at a longest cyclic zero run. Two
+  implementations (bit-parallel for one-word fields, set-bit scan for
+  two-limb fields) are proved bit-identical to the exhaustive scan,
+  including on the exceptional words, and measured at $4.78$ rotations
+  per $83$-bit word against $82$.
+\item \emph{Phase-aware layouts (Section~\ref{sec:layout}).} The
+  $18$-byte root record with an exact $83$-bit key and a $7$-bit phase;
+  a hashed-bucket directory with singleton fingerprints; the orbit tag
+  that makes recovery from a folded pair table $O(n)$; the row filter
+  that stores each orbit of sums once; and the observation that
+  canonical keys are skewed toward small values and must be hashed
+  before they are indexed, a mistake two independent implementations
+  made.
+\item \emph{Benchmarks that say what class they are
+  (Sections~\ref{sec:pipeline}--\ref{sec:benchmarks}).} Every number
+  is footnoted to a committed artefact, read in one unit against a
+  matched signed-Frobenius rho and a generic floor, labelled
+  engineering, relabelling or accounting, and marked as isolated or
+  exploratory. The end-to-end rows all have verified logarithms. None
+  is an advance over rho.
+\end{enumerate}
+
+\paragraph{What the reader should take away.}
+Three things. The normal-basis least rotation, not the squaring
+chain, is the right canonicalization, by $8$--$15\times$ per key and
+$4\times$ on the whole rho process; and because a signed-Frobenius rho
+spends half its instructions canonicalizing, any comparison against
+rho that does not match the canonicalization is measuring the wrong
+thing (Section~\ref{sec:bench-rho}). The counts a fold divides by $2n$
+are not the counts the cost is proportional to: at $n=61$ the folded
+pair table stores $121\times$ fewer pairs and costs $1.2\%$ more
+operations at one width and $12\%$ fewer than the full tier at another
+(Section~\ref{sec:bench-tables}). And the one place a phase-aware base
+makes a complete index calculus faster with verified answers,
+$6.85\times$ at $n=19$, is a toy whose base does not exist at
+$n=131$ (Sections~\ref{sec:bench-e2e},~\ref{sec:related}).
+
+\paragraph{Organisation.}
+Section~\ref{sec:prelim} fixes notation and proves the free-action
+lemma. Section~\ref{sec:representation} defines the representation and
+proves transport and reconstruction. Section~\ref{sec:canonicalization}
+gives the zero-gap lemma, the algorithms and their correctness.
+Section~\ref{sec:layout} describes the layouts.
+Section~\ref{sec:pipeline} fixes where the phase lives in each
+pipeline. Section~\ref{sec:benchmarks} reports the measurements.
+Section~\ref{sec:related} says what is prior art, and
+Section~\ref{sec:limitations} what is not claimed.
+Appendix~\ref{app:repro} lists the artefacts.

@@ -7,11 +7,17 @@
 # 263P levels are classified algebraically (constructing them needs
 # P-isogenies, P ~ 2^57).
 #
-# Run: sage sweep.sage   -> results.json, descendants.csv
+# Run via the repository's checked ./sage launcher.
 
-import json, time
+import argparse, json, time
+from conductor_navigation import inventory
 from sage.schemes.elliptic_curves.ell_curve_isogeny import EllipticCurveIsogeny
 from collections import Counter
+
+ap = argparse.ArgumentParser()
+ap.add_argument('--navigation-primes', type=int, nargs='*', default=[263],
+                help='allowed prime degrees for conductor-separation metadata')
+args = ap.parse_args()
 
 set_random_seed(20260923)
 R.<x> = GF(2)[]
@@ -33,6 +39,13 @@ D = t^2 - 4*q
 f2 = D // -7
 f = isqrt(f2)
 assert f^2 == f2 and f == ell * P_big and is_prime(P_big)
+
+navigation = inventory(
+    characteristic=2, q=int(q), trace=int(t), field_discriminant=-7,
+    frobenius_conductor=int(f), factors={int(ell): 1, int(P_big): 1},
+    allowed_primes=args.navigation_primes, source_conductor=1,
+    source_evidence='sweep.sage:E0 has the degree-2 endomorphism of discriminant -7')
+navigation_by_conductor = {row['order_conductor']: row for row in navigation['strata']}
 
 # ---- shared (isogeny-invariant) parameters ---------------------------------
 k_emb = Mod(q, N).multiplicative_order()
@@ -64,6 +77,7 @@ for c in [1, ell, P_big, ell * P_big]:
         "smallest_noninteger_endomorphism_degree": str(2 if c == 1 else (1 + 7 * c^2) // 4),
         "tau_in_End": c == 1,
         "instantiated": c in (1, ell),
+        "navigation": navigation_by_conductor[str(c)],
     })
 
 # ---- GHS / Weil-descent magic number ---------------------------------------
@@ -185,6 +199,7 @@ summary = {
         "rho_log2_negation_plus_tau": float(round(log2(rho_frob), 2r)),
     },
     "levels": levels,
+    "conductor_navigation": navigation,
     "sweep_263": {
         "kernels": len(rows),
         "crater_neighbours": len(crater),
