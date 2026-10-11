@@ -121,7 +121,9 @@ static int select_mode(const char *name)
                                   "joint-pair-hex-pos",
                                   "joint-pair-top-pos",
                                   "joint-pair-top-triple-pos",
-                                  "joint-pair-top-double-pos"};
+                                  "joint-pair-top-double-pos",
+                                  "joint-pair-top-triple-wave128",
+                                  "joint-pair-top-double-wave128"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -151,7 +153,8 @@ int main(int argc, char **argv)
                 "tau3-scatter-direct-pos|tau3-scatter-atlas-pos|endo-radix8-pos|"
                 "joint-window4-pos|joint-window4-hot-pos|joint-window4-xplane-pos|"
                 "joint-window4-zero-pos|joint-pair-hex-pos|joint-pair-top-pos|"
-                "joint-pair-top-triple-pos|joint-pair-top-double-pos "
+                "joint-pair-top-triple-pos|joint-pair-top-double-pos|"
+                "joint-pair-top-triple-wave128|joint-pair-top-double-wave128 "
                 "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
@@ -189,10 +192,11 @@ int main(int argc, char **argv)
     int joint_window4_hot = mode >= 46 && mode <= 48;
     int joint_window4_plane = mode == 47 || mode == 48;
     int joint_window4_zero = mode == 48;
-    int joint_pair_any = mode >= 49 && mode <= 52;
-    int joint_pair_top = mode >= 50 && mode <= 52;
-    int joint_pair_width = mode == 51 || mode == 52;
-    unsigned joint_pair_words = mode == 51 ? 3u : mode == 52 ? 2u : 4u;
+    int joint_pair_any = mode >= 49 && mode <= 54;
+    int joint_pair_top = mode >= 50 && mode <= 54;
+    int joint_pair_width = mode >= 51 && mode <= 54;
+    int joint_pair_wave = mode == 53 || mode == 54;
+    unsigned joint_pair_words = mode == 51 || mode == 53 ? 3u : mode == 52 || mode == 54 ? 2u : 4u;
     int periodic_policy = mode == 32 ? 2 : (mode == 31 ? 1 : 0);
     int pair_complete = mode == 29 || pair_periodic || pair_mixed;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
@@ -494,7 +498,9 @@ int main(int argc, char **argv)
     size_t recipe_bytes = packed || wavefront ? ca_ec_tau_wide_packed_recipe_bytes(wide_schedule)
                           : graph             ? ca_ec_tau_wide_graph_recipe_bytes(wide_schedule)
                                               : 0;
-    size_t online_scratch_bytes = scatter         ? 0
+    size_t online_scratch_bytes = joint_pair_wave ? 128 * (4 * sizeof(uint32_t) + sizeof(ca_elem) +
+                                                           2 * sizeof(uint64_t) + sizeof(uint8_t))
+                                  : scatter       ? 0
                                   : radix27       ? ca_ec_tau3_radix27_online_scratch_bytes()
                                   : sparse        ? 160
                                   : tau3          ? 160
@@ -505,7 +511,16 @@ int main(int argc, char **argv)
                                   : mode >= 7 && mode <= 10     ? block_size * 32
                                                                 : 0;
     double start = ca_now();
-    if (tapered) {
+    if (joint_pair_wave) {
+        if (!ca_ec_joint_pair_width_mul_wave_batch_profile(
+                &group, &joint_pair_pre, outputs, scalars, SCALARS, 128, &adds, &rotations,
+                &unit_adds, &output_inversions, &fallbacks)) {
+            fprintf(stderr, "joint-pair wavefront evaluation failed\n");
+            ca_ec_joint_pair_clear(&joint_pair_pre);
+            free(outputs);
+            return 1;
+        }
+    } else if (tapered) {
         if (!ca_ec_tau_wide_mul_batch_profile(&group, &wide_pre, outputs, scalars, SCALARS, 128,
                                               &adds, &rotations, &output_inversions, &fallbacks)) {
             fprintf(stderr, "tapered batched evaluation failed\n");
