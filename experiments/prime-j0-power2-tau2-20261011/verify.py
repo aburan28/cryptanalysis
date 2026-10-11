@@ -52,8 +52,10 @@ def main():
     design = read_json("design-check.json")
     control = read_json("control-group.json")
     native = read_json("native-targeted.json")
+    full_suite = read_json("native-full-suite.json")
     edge = read_json("native-edge-check.json")
     host = read_json("host-cache-observation.json")
+    dispatch = read_json("remote-dispatch.json")
     assert atlas["affine_slots"] == 890_292
     assert independent["status"] == group["status"] == design["status"] == \
            control["status"] == native["status"] == edge["status"] == "passed"
@@ -100,6 +102,16 @@ def main():
             native["control_mixed_additions"],
             native["control_gauge_rotations"]) == (
                 4096, 61_829_108, 49_151, 18_186, 49_151, 14_882)
+    full_compressed = (HERE / "native-full-tests.log.gz").read_bytes()
+    full_raw = gzip.decompress(full_compressed)
+    assert full_suite["status"] == "passed"
+    assert (full_suite["passed"], full_suite["failed"]) == (137, 0)
+    assert full_suite["compressed_log_sha256"] == digest(full_compressed)
+    assert full_suite["raw_log_sha256"] == digest(full_raw)
+    assert b"test result: ok. 137 passed; 0 failed;" in full_raw
+    assert full_suite["generated_sha256"] == native["generated_sha256"]
+    assert full_suite["assets_sha256"] == native["assets_sha256"]
+    assert full_suite["native_delta_sha256"] == native["native_delta_sha256"]
 
     sys.path.insert(0, str(PARENT))
     from verify_fixture import check_fixture
@@ -117,10 +129,14 @@ def main():
     assert host["scope"] == "container_visible_lscpu_not_host_isolation"
     l3_bytes = 64 * 1024 * 1024
     assert native["retained_bytes"] < l3_bytes < 72_663_424
+    assert dispatch["source_commit"] == full_suite["source_commit"]
+    assert dispatch["staged_script_sha256"] == digest(
+        (HERE / "run_linux_replay.sh").read_bytes())
     print(json.dumps({"status": "passed", "cases": 4096,
                       "affine_slots": atlas["affine_slots"],
                       "retained_bytes": native["retained_bytes"],
-                      "cache_boundary_bytes": l3_bytes}, sort_keys=True))
+                      "cache_boundary_bytes": l3_bytes,
+                      "full_suite_passed": full_suite["passed"]}, sort_keys=True))
 
 
 if __name__ == "__main__":
