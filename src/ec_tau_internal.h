@@ -43,6 +43,24 @@ typedef struct ca_tau4_pos_precomp {
     ca_elem point[CA_TAU_POS_Q][2][9];
 } ca_tau4_pos_precomp;
 
+/* Compact public-scalar positional table. Its order-derived layer count is
+ * a heuristic; any scalar needing more layers uses the generic fallback. */
+typedef struct ca_tau4_pos_compact_precomp {
+    ca_tau4_precomp base;
+    ca_elem base_point;
+    ca_elem *point; /* [layers][2][9] */
+    size_t layers;
+} ca_tau4_pos_compact_precomp;
+size_t ca_ec_tau4_pos_compact_layers(const ca_group *g);
+int ca_ec_tau4_pos_compact_prepare(const ca_group *g, const ca_elem *point,
+                                   ca_tau4_pos_compact_precomp *out, uint64_t *triples,
+                                   uint64_t *inversions);
+int ca_ec_tau4_pos_compact_mul_profile(const ca_group *g,
+                                       const ca_tau4_pos_compact_precomp *pre,
+                                       ca_elem *out, uint64_t k, uint64_t *adds,
+                                       uint64_t *rotations, uint64_t *fallbacks);
+void ca_ec_tau4_pos_compact_clear(ca_tau4_pos_compact_precomp *pre);
+
 int ca_ec_tau4_prepare(const ca_group *g, const ca_elem *point, ca_tau4_precomp *out,
                        uint64_t *ops);
 int ca_ec_tau4_mul_prepared(const ca_group *g, const ca_tau4_precomp *pre, ca_elem *out, uint64_t k,

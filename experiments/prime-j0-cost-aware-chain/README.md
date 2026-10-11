@@ -308,3 +308,12 @@ has a 34.96% and 40.18% lower aggregate operation score than full-digit
 mixed on the two curves. The older positional tau method scores below comb
 but uses a larger prepared table. These comparisons are algorithmic
 diagnostics; controlled CPU timing and a one-target rho speedup are unknown.
+
+The [compact positional tau table](COMPACT_POSITIONAL.md) sizes the prepared
+layers from subgroup bitlength and uses a generic fallback if a scalar needs
+more. A new disjoint 32,768-scalar panel passed all eight prospective gates:
+exactly the same online addition, rotation, and inversion counts as the full
+positional table, zero fallbacks, and verified generic outputs. The point
+table shrank from 36,864 bytes to 6,336 and 12,096 bytes on the two curves;
+preparation triples fell from 1,134 to 180 and 360. Controlled CPU speed and
+one-target rho impact remain unknown.

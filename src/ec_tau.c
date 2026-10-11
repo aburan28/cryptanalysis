@@ -2219,6 +2219,128 @@ int ca_ec_tau4_pos_global_prepare(const ca_group *g, const ca_elem *point, ca_ta
     return 1;
 }
 
+size_t ca_ec_tau4_pos_compact_layers(const ca_group *g)
+{
+    if (!g || g->order < 2) return 0;
+    unsigned bits = 0;
+    for (uint64_t n = g->order - 1; n; n >>= 1) bits++;
+    size_t layers = (bits + 2) / 3 + 2;
+    return layers < CA_TAU_POS_Q ? layers : CA_TAU_POS_Q;
+}
+
+int ca_ec_tau4_pos_compact_prepare(const ca_group *g, const ca_elem *point,
+                                   ca_tau4_pos_compact_precomp *out, uint64_t *triples,
+                                   uint64_t *inversions)
+{
+    if (!g || !point || !out) return 0;
+    if (triples) *triples = 0;
+    if (inversions) *inversions = 0;
+    ca_tau4_pos_compact_precomp pre = {0};
+    if (!ca_ec_tau4_prepare(g, point, &pre.base, NULL)) return 0;
+    pre.base_point = *point;
+    pre.layers = ca_ec_tau4_pos_compact_layers(g);
+    if (!pre.layers) return 0;
+    if (pre.base.identity) {
+        *out = pre;
+        return 1;
+    }
+    size_t count = pre.layers * 18;
+    pre.point = malloc(count * sizeof(*pre.point));
+    tau_jac *projective = malloc(count * sizeof(*projective));
+    uint64_t *prefixes = malloc(count * sizeof(*prefixes));
+    if (!pre.point || !projective || !prefixes) {
+        free(prefixes);
+        free(projective);
+        free(pre.point);
+        return 0;
+    }
+    for (size_t parity = 0; parity < 2; parity++)
+        for (size_t j = 0; j < 9; j++) {
+            const ca_elem *seed = parity ? &pre.base.tau_seed[j] : &pre.base.seed[j];
+            projective[parity * 9 + j] =
+                seed->w[2] ? (tau_jac){0, g->mont.r1, 0}
+                           : (tau_jac){seed->w[0], seed->w[1], g->mont.r1};
+        }
+    uint64_t n3 = 0;
+    for (size_t q = 1; q < pre.layers; q++)
+        for (size_t slot = 0; slot < 18; slot++) {
+            tau_jac prior = projective[(q - 1) * 18 + slot];
+            if (prior.z) {
+                projective[q * 18 + slot] = jac_triple(g, prior);
+                n3++;
+            } else {
+                projective[q * 18 + slot] = (tau_jac){0, g->mont.r1, 0};
+            }
+        }
+    int ok = jac_batch_to_affine_scratch(g, pre.point, projective, count, prefixes, inversions);
+    free(prefixes);
+    free(projective);
+    if (!ok) {
+        free(pre.point);
+        return 0;
+    }
+    if (triples) *triples = n3;
+    *out = pre;
+    return 1;
+}
+
+int ca_ec_tau4_pos_compact_mul_profile(const ca_group *g,
+                                       const ca_tau4_pos_compact_precomp *pre,
+                                       ca_elem *out, uint64_t k, uint64_t *adds,
+                                       uint64_t *rotations, uint64_t *fallbacks)
+{
+    if (!g || !pre || !out || pre->base.g != g || !pre->layers) return 0;
+    if (adds) *adds = 0;
+    if (rotations) *rotations = 0;
+    if (fallbacks) *fallbacks = 0;
+    if (pre->base.identity || k % g->order == 0) {
+        *out = (ca_elem){{0, 0, 1, 0}};
+        return 1;
+    }
+    k %= g->order;
+    ca_i128 x, y;
+    reduce_with_lattice((tau_vec){pre->base.v1x, pre->base.v1y},
+                        (tau_vec){pre->base.v2x, pre->base.v2y}, pre->base.det, k, &x, &y);
+    uint8_t digits[256];
+    size_t nd = gen_tau4_digits_fast(x, y, pre->base.digit, digits);
+    if (!nd || (nd - 1) / 2 >= pre->layers) {
+        if (fallbacks) *fallbacks = 1;
+        ca_group_mul(g, out, &pre->base_point, k, NULL);
+        return 1;
+    }
+    tau_jac acc = {0, g->mont.r1, 0};
+    uint64_t na = 0, nr = 0;
+    for (size_t i = nd; i-- > 0;) {
+        int slot = digits[i];
+        if (slot == 255) continue;
+        size_t q = i / 2;
+        ca_tau4_digit d = pre->base.digit[slot];
+        ca_elem seed = pre->point[q * 18 + (i & 1u) * 9 + (size_t)d.seed];
+        if (seed.w[2]) continue;
+        int power = (d.power + (int)(q % 3)) % 3;
+        int sign = d.sign * ((q & 1) ? -1 : 1);
+        if (power == 1)
+            seed.w[0] = fm(g, pre->base.beta, seed.w[0]);
+        else if (power == 2)
+            seed.w[0] = fm(g, pre->base.beta2, seed.w[0]);
+        nr += power != 0;
+        if (sign < 0 && seed.w[1]) seed.w[1] = g->p - seed.w[1];
+        acc = jac_add_mixed(g, acc, &seed);
+        na++;
+    }
+    jac_to_affine(g, out, acc);
+    if (adds) *adds = na;
+    if (rotations) *rotations = nr;
+    return 1;
+}
+
+void ca_ec_tau4_pos_compact_clear(ca_tau4_pos_compact_precomp *pre)
+{
+    if (!pre) return;
+    free(pre->point);
+    *pre = (ca_tau4_pos_compact_precomp){0};
+}
+
 static int tau4_pos_mul_jac(const ca_group *g, const ca_tau4_pos_precomp *pre, tau_jac *out,
                             uint64_t k, uint64_t *adds, uint64_t *rotations)
 {
