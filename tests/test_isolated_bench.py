@@ -112,6 +112,93 @@ class IsolatedBenchTests(unittest.TestCase):
                     with bench.only_worker(root):
                         pass
 
+    def test_tier1_manifest_is_explicit_and_receipt_is_hashed(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            root = Path(dirname)
+            binary = root / "bench"
+            binary.write_text("#!/bin/sh\nexit 0\n")
+            binary.chmod(0o755)
+            receipt = root / "allocation.json"
+            receipt.write_text('{"provider":"runpod","id":"pod-1"}\n')
+            manifest = {"schema": 1, "measurement_tier": "tier1_instance",
+                        "workdir": str(root), "timeout_s": 1,
+                        "measurement_boundary": "internal online_ms",
+                        "pair_fields": ["target_x"], "result_field": "scalar",
+                        "artifacts": [str(binary), str(receipt)],
+                        "allocation": {"provider": "runpod", "instance_id": "pod-1",
+                                       "receipt": str(receipt)},
+                        "isolation": {"cpus": "4", "execution_cpu": 4},
+                        "cases": [{"id": "t0", "expected_fields": {"target_x": "9"},
+                                   "expected_result": "7", "reference": [str(binary)],
+                                   "candidate": [str(binary)]}]}
+            self.assertEqual(bench.require_manifest(manifest), ({4}, set(), None))
+            for change in (lambda m: m["artifacts"].remove(str(receipt)),
+                           lambda m: m["isolation"].update({"cgroup": "/sys/fs/cgroup/bench"}),
+                           lambda m: m.pop("allocation"),
+                           lambda m: m.update({"measurement_tier": "tier2"})):
+                altered = copy.deepcopy(manifest)
+                change(altered)
+                with self.assertRaises(ValueError):
+                    bench.require_manifest(altered)
+
+    def test_tier1_counter_events_invalidate_and_irq_is_observed(self):
+        before = {"cpu_stat": {"nr_throttled": 0},
+                  "memory_events": {"oom": 0},
+                  "per_cpu": {4: {"irq": 0, "softirq": 0, "steal": 0}}}
+        after = copy.deepcopy(before)
+        after["per_cpu"][4]["irq"] = 1
+        self.assertEqual(bench.tier1_noise(before, after), [])
+        after["cpu_stat"]["nr_throttled"] = 1
+        after["memory_events"]["oom"] = 1
+        self.assertEqual(len(bench.tier1_noise(before, after)), 2)
+
+    def test_tier1_requires_repeated_consistent_pairs_for_claim(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            root = Path(dirname)
+            binary = root / "bench"
+            binary.write_text("#!/bin/sh\nexit 0\n")
+            binary.chmod(0o755)
+            receipt = root / "allocation.json"
+            receipt.write_text("{}\n")
+            manifest = {"schema": 1, "measurement_tier": "tier1_instance",
+                        "workdir": str(root), "timeout_s": 1,
+                        "measurement_boundary": "internal online_ms",
+                        "pair_fields": ["target_x"], "result_field": "scalar",
+                        "artifacts": [str(binary), str(receipt)],
+                        "allocation": {"provider": "runpod", "instance_id": "pod-1",
+                                       "receipt": str(receipt)},
+                        "isolation": {"cpus": "4", "execution_cpu": 4},
+                        "repetitions": 8,
+                        "cases": [{"id": "t0", "expected_fields": {"target_x": "9"},
+                                   "expected_result": "7", "reference": [str(binary), "reference"],
+                                   "candidate": [str(binary), "candidate"]}]}
+            original_preflight, original_run = bench.preflight, bench.one_run
+            try:
+                bench.preflight = lambda _: {"ok": True, "problems": [], "evidence": {}}
+                def fake_run(argv, _manifest, _cpus, _nodes, _cgroup, _folder, serial):
+                    return {"serial": serial, "status": "valid", "issues": [],
+                            "online_ms": 2.0 if argv[-1] == "reference" else 1.0,
+                            "fields": {"target_x": "9", "scalar": "7"}}
+                bench.one_run = fake_run
+                result = bench.execute(manifest, root / "passing")
+                self.assertEqual(result["measurement_tier"], "tier1_instance")
+                self.assertTrue(result["speedup_claim_eligible"])
+                self.assertGreater(result["tier1_bootstrap95_by_pair"][0], 1)
+                manifest["repetitions"] = 4
+                result = bench.execute(manifest, root / "too_few")
+                self.assertFalse(result["speedup_claim_eligible"])
+                manifest["repetitions"] = 8
+                def mixed_run(argv, _manifest, _cpus, _nodes, _cgroup, _folder, serial):
+                    row = fake_run(argv, _manifest, _cpus, _nodes, _cgroup, _folder, serial)
+                    if argv[-1] == "candidate" and serial > 8:
+                        row["online_ms"] = 4.0
+                    return row
+                bench.one_run = mixed_run
+                result = bench.execute(manifest, root / "mixed")
+                self.assertFalse(result["speedup_claim_eligible"])
+            finally:
+                bench.preflight, bench.one_run = original_preflight, original_run
+
     def test_output_parser_uses_timed_row(self):
         fields = bench.output_fields("setup\ncurve=c online_ms=12.5 verified=1 target_x=9\ndone")
         self.assertEqual(fields["online_ms"], "12.5")

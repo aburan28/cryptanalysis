@@ -352,21 +352,35 @@ matrix goes to CUDA device 0 when one opens (`F4_F2_ECHELON`, default
 a host-only control sets `F4_F2_ECHELON=host` and says so. Delete or stop
 every pod you start.
 
-## CPU performance isolation gate
+## CPU performance evidence tiers
 
-Treat CPU timing ratios from a contended or unverified host as exploratory.
-Promote a new CPU wall-time speedup claim only with a receipt from the
-[isolated benchmark service](docs/ISOLATED_BENCHMARKS.md), or an equivalent
-auditable host-level isolation record. The record must identify the physical
-CPU model, core and SMT topology, NUMA node, exclusive CPU partition,
-execution CPU affinity, memory policy, fixed frequency, IRQ routing, CPU
-quota, code and workload hashes, paired run order, raw failures, throttling,
-steal time, interrupts, and correctness. A container's visible affinity mask
-does not establish host-wide isolation. If the isolation preflight or any
-noise gate fails, preserve the row and keep aggregate speedup unknown.
-Re-evaluate earlier measurements lacking this evidence before citing them as
-controlled speedup results. Correctness runs and algorithmic diagnostics may
-still run on ordinary hosts when labeled accordingly.
+Record the tier with every CPU timing ratio. The
+[tiered benchmark service](docs/ISOLATED_BENCHMARKS.md) defines the runnable
+gates and receipts. A failed preflight or noise gate retains its row and
+cannot be promoted by silently changing its tier.
+
+- **Tier 0: host isolated.** An auditable physical-host receipt identifies
+  the CPU model, core and SMT topology, NUMA node, exclusive CPU partition,
+  execution affinity, memory policy, fixed frequency, IRQ routing, CPU
+  quota, code and workload hashes, paired order, raw failures, throttling,
+  steal time, interrupts, and correctness. This tier supports a
+  host-isolated wall-time comparison.
+- **Tier 1: cloud instance.** A RunPod Pod or comparable Linux instance may
+  support an instance-scoped paired wall-time comparison. Freeze the provider
+  allocation receipt and instance ID; run both variants on the same pinned
+  exposed CPU with the same workload and limits; record code and workload
+  hashes, paired order, raw failures, correctness, process CPU time, memory,
+  cgroup throttling and memory failures, steal time, and scheduling counters.
+  Require repeated alternating pairs and a 95% paired confidence interval
+  whose lower bound exceeds 1 before calling the result a Tier 1 speedup.
+  A container affinity mask records placement but does not prove host-wide
+  exclusivity. Name the provider, instance, tier, ratio, interval, and
+  observable limits in the claim.
+
+Re-evaluate earlier measurements before assigning a tier; unqualified timing
+ratios remain exploratory. A stage speedup must be labeled with its stage.
+The complete one-target IC speedup still requires verified scalar recovery,
+independent replay, same-point rho, and the phase accounting above.
 
 ## Local Sage runs
 
