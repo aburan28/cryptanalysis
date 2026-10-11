@@ -2,9 +2,9 @@
 
 The direct map lets the radix-1024 fixed-base evaluator keep its compact
 67,338-seed cover while combining the norm-seven bucket in one final point
-merge. The supplied paper gives the Jacobian polynomial for
-`rho=2-omega=1+tau`; this note transports that polynomial into the XYZZ
-state used by the native evaluator.
+merge. Proposition 3.2 of [Xu, Yu, Han, and Lu's paper](https://eprint.iacr.org/2024/1906)
+gives the Jacobian polynomial for `rho=2-omega=1+tau`; this note transports
+that polynomial into the XYZZ state used by the native evaluator.
 
 For secp256k1, let `beta` be the cube root selected by the existing native
 endomorphism constants. An XYZZ point `(X,Y,ZZ,ZZZ)` represents
