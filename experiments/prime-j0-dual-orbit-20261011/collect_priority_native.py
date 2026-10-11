@@ -43,8 +43,9 @@ def parse(name):
     assert (cases, retained, additions, fused_additions) == \
         (4096, 54_339_936, 49_152, 49_152)
     return {"cases": cases, "retained_bytes": retained,
-            "mixed_additions": additions, "gauge_rotations": rotations,
-            "fused_mixed_additions": fused_additions,
+            "recoded_nonidentity_terms_minus_one": additions,
+            "gauge_rotations": rotations,
+            "fused_recoded_nonidentity_terms_minus_one": fused_additions,
             "fused_gauge_rotations": fused_rotations,
             "raw_log": archive(name)}
 
