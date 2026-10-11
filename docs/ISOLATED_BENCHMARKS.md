@@ -13,7 +13,7 @@ the benchmark subprocesses alone enter the isolated partition.
 The strict preflight requires a physical Linux host with administrative
 control, an empty cgroup v2 `cpuset.cpus.partition=isolated` partition whose
 exclusive effective CPU and NUMA sets match the manifest, full SMT sibling
-coverage, `nohz_full` on those CPUs, a fixed `performance` frequency, no CPU
+coverage, `nohz_full` on those CPUs, a fixed CPU frequency, no CPU
 quota, no overlapping effective IRQ affinity, a housekeeping-only service
 affinity, and `numactl`. Version 1 pins each benchmark process and all its
 threads to **one declared logical CPU** inside the isolated partition and
@@ -35,6 +35,14 @@ guide](https://docs.kernel.org/admin-guide/cpu-isolation.html) explains tick,
 RCU, IRQ, and SMT considerations. The runner checks the effective state,
 not just the requested configuration.
 
+Frequency is established either by an exposed `cpufreq` policy with the
+`performance` governor and equal minimum and maximum frequencies, or by the
+specific AWS `g5g.metal` hardware whose [Graviton processor frequency is fixed](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/processor_state_control.html).
+The latter path requires an ARM64 host, no `cpufreq` policy directory, and
+an exact `g5g.metal` instance-type response from IMDSv2. The preflight receipt
+records which path passed. A missing metadata response or a partially exposed
+`cpufreq` policy fails the gate; other isolation and noise checks still apply.
+
 The benchmark executable owns the `online_ms` interval. The manifest must
 describe that timer's boundary; the runner cannot infer it from process
 launch. The runner also records outer elapsed time, executable SHA-256,
@@ -54,8 +62,10 @@ executable's timer and correctness check.
    with `cpuset.cpus`, `cpuset.cpus.exclusive`, and `cpuset.mems` set to the
    chosen resources. Verify the corresponding `.effective` files and
    `cpuset.cpus.isolated` readback. Keep the service outside that partition.
-3. Set the selected CPUs' `performance` governor and equal minimum and
-   maximum frequency. Remove CPU quotas from the benchmark cgroup and its
+3. Where `cpufreq` is available, set the selected CPUs' `performance` governor
+   and equal minimum and maximum frequency. On `g5g.metal`, keep IMDSv2
+   available so the runner can attest the fixed-frequency hardware. Remove
+   CPU quotas from the benchmark cgroup and its
    ancestors. Install `numactl` and the same compiler/runtime used for both
    variants. These changes should be made by the host administrator because
    they affect all workloads on that machine.

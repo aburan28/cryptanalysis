@@ -2,11 +2,13 @@
 
 import importlib.util
 import copy
+import io
 import json
 import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 
 SOURCE = Path(__file__).resolve().parents[1] / "scripts" / "isolated_bench.py"
@@ -45,6 +47,47 @@ class IsolatedBenchTests(unittest.TestCase):
         self.assertTrue(any("interrupt count" in issue for issue in issues))
         self.assertTrue(any("steal" in issue for issue in issues))
         self.assertTrue(any("context switches" in issue for issue in issues))
+
+    def test_fixed_frequency_requires_a_matching_host_and_absent_cpufreq(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            root = Path(dirname)
+            fixed, issue = bench.frequency_state(4, "g5g.metal", "aarch64", root)
+            self.assertIsNone(issue)
+            self.assertEqual(fixed["mode"], "aws_graviton2_hardware_fixed")
+            for instance_type, architecture in ((None, "aarch64"),
+                                                ("g5g.16xlarge", "aarch64"),
+                                                ("g5g.metal", "x86_64")):
+                state, issue = bench.frequency_state(4, instance_type, architecture, root)
+                self.assertIsNone(state["mode"])
+                self.assertIsNotNone(issue)
+            freq = root / "cpu4" / "cpufreq"
+            freq.mkdir(parents=True)
+            state, issue = bench.frequency_state(4, "g5g.metal", "aarch64", root)
+            self.assertIsNone(state["mode"])
+            self.assertIsNotNone(issue)
+            (freq / "scaling_governor").write_text("performance\n")
+            (freq / "scaling_min_freq").write_text("2500000\n")
+            (freq / "scaling_max_freq").write_text("2500000\n")
+            state, issue = bench.frequency_state(4, None, "x86_64", root)
+            self.assertIsNone(issue)
+            self.assertEqual(state["mode"], "cpufreq_fixed")
+            (freq / "scaling_min_freq").write_text("1000000\n")
+            state, issue = bench.frequency_state(4, "g5g.metal", "aarch64", root)
+            self.assertIsNone(state["mode"])
+            self.assertIsNotNone(issue)
+
+    def test_instance_type_requires_imdsv2_token(self):
+        with mock.patch.object(bench.urllib.request, "build_opener") as factory:
+            opener = factory.return_value
+            opener.open.side_effect = [io.BytesIO(b"test-token"), io.BytesIO(b"g5g.metal")]
+            self.assertEqual(bench.ec2_instance_type(), "g5g.metal")
+            token_request = opener.open.call_args_list[0].args[0]
+            type_request = opener.open.call_args_list[1].args[0]
+            self.assertEqual(token_request.get_method(), "PUT")
+            self.assertEqual(type_request.get_header("X-aws-ec2-metadata-token"), "test-token")
+            self.assertEqual(factory.call_args.args[0].proxies, {})
+            opener.open.side_effect = OSError("IMDS unavailable")
+            self.assertIsNone(bench.ec2_instance_type())
 
     def test_pair_fields_and_single_worker(self):
         with tempfile.TemporaryDirectory() as dirname:

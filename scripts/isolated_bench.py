@@ -19,6 +19,8 @@ import statistics
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 import uuid
 
 CGROUP_ROOT = Path("/sys/fs/cgroup")
@@ -140,6 +142,44 @@ def virtualization():
     return result.stdout.strip() or "unknown"
 
 
+def ec2_instance_type():
+    """Read the instance type through IMDSv2; never accept an environment hint."""
+    endpoint = "http://169.254.169.254/latest"
+    request = urllib.request.Request(
+        endpoint + "/api/token", method="PUT",
+        headers={"X-aws-ec2-metadata-token-ttl-seconds": "60"})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(request, timeout=2) as response:
+            token = response.read(256).decode("ascii")
+        if not token:
+            return None
+        request = urllib.request.Request(
+            endpoint + "/meta-data/instance-type",
+            headers={"X-aws-ec2-metadata-token": token})
+        with opener.open(request, timeout=2) as response:
+            return response.read(64).decode("ascii").strip()
+    except (OSError, UnicodeError, urllib.error.URLError):
+        return None
+
+
+def frequency_state(cpu, instance_type, architecture, sys_cpu_root=Path("/sys/devices/system/cpu")):
+    freq = Path(sys_cpu_root) / f"cpu{cpu}" / "cpufreq"
+    governor = read(freq / "scaling_governor")
+    low, high = read(freq / "scaling_min_freq"), read(freq / "scaling_max_freq")
+    state = {"governor": governor, "min_khz": low, "max_khz": high,
+             "current_khz": read(freq / "scaling_cur_freq"), "mode": None,
+             "ec2_instance_type": instance_type}
+    if governor == "performance" and low and low == high:
+        state["mode"] = "cpufreq_fixed"
+        return state, None
+    if (not freq.exists() and architecture in ("aarch64", "arm64")
+            and instance_type == "g5g.metal"):
+        state["mode"] = "aws_graviton2_hardware_fixed"
+        return state, None
+    return state, f"CPU {cpu} frequency is neither governor-fixed nor attested fixed hardware"
+
+
 def version_line(executable):
     binary = shutil.which(executable)
     if not binary:
@@ -253,6 +293,8 @@ def preflight(manifest):
                 problems.append(key + " does not cover benchmark CPUs")
         except ValueError:
             problems.append(key + " unavailable or empty")
+    instance_type = None
+    metadata_queried = False
     for cpu in sorted(cpus):
         base = Path(f"/sys/devices/system/cpu/cpu{cpu}")
         siblings = read(base / "topology/thread_siblings_list")
@@ -265,13 +307,13 @@ def preflight(manifest):
         containing_nodes = {node for node in nodes if (Path(f"/sys/devices/system/node/node{node}") / f"cpu{cpu}").exists()}
         if len(containing_nodes) != 1:
             problems.append(f"CPU {cpu} is not on exactly one requested NUMA node")
-        freq = base / "cpufreq"
-        governor = read(freq / "scaling_governor")
-        low, high = read(freq / "scaling_min_freq"), read(freq / "scaling_max_freq")
-        evidence["frequency"][str(cpu)] = {"governor": governor, "min_khz": low,
-                                           "max_khz": high, "current_khz": read(freq / "scaling_cur_freq")}
-        if governor != "performance" or not low or low != high:
-            problems.append(f"CPU {cpu} frequency must be fixed with performance governor")
+        if not (base / "cpufreq").exists() and not metadata_queried:
+            instance_type = ec2_instance_type()
+            metadata_queried = True
+        state, issue = frequency_state(cpu, instance_type, evidence["architecture"])
+        evidence["frequency"][str(cpu)] = state
+        if issue:
+            problems.append(issue)
     if not shutil.which("numactl"):
         problems.append("numactl is required for explicit memory binding")
     irq_dir = Path("/proc/irq")
