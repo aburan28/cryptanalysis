@@ -644,6 +644,20 @@ def only_worker(queue_root):
         yield
 
 
+@contextlib.contextmanager
+def job_slot(shared_job_lock):
+    """Hold a lock shared with any other launcher for the whole job."""
+    if shared_job_lock is None:
+        yield
+        return
+    with shared_job_lock.open("a+") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
 def database(queue_root):
     queue_root.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(queue_root / "queue.sqlite3", timeout=30, isolation_level=None)
@@ -654,7 +668,7 @@ def database(queue_root):
     return db
 
 
-def serve(queue_root, once=False):
+def serve(queue_root, once=False, shared_job_lock=None):
     with only_worker(queue_root):
         db = database(queue_root)
         db.execute("UPDATE jobs SET status='interrupted', finished_ns=? WHERE status='running'",
@@ -668,17 +682,18 @@ def serve(queue_root, once=False):
                 time.sleep(1)
                 continue
             job_id, raw = item
-            db.execute("UPDATE jobs SET status='running',started_ns=? WHERE id=?",
-                       (time.time_ns(), job_id))
-            output = queue_root / "results" / job_id
-            try:
-                summary = execute(json.loads(raw), output)
-                status = summary["status"]
-            except Exception as exc:
-                summary = {"status": "error", "error": type(exc).__name__ + ": " + str(exc)}
-                status = "error"
-            db.execute("UPDATE jobs SET status=?,finished_ns=?,output=?,summary=? WHERE id=?",
-                       (status, time.time_ns(), str(output), json.dumps(summary), job_id))
+            with job_slot(shared_job_lock):
+                db.execute("UPDATE jobs SET status='running',started_ns=? WHERE id=?",
+                           (time.time_ns(), job_id))
+                output = queue_root / "results" / job_id
+                try:
+                    summary = execute(json.loads(raw), output)
+                    status = summary["status"]
+                except Exception as exc:
+                    summary = {"status": "error", "error": type(exc).__name__ + ": " + str(exc)}
+                    status = "error"
+                db.execute("UPDATE jobs SET status=?,finished_ns=?,output=?,summary=? WHERE id=?",
+                           (status, time.time_ns(), str(output), json.dumps(summary), job_id))
             if once:
                 break
 
@@ -689,6 +704,8 @@ def main():
     signal.signal(signal.SIGTERM, interrupted)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--queue-root", type=Path, default=Path("/workspace/isolated-bench"))
+    parser.add_argument("--shared-job-lock", type=Path,
+                        help="flock path also used by other experiment launchers")
     sub = parser.add_subparsers(dest="action", required=True)
     probe = sub.add_parser("probe")
     probe.add_argument("manifest", type=Path)
@@ -734,11 +751,12 @@ def main():
             for item in db.execute("SELECT id,status,created_ns,output FROM jobs ORDER BY created_ns"):
                 print(json.dumps(item))
     elif args.action == "serve":
-        serve(args.queue_root, args.once)
+        serve(args.queue_root, args.once, args.shared_job_lock)
     else:
         with only_worker(args.queue_root):
-            output = args.queue_root / "results" / uuid.uuid4().hex
-            summary = execute(manifest, output)
+            with job_slot(args.shared_job_lock):
+                output = args.queue_root / "results" / uuid.uuid4().hex
+                summary = execute(manifest, output)
             print(json.dumps({"output": str(output), "summary": summary}, indent=2))
             if summary["status"] != "completed":
                 raise SystemExit(3)

@@ -35,6 +35,8 @@ LEGACY_CANDIDATES = frozenset({
     "IC1N19Ckb1fb32PDP2xlRCsampleLAgaussTDpdpISO0h49c12bf7c849.json",
     "IC1N19Ckb1fb34PDP2xlRCsampleLAgaussTDpdpISO0hc5261983d0cf.json",
 })
+PINNED = ("curves.yaml", "curves.schema.json", "curve-links/link.schema.json")
+PEER_FILES = PINNED + ("validate_semantics.py", "test_validate_semantics.py")
 
 
 def canonical(value: object) -> bytes:
@@ -495,6 +497,7 @@ def validate_scalar_multiplication(item: dict, root: Path, by_uid: dict,
 
 
 def validate_candidates(root: Path, routes: dict, by_uid: dict, errors: list[str]) -> None:
+def validate_candidates(root: Path, routes: dict, errors: list[str]) -> None:
     base = root / "experiments/ic-bench"
     archive = root / "experiments/fb-archive/index.csv"
     indexed = set()
@@ -588,6 +591,7 @@ def validate(root: Path, peer: Path | None = None) -> list[str]:
     if directory == ca:
         routes = validate_routes(directory, by_ref, errors)
         validate_candidates(root, routes, by_uid, errors)
+        validate_candidates(root, routes, errors)
     else:
         registry = read_json(root / "docs/curves/registry.json")
         identities = {record["slug"]: record for record in registry.get("curves", [])}

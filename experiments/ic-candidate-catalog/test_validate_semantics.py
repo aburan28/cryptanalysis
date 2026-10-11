@@ -282,6 +282,10 @@ class SemanticValidatorTests(unittest.TestCase):
         gate.validate_candidates(root, {}, by_uid, errors)
         self.assertTrue(any("IC1 name disagrees" in error for error in errors))
 
+        gate.validate_candidates(root, {}, errors)
+        self.assertTrue(any("factor base is absent from archive" in error for error in errors))
+        self.assertTrue(any("IC1 name disagrees" in error for error in errors))
+
 
 if __name__ == "__main__":
     unittest.main()

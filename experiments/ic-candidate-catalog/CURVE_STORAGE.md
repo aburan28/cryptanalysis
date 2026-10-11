@@ -26,6 +26,11 @@ Change it only with a reviewed edit to those files and copy the same files
 and lock into crypto's `docs/curves/ic/`. With
 both checkouts available, pass `--peer /path/to/crypto` to compare the mirrored
 source files and policy guide byte for byte. Crypto CI also checks its mirror against this
+`mirror-lock.json` pins the bytes of `curves.yaml`, `curves.schema.json`, and
+`curve-links/link.schema.json`. Change it only with a reviewed edit to those
+files and copy the same files and lock into crypto's `docs/curves/ic/`. With
+both checkouts available, pass `--peer /path/to/crypto` to compare the three
+source files byte for byte. Crypto CI also checks its mirror against this
 repository's `main` branch, including the validator implementation itself.
 Keep its negative tests mirrored as well. Merge a source update here before
 its mirror PR.
