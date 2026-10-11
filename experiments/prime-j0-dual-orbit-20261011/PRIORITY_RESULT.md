@@ -42,3 +42,15 @@ the table reports exact operation counts and retained bytes, not a CPU
 speedup. The source-pinned Linux replay records independent correctness and
 host evidence. A paired runtime result needs the host-level isolation and
 calibration receipt specified in `docs/ISOLATED_BENCHMARKS.md`.
+
+## Linux replay state
+
+The serialized RunPod runner accepted job
+`20261011T044415Z_prime-j0-dual-priority-linux-0576fe4_pNparC` and reported
+it `queued`. It will fetch commit
+`0576fe4d1cdc82c4daad5a74eb45f1ee20da91bd`; the staged runner script
+matched SHA-256
+`1022ffdd8f2457fc5b48d3bf587d03b8add3818d307cb88b2bf72318ffb0202c`.
+The existing N131 replay was the sole active job at dispatch. The RunPod
+container's host probe does not establish an exclusive physical CPU
+partition, so this queued run is a correctness replay only.
