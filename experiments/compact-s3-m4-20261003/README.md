@@ -2504,7 +2504,27 @@ cell and ordinary N53/N83 cells all censor at 60 seconds. Exact conflicts
 fall at the fixed cap while memory rises; these are bounded search
 diagnostics, not a useful-relation rate or complete N131 work estimate.
 
+### Q1497 Karatsuba polynomial-basis three-S3 circuit
+
+[Q1497](q1497_karatsuba_poly_xcnf/README.md) keeps Q1496's exact N53/N83
+curves, window bases, and ordinary public targets while mapping field
+products through the verified polynomial-basis bridge and a Karatsuba
+convolution. Its full N53 formula uses 5,877 AND gates and 48,677 clauses;
+N83 uses 15,498 gates and 66,756 clauses. All basis-pair arithmetic
+controls and pinned N53/N83 four-point relations pass. Unpinned known
+N53, planted N83, and ordinary N53/N83 cases all censor at 60 seconds.
+The new formula has many more XOR rows; its large Gaussian components
+exceed the frozen 512-row limit, so its ordinary runs have zero active
+matrices. The audit retains these failed rows and leaves N131 work unknown.
+
 ## Next goal
+
+First isolate Q1497's 512-row Gaussian limit on its byte-identical
+Karatsuba formulas. A separately frozen row-limit comparison must show
+whether CryptoMiniSat actually admits the large N53/N83 XOR matrices;
+the pinned controls and all censored ordinary rows stay in the ledger.
+This is a representation check, not a claim that the smaller circuit
+solves decomposition.
 
 Test a **fully coupled four-leaf search** that leaves both internal
 midpoints existential while it reasons about many cyclic windows at once.
