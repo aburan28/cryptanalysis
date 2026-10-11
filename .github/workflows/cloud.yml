@@ -6,6 +6,11 @@ on:
     paths: ['cloud/**', 'ecc2k130/scripts/fetch_cuda.sh', '.github/workflows/cloud.yml']
   pull_request:
     paths: ['cloud/**', 'ecc2k130/scripts/fetch_cuda.sh', '.github/workflows/cloud.yml']
+# A new commit supersedes runs for this PR or branch; manual runs stay independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
 permissions:
   contents: read
 jobs:

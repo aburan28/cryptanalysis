@@ -153,10 +153,14 @@ def buildSystemPb(m, taps, rowsNbToPb, points, leaf, block=4):
     return prog, roots
 
 
-def encode(prog, roots, m, points, weight, xrBits, cnf, orderPoints=True):
+def encode(prog, roots, m, points, weight, xrBits, cnf, orderPoints=True,
+           returnInputs=False):
     """Tseitin the system into `cnf` and add the factor base constraints.
 
-    Returns the point variables, so a model can be decoded back to x-coords."""
+    Returns the point variables, so a model can be decoded back to x-coords.
+    With returnInputs, also return intermediate input literals for a pinned
+    circuit-correctness control; this does not change the solving constraints.
+    """
     lits = {}
     pvars = []
     for i in range(points):
@@ -178,4 +182,4 @@ def encode(prog, roots, m, points, weight, xrBits, cnf, orderPoints=True):
         # describe the same decomposition
         for i in range(points - 1):
             cnf.lexLeq(pvars[i], pvars[i + 1])
-    return pvars
+    return (pvars, lits) if returnInputs else pvars
