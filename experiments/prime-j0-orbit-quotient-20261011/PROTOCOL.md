@@ -7,6 +7,11 @@ three-image tau cover with a projected complete native table below the
 reported 64 MiB design budget. The [proof](PROOF.md) specifies lookup,
 digit correctness, cover admissibility, and byte accounting.
 
+The prime-field endomorphism `tau=1-omega` and six-unit precomputation
+symmetry come from Xu, Yu, Han, and Lu, *On Efficient Computations of
+y²=x³+b/Fp for Primes p ≡ 1 (mod 3)*. This candidate adds a succinct
+rank-indexed residue lookup and an expanded fixed-generator tau cover.
+
 Construction is independent of scalar targets and timing. The plan
 first replaces every disjoint adjacent pair of length-three segments
 in the minimum cover, then splits the first 2,048 remaining triples.
