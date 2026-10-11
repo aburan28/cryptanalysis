@@ -21,6 +21,28 @@ int ca_ec_fixed_comb_mul_profile(const ca_group *g, const ca_fixed_comb_precomp 
                                   ca_elem *out, uint64_t k, uint64_t *doubles,
                                   uint64_t *adds);
 
+/* Repeated public-scalar multiplication through signed radix-256 windows of
+ * a two-coordinate Eisenstein lattice representative. The second coordinate
+ * reuses the first coordinate's table through the order-three automorphism. */
+#define CA_ENDO_RADIX8_MAGNITUDES 128
+typedef struct ca_endo_radix8_precomp {
+    const ca_group *g;
+    ca_elem base_point;
+    ca_elem *point; /* [positions][128], positive magnitudes 1..128 */
+    uint64_t beta;
+    __int128 v1x, v1y, v2x, v2y, det;
+    unsigned positions;
+    int identity;
+} ca_endo_radix8_precomp;
+size_t ca_ec_endo_radix8_point_entries(const ca_group *g);
+int ca_ec_endo_radix8_prepare(const ca_group *g, const ca_elem *point, ca_endo_radix8_precomp *out,
+                              uint64_t *doubles, uint64_t *adds, uint64_t *inversions);
+int ca_ec_endo_radix8_prepare_verify(const ca_endo_radix8_precomp *pre);
+int ca_ec_endo_radix8_mul_profile(const ca_group *g, const ca_endo_radix8_precomp *pre,
+                                  ca_elem *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
+                                  uint64_t *fallbacks);
+void ca_ec_endo_radix8_clear(ca_endo_radix8_precomp *pre);
+
 /* Per-point width-4 table for repeated scalar multiplications within one rho
  * solve.  It is private to the C implementation and tied to its group. */
 typedef struct ca_tau4_digit {

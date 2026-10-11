@@ -370,6 +370,14 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     CHECK_EQ_U64(comb_doubles, (uint64_t)8 * comb_pre.depth);
     CHECK_EQ_U64(comb_adds, CA_FIXED_COMB_ENTRIES - 1 - CA_FIXED_COMB_WIDTH);
     CHECK_EQ_U64(comb_inversions, 1);
+    ca_endo_radix8_precomp endo_pre = {0};
+    uint64_t endo_doubles = 0, endo_adds = 0, endo_inversions = 0;
+    CHECK(ca_ec_endo_radix8_prepare(g, point, &endo_pre, &endo_doubles, &endo_adds,
+                                    &endo_inversions));
+    CHECK(ca_ec_endo_radix8_prepare_verify(&endo_pre));
+    CHECK_EQ_U64(endo_doubles, 8 * (endo_pre.positions - 1));
+    CHECK_EQ_U64(endo_adds, 127 * endo_pre.positions);
+    CHECK_EQ_U64(endo_inversions, 1);
     ca_tau4_precomp pre;
     CHECK(ca_ec_tau4_prepare(g, point, &pre, NULL));
     ca_tau_pair_fused_precomp pair_pre;
@@ -384,6 +392,10 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
         ca_group_mul(g, &expected, point, k % g->order, NULL);
         CHECK(ca_ec_fixed_comb_mul_profile(g, &comb_pre, &got, k, NULL, NULL));
         CHECK(ca_group_equal(g, &got, &expected));
+        uint64_t endo_fallbacks = UINT64_MAX;
+        CHECK(ca_ec_endo_radix8_mul_profile(g, &endo_pre, &got, k, NULL, NULL, &endo_fallbacks));
+        CHECK(ca_group_equal(g, &got, &expected));
+        CHECK_EQ_U64(endo_fallbacks, 0);
         CHECK(ca_ec_tau3_fused_mul_profile(g, &tau3_pre, &got, k, NULL, NULL, NULL));
         CHECK(ca_group_equal(g, &got, &expected));
         CHECK(ca_ec_tau3_fused_recode_verify_scalar(&tau3_pre, k));
@@ -451,6 +463,15 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     ca_group_mul(g, &tau3_expected_fallback, point, g->order / 2, NULL);
     CHECK(ca_group_equal(g, &got, &tau3_expected_fallback));
     CHECK_EQ_U64(tau3_fallback, 1);
+    unsigned saved_endo_positions = endo_pre.positions;
+    endo_pre.positions = 1;
+    uint64_t endo_fallbacks = 0;
+    CHECK(ca_ec_endo_radix8_mul_profile(g, &endo_pre, &got, g->order / 2, NULL, NULL,
+                                        &endo_fallbacks));
+    CHECK(ca_group_equal(g, &got, &tau3_expected_fallback));
+    CHECK_EQ_U64(endo_fallbacks, 1);
+    endo_pre.positions = saved_endo_positions;
+    ca_ec_endo_radix8_clear(&endo_pre);
     size_t sparse_saved_blocks = sparse_pre.blocks;
     sparse_pre.blocks = 1;
     uint64_t sparse_fallback = 0;
@@ -542,6 +563,15 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     CHECK_EQ_U64(comb_inversions, 0);
     CHECK(ca_ec_fixed_comb_mul_profile(g, &comb_pre, &got, 17, NULL, NULL));
     CHECK(ca_group_is_identity(g, &got));
+    CHECK(ca_ec_endo_radix8_prepare(g, &identity, &endo_pre, &endo_doubles, &endo_adds,
+                                    &endo_inversions));
+    CHECK(ca_ec_endo_radix8_prepare_verify(&endo_pre));
+    CHECK_EQ_U64(endo_doubles, 0);
+    CHECK_EQ_U64(endo_adds, 0);
+    CHECK_EQ_U64(endo_inversions, 0);
+    CHECK(ca_ec_endo_radix8_mul_profile(g, &endo_pre, &got, 17, NULL, NULL, NULL));
+    CHECK(ca_group_is_identity(g, &got));
+    ca_ec_endo_radix8_clear(&endo_pre);
     uint64_t setup_ops = UINT64_MAX;
     CHECK(ca_ec_tau4_prepare(g, &identity, &pre, &setup_ops));
     CHECK_EQ_U64(setup_ops, 0);
