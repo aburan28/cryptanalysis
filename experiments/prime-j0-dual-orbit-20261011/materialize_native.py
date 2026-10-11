@@ -42,7 +42,6 @@ def atlas_source():
         ('b"FO18"', 'b"DR20"'),
         ("83_051", "67_338"),
         ("let (seed_id, exponent, canonical_unit) =", "let (seed_id, map_id, canonical_unit) ="),
-        ("(code >> 3) & 3", "(code >> 3) & 7"),
         ("exponent <= 2", "map_id <= 3"),
         ("(digit, seed_id, exponent, unit_code)", "(digit, seed_id, map_id, unit_code)"),
     ):
