@@ -26,6 +26,15 @@ congruence, terminal bound, and prior-panel disjointness. Native point
 replay must compare every new scalar point with the priority control and
 independent binary checks before promotion to a runtime experiment.
 
+`build_native_atlas.py` converts the frozen cover into the same DR20
+class format; `verify_native_atlas.py` checks every record and residue.
+`materialize_native.py OUTPUT` applies that atlas to the direct-XYZZ-rho
+source and adds the held-out digit/point test. Run the native Rust suite
+from `OUTPUT` with its Cargo target directory and raw log on a volume
+with adequate headroom, then pass the log to `collect_native.py`.
+Build the normal CLI binary from the same output, run its ten-case
+boundary fixture, and pass stdout through `verify_native_edge.py`.
+
 The stage result is a cover and operation-count result. A wall-time
 comparison needs a paired end-to-end run that passes
 `../../docs/ISOLATED_BENCHMARKS.md`.
