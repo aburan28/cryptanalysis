@@ -22,7 +22,10 @@ independently computed direct four-product formula on the frozen 4,096-scalar
 panel and the edge inputs `0`, `1`, and `2^256-1`. It also compares the shared
 baseline with the original certified routine; it passed with raw output in
 [corner-equivalence.log](corner-equivalence.log). The complete native selector
-and point replay for this final patch is running as a separate check.
+and point replay also passed on all 4,096 frozen scalars. It matched the frozen
+path certificate and native point control on every scalar, and the independent
+binary point path on the first 128. The [replay receipt](full-panel-replay.json)
+binds the source, inputs, certificate, test binary, and [raw log](full-panel-replay.log).
 
 The [patch](native.patch) applies to the exact benchmark crate identified by
 [base-tree-sha256.txt](base-tree-sha256.txt). [materialize.py](materialize.py)
