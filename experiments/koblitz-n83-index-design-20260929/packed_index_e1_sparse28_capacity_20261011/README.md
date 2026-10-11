@@ -67,6 +67,50 @@ target CPU to sparse26; this capacity result answers the larger-index question.
 The repository [CPU isolation gate](../../../docs/ISOLATED_BENCHMARKS.md)
 remains required for a controlled wall-time comparison.
 
+## Tier 1 instance replay
+
+The [Tier 1 protocol](tier1_protocol.json) binds the capacity protocol by
+SHA-256 and keeps the same frozen public point, 29.9-million-state cap,
+5,500 MiB RSS cap, exact lookup, and first-witness rule. It fixes eight
+alternating sparse26/sparse28 pairs with a 300-second limit per arm. This
+comparison is prioritized because sparse28 used less target process CPU in
+both adjacent full-capacity pairs, while the existing Mac wall times vary
+strongly with host load.
+
+The [Tier 1 manifest generator](make_tier1_manifest.py) verifies the four
+preserved capacity rows and full partner audit, checks the pinned public
+source, and freezes the benchmark runner's expected fields and result. It
+also hashes an allocation receipt whose `provider` and `instance_id` match
+the supplied arguments. A dry-run manifest passed the Tier 1 runner's input
+contract; this establishes the replay wiring, not a timing result.
+
+Run on a separate idle Linux instance from a checkout containing the merged
+Tier 1 runner. Save a JSON allocation receipt containing `provider` and
+`instance_id`, plus the provider's image, CPU and memory allocation, and
+creation time when available. Keep API credentials out of the receipt.
+After building the pinned binary as above, select one CPU shown by
+`probe-host` within the instance's affinity mask:
+
+```sh
+python3 /workspace/cryptanalysis/experiments/koblitz-n83-index-design-20260929/packed_index_e1_sparse28_capacity_20261011/make_tier1_manifest.py \
+  --workdir /workspace/cryptanalysis \
+  --binary /workspace/build/n83-e1-sparse28-capacity/release/native_packed_index \
+  --provider runpod --instance-id POD_ID \
+  --allocation-receipt /workspace/receipts/runpod-allocation.json \
+  --cpus SELECTED_CPU --execution-cpu SELECTED_CPU \
+  --output /workspace/sparse28-capacity-tier1-manifest.json
+python3 /workspace/cryptanalysis/scripts/isolated_bench.py probe /workspace/sparse28-capacity-tier1-manifest.json
+timeout 6600 python3 /workspace/cryptanalysis/scripts/isolated_bench.py \
+  run /workspace/sparse28-capacity-tier1-manifest.json
+```
+
+Preserve every valid and invalid pair, including raw stdout/stderr, source
+and input hashes, memory, phase sums, process CPU time, and observed
+throttling or memory failures. A Tier 1 stage speedup requires eight exact
+same-target pairs and a paired bootstrap 95% lower bound above 1. The full
+one-target IC comparison also requires relation collection, rank, recovery,
+and matched-rho accounting under the repository contract.
+
 ## Physical-host replay
 
 `benchmark_stage.py` runs either frozen arm and checks the exact result fields,
