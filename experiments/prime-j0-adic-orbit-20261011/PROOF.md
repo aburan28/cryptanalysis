@@ -18,7 +18,11 @@ At level `m>=2`, there are `2^(m-2)` possible first coordinates and
 `2^(2m-3)` orbits. Level one contributes one orbit, and zero contributes
 one. For `n=10`, the total is
 
-`2 + sum_(m=2)^10 2^(2m-3) = 174,764`.
+`2 + sum_(m=2)^10 2^(2m-3) = (2^20+8)/6 = 174,764`.
+
+More generally, for every `n>=1` the same construction has exactly
+`(2^(2n)+8)/6` unit orbits. The two exceptional classes are zero and
+the nonzero orbit modulo two; all other classes have six residues.
 
 With `offset[1]=1` and `offset[m]=2+sum_(j=2)^(m-1) 2^(2j-3)` for
 `m>=2`, the direct dense index is
@@ -32,6 +36,11 @@ and unit for the canonical residue decodes any member by composing
 with the inverse canonicalizing unit. This is the same six-unit
 composition law as the existing quotient atlas. It preserves the exact
 digit congruence, norm bound, and scalar reconstruction.
+
+The lookup performs one 2-adic valuation, at most one linear unit
+transform, one sign normalization, and one direct code access per
+full digit. In particular, it has no rank-table memory access. These
+are structural operation counts, not a wall-time comparison.
 
 The independent verifier must enumerate all `2^20` residue pairs,
 check the index and unit action against a separate implementation,
