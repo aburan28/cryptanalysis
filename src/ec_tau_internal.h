@@ -198,6 +198,30 @@ typedef struct ca_tau4_precomp {
     int identity;
 } ca_tau4_precomp;
 
+/* Two public bases with a common width-four tau alphabet. Both nine-point
+ * seed sets are normalized in one inversion. `joint=1` evaluates aP+bQ in
+ * one tau stream; `joint=0` is the same-table two-stream control. As with
+ * ca_ec_tau4_prepare, the caller must establish that both inputs are in
+ * the declared subgroup; preparation checks curve validity only. */
+typedef struct ca_tau4_joint_precomp {
+    const ca_group *g;
+    ca_elem seed[2][9];
+    ca_tau4_digit digit[81];
+    uint64_t beta, beta2;
+    __int128 v1x, v1y, v2x, v2y, det;
+    uint8_t identity[2];
+} ca_tau4_joint_precomp;
+
+typedef struct ca_tau4_joint_counts {
+    uint64_t tau_steps, doubles, mixed_adds, full_adds, rotations, inversions;
+} ca_tau4_joint_counts;
+
+int ca_ec_tau4_joint_prepare(const ca_group *g, const ca_elem *p, const ca_elem *q,
+                              ca_tau4_joint_precomp *out, ca_tau4_joint_counts *counts);
+int ca_ec_tau4_joint_mul_profile(const ca_group *g, const ca_tau4_joint_precomp *pre,
+                                  ca_elem *out, uint64_t a, uint64_t b, int joint,
+                                  ca_tau4_joint_counts *counts);
+
 #define CA_TAU_POS_Q 64
 typedef struct ca_tau4_pos_precomp {
     ca_tau4_precomp base;
