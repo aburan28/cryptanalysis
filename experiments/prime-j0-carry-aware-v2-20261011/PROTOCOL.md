@@ -31,3 +31,21 @@ receipt. A favorable screen requires independent scalar and point replay,
 a native implementation with
 charged recoding time, and paired timing under the repository's isolation
 gate. The screen reports activation and term counts, not wall-time speedup.
+
+## Native replay
+
+`materialize_native.py` takes the direct-XYZZ-rho materializer from the
+stacked base branch, retains its original fresh panel for existing tests,
+and places the disjoint carry holdout beside it. It injects mode 167, the
+compressed offer index, and a test that compares every selected digit path
+and point against the frozen certificates and direct-rho control. The
+materialization receipt binds both generated Rust files and all input
+assets. Build and test from the materialized directory with Cargo; keep
+the Cargo target directory and raw test log on a filesystem with sufficient
+headroom. Pass the raw log to `collect_native.py --log` after the suite
+finishes. Run CLI mode 167 on the ten-case boundary fixture and pass its
+stdout through `verify_native_edge.py` to bind the binary and points.
+
+The full suite, CLI replay, and all local profiling are correctness evidence
+unless a paired end-to-end run passes the isolated-host gate in
+`../../docs/ISOLATED_BENCHMARKS.md`.
