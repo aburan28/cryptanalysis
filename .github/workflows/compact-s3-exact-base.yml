@@ -12,6 +12,11 @@ on:
       - '.github/workflows/compact-s3-exact-base.yml'
   workflow_dispatch:
 
+# A new commit supersedes runs for this PR or branch; manual runs stay independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
 permissions:
   contents: read
 

@@ -1,0 +1,110 @@
+name: Independently checked branch symmetry
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/**'
+      - 'experiments/pdp-degree-heuristics/**'
+      - '.github/workflows/independent-symmetry-checker.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/**'
+      - 'experiments/pdp-degree-heuristics/**'
+      - '.github/workflows/independent-symmetry-checker.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: independent-symmetry-checker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  correctness:
+    name: Independent symmetry checker (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install numerical dependency
+        run: python -m pip install numpy==2.4.0
+      - name: Build portable dependencies and selected backend
+        shell: bash
+        run: |
+          mkdir -p symmetry-checker-evidence
+          for version in 20 23 31 32 33 34 35 36 37 38; do
+            python "experiments/groebner-perf-20260924/round${version}/build.py" > "symmetry-checker-evidence/build-${version}.log" 2>&1
+          done
+          flags=()
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            flags+=(--metal)
+          fi
+          for version in 44; do
+            python "experiments/groebner-perf-20260924/round${version}/build.py" "${flags[@]}" > "symmetry-checker-evidence/build-${version}.log" 2>&1
+          done
+          python experiments/groebner-perf-20260924/round45/build.py > symmetry-checker-evidence/build-45.log 2>&1
+      - name: Detect actual Metal availability
+        shell: bash
+        run: |
+          cd experiments/groebner-perf-20260924/round44
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            # Hosted Metal availability is explicit; compilation alone is not a device pass.
+            python - <<'PY'
+          import os
+          from normalized import Producer
+          try:
+              with Producer(2, 3, 3, backend='metal') as probe:
+                  print('METAL_AVAILABLE', probe.device)
+          except ValueError as error:
+              if str(error) != 'requested Metal device unavailable':
+                  raise
+              print('METAL_UNAVAILABLE', error)
+          else:
+              with open(os.environ['GITHUB_ENV'], 'a') as output:
+                  output.write('QUADRATIC_TEST_METAL=1\n')
+          PY
+          fi
+      - name: Exercise proof semantics and charged failure boundaries
+        working-directory: experiments/groebner-perf-20260924/round45
+        run: python -u -m unittest -v test_symmetry.py test_sparse_guard.py test_adapter_isolation.py > ../../../symmetry-checker-evidence/unit-tests.log 2>&1
+      - name: Validate frozen systems and complete-query ablation
+        shell: bash
+        run: |
+          flags=()
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            flags+=(--metal)
+          fi
+          python -u experiments/groebner-perf-20260924/round45/validate_native.py "${flags[@]}" --output symmetry-checker-evidence/correctness.json.gz > symmetry-checker-evidence/validation.log 2>&1
+      - name: Independently audit complete proofs from original equations
+        run: python -u experiments/groebner-perf-20260924/round45/audit_queries.py --input symmetry-checker-evidence/correctness.json.gz --output symmetry-checker-evidence/independent-audit.json > symmetry-checker-evidence/independent-audit.log 2>&1
+      - name: Retain actual native binaries and runner identity
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, platform, shutil
+          out = pathlib.Path('symmetry-checker-evidence')
+          out.mkdir(exist_ok=True)
+          metadata = {k: os.environ.get(k) for k in ('GITHUB_SHA', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'RUNNER_OS', 'RUNNER_ARCH')}
+          metadata.update(platform=platform.platform(), architecture=platform.machine())
+          (out / 'runner.json').write_text(json.dumps(metadata, indent=2)+'\n')
+          for build in pathlib.Path('experiments/groebner-perf-20260924').glob('round*/build'):
+              shutil.copytree(build, out / 'native' / build.parent.name, dirs_exist_ok=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: symmetry-checker-${{ matrix.os }}
+          path: symmetry-checker-evidence/
+          if-no-files-found: error
+          retention-days: 14
