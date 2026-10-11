@@ -1,0 +1,20 @@
+# Prefix subtraction does not improve the seven-seed N41 selector
+
+On the frozen N41 twelve-column relation-source panel, conditioning the public point on either known free pair did not improve a seven-proposal Bernoulli selector for the generating block-A seed. With the same 80,000 training rows and 20,000 held-out rows, `Q−P0` hit **4,218** generating seeds, only ten more than raw `Q` and below the **4,465** hits from the training-frequency baseline. `Q−P0−P1` hit **4,080**. An independent bit-score replay reproduced all 20,000 held-out decisions in each arm, and a separate integer-field group implementation checked 64 spaced residuals against their exact free-pair points.
+
+The source is `y²+xy=x³+1` over `GF(2)[t]/(t^41+t³+1)`, curve `EC1N41Ckb1h023d9a38bbf7`, subgroup order `549756390943`. Its W6 factor base has **B=384** subgroup-usable points and **K=26** folded columns. The six pair rotations are `0,5,10,15,20,25`; blocks A and B each join two same-seed pairs, with their seeds differing by one of offsets `0,…,7`. The [prior generator](../n41_w6_public_seed_predictor_20261011/RESULT.md) froze 100,000 distinct constructed public sums from twelve-column signed tuples and the first 80,000/final 20,000 split. The recorded `p0,p1` indexes identify the two free signed pairs before block A.
+
+The [native extractor](extract.cpp) rebuilt the original pair-state order, computed `R0=Q−P0` and `R01=R0−P1`, and checked both additions back to `Q` for every row. Its [frozen v2 protocol](extract_protocol_v2.json) binds the exact source input, rows, code, binary, one-worker 120-second parent cap, and output law. The [receipt](extract_receipt_v2.json) records `COMPLETE` in 2.036 local seconds and 1,884,160 bytes of child peak RSS. The first launch pointed at a different archived eight-block input and failed the source-header check before producing residual rows; its [original protocol](extract_protocol.json), [failure receipt](extract_receipt.json), and stderr are retained. The corrected source input is the exact six-block file hashed by the prior generator.
+
+The [fit protocol](protocol.json) fixes a Laplace-one Bernoulli model with empirical class prior, 41 `x` bits plus 41 `y` bits per arm, stable top-seven ranking, and the original split. Its output is a **generating-seed inclusion** test under this relation-source law: a point can have additional valid witnesses under other seeds. The fit used the repository's checked Sage Python after saving its [runtime receipt](sage_runtime_info.json).
+
+| Seven-seed input | Held-out hits / 20,000 | Recall | Difference from frequency baseline |
+| --- | ---: | ---: | ---: |
+| Training seed frequency | **4,465** | **22.325%** | Reference |
+| Raw public `Q` | 4,208 | 21.040% | −1.285 percentage points |
+| `Q−P0` | 4,218 | 21.090% | −1.235 points; paired 95% interval −1.682 to −0.788 |
+| `Q−P0−P1` | 4,080 | 20.400% | −1.925 points; paired 95% interval −2.384 to −1.466 |
+
+Relative to raw `Q`, `Q−P0` gained **0.050 percentage points** with paired 95% interval **−0.484 to 0.584**; `Q−P0−P1` lost **0.640 points**, interval **−1.180 to −0.100**. The exact paired discordance counts and McNemar p-values are in the [fit result](fit_result.json). The [independent audit](audit.json) checks every held-out hit, source-row alignment, input hashes, and 64 residual group identities using separately implemented `GF(2^41)` multiplication, inversion, and curve addition.
+
+This evidence rules out this inexpensive coordinate-bit model as a useful seed selector under the declared source law. The [W18 seed-budget frontier](../n131_w18_seed_budget_frontier_20261011/RESULT.md) requires roughly **35,732-fold** conditional concentration for seven seeds across sixteen fixed prefixes to reach its half-coverage support ceiling, whereas the tested N41 model stayed below the seed-frequency control. The next method gate must use exact target-coupled pair-output and upper S3 constraints to propose seed/output combinations jointly, then recover an unpinned N41 public relation before a source-bound N131 promotion. This stage remains `candidate_id: null`.
