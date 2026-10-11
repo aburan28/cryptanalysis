@@ -22,6 +22,7 @@
 #include "generated/tau_pair_periodic.h"
 #include "generated/tau_pair_firstword_gate.h"
 #include "generated/tau_pair_mixed_radix_tail.h"
+#include "generated/tau_pair_mixed_full_digits.h"
 #include "generated/tau8_orbit_map.h"
 #include "generated/tau8_hot_map.h"
 #include "generated/tau8_pair_map.h"
@@ -1742,7 +1743,7 @@ static int tau_pair_mixed_step(int64_t a, int64_t b, uint16_t action,
     return 1;
 }
 
-int ca_ec_tau_pair_mixed_verify_map(void)
+static int tau_pair_mixed_verify_map(const uint16_t *map)
 {
     for (int64_t start_a = -CA_TAU_PAIR_MIXED_BOUND;
          start_a <= CA_TAU_PAIR_MIXED_BOUND; start_a++)
@@ -1753,7 +1754,7 @@ int ca_ec_tau_pair_mixed_verify_map(void)
             size_t count = 0;
             while (a || b) {
                 if (!tau_pair_periodic_bounded(a, b) || count == 128) return 0;
-                uint16_t action = ca_tau_pair_mixed_action[tau_pair_periodic_tail_index(a, b)];
+                uint16_t action = map[tau_pair_periodic_tail_index(a, b)];
                 int64_t qa, qb;
                 if (!tau_pair_mixed_step(a, b, action, &qa, &qb)) return 0;
                 actions[count++] = action;
@@ -1784,6 +1785,16 @@ int ca_ec_tau_pair_mixed_verify_map(void)
     return 1;
 }
 
+int ca_ec_tau_pair_mixed_verify_map(void)
+{
+    return tau_pair_mixed_verify_map(ca_tau_pair_mixed_action);
+}
+
+int ca_ec_tau_pair_mixed_full_verify_map(void)
+{
+    return tau_pair_mixed_verify_map(ca_tau_pair_mixed_full_action);
+}
+
 int ca_ec_tau_pair_mixed_verify_tau_kernel(const ca_group *g, const ca_elem *point)
 {
     if (!g || !point || point->w[2] || point->w[0]) return 0;
@@ -1795,9 +1806,10 @@ int ca_ec_tau_pair_mixed_verify_tau_kernel(const ca_group *g, const ca_elem *poi
     return ca_group_is_identity(g, &result);
 }
 
-int ca_ec_tau_pair_mixed_recode_actions(const ca_tau_pair_complete_precomp *pre, uint64_t k,
+static int tau_pair_mixed_recode_actions(const ca_tau_pair_complete_precomp *pre, uint64_t k,
                                          uint16_t actions[128], size_t *count,
-                                         uint64_t *lookups, uint64_t *fallbacks)
+                                         uint64_t *lookups, uint64_t *fallbacks,
+                                         const uint16_t *map)
 {
     if (!pre || !pre->base.g || !actions || !count) return 0;
     _Static_assert(CA_TAU_PAIR_MIXED_BOUND == CA_TAU_PAIR_PERIODIC_BOUND,
@@ -1823,7 +1835,7 @@ int ca_ec_tau_pair_mixed_recode_actions(const ca_tau_pair_complete_precomp *pre,
         if (tau_pair_periodic_bounded(a, b) &&
             ca_tau_pair_periodic_tail[tau_pair_periodic_tail_index(a, b)] !=
                 CA_TAU_PAIR_FUSED_UNREACHABLE) {
-            action = ca_tau_pair_mixed_action[tau_pair_periodic_tail_index(a, b)];
+            action = map[tau_pair_periodic_tail_index(a, b)];
             if (lookups) (*lookups)++;
             int64_t qa, qb;
             if (!tau_pair_mixed_step(a, b, action, &qa, &qb) ||
@@ -1846,12 +1858,29 @@ canonical_fallback:
     return 1;
 }
 
-int ca_ec_tau_pair_mixed_recode_verify_scalar(const ca_tau_pair_complete_precomp *pre, uint64_t k)
+int ca_ec_tau_pair_mixed_recode_actions(const ca_tau_pair_complete_precomp *pre, uint64_t k,
+                                         uint16_t actions[128], size_t *count,
+                                         uint64_t *lookups, uint64_t *fallbacks)
+{
+    return tau_pair_mixed_recode_actions(pre, k, actions, count, lookups, fallbacks,
+                                         ca_tau_pair_mixed_action);
+}
+
+int ca_ec_tau_pair_mixed_full_recode_actions(const ca_tau_pair_complete_precomp *pre, uint64_t k,
+                                              uint16_t actions[128], size_t *count,
+                                              uint64_t *lookups, uint64_t *fallbacks)
+{
+    return tau_pair_mixed_recode_actions(pre, k, actions, count, lookups, fallbacks,
+                                         ca_tau_pair_mixed_full_action);
+}
+
+static int tau_pair_mixed_recode_verify_scalar(const ca_tau_pair_complete_precomp *pre,
+                                                uint64_t k, const uint16_t *map)
 {
     if (!pre || !pre->base.g) return 0;
     uint16_t actions[128];
     size_t count = 0;
-    if (!ca_ec_tau_pair_mixed_recode_actions(pre, k, actions, &count, NULL, NULL)) return 0;
+    if (!tau_pair_mixed_recode_actions(pre, k, actions, &count, NULL, NULL, map)) return 0;
     ca_i128 a = 0, b = 0;
     for (size_t i = count; i-- > 0;) {
         unsigned kind = actions[i] >> 10;
@@ -1878,16 +1907,35 @@ int ca_ec_tau_pair_mixed_recode_verify_scalar(const ca_tau_pair_complete_precomp
     return a == expected_a && b == expected_b;
 }
 
+int ca_ec_tau_pair_mixed_recode_verify_scalar(const ca_tau_pair_complete_precomp *pre, uint64_t k)
+{
+    return tau_pair_mixed_recode_verify_scalar(pre, k, ca_tau_pair_mixed_action);
+}
+
+int ca_ec_tau_pair_mixed_full_recode_verify_scalar(const ca_tau_pair_complete_precomp *pre,
+                                                    uint64_t k)
+{
+    return tau_pair_mixed_recode_verify_scalar(pre, k, ca_tau_pair_mixed_full_action);
+}
+
 size_t ca_ec_tau_pair_mixed_static_bytes(void)
 {
     return ca_ec_tau_pair_complete_static_bytes() + sizeof(ca_tau_pair_periodic_tail) +
            sizeof(ca_tau_pair_mixed_action);
 }
 
-int ca_ec_tau_pair_mixed_mul_profile(const ca_group *g, const ca_tau_pair_complete_precomp *pre,
-                                     ca_elem *out, uint64_t k, uint64_t *triples,
-                                     uint64_t *tau_steps, uint64_t *doubles, uint64_t *adds,
-                                     uint64_t *lookups, uint64_t *fallbacks)
+size_t ca_ec_tau_pair_mixed_full_static_bytes(void)
+{
+    return ca_ec_tau_pair_complete_static_bytes() + sizeof(ca_tau_pair_periodic_tail) +
+           sizeof(ca_tau_pair_mixed_full_action);
+}
+
+static int tau_pair_mixed_mul_profile(const ca_group *g,
+                                      const ca_tau_pair_complete_precomp *pre,
+                                      ca_elem *out, uint64_t k, uint64_t *triples,
+                                      uint64_t *tau_steps, uint64_t *doubles, uint64_t *adds,
+                                      uint64_t *lookups, uint64_t *fallbacks,
+                                      const uint16_t *map)
 {
     if (!g || !pre || !out || pre->base.g != g) return 0;
     if (triples) *triples = 0;
@@ -1902,7 +1950,7 @@ int ca_ec_tau_pair_mixed_mul_profile(const ca_group *g, const ca_tau_pair_comple
     }
     uint16_t actions[128];
     size_t count = 0;
-    if (!ca_ec_tau_pair_mixed_recode_actions(pre, k, actions, &count, lookups, fallbacks) ||
+    if (!tau_pair_mixed_recode_actions(pre, k, actions, &count, lookups, fallbacks, map) ||
         !count)
         return 0;
     uint8_t pair_below[128];
@@ -1947,6 +1995,25 @@ int ca_ec_tau_pair_mixed_mul_profile(const ca_group *g, const ca_tau_pair_comple
     if (doubles) *doubles = nd;
     if (adds) *adds = na;
     return 1;
+}
+
+int ca_ec_tau_pair_mixed_mul_profile(const ca_group *g, const ca_tau_pair_complete_precomp *pre,
+                                     ca_elem *out, uint64_t k, uint64_t *triples,
+                                     uint64_t *tau_steps, uint64_t *doubles, uint64_t *adds,
+                                     uint64_t *lookups, uint64_t *fallbacks)
+{
+    return tau_pair_mixed_mul_profile(g, pre, out, k, triples, tau_steps, doubles, adds,
+                                      lookups, fallbacks, ca_tau_pair_mixed_action);
+}
+
+int ca_ec_tau_pair_mixed_full_mul_profile(const ca_group *g,
+                                          const ca_tau_pair_complete_precomp *pre,
+                                          ca_elem *out, uint64_t k, uint64_t *triples,
+                                          uint64_t *tau_steps, uint64_t *doubles, uint64_t *adds,
+                                          uint64_t *lookups, uint64_t *fallbacks)
+{
+    return tau_pair_mixed_mul_profile(g, pre, out, k, triples, tau_steps, doubles, adds,
+                                      lookups, fallbacks, ca_tau_pair_mixed_full_action);
 }
 
 int ca_ec_tau4_pos_prepare(const ca_group *g, const ca_elem *point, ca_tau4_pos_precomp *out,

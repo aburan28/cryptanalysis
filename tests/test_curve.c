@@ -86,6 +86,8 @@ static void tau_cost_checks(const ca_group *g, const ca_elem *point, int samples
     CHECK(ca_ec_tau_pair_periodic_static_bytes() > ca_ec_tau_pair_complete_static_bytes());
     CHECK_EQ_U64(ca_ec_tau_pair_mixed_static_bytes(),
                  ca_ec_tau_pair_complete_static_bytes() + 33282 + 33282);
+    CHECK_EQ_U64(ca_ec_tau_pair_mixed_full_static_bytes(),
+                 ca_ec_tau_pair_mixed_static_bytes());
     CHECK_EQ_U64(complete_seed_ops, pair_seed_ops);
     CHECK_EQ_U64(complete_prep_adds, pair_prep_adds);
     CHECK(complete_prep_rotations >= pair_prep_rotations);
@@ -193,6 +195,10 @@ static void tau_cost_checks(const ca_group *g, const ca_elem *point, int samples
         CHECK(ca_ec_tau_pair_mixed_recode_verify_scalar(&complete_pre, k));
         CHECK(ca_group_equal(g, &mixed_pair, &expected));
         CHECK(mixed_fallbacks <= 1);
+        CHECK(ca_ec_tau_pair_mixed_full_mul_profile(g, &complete_pre, &mixed_pair, k,
+                                                    NULL, NULL, NULL, NULL, NULL, NULL));
+        CHECK(ca_ec_tau_pair_mixed_full_recode_verify_scalar(&complete_pre, k));
+        CHECK(ca_group_equal(g, &mixed_pair, &expected));
         if (i < 24) {
             ca_elem periodic_reference, periodic_candidate, periodic_firstword;
             uint64_t reference_triples = 0, reference_adds = 0;
@@ -320,6 +326,10 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
                                                NULL, NULL, NULL));
         CHECK(ca_group_equal(g, &got, &expected));
         CHECK(ca_ec_tau_pair_mixed_recode_verify_scalar(&complete_pre, k));
+        CHECK(ca_ec_tau_pair_mixed_full_mul_profile(g, &complete_pre, &got, k, NULL, NULL, NULL,
+                                                    NULL, NULL, NULL));
+        CHECK(ca_group_equal(g, &got, &expected));
+        CHECK(ca_ec_tau_pair_mixed_full_recode_verify_scalar(&complete_pre, k));
     }
     ca_elem identity, got;
     ca_group_identity(g, &identity);
@@ -334,6 +344,9 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     CHECK(ca_group_is_identity(g, &got));
     CHECK(ca_ec_tau_pair_mixed_mul_profile(g, &complete_pre, &got, 17, NULL, NULL, NULL,
                                            NULL, NULL, NULL));
+    CHECK(ca_group_is_identity(g, &got));
+    CHECK(ca_ec_tau_pair_mixed_full_mul_profile(g, &complete_pre, &got, 17, NULL, NULL, NULL,
+                                                NULL, NULL, NULL));
     CHECK(ca_group_is_identity(g, &got));
     CHECK(ca_ec_tau_pair_periodic_mul_profile(g, &complete_pre, &got, 17, 0, NULL, NULL, NULL, NULL,
                                               NULL));
@@ -802,6 +815,10 @@ static void tau_fused_small_order(void)
         ca_group_mul(&g, &want, &point, k % g.order, NULL);
         CHECK(ca_group_equal(&g, &got, &want));
         CHECK(ca_ec_tau_pair_mixed_recode_verify_scalar(&mixed_pre, k));
+        CHECK(ca_ec_tau_pair_mixed_full_mul_profile(&g, &mixed_pre, &got, k, NULL, NULL, NULL,
+                                                    NULL, NULL, NULL));
+        CHECK(ca_group_equal(&g, &got, &want));
+        CHECK(ca_ec_tau_pair_mixed_full_recode_verify_scalar(&mixed_pre, k));
     }
     ca_tau8_fused_precomp orbit = {0};
     CHECK(ca_ec_tau8_orbit_prepare(&g, &point, 2, &orbit, NULL, NULL, NULL, NULL));
@@ -972,6 +989,7 @@ int main(void)
     by_name("glv-j0-26", CA_CURVE_ENDO_J0, 6, 2.2);
     tau_cost_named("glv-j0-26");
     CHECK(ca_ec_tau_pair_mixed_verify_map());
+    CHECK(ca_ec_tau_pair_mixed_full_verify_map());
     tau_cost_named("glv-j0-32");
     tau_cost_boundary_curves();
     tau_fused_named("glv-j0-32", 4);
