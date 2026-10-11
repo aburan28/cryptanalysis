@@ -25,6 +25,7 @@ use ct_bignum::{Uint, U256};
 use num_bigint::{BigInt, Sign};
 use num_traits::{Signed as NumSigned, ToPrimitive, Zero};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::fs;
 use std::io::{self, BufRead};
 use std::sync::LazyLock;
@@ -868,6 +869,19 @@ impl Jacobian {
         let y = self.y.mul(cube).canonical_hex();
         format!("{x}:{y}")
     }
+
+    fn into_affine(self) -> Self {
+        if self.is_identity() {
+            return self;
+        }
+        let inverse = self.z.invert_chain();
+        let square = inverse.mul(inverse);
+        Self {
+            x: self.x.mul(square),
+            y: self.y.mul(square.mul(inverse)),
+            z: Pair::one(),
+        }
+    }
 }
 
 fn scalar_from_hex(value: &str) -> BigInt {
@@ -1003,6 +1017,96 @@ impl WidthThreeDigit {
     }
 }
 
+const WIDTH_FOUR_SEEDS: [(i8, i8); 18] = [
+    (-1, 0),
+    (-2, 0),
+    (-1, -1),
+    (-1, 2),
+    (-2, -1),
+    (-2, 3),
+    (-4, 0),
+    (-1, -2),
+    (-1, 3),
+    (8, 0),
+    (7, 0),
+    (8, -1),
+    (8, -7),
+    (7, -1),
+    (7, -6),
+    (5, 0),
+    (8, -2),
+    (8, -6),
+];
+
+#[derive(Clone, Copy, Debug)]
+struct WidthFourDigit {
+    orbit: usize,
+    unit: Unit,
+}
+
+impl WidthFourDigit {
+    fn coefficients(self) -> (i8, i8) {
+        let (a, b) = WIDTH_FOUR_SEEDS[self.orbit];
+        let (a, b) = match self.unit.omega_power {
+            0 => (a, b),
+            1 => (a + 3 * b, -a - 2 * b),
+            2 => (-2 * a - 3 * b, a + b),
+            _ => unreachable!(),
+        };
+        (self.unit.sign * a, self.unit.sign * b)
+    }
+}
+
+static WIDTH_FOUR_DIGITS: LazyLock<[[Option<WidthFourDigit>; 2]; 81]> = LazyLock::new(|| {
+    let mut table = [[None; 2]; 81];
+    for orbit in 0..18 {
+        for power in 0..3 {
+            for sign in [1, -1] {
+                let digit = WidthFourDigit {
+                    orbit,
+                    unit: Unit {
+                        sign,
+                        omega_power: power,
+                    },
+                };
+                let (a, b) = digit.coefficients();
+                let slot =
+                    usize::from(a.rem_euclid(9) as u8) * 9 + usize::from(b.rem_euclid(9) as u8);
+                let choice = usize::from(orbit >= 9);
+                assert!(table[slot][choice].replace(digit).is_none());
+            }
+        }
+    }
+    for a in 0..9 {
+        for b in 0..9 {
+            assert_eq!(table[a * 9 + b][0].is_some(), a % 3 != 0);
+            assert_eq!(table[a * 9 + b][1].is_some(), a % 3 != 0);
+        }
+    }
+    table
+});
+
+static WIDTH_FOUR_POINTS: LazyLock<[[Jacobian; 3]; 18]> = LazyLock::new(|| {
+    let generator = Jacobian::generator();
+    let tau_generator = generator.tau().into_affine();
+    std::array::from_fn(|orbit| {
+        let (a, b) = WIDTH_FOUR_SEEDS[orbit];
+        let mut point = Jacobian::identity();
+        for _ in 0..a.unsigned_abs() {
+            point = point.add_mixed(if a < 0 { generator.neg() } else { generator });
+        }
+        for _ in 0..b.unsigned_abs() {
+            point = point.add_mixed(if b < 0 {
+                tau_generator.neg()
+            } else {
+                tau_generator
+            });
+        }
+        let point = point.into_affine();
+        [point, point.omega(), point.omega().omega()]
+    })
+});
+
 fn unit(a: &BigInt, b: &BigInt) -> Option<Unit> {
     match (a.to_i64(), b.to_i64()) {
         (Some(1), Some(0)) => Some(Unit {
@@ -1132,6 +1236,134 @@ fn recode_tau_width_three(
         );
     }
     (digits, None)
+}
+
+fn width_four_choices(a: &BigInt, b: &BigInt) -> Option<[WidthFourDigit; 2]> {
+    if mod_three(a) == 0 {
+        return None;
+    }
+    let slot = usize::from(mod_nine(a)) * 9 + usize::from(mod_nine(b));
+    let entries = WIDTH_FOUR_DIGITS[slot];
+    Some([
+        entries[0].expect("primary digit"),
+        entries[1].expect("alternate digit"),
+    ])
+}
+
+fn width_four_terminal(a: &BigInt, b: &BigInt) -> Option<WidthFourDigit> {
+    width_four_choices(a, b).and_then(|choices| {
+        choices.into_iter().find(|digit| {
+            let (da, db) = digit.coefficients();
+            *a == BigInt::from(da) && *b == BigInt::from(db)
+        })
+    })
+}
+
+fn width_four_zero_quotient(a: &BigInt, b: &BigInt) -> (BigInt, BigInt) {
+    assert_eq!(mod_three(a), 0);
+    let result = (a + b, -a / 3);
+    debug_assert!(tau_norm(&result.0, &result.1) < tau_norm(a, b));
+    result
+}
+
+fn width_four_block_quotient(a: &BigInt, b: &BigInt, digit: WidthFourDigit) -> (BigInt, BigInt) {
+    let (da, db) = digit.coefficients();
+    let reduced_a = a - BigInt::from(da);
+    let reduced_b = b - BigInt::from(db);
+    assert_eq!(mod_nine(&reduced_a), 0);
+    assert_eq!(mod_nine(&reduced_b), 0);
+    let ra = reduced_a / 9;
+    let rb = reduced_b / 9;
+    let result = (&ra + 3 * &rb, -&ra - 2 * &rb);
+    debug_assert!(tau_norm(&result.0, &result.1) < tau_norm(a, b));
+    result
+}
+
+#[derive(Default)]
+struct WidthFourPolicy {
+    base: HashMap<(BigInt, BigInt), usize>,
+    look: HashMap<(BigInt, BigInt, u8), usize>,
+}
+
+impl WidthFourPolicy {
+    fn base_value(&mut self, a: &BigInt, b: &BigInt) -> usize {
+        if a.is_zero() && b.is_zero() || width_four_terminal(a, b).is_some() {
+            return 0;
+        }
+        let key = (a.clone(), b.clone());
+        if let Some(&cost) = self.base.get(&key) {
+            return cost;
+        }
+        let cost = if let Some(choices) = width_four_choices(a, b) {
+            let (qa, qb) = width_four_block_quotient(a, b, choices[0]);
+            31 + self.base_value(&qa, &qb)
+        } else {
+            let (qa, qb) = width_four_zero_quotient(a, b);
+            5 + self.base_value(&qa, &qb)
+        };
+        self.base.insert(key, cost);
+        cost
+    }
+
+    fn look_value(&mut self, a: &BigInt, b: &BigInt, horizon: u8) -> usize {
+        if horizon == 0 || a.is_zero() && b.is_zero() || width_four_terminal(a, b).is_some() {
+            return self.base_value(a, b);
+        }
+        let key = (a.clone(), b.clone(), horizon);
+        if let Some(&cost) = self.look.get(&key) {
+            return cost;
+        }
+        let cost = if let Some(choices) = width_four_choices(a, b) {
+            31 + choices
+                .into_iter()
+                .map(|digit| {
+                    let (qa, qb) = width_four_block_quotient(a, b, digit);
+                    self.look_value(&qa, &qb, horizon - 1)
+                })
+                .min()
+                .expect("two choices")
+        } else {
+            let (qa, qb) = width_four_zero_quotient(a, b);
+            5 + self.look_value(&qa, &qb, horizon)
+        };
+        self.look.insert(key, cost);
+        cost
+    }
+}
+
+fn recode_tau_width_four_redundant(
+    mut a: BigInt,
+    mut b: BigInt,
+) -> (Vec<Option<WidthFourDigit>>, Option<WidthFourDigit>, usize) {
+    let mut policy = WidthFourPolicy::default();
+    let mut digits = Vec::new();
+    let mut alternate_uses = 0;
+    while !a.is_zero() || !b.is_zero() {
+        if let Some(terminal) = width_four_terminal(&a, &b) {
+            return (digits, Some(terminal), alternate_uses);
+        }
+        if let Some(choices) = width_four_choices(&a, &b) {
+            let values = choices.map(|digit| {
+                let (qa, qb) = width_four_block_quotient(&a, &b, digit);
+                policy.look_value(&qa, &qb, 1)
+            });
+            let choice = usize::from(values[1] < values[0]);
+            let digit = choices[choice];
+            let (next_a, next_b) = width_four_block_quotient(&a, &b, digit);
+            a = next_a;
+            b = next_b;
+            digits.extend([Some(digit), None, None, None]);
+            alternate_uses += choice;
+        } else {
+            (a, b) = width_four_zero_quotient(&a, &b);
+            digits.push(None);
+        }
+        assert!(
+            digits.len() <= 512,
+            "width-four expansion did not terminate"
+        );
+    }
+    (digits, None, alternate_uses)
 }
 
 fn width_two_unit(a: &BigInt, b: &BigInt) -> Option<Unit> {
@@ -1311,12 +1543,40 @@ fn scalar_multiply_width_three(
     (point, a, b, digits.len(), orbit_counts)
 }
 
+fn scalar_multiply_width_four_redundant(
+    scalar: &BigInt,
+) -> (Jacobian, BigInt, BigInt, usize, [usize; 18], usize) {
+    let lattice = &*SCALAR_LATTICE;
+    let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
+    let (a, b) = short_representative(&residue);
+    let (digits, terminal, alternate_uses) = recode_tau_width_four_redundant(a.clone(), b.clone());
+    let point_for = |digit: WidthFourDigit| {
+        let point = WIDTH_FOUR_POINTS[digit.orbit][digit.unit.omega_power];
+        if digit.unit.sign < 0 {
+            point.neg()
+        } else {
+            point
+        }
+    };
+    let mut point = terminal.map_or_else(Jacobian::identity, point_for);
+    let mut orbit_counts = [0usize; 18];
+    for &digit in digits.iter().rev() {
+        point = point.tau();
+        if let Some(d) = digit {
+            point = point.add_mixed(point_for(d));
+            orbit_counts[d.orbit] += 1;
+        }
+    }
+    (point, a, b, digits.len(), orbit_counts, alternate_uses)
+}
+
 fn check_generator_case(
     fixture_path: &str,
     index: usize,
     timed: bool,
     width_three: bool,
     affine_fixed: bool,
+    redundant_four: bool,
 ) {
     let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("read fixture"))
         .expect("parse fixture");
@@ -1338,9 +1598,15 @@ fn check_generator_case(
     };
     LazyLock::force(&SCALAR_LATTICE);
     LazyLock::force(&DECODE_CONSTANTS);
-    let start = Instant::now();
+    if redundant_four {
+        LazyLock::force(&WIDTH_FOUR_DIGITS);
+        LazyLock::force(&WIDTH_FOUR_POINTS);
+    }
     let scalar = scalar_from_hex(scalar_hex);
-    let point = if width_three {
+    let start = Instant::now();
+    let point = if redundant_four {
+        scalar_multiply_width_four_redundant(&scalar).0
+    } else if width_three {
         scalar_multiply_width_three(&scalar, affine_fixed).0
     } else {
         scalar_multiply_width_two(&scalar).0
@@ -1348,7 +1614,9 @@ fn check_generator_case(
     let actual = point.affine_hex();
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if affine_fixed {
+    let mode = if redundant_four {
+        "eisenstein_w4_redundant"
+    } else if affine_fixed {
         "eisenstein_w3_fixed"
     } else if width_three {
         "eisenstein_w3"
@@ -1370,7 +1638,9 @@ fn main() {
             || args[0] == "--benchmark-scalar-w3-case"
             || args[0] == "--check-scalar-w3-case"
             || args[0] == "--benchmark-scalar-w3-fixed-case"
-            || args[0] == "--check-scalar-w3-fixed-case")
+            || args[0] == "--check-scalar-w3-fixed-case"
+            || args[0] == "--benchmark-scalar-w4-redundant-case"
+            || args[0] == "--check-scalar-w4-redundant-case")
     {
         let index = args[2].parse::<usize>().expect("case index");
         check_generator_case(
@@ -1379,6 +1649,7 @@ fn main() {
             args[0].starts_with("--benchmark-"),
             args[0].contains("w3-"),
             args[0].ends_with("w3-fixed-case"),
+            args[0].ends_with("w4-redundant-case"),
         );
         return;
     }
@@ -1388,17 +1659,20 @@ fn main() {
             || args == ["--scalar"]
             || args == ["--scalar-w2"]
             || args == ["--scalar-w3"]
-            || args == ["--scalar-w3-fixed"],
-        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2|--scalar-w3|--scalar-w3-fixed]"
+            || args == ["--scalar-w3-fixed"]
+            || args == ["--scalar-w4-redundant"],
+        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2|--scalar-w3|--scalar-w3-fixed|--scalar-w4-redundant]"
     );
     let tau_mode = args == ["--tau"];
     let scalar_mode = args == ["--scalar"]
         || args == ["--scalar-w2"]
         || args == ["--scalar-w3"]
-        || args == ["--scalar-w3-fixed"];
+        || args == ["--scalar-w3-fixed"]
+        || args == ["--scalar-w4-redundant"];
     let width_two = args == ["--scalar-w2"];
     let affine_fixed = args == ["--scalar-w3-fixed"];
     let width_three = args == ["--scalar-w3"] || affine_fixed;
+    let redundant_four = args == ["--scalar-w4-redundant"];
     for line in io::stdin().lock().lines() {
         let line = line.expect("input line");
         if line.trim().is_empty() {
@@ -1408,24 +1682,39 @@ fn main() {
         if scalar_mode {
             assert_eq!(fields.len(), 1, "expected one hexadecimal scalar");
             let scalar = scalar_from_hex(fields[0]);
-            let (point, a, b, tau_steps, nonzero_digits, orbit_counts) = if width_three {
-                let (point, a, b, tau_steps, orbit_counts) =
-                    scalar_multiply_width_three(&scalar, affine_fixed);
-                (
-                    point,
-                    a,
-                    b,
-                    tau_steps,
-                    orbit_counts.iter().sum(),
-                    Some(orbit_counts),
-                )
-            } else if width_two {
-                let (point, a, b, tau_steps, nonzero_digits) = scalar_multiply_width_two(&scalar);
-                (point, a, b, tau_steps, nonzero_digits, None)
-            } else {
-                let (point, a, b, tau_steps, nonzero_digits) = scalar_multiply(&scalar);
-                (point, a, b, tau_steps, nonzero_digits, None)
-            };
+            let (point, a, b, tau_steps, nonzero_digits, orbit_counts, alternate_uses) =
+                if redundant_four {
+                    let (point, a, b, tau_steps, orbit_counts, alternate_uses) =
+                        scalar_multiply_width_four_redundant(&scalar);
+                    (
+                        point,
+                        a,
+                        b,
+                        tau_steps,
+                        orbit_counts.iter().sum(),
+                        Some(json!(orbit_counts)),
+                        Some(alternate_uses),
+                    )
+                } else if width_three {
+                    let (point, a, b, tau_steps, orbit_counts) =
+                        scalar_multiply_width_three(&scalar, affine_fixed);
+                    (
+                        point,
+                        a,
+                        b,
+                        tau_steps,
+                        orbit_counts.iter().sum(),
+                        Some(json!(orbit_counts)),
+                        None,
+                    )
+                } else if width_two {
+                    let (point, a, b, tau_steps, nonzero_digits) =
+                        scalar_multiply_width_two(&scalar);
+                    (point, a, b, tau_steps, nonzero_digits, None, None)
+                } else {
+                    let (point, a, b, tau_steps, nonzero_digits) = scalar_multiply(&scalar);
+                    (point, a, b, tau_steps, nonzero_digits, None, None)
+                };
             println!(
                 "{}",
                 json!({
@@ -1434,7 +1723,8 @@ fn main() {
                     "tau_steps": tau_steps,
                     "nonzero_digits": nonzero_digits,
                     "orbit_counts": orbit_counts,
-                    "radix": if affine_fixed { "orbit-w3-fixed" } else if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
+                    "alternate_uses": alternate_uses,
+                    "radix": if redundant_four { "orbit-w4-redundant" } else if affine_fixed { "orbit-w3-fixed" } else if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
                 })
             );
             continue;
@@ -1773,6 +2063,45 @@ mod eisenstein_tau_tests {
                 }
                 assert_eq!((x, y), (a, b));
             }
+        }
+    }
+
+    #[test]
+    fn redundant_width_four_digits_reconstruct_small_pairs() {
+        for a in -12..=12 {
+            for b in -12..=12 {
+                let (digits, terminal, alternate_uses) =
+                    recode_tau_width_four_redundant(a.into(), b.into());
+                for chunk in digits.windows(4) {
+                    if chunk[0].is_some() {
+                        assert!(chunk[1..].iter().all(Option::is_none));
+                    }
+                }
+                assert_eq!(
+                    alternate_uses,
+                    digits.iter().flatten().filter(|d| d.orbit >= 9).count()
+                );
+                let (mut x, mut y) = terminal.map_or((0i64, 0i64), |d| {
+                    let (x, y) = d.coefficients();
+                    (i64::from(x), i64::from(y))
+                });
+                for digit in digits.into_iter().rev() {
+                    let (da, db) = digit.map_or((0, 0), WidthFourDigit::coefficients);
+                    (x, y) = (-3 * y + i64::from(da), x + 3 * y + i64::from(db));
+                }
+                assert_eq!((x, y), (a, b));
+            }
+        }
+    }
+
+    #[test]
+    fn redundant_width_four_affine_table_matches_independent_scalar_path() {
+        for (index, &(a, b)) in WIDTH_FOUR_SEEDS.iter().enumerate() {
+            let scalar = BigInt::from(a) + BigInt::from(b) * &SCALAR_LATTICE.lambda_tau;
+            assert!(same_point(
+                WIDTH_FOUR_POINTS[index][0],
+                scalar_multiply(&scalar).0
+            ));
         }
     }
 
