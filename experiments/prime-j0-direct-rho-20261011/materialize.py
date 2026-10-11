@@ -145,8 +145,8 @@ fn multiply_u256_tau_dual_rho0_direct_gauge_xyzz_tau(
             let group = point.add_xyzz(point.tau());
             assert_eq!(direct.affine_hex_binary_inverse(),
                        group.affine_hex_binary_inverse());
-            assert_eq!(u256_mul(u256_square(direct.zz), direct.zz),
-                       u256_square(direct.zzz));
+            assert_eq!(u256_mul(u256_square(direct.zz), direct.zz).0,
+                       u256_square(direct.zzz).0);
         }
     }
 
