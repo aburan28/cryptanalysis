@@ -23,8 +23,10 @@ orbits and 1,325 new columns. The base receipts retain the exact input
 and source hashes, raw counts, and process RSS boundary.
 
 Q20261010174500 then built a balanced three-link t-S3 formula on the
-**existing ordinary public target** `W74f2979b3e68`, using the exact
-weight-four base. The target's 428 raw cofactor preimages collapse to
+**same ordinary public point** used by Q1410, with this proposal's distinct
+workload ID `W298268f728ea`, using the exact weight-four base. Q1410's
+workload ID is `W74f2979b3e68`; the IDs differ because the frozen workload
+records differ. The target's 428 raw cofactor preimages collapse to
 214 distinct t values. The frozen formula has 27,447 variables, 89,088
 CNF clauses, 1,113 native XOR rows, and 25,281 shared AND gates. It does
 not expand S5. The serialized formula and solver receipt pass
@@ -33,6 +35,26 @@ the archive audit.
 | Ordinary N53 run | Status | External cap | Child CPU | Peak child RSS | Verified relations |
 | --- | --- | ---: | ---: | ---: | ---: |
 | t weight≤4, default CryptoMiniSat | `BOUNDED_UNKNOWN` | 120.02 s wall | 22.20 s | 137.6 MB | 0 under cap |
+
+Q20261010175400 replayed the identical formula and solver flags with a
+1,200-second external cap. The solver reached its **1,000,001st conflict**
+and returned `INDETERMINATE` after 295.18 wall seconds and 176.60 child CPU
+seconds; peak child RSS was 196.1 MB. The conflict limit, rather than the
+external wall cap, ended this cell. The separate extended receipt auditor
+passed. This resolves the first row's host-starvation ambiguity at the
+declared one-million-conflict budget, while leaving the unrestricted PDP
+cost unmeasured.
+
+Q20261010175900 applied an exact leaf-order symmetry reduction to the same
+archived formula. Four-point addition permits sorting the four normal-basis
+leaf coordinates without losing any decomposition. Its comparator passed
+all 64 three-bit truth-table cells. The augmented formula adds 309 variables,
+618 CNF clauses, 156 native XOR rows, and no field multiplication gates.
+At 100,001 conflicts it returned `INDETERMINATE` after 48.83 wall seconds
+and 25.22 child CPU seconds, with 135.0 MB peak RSS. Its independent
+formula/model receipt auditor passed. There was no verified relation within
+this cap, so the symmetry reduction has no measured relation-yield or
+complete-solve gain yet.
 
 The solver was killed by the external wall cap while active search was
 visible in its archived output. It did not reach the one-million-conflict
@@ -51,8 +73,9 @@ the ordinary gate freeze SHA-256 is
 Each `audit.json` records PASS. Move an audit output aside before replaying
 its auditor, which refuses to overwrite an existing result.
 
-The next measurement should give the **same frozen formula** enough child
-CPU time to reach either a SAT model or the conflict cap, while retaining
-all wall and resource costs. A natural relation would then require exact
-base and signed group-law replay, rank novelty, and a comparable N83 base
-before any degree-131 projection.
+The next solver comparison should transfer the exact leaf-order constraint
+to the archived x-coordinate N53 and N83 ordinary formulas, with matched
+conflict caps and exact-base model replay. The x-coordinate N83 weight-five
+base is already exact, whereas a complete t-coordinate N83 base is not yet
+archived. A degree-131 work projection still needs ordinary-query yield,
+rank novelty, matrix cost, target descent, and calibrated work units.
