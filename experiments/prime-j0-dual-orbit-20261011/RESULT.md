@@ -25,13 +25,15 @@ residue. The 256-scalar design point replay checked both `rho0` and
 `rho0_bar0` against independent binary multiplication. The fresh native
 test checked 4,096 scalars against the direct-index and fused formats.
 
-| Format | Full-window seeds | Affine payload bytes | Native retained bytes | Fresh-panel mixed additions | Fresh-panel gauge rotations |
+| Format | Full-window seeds | Affine payload bytes | Native retained bytes | Fresh-panel recoding counter | Fresh-panel gauge rotations |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Fused prior format | 83,051 | 64,377,600 | 66,470,376 | 49,152 | 16,526 |
 | Folded `rho0` | 67,338 | 52,310,016 | 54,339,936 | 49,152 | 21,978 |
 
-The two operation columns use the same 4,096-scalar panel. The norm-seven
-bucket requires extra projective merges when active; the added gauge
+The recoding counter is the sum of `max(0, nonidentity terms - 1)` and is
+not an instrumented count of mixed additions or final bucket merges. The
+counter and gauge-rotation columns use the same 4,096-scalar panel. The
+norm-seven bucket requires extra projective merges when active; the added gauge
 rotations are 5,452 across this panel. These counts identify the memory
 and point-work tradeoff without treating a contended host as a timing
 comparison.
