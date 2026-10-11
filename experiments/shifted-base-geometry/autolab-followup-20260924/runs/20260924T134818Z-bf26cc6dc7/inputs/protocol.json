@@ -1,0 +1,270 @@
+{
+  "beats": {
+    "binary.decomposition.l8_pairs_baseline": {
+      "acceptance_gates": [
+        "pairs wall at l=8 logged",
+        "FFD required for ledger beat \u2014 currently unmeasured",
+        "sub-2^(2l) requires oracle faster than pairs \u2014 not this baseline",
+        "not a ledger promotion"
+      ],
+      "l": 8,
+      "label": "Priority #4 probe: pairs-and-solve baseline at l=8 (not a sub-2^(2l) win)",
+      "ledger_next_target": "regimes.binary.stages.decomposition.next_target",
+      "n": 24,
+      "note": "Manual PASS-or-FAIL drafts under runs_manual/binary_decomp_l8_20260911. Research note: SAT historically slower than pairs at l=8.",
+      "priority": 4,
+      "producer": {
+        "args": "8",
+        "example": "semaev_decomp_bench"
+      },
+      "regime": "binary",
+      "stage": "decomposition"
+    },
+    "koblitz.decomposition.n31_m2_dim16": {
+      "a": 0,
+      "acceptance_gates": [
+        "KoblitzCurve::new(a,31) succeeds",
+        "target_dim ~16 via divisor_for_dimension",
+        "unknowns = m*ell (+ chaining) near 32 for m=2",
+        "FFD min/max/mean logged",
+        "median_ms_per_target logged",
+        "disagreements=0 vs enumeration gate",
+        "measurement_schema.decomposition required fields present",
+        "not a ledger promotion until independent validation"
+      ],
+      "dim_goal": 16,
+      "fixtures_default": 1,
+      "fixtures_full": 8,
+      "label": "Priority #3: n=31 dim~16 m=2 quadratic decomposition (FFD + median <=1h, disagreements=0)",
+      "ledger_next_target": "regimes.koblitz.stages.decomposition.next_target",
+      "m": 2,
+      "n": 31,
+      "note": "Manual/driver via examples/symmetrised_oracle_bench (paired_bench picks target_dim=ceil((n+1)/m)=16). Control-plane launch for decomposition not yet wired; claim drafts under runs_manual/n31_decomp_m2_dim16_*.",
+      "priority": 3,
+      "producer": {
+        "args_template": "--only {a} {n} {m} --targets {fixtures} --no-sat --node-budget 50000",
+        "example": "symmetrised_oracle_bench"
+      },
+      "regime": "koblitz",
+      "resource_cap_bytes": 17179869184,
+      "stage": "decomposition",
+      "system_degree": "quadratic",
+      "timing_class_goal": "median_ms_per_target",
+      "unknowns_goal": 32
+    },
+    "koblitz.factor_base.n53": {
+      "a": 0,
+      "acceptance_gates": [
+        "KoblitzCurve::new(0,53) succeeds",
+        "Frobenius+negation closure verified",
+        "construction RSS and retained bytes logged",
+        "peak RSS under resource_cap_bytes",
+        "measurement_schema.factor_base required fields present",
+        "not a ledger promotion until independent validation"
+      ],
+      "direct": {
+        "pair_mode": "signed_quotient",
+        "query_mode": "pointwise",
+        "target_mode": "independent"
+      },
+      "env": {
+        "KIC_INCREMENTAL_RANK_CROSSCHECK": "0",
+        "KIC_SUMMARY_ONLY": "1"
+      },
+      "eta": [
+        1,
+        16
+      ],
+      "fixtures_default": 1,
+      "fixtures_full": 1,
+      "label": "Priority #2: balanced/materialized factor base at n=53 under 16GiB resource gate",
+      "ledger_next_target": "regimes.koblitz.stages.factor_base.next_target",
+      "n": 53,
+      "note": "Direct-only beat (no rho). Manual PASS drafts already exist under runs_manual/n53_factor_base_*_20260911; control-plane launch reproduces the construction measure under SUMMARY_ONLY.",
+      "priority": 2,
+      "regime": "koblitz",
+      "resource_cap_bytes": 17179869184,
+      "stage": "factor_base",
+      "timing_class_goal": "construction_wall"
+    },
+    "koblitz.vs_rho.n37_wall": {
+      "a": 0,
+      "acceptance_gates": [
+        "all stages charged in the same process series",
+        "independent validation",
+        "timing_class=whole_process_wall",
+        "automorphism_discount explicit (sqrt(2n) / A=2*n)",
+        "verdict field set",
+        "measurement_schema.vs_rho required fields present"
+      ],
+      "direct": {
+        "pair_mode": "signed_expanded",
+        "query_mode": "pair_pair_16",
+        "target_mode": "independent"
+      },
+      "eta": [
+        1,
+        2
+      ],
+      "fixtures_default": 1,
+      "fixtures_full": 1024,
+      "label": "Priority #1a: whole-process wall-clock crossover at n=37",
+      "ledger_next_target": "regimes.koblitz.stages.vs_rho.next_target",
+      "n": 37,
+      "priority": 1,
+      "regime": "koblitz",
+      "resource_cap_bytes": 17179869184,
+      "rho": {
+        "backend": "packed",
+        "quotient_mode": "signed_frobenius"
+      },
+      "stage": "vs_rho",
+      "timing_class_goal": "whole_process_wall"
+    },
+    "koblitz.vs_rho.n41_charged": {
+      "a": 0,
+      "acceptance_gates": [
+        "all stages charged in the same process series",
+        "independent validation",
+        "timing_class=algorithmic_charged",
+        "automorphism_discount explicit (sqrt(2n) / A=2*n)",
+        ">=20% margin vs rho",
+        "measurement_schema.vs_rho required fields present"
+      ],
+      "direct": {
+        "pair_mode": "signed_expanded",
+        "query_mode": "pair_pair_16",
+        "target_mode": "independent"
+      },
+      "eta": [
+        1,
+        2
+      ],
+      "fixtures_default": 1,
+      "fixtures_full": 1024,
+      "label": "Priority #1b: charged crossover at n=41 with >=20% margin",
+      "ledger_next_target": "regimes.koblitz.stages.vs_rho.next_target",
+      "n": 41,
+      "priority": 1,
+      "regime": "koblitz",
+      "resource_cap_bytes": 17179869184,
+      "rho": {
+        "backend": "packed",
+        "quotient_mode": "signed_frobenius"
+      },
+      "stage": "vs_rho",
+      "timing_class_goal": "algorithmic_charged"
+    },
+    "koblitz.vs_rho.n53_probe": {
+      "a": 0,
+      "acceptance_gates": [
+        "KoblitzCurve::new(0,53) succeeds under MAX_N>=53",
+        "producers exit 0 on 1 fixture",
+        "measurement_schema.vs_rho required fields present",
+        "not a ledger promotion until independent validation and wall/charged gates"
+      ],
+      "direct": {
+        "pair_mode": "signed_quotient",
+        "query_mode": "pointwise",
+        "target_mode": "independent"
+      },
+      "env": {
+        "KIC_INCREMENTAL_RANK_CROSSCHECK": "0"
+      },
+      "eta": [
+        1,
+        16
+      ],
+      "fixtures_default": 1,
+      "fixtures_full": 32,
+      "label": "Beyond ceiling: first vs_rho probe at n=53 (past MAX_N=41 / feasible_n=41)",
+      "ledger_next_target": "regimes.koblitz.stages.factor_base.next_target",
+      "n": 53,
+      "note": "Past construction ceiling MAX_N=41. eta=1/16 + signed_quotient + pointwise + no incremental rank crosscheck. Avoid eta=1/2 signed_expanded (~4e8) and eta=1/1024 (too few hits).",
+      "priority": 1,
+      "regime": "koblitz",
+      "resource_cap_bytes": 17179869184,
+      "rho": {
+        "backend": "packed",
+        "quotient_mode": "signed_frobenius"
+      },
+      "stage": "vs_rho",
+      "timing_class_goal": "whole_process_wall"
+    },
+    "prime.end_to_end_dlp.j0_16bit": {
+      "acceptance_gates": [
+        "ic recovers d with [d]G=Q",
+        "agrees with rho on same instance",
+        "wall times logged",
+        "not ledger promotion until independent validation"
+      ],
+      "bits": 16,
+      "label": "Priority #5: j=0 known-answer IC at 16 bits agreeing with rho",
+      "note": "Manual draft under runs_manual/prime_j0_e2e_16bit_20260911",
+      "priority": 5,
+      "producer": {
+        "args": "16",
+        "example": "j0_known_answer_bits"
+      },
+      "regime": "prime",
+      "stage": "end_to_end_dlp"
+    },
+    "smoke.koblitz.vs_rho.n13": {
+      "a": 0,
+      "direct": {
+        "pair_mode": "signed_expanded",
+        "query_mode": "pair_pair_16",
+        "target_mode": "independent"
+      },
+      "eta": [
+        1,
+        2
+      ],
+      "fixtures": 1,
+      "label": "Setup smoke: Koblitz n=13 charged+wall comparison (1 fixture)",
+      "n": 13,
+      "note": "Confirms deps, lock, producers, and schema validation. Not a ledger promotion.",
+      "priority": 0,
+      "regime": "koblitz",
+      "resource_cap_bytes": 17179869184,
+      "rho": {
+        "backend": "packed",
+        "quotient_mode": "signed_frobenius"
+      },
+      "stage": "vs_rho",
+      "timing_class_goal": "whole_process_wall"
+    }
+  },
+  "claim_hygiene": "Public synthetic / known-answer fixtures only. Never combine best component costs from different runs into a synthetic vs_rho win.",
+  "historical_note": "Earlier specialized runners (kic_autolab, beats_rho_autolab, direct_n37_autolab) left only __pycache__ bytecode under sibling autolab_* dirs. This control plane replaces them for boundary-ledger work and drives the still-present Rust producers.",
+  "ledger": {
+    "markdown": "docs/ic/BOUNDARY_TARGETS.md",
+    "path": "docs/ic/boundary_targets.json",
+    "required_schema_version": 2
+  },
+  "lock": {
+    "current_path": "runs/current.json",
+    "path": "runs/autolab.lock"
+  },
+  "objective": "Agent-facing control plane for pushing docs/ic/boundary_targets.json beat targets with fail-closed measurement-schema validation.",
+  "producers": {
+    "direct": {
+      "example": "koblitz_rank_fixture",
+      "source": "examples/koblitz_rank_fixture.rs",
+      "usage": "<n> <a> <eta_numerator> <eta_denominator> <seed> [pair_mode] [target_mode] [query_mode] [batch_fixtures]"
+    },
+    "rho": {
+      "example": "koblitz_rho_fixture",
+      "source": "examples/koblitz_rho_fixture.rs",
+      "usage": "<n> <a> <mode> <fixtures> [reference|packed] [batch_seed]"
+    }
+  },
+  "schema_version": "1.0",
+  "scope": {
+    "asymptotic_sub_sqrt_claim_admitted": false,
+    "external_or_imported_points": false,
+    "private_key_recovery": false,
+    "public_synthetic_fixtures_only": true
+  },
+  "task_id": "TASK-IC-BOUNDARY-AUTOLAB-20260910"
+}

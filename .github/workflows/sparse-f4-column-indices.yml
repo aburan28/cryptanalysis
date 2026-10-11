@@ -1,0 +1,46 @@
+name: Sparse F4 column indices
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/**'
+      - '.github/workflows/sparse-f4-column-indices.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/**'
+      - '.github/workflows/sparse-f4-column-indices.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sparse-f4-column-indices-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  correctness:
+    name: Sparse F4 column indices (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Rebuild, check exact traces, and independently replay certificates
+        run: python -u experiments/groebner-perf-20260924/round58/run_validation.py --output column-index-evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sparse-f4-column-indices-${{ matrix.os }}
+          path: column-index-evidence/
+          if-no-files-found: error
+          retention-days: 14
