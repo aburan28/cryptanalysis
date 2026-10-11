@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "qualification_id": "p256-large-json-sharding-20261008-v1",
+  "qualified_at": "2026-10-08T04:53:39Z",
+  "purpose": "Qualify deterministic sub-50 MiB publication shards before the depth-37 frontier can exceed GitHub's 100 MiB per-file limit.",
+  "implementation": {
+    "path": "scripts/freeze_large_json_sharded.py",
+    "sha256": "5cb8a7e54bc5d408da41de07cdd1dba99af2f7fed33bc4a1cde4ab027bf64e7d",
+    "test_path": "tests/test_freeze_large_json_sharded.py",
+    "test_sha256": "621f161957cb86123b6a716029ba2a3ea9b52b6032bac4a4324871ec8466f8e7"
+  },
+  "real_registry_validation": {
+    "source_path": "results/sage-low-degree-depth-thirty-five-20261008/candidates-delta.json",
+    "source_sha256": "a5594b9163ef8758b3143200090a45a0ccb5c773dd750f673a81c871b6d463c9",
+    "source_bytes": 234925716,
+    "reference_monolithic_archive_path": "results/sage-low-degree-depth-thirty-five-20261008/candidates-delta.json.gz",
+    "archive_sha256": "0c8121bf2522d21d9fee08bd3c34bad7f5fc8c573cf0cb01c085e8ac2ac351c9",
+    "archive_bytes": 93239950,
+    "reference_archive_bit_for_bit_match": true,
+    "deterministic_repack_verified": true,
+    "decompressed_source_verified": true,
+    "shard_bytes": 50331648,
+    "shards": [
+      {
+        "name": "candidates-delta.json.gz.part-000",
+        "sha256": "083c1dba0678a12faef0270ab894f0447d9ce4119137a1de3297fd852ba26817",
+        "bytes": 50331648
+      },
+      {
+        "name": "candidates-delta.json.gz.part-001",
+        "sha256": "293eab853de5ede7752e9ff32044d88eafb6735b9bf095114ee34255763296c2",
+        "bytes": 42908302
+      }
+    ]
+  },
+  "test_result": {
+    "command": "env PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_*.py'",
+    "working_directory": "experiments/p256-isogeny-search-20261005",
+    "tests_run": 13,
+    "failures": 0,
+    "errors": 0,
+    "status": "passed"
+  },
+  "preserved_unsuccessful_attempts": [
+    {
+      "attempt": "initial sharding unit fixture with shard_bytes=64",
+      "outcome": "failed because the highly compressible fixture occupied one shard and did not exercise the multi-shard assertion",
+      "resolution": "set the test-only shard size to 8 bytes; production default remains 50331648 bytes"
+    },
+    {
+      "attempt": "python3 -m unittest discover -s experiments/p256-isogeny-search-20261005/tests -p 'test_*.py' from repository root",
+      "outcome": "seven import errors because neither the experiment directory nor its src directory was on the import path",
+      "resolution": "reran from the experiment directory with PYTHONPATH=src"
+    },
+    {
+      "attempt": "python3 -m unittest discover -s tests -p 'test_*.py' from the experiment directory without PYTHONPATH",
+      "outcome": "five p256_isogeny_search import errors; the two script-only test modules loaded",
+      "resolution": "reran with the workflow's PYTHONPATH=src environment"
+    }
+  ],
+  "claim_boundary": "This qualifies lossless deterministic storage and reconstruction only. It supplies no evidence of an ECDLP speedup."
+}

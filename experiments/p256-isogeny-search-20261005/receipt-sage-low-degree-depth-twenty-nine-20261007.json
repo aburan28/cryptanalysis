@@ -1,0 +1,297 @@
+{
+  "artifacts": {
+    "protocol-depth-twenty-nine-20261007.json": "bcc1ee888c71bee41701996eefb17571272d4089f5de99e5fecca19ed5f00336",
+    "receipt-sage-low-degree-depth-twenty-five-20261007.json": "9c07bebf98a7c77cfc069f8d76a520d8c595a8111a695e7c77eab928edd6a9ce",
+    "receipt-sage-low-degree-depth-twenty-seven-20261007.json": "3d98a66c70cd66af73e2f460fc87efdc53214a694e0f26014dc4eafdb6bdaab7",
+    "results/sage-class-group-20261006/status-depth-twenty-nine.json": "57c10678ffc71c57a39deeebb0659914bf7905b60f3a91c277240868c57780be",
+    "results/sage-low-degree-depth-twenty-nine-20261007/attempts.json": "55c5b49382f84e863bd195e8179d480c7e0fed92c851c7d0c740330b01f521b1",
+    "results/sage-low-degree-depth-twenty-nine-20261007/candidate-model-audit.json": "425d6f96eb0f3f4b19ec47981a220d143f15bbdff72b4e124d2954de1a0cde84",
+    "results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.freeze.json": "3f64a0ff3ef00173d8906ad7d2a3bb84db848f4ee7bdd001cfcb28489b68e970",
+    "results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.json.gz": "5e2e8927420460ac42f6d3aa2765d2e964833d5767be170b7346c6a1088769be",
+    "results/sage-low-degree-depth-twenty-nine-20261007/coefficient-audit.json": "e81404a9162c581cf1322e90a9aed7b59be5b9a865dcc6242ccf2c3ef23ea46f",
+    "results/sage-low-degree-depth-twenty-nine-20261007/conductor-audit.json": "8ce0602635db1f03719baec71a6cfc452206dbc6483f78b1f046d51bc9110dc6",
+    "results/sage-low-degree-depth-twenty-nine-20261007/holdout.json": "535e748cbdfe6a2d49d613f82ee35df3cf430217562d75e30de225ebd66a24f1",
+    "results/sage-low-degree-depth-twenty-nine-20261007/isolation-probe.json": "b683177576b1488d3b55f813b22eac9746a84dc044c3f4fc4fd94dc31449e726",
+    "results/sage-low-degree-depth-twenty-nine-20261007/native-screen/screening-summary.json": "b0cc06227c9ebe19c0bd2602e94d3906cf75c049c3933fa0339e048e51c6732a",
+    "results/sage-low-degree-depth-twenty-nine-20261007/retained-union.json": "6f3f3f07462b45ca3df657fd3b23c5f4817426f154d7475f7b79c73d630ef34c",
+    "results/sage-low-degree-depth-twenty-nine-20261007/summary.md": "0de7a36bbfa46f523278c1dfd7f720a16ef840c92cfd71eb8d3f1b06cbc8d5d1",
+    "results/sage-low-degree-depth-twenty-nine-20261007/transfer-assessment.json": "1452fa2a1f297b3d7c1c97c7d1046fc898fca73eb7cf6726dd8bb5d68c3d8132",
+    "results/sage-low-degree-depth-twenty-seven-20261007/retained-union.json": "cdedabb680d91574bdccb91ad9ff05798762876b996b69355fa8c6af665e934e"
+  },
+  "claim": "The prospectively frozen depth-twenty-nine extension added 880 explicit curves and measured every addition; 0 of 19 exploratory screen hits reproduced in the fresh holdout.",
+  "coefficient_gate": {
+    "eligible_candidates": 0,
+    "minimum_addition_chain_lower_bound": 246,
+    "minimum_binary_upper_bound": 350
+  },
+  "combined_native_coverage": {
+    "current_extension_reproduced_speedups": 0,
+    "explicit_curves_including_p256": 6546,
+    "known_exploratory_holdout_positive_candidates": 1,
+    "non_root_curves_with_matched_native_measurement": 6545
+  },
+  "commands": {
+    "corrections": [
+      "The frozen generic coefficient- and conductor-audit commands produced correct rows but their reusable scripts hard-coded depth-nineteen report labels. Depth-twenty-nine wrappers replayed the same build_report results and corrected only those metadata labels. All invocations are preserved in attempts.json."
+    ],
+    "frozen_commands": {
+      "freeze_registry": "python3 scripts/freeze_large_json.py pack --source results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.json --archive results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.json.gz --manifest results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.freeze.json",
+      "holdout": "taskset -c 0 python3 experiments/p256-isogeny-search-20261005/scripts/run_native_holdout.py --binary suite/target/release/examples/p256_isogeny_native_bench --candidates experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.json --screening experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-twenty-nine-20261007/native-screen/screening-summary.json --seconds 2 --trials 30 --warmup-seconds 0.2 --output experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-twenty-nine-20261007/holdout.json",
+      "native_screen": "taskset -c 0 python3 experiments/p256-isogeny-search-20261005/scripts/run_native_screen.py --binary suite/target/release/examples/p256_isogeny_native_bench --candidates experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.json --block-size 6 --seconds 0.5 --rotations 1 --warmup-seconds 0.05 --output-dir results/sage-low-degree-depth-twenty-nine-20261007/native-screen",
+      "search": "docker exec --workdir /repo/experiments/p256-isogeny-search-20261005 p256-classgroup-default taskset -c 2 sage -python scripts/extend_sage_low_degree.py --input results/sage-low-degree-depth-twenty-seven-20261007/candidates-delta.json --ells 3,5,11,13 --target-depth 29 --max-new-nodes 2000 --output results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.json"
+    },
+    "verify": "python3 scripts/verify_sage_low_degree_depth_twenty_nine.py"
+  },
+  "conductor": {
+    "curves_including_p256": 881,
+    "new_candidates": 880,
+    "new_candidates_with_conductor_one": 880,
+    "new_candidates_with_unknown_conductor": 0
+  },
+  "cost_accounting": {
+    "amortization": "discovery and map parsing are reusable; complete P,Q path evaluation is charged per key",
+    "default_exact_class_group_attempt": "running after at least 73738.9 seconds; no result counted",
+    "discovery_and_reusable_precomputation_seconds": 405.3485449269938,
+    "holdout_wall_seconds": 1232.824517942,
+    "native_screen_block_wall_seconds_total": 3983.80075895,
+    "per_instance_mapping": {}
+  },
+  "decision": "No new candidate advances; all depth-28/29 screen hits failed the fresh holdout, while the separate depth-25 exploratory positive remains open for isolated replay.",
+  "holdout": {
+    "all_linear_relations_verified": true,
+    "candidates": 19,
+    "largest_point_estimate": {
+      "candidate_id": "p256-j-baa374105986b956bb50ea8c8b1c74a4870c957def659a36de5d381b9093bdf0",
+      "paired_relative_iteration_speed": 1.0069687351985828,
+      "paired_relative_iteration_speed_95_percent_ci": [
+        0.9892069188418944,
+        1.0250494758513709
+      ]
+    },
+    "reproduced_speedups": 0,
+    "seconds_per_trial": 2.0,
+    "trials_per_candidate": 30
+  },
+  "limitations": [
+    "the traversal stops at depth twenty-nine and uses only edge degrees 3, 5, 11, and 13",
+    "the retained registry is not the entire finite class-group orbit",
+    "host-wide CPU isolation was not established",
+    "the local isolation probe failed the repository host gate, so the positive timing remains exploratory",
+    "screening intervals are unadjusted selection triggers",
+    "no full P-256 collision was attempted or required by the protocol"
+  ],
+  "model_eligibility": {
+    "all_candidate_normalizations_verified": true,
+    "target_a_counts": {
+      "1": 457,
+      "3": 424
+    }
+  },
+  "preserved_failures": [
+    {
+      "attempt_id": "depth-29-prospective-command",
+      "command": "docker exec --workdir /repo/experiments/p256-isogeny-search-20261005 p256-classgroup-default taskset -c 2 sage -python scripts/extend_sage_low_degree.py --input results/sage-low-degree-depth-twenty-seven-20261007/candidates-delta.json --ells 3,5,11,13 --target-depth 29 --max-new-nodes 2000 --output results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.json",
+      "elapsed_seconds": 405.3485449269938,
+      "exit_code": 0,
+      "generated_candidates": 880,
+      "status": "completed"
+    },
+    {
+      "archive_bytes": 63137630,
+      "archive_sha256": "5e2e8927420460ac42f6d3aa2765d2e964833d5767be170b7346c6a1088769be",
+      "attempt_id": "deterministic-registry-freeze",
+      "command": "python3 scripts/freeze_large_json.py pack --source results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.json --archive results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.json.gz --manifest results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.freeze.json",
+      "exit_code": 0,
+      "status": "completed",
+      "uncompressed_bytes": 158987198,
+      "uncompressed_sha256": "76a06f78bf5b0b4bc2d1d9c388c09b585acd346bc34bea102bca65b143735abd"
+    },
+    {
+      "attempt_id": "deterministic-registry-repack-verification",
+      "byte_identical_repack": true,
+      "command": "python3 scripts/freeze_large_json.py verify --archive results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.json.gz --manifest results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.freeze.json --source results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.json --repack",
+      "exit_code": 0,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "candidate-model-audit",
+      "command": "taskset -c 1 python3 scripts/audit_candidate_models.py --candidates results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.json --output results/sage-low-degree-depth-twenty-nine-20261007/candidate-model-audit.json",
+      "curves_including_p256": 881,
+      "exit_code": 0,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "coefficient-audit-depth-label-correction",
+      "command": "taskset -c 1 python3 scripts/audit_candidate_coefficients_depth_twenty_nine.py --candidates results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.json --output results/sage-low-degree-depth-twenty-nine-20261007/coefficient-audit.json",
+      "correction_scope": "Replayed the generic audit and corrected only its hard-coded depth-nineteen publication_status and finding labels.",
+      "exit_code": 0,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "conductor-audit-depth-label-correction",
+      "command": "taskset -c 1 python3 scripts/audit_candidate_conductors_depth_twenty_nine.py --candidates results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.json --output results/sage-low-degree-depth-twenty-nine-20261007/conductor-audit.json",
+      "correction_scope": "Replayed the generic audit and corrected only its hard-coded depth-nineteen publication_status label.",
+      "exit_code": 0,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "native-screen-depth-29-path-resolution-failure",
+      "command": "taskset -c 0 python3 scripts/run_native_screen.py --binary suite/target/release/examples/p256_isogeny_native_bench --candidates results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.json --block-size 6 --seconds 0.5 --rotations 1 --warmup-seconds 0.05 --output-dir results/sage-low-degree-depth-twenty-nine-20261007/native-screen",
+      "exit_code": 1,
+      "failure": "FileNotFoundError before any benchmark trial: the script resolves candidate paths relative to the repository root, but the command was launched from the experiment directory with an experiment-relative path.",
+      "measured_candidates": 0,
+      "status": "failed",
+      "working_directory": "experiments/p256-isogeny-search-20261005"
+    },
+    {
+      "attempt_id": "native-screen-depth-29",
+      "block_artifact_hashes_verified": true,
+      "blocks": 147,
+      "candidate_trials": 6152,
+      "command": "taskset -c 0 python3 experiments/p256-isogeny-search-20261005/scripts/run_native_screen.py --binary suite/target/release/examples/p256_isogeny_native_bench --candidates experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.json --block-size 6 --seconds 0.5 --rotations 1 --warmup-seconds 0.05 --output-dir results/sage-low-degree-depth-twenty-nine-20261007/native-screen",
+      "elapsed_wall_seconds_sum": 3983.80075895,
+      "exit_code": 0,
+      "linear_relations_verified_every_trial": true,
+      "screened_candidates": 880,
+      "status": "completed",
+      "unadjusted_hits": 19,
+      "working_directory": "."
+    },
+    {
+      "all_linear_relations_verified": true,
+      "attempt_id": "native-holdout-depth-29",
+      "command": "taskset -c 0 python3 experiments/p256-isogeny-search-20261005/scripts/run_native_holdout.py --binary suite/target/release/examples/p256_isogeny_native_bench --candidates experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.json --screening experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-twenty-nine-20261007/native-screen/screening-summary.json --seconds 2 --trials 30 --warmup-seconds 0.2 --output experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-twenty-nine-20261007/holdout.json",
+      "curve_trials": 600,
+      "elapsed_wall_seconds": 1232.824517942,
+      "exit_code": 0,
+      "holdout_candidates_excluding_root": 19,
+      "reproduced_speedups": 0,
+      "status": "completed",
+      "working_directory": "."
+    },
+    {
+      "attempt_id": "local-isolation-probe",
+      "command": "python3 scripts/isolated_bench.py probe-host",
+      "exit_code": 0,
+      "qualification": "not_qualified",
+      "reasons": [
+        "no isolated cgroup CPU partition",
+        "no nohz_full CPUs",
+        "numactl unavailable",
+        "CPU quota is 400000/100000 rather than unlimited",
+        "container virtualization does not establish physical-host exclusivity"
+      ],
+      "status": "completed"
+    },
+    {
+      "attempt_id": "exact-class-group-status-checkpoint",
+      "command": "python3 scripts/record_class_group_status.py --result results/sage-class-group-20261006/class-group.json --output results/sage-class-group-20261006/status-depth-twenty-nine.json",
+      "elapsed_lower_bound_seconds": 73738.895413,
+      "exit_code": 0,
+      "output_present": false,
+      "status": "running"
+    },
+    {
+      "attempt_id": "archive-repack-verification-missing-source",
+      "command": "python3 scripts/freeze_large_json.py verify --archive results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.json.gz --manifest results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.freeze.json --repack",
+      "exit_code": 1,
+      "failure": "--repack requires --source",
+      "status": "failed"
+    },
+    {
+      "attempt_id": "archive-repack-verification-corrected",
+      "byte_identical_repack": true,
+      "command": "python3 scripts/freeze_large_json.py verify --archive results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.json.gz --manifest results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.freeze.json --source results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.json --repack",
+      "exit_code": 0,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "full-verifier-and-unit-suite-final",
+      "commands": [
+        "for script in scripts/verify_*.py; do python3 $script; done",
+        "PYTHONPATH=src python3 -m unittest discover -s tests -p test_*.py"
+      ],
+      "exit_code": 0,
+      "frozen_result_verifiers_passed": 23,
+      "status": "completed",
+      "unit_tests_passed": 12
+    }
+  ],
+  "prior_positive_followup": {
+    "candidate_id": "p256-j-87c73c5bb6ad5e615b663e67c797ec104211c306604664c723168bd1b5441d6f",
+    "depth": 25,
+    "exploratory_holdout_95_percent_ci": [
+      1.003468468713117,
+      1.036442290777823
+    ],
+    "exploratory_holdout_ratio": 1.0198221209781326,
+    "per_key_p_q_mapping_mean_seconds": 0.011433021724,
+    "required_next_evidence": "replay through the repository isolated benchmark service on a qualifying host",
+    "separation_rule": "deeper candidate discovery does not supersede or resolve this follow-up",
+    "status": "open; local isolation probe failed"
+  },
+  "protocol_id": "p256-isogeny-depth-twenty-nine-20261007-v1",
+  "registry_storage": {
+    "archive_path": "results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.json.gz",
+    "deterministic_repack_verified": true,
+    "manifest_path": "results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.freeze.json",
+    "verification": {
+      "archive_bytes": 63137630,
+      "archive_sha256": "5e2e8927420460ac42f6d3aa2765d2e964833d5767be170b7346c6a1088769be",
+      "uncompressed_bytes": 158987198,
+      "uncompressed_sha256": "76a06f78bf5b0b4bc2d1d9c388c09b585acd346bc34bea102bca65b143735abd"
+    },
+    "working_path": "results/sage-low-degree-depth-twenty-nine-20261007/candidates-delta.json"
+  },
+  "run_completed_at": "2026-10-07T11:36:38Z",
+  "runtime": {
+    "cpu_affinity": {
+      "concurrent_default_class_group_process": "CPU 4",
+      "native_screen_and_holdout": "CPU 0",
+      "sage_frontier_extension": "CPU 2"
+    },
+    "host_isolation": "unverified; timing remains exploratory unless rerun through the repository isolation service",
+    "native_release_binary_sha256": "768fb614af10bcd3990b8373194713b5406051149ea9b627c01b5e1e4f0a9e5d",
+    "sage_image": "sagemath/sagemath:10.6",
+    "sage_image_digest": "sha256:19995db6194f4a4bab18ce9a88556fd15b9ed5e916b4504fefe618a7796ddbdb"
+  },
+  "schema_version": 1,
+  "screening": {
+    "all_linear_relations_verified": true,
+    "blocks": 147,
+    "candidate_trials": 6152,
+    "new_neighbors": 880,
+    "screening_point_estimate_range": [
+      1.0200900243500544,
+      1.0907916152100057
+    ],
+    "seconds_per_trial": 0.5,
+    "unadjusted_screening_hits": 19
+  },
+  "search": {
+    "combined_unique_curves_including_p256": 6546,
+    "ells": [
+      3,
+      5,
+      11,
+      13
+    ],
+    "exceptional_automorphisms_found": false,
+    "explicit_paths_verified": true,
+    "input_depth": 27,
+    "new_depth_counts": {
+      "28": 432,
+      "29": 448
+    },
+    "new_non_root_curves": 880,
+    "overlap_with_prior_union": 0,
+    "target_depth": 29
+  },
+  "source": {
+    "local_parent_commit": "ba5af33749a13fd042c2e961263819a3fcc206fb",
+    "manifest": "source-sage-low-degree-depth-twenty-nine-20261007.sha256",
+    "manifest_sha256": "a582e77a12a747a5b750447b47cc8a0755b5086b0502c344395a4dceefc476d2",
+    "pr_parent_remote_commit": "8a6cb0862b1d5f55d6b2cc987aadea71c07f2bc6"
+  },
+  "status": "verified_exploratory_low_degree_depth_twenty_nine"
+}
