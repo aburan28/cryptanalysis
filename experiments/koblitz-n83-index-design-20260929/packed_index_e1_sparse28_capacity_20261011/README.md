@@ -66,3 +66,46 @@ The 2-million-state sparse28 screen in the parent exploration had similar
 target CPU to sparse26; this capacity result answers the larger-index question.
 The repository [CPU isolation gate](../../../docs/ISOLATED_BENCHMARKS.md)
 remains required for a controlled wall-time comparison.
+
+## Physical-host replay
+
+`benchmark_stage.py` runs either frozen arm and checks the exact result fields,
+including operation counts, first-witness lookup sample, control status, and
+bounded-stage outcome. It emits the raw native JSON in base64 alongside the
+native target-stage interval for the isolated benchmark service. Its wrapper
+checks and process startup are outside that interval. The service retains raw
+stdout, host counters, and the preflight receipt for every run.
+
+On a Linux host with this checkout, build the pinned source once before
+timing. The checked-in Cargo lockfile and the restored crypto source are part
+of the build inputs:
+
+```sh
+cd /workspace/cryptanalysis/experiments/koblitz-n83-index-design-20260929/packed_index_e1_sparse28_capacity_20261011
+python3 restore_crypto_source.py
+python3 verify.py
+NATIVE_S3_SOURCE_SHA256=9969359d0605bdc8ef1a5f8ef2e3d204055ae391e14ff6f5bec3c0bdcca1463f \
+NATIVE_S3_BUILD_MANIFEST_SHA256=7f3282483caf608a23850e33d845faf825a960263ea22c84ded567425860cd88 \
+cargo build --release --locked --target-dir /workspace/build/n83-e1-sparse28-capacity
+```
+
+Create a manifest with the host's actual isolated partition, execution CPU,
+and NUMA node. The values below are examples; `probe` must accept the physical
+host before `run` or queue submission:
+
+```sh
+python3 make_manifest.py \
+  --workdir /workspace/cryptanalysis \
+  --binary /workspace/build/n83-e1-sparse28-capacity/release/native_packed_index \
+  --cgroup /sys/fs/cgroup/benchmark-isolated \
+  --cpus 4-5 --execution-cpu 4 --mem-nodes 0 \
+  --output /workspace/n83-e1-sparse28-capacity-manifest.json
+python3 /workspace/cryptanalysis/scripts/isolated_bench.py probe /workspace/n83-e1-sparse28-capacity-manifest.json
+```
+
+The manifest builder verifies the frozen inputs and raw results before writing
+the comparison. Its default four pairs alternate A–B and B–A, using the same
+public target in each arm. The service's `online_ms` refers only to the
+bounded point-decomposition stage; index construction and factor-base setup
+remain separate in the raw phase record. A container allocation without the
+required host-level isolation remains an exploratory replay.
