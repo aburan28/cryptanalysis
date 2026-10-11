@@ -116,7 +116,8 @@ static int select_mode(const char *name)
                                   "endo-radix8-pos",
                                   "joint-window4-pos",
                                   "joint-window4-hot-pos",
-                                  "joint-window4-xplane-pos"};
+                                  "joint-window4-xplane-pos",
+                                  "joint-window4-zero-pos"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -144,7 +145,8 @@ int main(int argc, char **argv)
                 "tail-pair-mixed-full-digits|fixed-comb9|pos-compact|tau3-fused-pos|"
                 "tau3-atlas-pos|tau3-sparse-pos|tau3-radix27-pos|tau3-scatter-pos|"
                 "tau3-scatter-direct-pos|tau3-scatter-atlas-pos|endo-radix8-pos|"
-                "joint-window4-pos|joint-window4-hot-pos|joint-window4-xplane-pos "
+                "joint-window4-pos|joint-window4-hot-pos|joint-window4-xplane-pos|"
+                "joint-window4-zero-pos "
                 "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
@@ -178,9 +180,10 @@ int main(int argc, char **argv)
     int scatter_atlas = mode == 43;
     int scatter = mode == 41 || scatter_direct || scatter_atlas;
     int endo_radix8 = mode == 44;
-    int joint_window4 = mode >= 45 && mode <= 47;
-    int joint_window4_hot = mode == 46 || mode == 47;
-    int joint_window4_plane = mode == 47;
+    int joint_window4 = mode >= 45 && mode <= 48;
+    int joint_window4_hot = mode >= 46 && mode <= 48;
+    int joint_window4_plane = mode == 47 || mode == 48;
+    int joint_window4_zero = mode == 48;
     int periodic_policy = mode == 32 ? 2 : (mode == 31 ? 1 : 0);
     int pair_complete = mode == 29 || pair_periodic || pair_mixed;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
@@ -309,7 +312,11 @@ int main(int argc, char **argv)
             }
         } else if (joint_window4) {
             int prepared =
-                joint_window4_plane
+                joint_window4_zero
+                    ? ca_ec_joint_window4_zero_prepare(&group, &point, &joint_window4_pre,
+                                                       &prep_doubles, &prep_adds, &prep_rotations,
+                                                       &prep_layer_inversions, &prep_plane_muls)
+                : joint_window4_plane
                     ? ca_ec_joint_window4_xplane_prepare(&group, &point, &joint_window4_pre,
                                                          &prep_doubles, &prep_adds, &prep_rotations,
                                                          &prep_layer_inversions, &prep_plane_muls)
@@ -423,6 +430,7 @@ int main(int argc, char **argv)
     uint64_t fallbacks = 0, second_recodes = 0, steered_blocks = 0;
     uint64_t sparse_cold_pairs = 0, radix27_dp_states = 0, radix27_dp_options = 0;
     uint64_t scatter_pairs = 0;
+    uint64_t zero_attempts = 0, zero_feasible = 0, zero_selected = 0;
     size_t static_map_bytes = joint_window4_hot       ? ca_ec_joint_window4_hot_static_bytes()
                               : joint_window4         ? ca_ec_joint_window4_static_bytes()
                               : scatter_atlas         ? ca_ec_tau3_scatter_atlas_static_bytes()
@@ -570,8 +578,12 @@ int main(int argc, char **argv)
                 fallbacks += fallback;
             } else if (joint_window4) {
                 uint64_t a = 0, r = 0, u = 0, fallback = 0;
+                uint64_t attempt = 0, feasible = 0, selected = 0;
                 int solved =
-                    joint_window4_plane
+                    joint_window4_zero ? ca_ec_joint_window4_zero_mul_profile(
+                                             &group, &joint_window4_pre, &outputs[i], scalars[i],
+                                             &a, &u, &fallback, &attempt, &feasible, &selected)
+                    : joint_window4_plane
                         ? ca_ec_joint_window4_xplane_mul_profile(&group, &joint_window4_pre,
                                                                  &outputs[i], scalars[i], &a, &r,
                                                                  &u, &fallback)
@@ -586,6 +598,9 @@ int main(int argc, char **argv)
                 rotations += r;
                 unit_adds += u;
                 fallbacks += fallback;
+                zero_attempts += attempt;
+                zero_feasible += feasible;
+                zero_selected += selected;
             } else if (endo_radix8) {
                 uint64_t a = 0, r = 0, fallback = 0;
                 if (!ca_ec_endo_radix8_mul_profile(&group, &endo_radix8_pre, &outputs[i],
@@ -966,6 +981,7 @@ int main(int argc, char **argv)
         " triples=%" PRIu64 " tau_steps=%" PRIu64 " doubles=%" PRIu64 " adds=%" PRIu64
         " rotations=%" PRIu64 " unit_adds=%" PRIu64 " output_inversions=%" PRIu64
         " fallbacks=%" PRIu64 " second_recodes=%" PRIu64 " steered_blocks=%" PRIu64
+        " zero_attempts=%" PRIu64 " zero_feasible=%" PRIu64 " zero_selected=%" PRIu64
         " static_map_bytes=%zu recipe_bytes=%zu prep_slot_lookups=%" PRIu64
         " prep_batch_denominators=%" PRIu64 " prep_affine_exceptions=%" PRIu64
         " prep_affine_doublings=%" PRIu64 " prep_affine_edge_mults_model=%" PRIu64
@@ -990,9 +1006,9 @@ int main(int argc, char **argv)
         prep_bytes, prep_temp_heap_bytes, prep_temp_stack_bytes, prep_repeats, point_entries,
         point_table_bytes, joint_window4_plane ? point_entries : 0, triples, tau_steps, doubles,
         adds, rotations, unit_adds, output_inversions, fallbacks, second_recodes, steered_blocks,
-        static_map_bytes, recipe_bytes, prep_slot_lookups, wavefront_stats.denominators,
-        wavefront_stats.exceptional_edges, wavefront_stats.doubling_edges,
-        5 * wavefront_stats.denominators,
+        zero_attempts, zero_feasible, zero_selected, static_map_bytes, recipe_bytes,
+        prep_slot_lookups, wavefront_stats.denominators, wavefront_stats.exceptional_edges,
+        wavefront_stats.doubling_edges, 5 * wavefront_stats.denominators,
         wavefront_stats.denominators + wavefront_stats.doubling_edges, online_scratch_bytes,
         tail_stream_checks, tail_double_checks, tail_pair_checks, tail_pair_preparation_checks,
         tail_complete_checks, tail_complete_preparation_checks, periodic_lookups, periodic_accepted,

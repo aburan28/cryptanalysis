@@ -62,6 +62,7 @@ typedef struct ca_joint_window4_precomp {
     int identity;
     int hot;
     int plane_format;
+    unsigned zero_mode, det_inverse16;
 } ca_joint_window4_precomp;
 size_t ca_ec_joint_window4_point_entries(const ca_group *g);
 size_t ca_ec_joint_window4_static_bytes(void);
@@ -77,6 +78,10 @@ int ca_ec_joint_window4_xplane_prepare(const ca_group *g, const ca_elem *point,
                                        ca_joint_window4_precomp *out, uint64_t *doubles,
                                        uint64_t *adds, uint64_t *rotations, uint64_t *inversions,
                                        uint64_t *plane_muls);
+int ca_ec_joint_window4_zero_prepare(const ca_group *g, const ca_elem *point,
+                                     ca_joint_window4_precomp *out, uint64_t *doubles,
+                                     uint64_t *adds, uint64_t *rotations, uint64_t *inversions,
+                                     uint64_t *plane_muls);
 size_t ca_ec_joint_window4_hot_static_bytes(void);
 int ca_ec_joint_window4_prepare_verify(const ca_joint_window4_precomp *pre);
 int ca_ec_joint_window4_mul_profile(const ca_group *g, const ca_joint_window4_precomp *pre,
@@ -86,6 +91,11 @@ int ca_ec_joint_window4_xplane_mul_profile(const ca_group *g, const ca_joint_win
                                            ca_elem *out, uint64_t k, uint64_t *adds,
                                            uint64_t *rotations, uint64_t *unit_adds,
                                            uint64_t *fallbacks);
+int ca_ec_joint_window4_zero_mul_profile(const ca_group *g, const ca_joint_window4_precomp *pre,
+                                         ca_elem *out, uint64_t k, uint64_t *adds,
+                                         uint64_t *unit_adds, uint64_t *fallbacks,
+                                         uint64_t *candidate_attempts, uint64_t *candidate_feasible,
+                                         uint64_t *candidate_selected);
 void ca_ec_joint_window4_clear(ca_joint_window4_precomp *pre);
 
 /* Per-point width-4 table for repeated scalar multiplications within one rho

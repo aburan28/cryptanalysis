@@ -411,3 +411,12 @@ keeps that selected digit map and the same persistent point-table bytes.
 It stores `x` and `βx` and reconstructs `β²x` with field additions, removing
 all online unit field multiplications on its own fresh fixture. Release and
 UBSan correctness panels pass; controlled CPU timing remains unknown.
+
+The [congruence-directed zero-window variant](JOINT_WINDOW4_ZERO.md) solves
+one GLV lattice congruence modulo 16 to force the lowest joint digit to
+zero, then accepts that representative only if it fits the same table and
+saves a mixed point addition. On a new disjoint fixture it saved 3,867 of
+54,929 mixed additions on `glv-j0-32`; the seven-position `j0-56` table
+had too little slack for a material gain. The candidate requires an extra
+online recode, so a controlled host measurement is still needed to learn
+whether it runs faster.
