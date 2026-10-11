@@ -1,14 +1,45 @@
-# Isolated CPU benchmark service
+# Tiered CPU benchmark service
 
 The benchmark runner is [scripts/isolated_bench.py](../scripts/isolated_bench.py).
 It accepts frozen JSON manifests, serializes every job through one persistent
 SQLite queue and an exclusive worker lock, and records raw output and host
-counter snapshots for each reference/candidate solve. It does **not** publish
-a speedup unless every pair verifies, matches the declared input fields, and
-passes the isolation and noise gates. Run the service on housekeeping CPUs;
-the benchmark subprocesses alone enter the isolated partition.
+counter snapshots for each reference/candidate solve. Every receipt names its
+measurement tier. Both tiers require verified matching answers, frozen inputs,
+stable source and binary hashes, and complete paired runs. Tier 0 runs the
+service on housekeeping CPUs; its benchmark subprocesses enter the isolated
+partition. Tier 1 runs in a recorded cloud instance, including a RunPod Pod,
+with a narrower, explicit claim.
 
-## What constitutes a controlled result
+## Measurement tiers and claim language
+
+| Tier | Environment | Result the receipt can support |
+| --- | --- | --- |
+| `tier0_host` | Physical Linux host with audited exclusive CPU and NUMA partition, fixed frequency, and IRQ routing | Host-isolated paired wall-time result. |
+| `tier1_instance` | Linux cloud instance or Pod with one pinned exposed CPU, recorded allocation receipt, observable cgroup throttle and memory-failure counters, and repeated matched pairs | Instance-scoped paired wall-time result, qualified by the recorded confidence interval. Host exclusivity remains unverified. |
+
+Legacy schema-1 manifests without `measurement_tier` remain Tier 0. Tier 1
+must be requested explicitly; failure of a Tier 0 preflight never silently
+downgrades a run. For a Tier 1 speedup claim, the full panel must complete,
+there must be at least eight alternating paired repetitions, and the 95%
+bootstrap lower bound for the paired median ratio must exceed 1. With one
+target, the interval resamples its paired repetitions; with at least five
+targets, it resamples per-target medians. Other completed panels retain their
+measured ratio but set `speedup_claim_eligible=false`. Name a qualifying
+result a **Tier 1 instance-scoped paired speedup** and report the provider,
+instance ID, ratio, interval, exact workload, timer boundary, and observed
+throttling, memory failures, CPU steal and scheduling counters. A Tier 1
+receipt cannot establish host-wide exclusivity or transfer its timing ratio
+to another host. The allocation identity is backed by a hashed operator
+receipt and is labeled self-reported; provider verification is a separate
+audit.
+
+Both tiers still require source review of the benchmark's internal timer and
+correctness check. A stage benchmark can support a stage speedup; a complete
+one-target IC speedup additionally requires the recovered scalar, independent
+replay, the same public point and resource envelope for rho, and the phase
+accounting in [AGENTS.md](../AGENTS.md).
+
+## Tier 0 host-isolated result
 
 The strict preflight requires a physical Linux host with administrative
 control, an empty cgroup v2 `cpuset.cpus.partition=isolated` partition whose
@@ -24,12 +55,9 @@ throttling, OOM, IRQ or softirq time, interrupt-count changes, steal time,
 involuntary context switches, timeout, nonzero exit, or missing
 `verified=1`/`online_ms`. Raw failures are retained.
 
-This is a deliberately stringent gate. `cpuset` and a container's visible
-CPU list alone cannot prove that other tenants have no host-level contention.
-RunPod Pods are containerized compute allocations; a Pod may fail this host
-preflight even when it has apparently dedicated vCPUs. A rejected Pod can
-run correctness tests and exploratory profiling, but its receipt cannot be
-used as a controlled CPU speedup claim. [Linux's cgroup v2 documentation](https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html)
+`cpuset` and a container's visible CPU list alone cannot prove that other
+tenants have no host-level contention. A RunPod Pod that lacks the Tier 0
+host controls can use Tier 1 instead. [Linux's cgroup v2 documentation](https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html)
 defines the isolated partition and exclusive CPUs. [Linux's CPU isolation
 guide](https://docs.kernel.org/admin-guide/cpu-isolation.html) explains tick,
 RCU, IRQ, and SMT considerations. The runner checks the effective state,
@@ -48,11 +76,49 @@ describe that timer's boundary; the runner cannot infer it from process
 launch. The runner also records outer elapsed time, executable SHA-256,
 host/kernel/CPU topology, cgroup state, raw stdout/stderr, per-CPU interrupt
 and steal counters, cgroup throttle/OOM counters, and child involuntary
-context switches. Benchmark children receive a fixed minimal environment;
+context switches. Tier 0 invalidates every noise event listed above. Tier 1
+invalidates observed cgroup throttling or memory failures and retains the
+other counters as noise evidence; its repeated-pair interval limits timing
+claims when that noise affects results. Benchmark children receive a fixed minimal environment;
 the provisioning API key is not passed into them. A controlled result still needs source review of the
 executable's timer and correctness check.
 
-## Provisioning checklist for the host administrator
+## Tier 1 cloud instance
+
+Use one RunPod Pod or comparable Linux instance for both variants. Keep the
+allocation metadata returned by the provider in a local JSON receipt, with
+its instance ID, image, advertised CPU and memory allocation, and creation
+time. Do not put API tokens in it. Supply that receipt in `artifacts`; the
+runner hashes it before and after the panel. The `allocation` section gives
+the provider, instance ID, and absolute receipt path. An example Tier 1
+manifest fragment is:
+
+```json
+{
+  "schema": 1,
+  "measurement_tier": "tier1_instance",
+  "allocation": {
+    "provider": "runpod",
+    "instance_id": "POD_ID",
+    "receipt": "/workspace/receipts/runpod-allocation.json"
+  },
+  "isolation": {"cpus": "4", "execution_cpu": 4},
+  "artifacts": ["/workspace/receipts/runpod-allocation.json", "/workspace/src/solver.c"],
+  "repetitions": 8
+}
+```
+
+Fill in the remaining common manifest fields shown below. Choose an exposed
+CPU from `probe-host`. The runner requires Linux, CPU affinity, per-CPU
+statistics, and readable container CPU throttling and memory-failure
+counters. It reads the current cgroup v2 hierarchy or the common cgroup v1
+CPU and memory mounts; when counters are unavailable, preflight rejects the
+measurement. Tier 1 does not require root, `numactl`, a fixed frequency,
+`nohz_full`, host IRQ routing, or a manually created cgroup. Pinning affects
+placement of the measured process, not other tenants. Keep unrelated jobs
+off the instance during the panel and record any observable co-runners.
+
+## Tier 0 provisioning checklist for the host administrator
 
 1. Use a dedicated physical Linux host or a provider contract with equivalent
    host-level CPU and memory-node exclusivity. Reserve at least one separate
@@ -77,8 +143,9 @@ allocation before building binaries:
 python3 scripts/isolated_bench.py probe-host
 ```
 
-On a prepared host, use `probe MANIFEST.json` to see every unmet strict
-condition. `run` refuses to launch a measurement when the preflight fails.
+On a prepared host or instance, use `probe MANIFEST.json` to see the unmet
+conditions for its declared tier. `run` refuses to launch a measurement when
+that tier's preflight fails.
 
 ## Serial service and dispatch
 
@@ -158,6 +225,59 @@ and pairing but does not replace the IC measurement contract.
 
 The prior [j=0 rho panel](../experiments/prime-j0-rho-coordinate-canon-20261002/README.md)
 was run on a heavily loaded Mac. Its timing ratios remain exploratory until
-replayed through a qualifying isolated host. Historical results elsewhere
-in the repository need an isolation audit before they are treated as
-controlled performance claims.
+replayed under a qualifying tier. Historical results elsewhere in the
+repository need a tier audit before they are cited as measured speedups.
+
+## Frozen manifest and result contract
+
+Each `cases` entry is one previously unseen target. Freeze its exact input
+point in `expected_fields`; the reference and candidate must both echo those
+fields in the final timed output row. The runner rejects a pair even when
+both programs report the same wrong target. The executable must print
+`online_ms=<positive number> verified=1` and a result field after checking its
+answer. The runner also compares that result to the frozen `expected_result`
+in the manifest; keep that expected answer out of the solver command line.
+The runner records the complete stdout/stderr and hashes the listed
+source/build artifacts and each executable. For example:
+
+```json
+{
+  "schema": 1,
+  "workdir": "/workspace/cryptanalysis",
+  "isolation": {
+    "cgroup": "/sys/fs/cgroup/benchmark-isolated",
+    "cpus": "4-5",
+    "execution_cpu": 4,
+    "mem_nodes": "0"
+  },
+  "artifacts": ["/workspace/cryptanalysis/src/solver.c"],
+  "timeout_s": 120,
+  "repetitions": 3,
+  "measurement_boundary": "First target-dependent step through scalar replay",
+  "pair_fields": ["curve", "target_x", "target_y"],
+  "result_field": "scalar",
+  "cases": [
+    {
+      "id": "target-0",
+      "expected_fields": {"curve": "curve-id", "target_x": "123", "target_y": "456"},
+      "expected_result": "789",
+      "reference": ["/workspace/bin/reference", "--target", "target-0"],
+      "candidate": ["/workspace/bin/candidate", "--target", "target-0"]
+    }
+  ]
+}
+```
+
+The CPU and NUMA IDs above are examples; choose them from verified host
+topology. All paths must be absolute paths on the benchmark host. The
+benchmark's internal online timer and correctness replay need source review:
+this service cannot infer their boundaries or prove `verified=1` on its own.
+For Sage manifests, use the absolute checked repository `sage` launcher and
+save its `--runtime-info` receipt before measurement, as required by
+[AGENTS.md](../AGENTS.md).
+
+For IC comparisons, retain candidate, workload, and run IDs plus the stage
+accounting required by AGENTS.md. Report the exact paired one-target online
+interval and the same target point for rho and IC. Historical CPU ratios
+without a qualifying tier receipt remain exploratory until replayed under a
+qualifying environment.
