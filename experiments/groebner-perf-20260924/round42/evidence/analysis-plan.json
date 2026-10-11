@@ -1,0 +1,12 @@
+{
+  "schema": "normalized-wide-per-input-analysis/1",
+  "declared_before_trial_results": true,
+  "bootstrap_seed": 202609304799,
+  "bootstrap_resamples": 10000,
+  "primary_ns": "elapsed_ns: solve plus untouched original-ANF check, excluding evidence serialization",
+  "statistic": "Median of seven paired comparator elapsed_ns / combined-metal elapsed_ns ratios",
+  "interval": "2.5th and 97.5th percentiles of paired-resampled medians; descriptive per-input intervals, not familywise guarantees",
+  "comparators": "Every retained arm plus projection-cpu, wide-cpu, wide-metal, normalized-cpu, lookup-cpu and combined-cpu. Fastest CPU and fastest other actually executing GPU are identified independently per input and trial.",
+  "repeat_gate": "Two complete admitted trials for each frozen input, all samples within the unchanged load threshold, all source/reference/proof/runtime binary identity checks pass, actual combined Metal execution, lower95 > 1 against every comparator in both trials. Preserve failures and CPU fallbacks. No automatic routing change.",
+  "limits": "Physical Apple M4 Pro, fixed planted PDP inputs only. No inference about natural relation yield, full IC/rho, other hardware or asymptotic complexity. No automatic promotion."
+}

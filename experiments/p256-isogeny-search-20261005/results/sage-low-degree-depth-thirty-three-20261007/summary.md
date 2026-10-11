@@ -1,0 +1,59 @@
+# P-256 low-degree isogeny search through depth thirty-three
+
+## Outcome
+
+The prospectively frozen extension added 496 curves at depth thirty-two and 512
+at depth thirty-three, with no overlap against the prior 7,490-curve union. The
+explicit registry now contains P-256 plus 8,497 distinct neighbors. Every new
+record retains its ordered path, edge maps, model isomorphisms, and transported
+generator. The oversized working registry is published as a deterministic gzip
+archive whose manifest binds the compressed and uncompressed hashes and sizes.
+
+All 1,008 additions received matched-native measurements in 168 root-controlled
+blocks. 12 unadjusted short-screen hit(s), with point estimates in
+`1.0311x-1.1230x`, entered the frozen fresh 30-trial, two-second holdout. 0
+candidate(s) reproduced a positive interval. The largest holdout estimate was `0.9940x` with paired 95% interval `0.9694x-1.0193x`.
+
+No new depth-32/33 candidate survived holdout, so no additional P,Q path evaluation was triggered. The depth-25 exploratory positive remains open for isolated replay, with its previously charged 0.011433-second per-key transfer.
+The local isolation probe failed the repository gate, so every positive rho
+timing remains exploratory and requires replay on a qualifying host.
+
+Every new curve has exact endomorphism conductor `1`; all path primes have
+volcano level zero and all edges are horizontal. The coefficient audit found a
+minimum addition-chain lower bound of
+`244`
+operations and zero candidates passing the 32-operation specialization gate.
+
+## Requirement status
+
+| Requirement | Status | Evidence |
+| --- | --- | --- |
+| Prospective selection protocol | verified complete | Protocol commit predates candidate generation. |
+| Explicit paths and log transport | verified for this boundary | 1,008 new paths; degrees are coprime to prime `n`; transported generators pass checks. |
+| Oversized registry preservation | verified complete | Deterministic archive, uncompressed hash, and byte-identical repack verified. |
+| Endomorphism conductor and volcano levels | verified class-wide and per candidate | Conductor 1; every path is horizontal at level zero. |
+| Low-operation normalized coefficient | not found within additions | Zero candidates pass the 32-operation gate. |
+| Iteration-rate advantage | not found within this boundary | 12 screen hit(s), 0 holdout reproduction(s); local isolation gate failed. |
+| Per-key transfer cost | satisfied for every new holdout-positive candidate | Complete retained path evaluated on both `P` and `Q` when triggered; log relation verified. |
+| Dramatic end-to-end ECDLP speedup | not established | Per-key mapping is charged, but controlled host isolation remains open. |
+| Entire isogeny class | incomplete | Depth 33 over degrees 3, 5, 11, and 13 is bounded; exact class-number work is `running`. |
+
+## Cost accounting
+
+| Cost | Measured wall time | Accounting role |
+| --- | ---: | --- |
+| Reusable depth-32/33 discovery | 487.7601 s | discovery/precomputation |
+| Native screening blocks | 4574.9812 s | exploratory per-iteration comparison |
+| Fresh holdout | 801.2276 s | exploratory verification evidence |
+| New positive path evaluation on `P` and `Q` | not triggered | no new holdout-positive candidate |
+| Exact class-group attempt | running | no result counted at this checkpoint |
+
+CPU affinity separated native timing, traversal, and class-group work, but the
+preserved probe shows that this host does not satisfy the repository isolation
+gate. The attempts ledger records
+all invocations, corrections, and any unsuccessful work in
+[`attempts.json`](attempts.json). Inputs, benchmark parameters, candidate order,
+and selection rules did not change.
+
+This result is `not found within this family and boundary`. It is not a universal
+nonexistence result and does not enumerate the complete class group.
