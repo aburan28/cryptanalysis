@@ -18,9 +18,10 @@ prior = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(prior)
 ORDER = prior.ORDER
 COUNT = 4096
-SEED = 20261011190700
+SEED = 20261011191000
 SOURCES = (*prior.SOURCES,
-           "prime-j0-phase-optimal-20261011/holdout-inputs.json")
+           "prime-j0-phase-optimal-20261011/holdout-inputs.json",
+           "prime-j0-budget-optimal-20261011/preflight-inputs.json")
 SOURCE_FILES = ("construct.py", "verify.py", "make_inputs.py",
                 "replay_holdout.py", "verify_holdout.py",
                 "build_native_atlas.py", "verify_native_atlas.py",
