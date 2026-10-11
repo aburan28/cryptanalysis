@@ -2242,6 +2242,41 @@ queries make 297,449,277 / 315,503,020 SAT propagations before their
 These are censored-stage operation counts in different units. They do not
 measure successful unpinned N83 work or produce a complete N131 `2^x`.
 
+### Q1473 warm-table N53 rank completion comparator
+
+[Q1473](q1473_n53_rank_collection/README.md) reuses one complete exact
+pair table across 256 fresh ordinary N53 targets on Q1467's same
+2,756-point, 26-column base. It independently verifies 24 relations and
+232 complete absences. The new panel adds 14 novel rows to 12 retained
+Q1469 rows after a predeclared representable holdout is excluded; combined
+rank reaches 26/26 after new query 152. All 26 base logs and the holdout
+scalar independently replay. Measured native collection through rank 26,
+charging all failed queries and the actual table setup policy across both
+panels, uses 7,010,486,808 N53 field multiplications, 1,430,692,806
+squarings, and 567,369 inversions. These are separate primitive-call units,
+not a calibrated total-operation exponent. The run is a secondary
+pair-table comparator. Its N131 complete-table setup still exceeds
+`2^61` entries, and it supplies no successful N83 compact-solver cost or
+complete N131 `2^x`.
+
+### Q1474 matched positive N53 compact-S3 control
+
+[Q1474](q1474_n53_positive_compact/README.md) tests Q1472's native
+chained-\(S_3\) solver on the same seeded ordinary N53 public point that
+Q1469's pair-table oracle decomposed. The point was chosen for this control
+after its four-point witness was known. The exact curve is
+`EC1N53Ckb1hf77aab617904`, with 2,756 actual base points and 26 folded
+columns. The `PS1N53Ckb1fb2756PDP4hybridhb641481db49c` stage ID names
+the compact solver; there is no complete `IC1` candidate.
+
+The pinned witness independently verifies. With free leaves, both the one
+known raw-preimage case and the full 428-preimage public-target case reach
+their 60-second caps without a relation. Their exact censored prefixes are
+288,547,216 and 274,677,429 SAT propagations, respectively, with field
+primitive counts and failures archived separately. This tests solver search
+on a provably representable point, but neither prefix measures a successful
+unpinning cost or supports a natural-yield or N131 `2^x` estimate.
+
 ## Reproduction
 
 From this repository worktree, first save checked runtime information:
