@@ -33,8 +33,27 @@ adaptive choice also incurs recoding work; the fresh panel and native replay
 are needed to account for its exact operation path. CPU wall-time comparisons
 require the host-isolation gate in `docs/ISOLATED_BENCHMARKS.md`.
 
-The [fresh-panel protocol](holdout.py) freezes source before drawing
-4,096 new scalars disjoint modulo the subgroup order from the listed prior
-panels. Its [independent path verifier](verify_holdout.py) reconstructs each
-scalar, checks every selected digit and atlas assignment, and compares the
-first 128 point sums with independent binary multiplication.
+## Fresh scalar panel
+
+The [fresh-panel protocol](holdout.py) froze the construction and verifier
+sources in commit `bd810e31095618988d9b528862a560f5358f0750` before
+drawing **4,096** new scalars. The [input receipt](holdout-inputs.json)
+checks modular disjointness from the listed prior panels. The
+[independent path verifier](verify_holdout.py) reconstructed every scalar,
+checked each selected digit and atlas assignment, and compared the first
+**128** point sums with independent binary multiplication. Its
+[receipt](holdout-check.json) passed and binds the frozen input, path, cover,
+source, and point-output hashes.
+
+| Paired fresh panel | Active norm-seven paths | Norm-seven digits | Active doubling paths | Doubling digits | Full-window terms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Compressed parent | 1,411 | 1,687 | 0 | 0 | 49,152 |
+| Static doubled cover | 1,110 | 1,296 | 381 | 395 | 49,152 |
+| Adaptive doubled cover | **1,110** | **1,372** | **301** | **313** | 49,152 |
+
+The adaptive policy selected the parent path in **80** mixed cases. It
+replaced an active norm-seven bucket with doubling alone in **301** cases
+on the fresh panel, with no scalar activating both branches under that
+policy. These are exact recoding and correctness counts. Native replay will
+check the implementation's bucket combination and retained-memory receipt;
+controlled wall-time evidence will price the extra recoding work.
