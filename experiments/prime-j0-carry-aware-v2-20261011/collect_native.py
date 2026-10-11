@@ -19,6 +19,7 @@ def digest(raw):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--materialized", type=Path, required=True)
+    parser.add_argument("--log", type=Path, default=HERE / "native-full-suite.log")
     args = parser.parse_args()
     output = args.materialized.resolve()
     receipt_raw = (output / "carry-materialization.json").read_bytes()
@@ -30,8 +31,7 @@ def main():
         assert digest((output / name).read_bytes()) == expected, name
     assert materialized["assets_sha256"]["offers-r1024-dual-priority.bin"] == \
         json.loads((HERE / "offer-index-check.json").read_bytes())["offer_index_sha256"]
-    log_path = HERE / "native-full-suite.log"
-    log = log_path.read_bytes()
+    log = args.log.read_bytes()
     match = re.search(rb"test result: ok\. (\d+) passed; (\d+) failed;", log)
     assert match and (int(match.group(1)), int(match.group(2))) == (143, 0)
     required = (b"carry_width2_cases=4096", b"active_rho=2846",

@@ -99,6 +99,27 @@ Three signed 192-bit limbs suffice for the exact comparison on these
 representatives. The native implementation asserts the carry bounds and
 overflow bounds at runtime.
 
+## Native replay
+
+The optimized native recoder matched the frozen digit certificate for all
+4,096 holdout scalars, matched the direct-XYZZ-rho control point for every
+scalar, and matched an independent binary point multiplication for the first
+128. It reproduced 2,846 active rho scalars, 4,679 rho-mapped digits, 20,941
+gauge products, and 113,623 examined offers. The normal CLI binary also
+passed the ten-case boundary fixture against the independent point-stream
+verifier. [native-edge-check.json](native-edge-check.json) binds the exact
+binary and generated-source materialization to that result. The same
+materialization passed the complete native Rust suite: **143 passed, 0
+failed**. [native-check.json](native-check.json) binds the generated source,
+assets, and compressed raw test log. These are correctness runs; their wall
+times are not performance measurements.
+
+One parallel full-suite attempt exited before its terminal test summary; its
+65,534-byte raw output and exit code are preserved in
+[native-full-suite-attempt1.json](native-full-suite-attempt1.json) and the
+compressed log. The SSD had only about 32 MiB available when inspected.
+That attempt remains incomplete and contributes no suite-pass result.
+
 ## Reproduction and next implementation step
 
 - [PROTOCOL.md](PROTOCOL.md) defines the screen and promotion gates.
@@ -113,6 +134,14 @@ overflow bounds at runtime.
   class and residue verification of the compressed offer asset.
 - [phase-cost.json](phase-cost.json) records the paired gauge-phase and
   bucket-activation counts with the exact terminal atlas.
+- [materialize_native.py](materialize_native.py) constructs native mode 167
+  on top of the direct-XYZZ-rho materializer in the stacked base PR.
+- [native-edge-check.json](native-edge-check.json) binds the independent
+  ten-case CLI boundary replay.
+- [native-check.json](native-check.json) and
+  [native-full-suite.log.gz](native-full-suite.log.gz) preserve the completed
+  143-test native correctness run, alongside the separate incomplete first
+  attempt.
 
 The next experiment is a paired end-to-end benchmark on a host that passes
 the repository's isolation gate. The algebraic and operation-count result
