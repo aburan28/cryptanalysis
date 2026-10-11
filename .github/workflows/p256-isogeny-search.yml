@@ -1,0 +1,142 @@
+name: P-256 isogeny search
+
+"on":
+  push:
+    paths:
+      - "experiments/p256-isogeny-search-20261005/**"
+      - ".github/workflows/p256-isogeny-search.yml"
+  pull_request:
+    paths:
+      - "experiments/p256-isogeny-search-20261005/**"
+      - ".github/workflows/p256-isogeny-search.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-control-run:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: experiments/p256-isogeny-search-20261005
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: experiments/p256-isogeny-search-20261005/pyproject.toml
+      - run: python -m pip install -e .
+      - run: python -m unittest discover -s tests -v
+      - run: python scripts/verify_frozen.py
+      - name: Materialize archived frontiers for chained verifiers
+        if: matrix.python-version == '3.12'
+        run: |
+          for stage in twenty-five twenty-seven twenty-nine thirty-one thirty-three; do
+            python scripts/freeze_large_json.py materialize \
+              --archive "results/sage-low-degree-depth-${stage}-20261007/candidates-delta.json.gz" \
+              --manifest "results/sage-low-degree-depth-${stage}-20261007/candidates-delta.freeze.json" \
+              --output "results/sage-low-degree-depth-${stage}-20261007/candidates-delta.json"
+          done
+          python scripts/freeze_large_json.py materialize \
+            --archive results/sage-low-degree-depth-thirty-five-20261008/candidates-delta.json.gz \
+            --manifest results/sage-low-degree-depth-thirty-five-20261008/candidates-delta.freeze.json \
+            --output results/sage-low-degree-depth-thirty-five-20261008/candidates-delta.json
+          python scripts/freeze_large_json_sharded.py materialize \
+            --archive-prefix results/sage-low-degree-depth-thirty-seven-20261008/candidates-delta.json.gz \
+            --manifest results/sage-low-degree-depth-thirty-seven-20261008/candidates-delta.freeze.json \
+            --output results/sage-low-degree-depth-thirty-seven-20261008/candidates-delta.json
+          python scripts/freeze_large_json_sharded.py materialize \
+            --archive-prefix results/sage-low-degree-depth-thirty-nine-20261008/candidates-delta.json.gz \
+            --manifest results/sage-low-degree-depth-thirty-nine-20261008/candidates-delta.freeze.json \
+            --output results/sage-low-degree-depth-thirty-nine-20261008/candidates-delta.json
+          python scripts/freeze_large_json_sharded.py materialize \
+            --archive-prefix results/sage-low-degree-depth-forty-one-20261008/candidates-delta.json.gz \
+            --manifest results/sage-low-degree-depth-forty-one-20261008/candidates-delta.freeze.json \
+            --output results/sage-low-degree-depth-forty-one-20261008/candidates-delta.json
+          python scripts/freeze_large_json_sharded.py materialize \
+            --archive-prefix results/sage-low-degree-depth-forty-three-20261009/candidates-delta.json.gz \
+            --manifest results/sage-low-degree-depth-forty-three-20261009/candidates-delta.freeze.json \
+            --output results/sage-low-degree-depth-forty-three-20261009/candidates-delta.json
+      - name: Verify all frozen Sage and native evidence
+        if: matrix.python-version == '3.12'
+        run: |
+          python scripts/verify_sage_depth_one.py
+          python scripts/verify_sage_depth_three.py
+          python scripts/verify_sage_wide_depth_one.py
+          python scripts/verify_sage_mapping_native.py
+          python scripts/verify_sage_native_full_screen.py
+          python scripts/verify_sage_wide_199.py
+          python scripts/verify_sage_low_degree_depth_five.py
+          python scripts/verify_sage_low_degree_depth_seven.py
+          python scripts/verify_sage_low_degree_depth_nine.py
+          python scripts/verify_sage_low_degree_depth_eleven.py
+          python scripts/verify_sage_low_degree_depth_thirteen.py
+          python scripts/verify_sage_low_degree_depth_fifteen.py
+          python scripts/verify_sage_low_degree_depth_seventeen.py
+          python scripts/verify_sage_low_degree_depth_nineteen.py
+          python scripts/verify_sage_low_degree_depth_twenty_one.py
+          python scripts/verify_sage_low_degree_depth_twenty_three.py
+          python scripts/verify_sage_low_degree_depth_twenty_five.py
+          python scripts/verify_sage_low_degree_depth_twenty_seven.py
+          python scripts/verify_sage_low_degree_depth_twenty_nine.py
+          python scripts/verify_sage_low_degree_depth_thirty_one.py
+          python scripts/verify_sage_low_degree_depth_thirty_three.py
+          python scripts/verify_sage_low_degree_depth_thirty_five.py
+          python scripts/verify_sage_low_degree_depth_thirty_seven.py
+          python scripts/verify_sage_low_degree_depth_thirty_nine.py
+          python scripts/verify_sage_low_degree_depth_forty_one.py
+          python scripts/verify_sage_low_degree_depth_forty_three.py
+          python scripts/verify_sage_low_degree_depth_forty_five.py
+          python scripts/verify_model_eligibility.py
+          python scripts/verify_retained_coefficient_audit.py
+          python scripts/verify_retained_conductor_audit.py
+          python scripts/audit_candidate_models.py \
+            --candidates results/sage-low-degree-depth-seventeen-20261006/candidates-delta.json \
+            --output results/sage-low-degree-depth-seventeen-20261006/candidate-model-audit.json \
+            --verify
+      - name: Run reproducible control experiment
+        run: p256-isogeny run --output-dir runs/ci --seconds 0.1 --trials 2
+      - uses: actions/upload-artifact@v4
+        if: matrix.python-version == '3.12'
+        with:
+          name: p256-control-run
+          path: experiments/p256-isogeny-search-20261005/runs/ci
+
+  sage-depth-one:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: sagemath/sagemath:10.6
+      options: --user root
+    defaults:
+      run:
+        working-directory: experiments/p256-isogeny-search-20261005
+    steps:
+      - uses: actions/checkout@v4
+      - name: Explore the first horizontal neighborhood
+        env:
+          PYTHONPATH: src
+        run: >-
+          sage -python scripts/explore_sage.py
+          --ells 3,5,11,13
+          --depth 1
+          --max-nodes 12
+          --output runs/ci-sage/candidates.json
+      - name: Benchmark generated candidates
+        env:
+          PYTHONPATH: src
+        run: >-
+          sage -python scripts/benchmark_interleaved.py
+          --candidates runs/ci-sage/candidates.json
+          --seconds 0.1
+          --trials 2
+          --warmup-seconds 0.05
+          --output runs/ci-sage/benchmark.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p256-sage-depth-one
+          path: experiments/p256-isogeny-search-20261005/runs/ci-sage
