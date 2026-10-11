@@ -103,6 +103,8 @@ RUST_TEST = r'''
         assert_eq!(scalars.len(), 4096);
         let mut additions = 0usize;
         let mut rotations = 0usize;
+        let mut fused_additions = 0usize;
+        let mut fused_rotations = 0usize;
         for (index, text) in scalars.iter().enumerate() {
             let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
             let words = super::super::scalar_words_256(&scalar).unwrap();
@@ -118,6 +120,8 @@ RUST_TEST = r'''
             assert!(candidate.2 <= 12 && candidate.6 <= 8, "bounds {index}");
             additions += candidate.2;
             rotations += candidate.6;
+            fused_additions += fused.2;
+            fused_rotations += fused.6;
             if index < 128 {
                 let reduced = &scalar % &SCALAR_LATTICE.n;
                 assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
@@ -125,8 +129,10 @@ RUST_TEST = r'''
             }
         }
         assert_eq!(additions, 49_152);
-        println!("dual_rho0_folded_cases={} retained_bytes={} additions={} gauge_products={}",
-                 scalars.len(), warm_format(65), additions, rotations);
+        assert_eq!(fused_additions, 49_152);
+        println!("dual_rho0_folded_cases={} retained_bytes={} additions={} gauge_products={} fused_additions={} fused_gauge_products={}",
+                 scalars.len(), warm_format(65), additions, rotations,
+                 fused_additions, fused_rotations);
     }
 
 '''
