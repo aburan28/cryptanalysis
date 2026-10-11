@@ -30,3 +30,17 @@ measured retained size is **65,596,552 bytes**, 196,648 bytes below
 the quotient mode, leaving 1,512,312 bytes below the RunPod CPU's
 reported 64 MiB L3 capacity. This is representation accounting; the
 L3 is shared and the current pod lacks host-level isolation evidence.
+
+The complete portable native suite passed **139/139 tests**. The
+command-line mode passed all **10 edge-fixture cases**, with the
+independent verifier checking its point stream. The
+[receipt validator](verify.py) binds the source, atlas, panel, native
+materialization, compressed test logs, and edge output. The
+[tested](native-tested-materialization.json) and
+[final](native-materialization.json) materializations have identical
+generated Rust, scalar inputs, and 43 packaged dependency hashes.
+The final materializer resolves inherited source paths from the
+current checkout and emits crate-relative includes, so it can run on
+Linux without this Mac's filesystem path. The serial Linux correctness
+replay remains a separate gate; no controlled wall-time ratio is
+reported here.
