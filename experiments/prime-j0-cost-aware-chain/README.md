@@ -233,3 +233,18 @@ addition. Its disjoint 32,768-output panel lowers modeled evaluation cost
 5.49%–5.66% on `glv-j0-32` and 2.17%–2.23% on `j0-56` beyond the two-digit
 arm, with point setup reported separately. Isolated CPU speed and rho impact
 remain unmeasured.
+
+The [phase-complete pair table](PHASE_COMPLETE_PAIR.md) expands those 121
+orbits into 726 exact signed/unit points so the online pair evaluator performs
+no rotations. Its separate disjoint 32,768-output panel verifies every output
+and prepared point and saves another 1.59%–1.66% in the weighted evaluation
+model. The table grows to 23,232 bytes; isolated CPU speed remains unknown.
+
+The [high-order exact-pair search](GLOBAL_PAIR_SEARCH.md) explores a different
+recoding policy over the same complete table. On reused design scalars, a
+bounded-tail oracle plus a 32-choice, width-one high-order beam lowers the
+modeled group-operation score 7.93% and 3.39% against its canonical-plus-oracle
+comparator. The beam also evaluates 63 and 195 trial digits per scalar on the
+two curves, plus canonical completions. A norm-greedy rule loses nearly all
+the modeled gain. These are exploratory operation counts; no native or
+isolated CPU speedup is established.
