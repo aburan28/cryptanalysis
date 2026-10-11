@@ -1,0 +1,78 @@
+name: Normalized CPU and Metal proof
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/**'
+      - 'experiments/pdp-degree-heuristics/**'
+      - '.github/workflows/normalized-wide-certificates.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/**'
+      - 'experiments/pdp-degree-heuristics/**'
+      - '.github/workflows/normalized-wide-certificates.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: normalized-wide-certificates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  correctness:
+    name: Normalized proof (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install numerical dependency
+        run: python -m pip install numpy==2.4.0
+      - name: Build portable native dependencies
+        shell: bash
+        run: |
+          mkdir -p normalized-proof-evidence
+          for version in 20 23 31 32 33 34 35 36 37 38; do
+            python "experiments/groebner-perf-20260924/round${version}/build.py" > "normalized-proof-evidence/build-${version}.log" 2>&1
+          done
+      - name: Build and validate selected backend
+        shell: bash
+        run: |
+          flags=()
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            flags+=(--metal)
+          fi
+          python experiments/groebner-perf-20260924/round42/build.py "${flags[@]}" > normalized-proof-evidence/build-42.log 2>&1
+          python -u experiments/groebner-perf-20260924/round42/validate_native.py "${flags[@]}" --output normalized-proof-evidence/correctness.json.gz > normalized-proof-evidence/validation.log 2>&1
+      - name: Independently audit every complete-query proof from original ANFs
+        run: python -u experiments/groebner-perf-20260924/round42/audit_queries.py --input normalized-proof-evidence/correctness.json.gz --output normalized-proof-evidence/independent-audit.json > normalized-proof-evidence/independent-audit.log 2>&1
+      - name: Retain runner and native build identity
+        if: always()
+        run: |
+          mkdir -p normalized-proof-evidence
+          python - <<'PY'
+          import json, os, pathlib, shutil
+          metadata = {k: os.environ.get(k) for k in ('GITHUB_SHA', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'RUNNER_OS', 'RUNNER_ARCH')}
+          pathlib.Path('normalized-proof-evidence/runner.json').write_text(json.dumps(metadata, indent=2)+'\n')
+          receipt = pathlib.Path('experiments/groebner-perf-20260924/round42/build/receipt.json')
+          if receipt.exists():
+              shutil.copy2(receipt, 'normalized-proof-evidence/build-receipt.json')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: normalized-proof-${{ matrix.os }}
+          path: normalized-proof-evidence/
+          if-no-files-found: error
+          retention-days: 14
