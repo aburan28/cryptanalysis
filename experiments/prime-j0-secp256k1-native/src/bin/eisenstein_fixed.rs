@@ -1007,24 +1007,50 @@ fn short_representative_choices(scalar: &BigInt, count: usize) -> Vec<(BigInt, B
 // N(W) = N(V) = N(W+V) = n, so 2< W,V > = -n. The nearest point is among
 // the four floor/ceiling corners in these coordinates; the centered
 // 3-by-3 neighborhood also contains those four corners.
+fn twice_eisenstein_inner(a: &BigInt, b: &BigInt, x: &BigInt, y: &BigInt) -> BigInt {
+    a * (2 * x + 3 * y) + b * (3 * x + 6 * y)
+}
+
+fn hexagonal_grid_choices(
+    scalar: &BigInt, first_w: BigInt, first_v: BigInt,
+    side: usize, w0: &BigInt, w1: &BigInt,
+) -> Vec<(BigInt, BigInt)> {
+    assert!(side == 2 || side == 3);
+    let lattice = &*SCALAR_LATTICE;
+    let mut row_a = scalar - &first_w * w0 - &first_v * &lattice.v0;
+    let mut row_b = -(&first_w * w1) - &first_v * &lattice.v1;
+    let base_norm = tau_norm(&row_a, &row_b);
+    let twice_w = twice_eisenstein_inner(&row_a, &row_b, w0, w1);
+    let twice_v = twice_eisenstein_inner(&row_a, &row_b, &lattice.v0, &lattice.v1);
+    let mut choices = Vec::with_capacity(side * side);
+    for dw in 0..side {
+        let mut a = row_a.clone();
+        let mut b = row_b.clone();
+        for dv in 0..side {
+            let dw = dw as i64;
+            let dv = dv as i64;
+            let norm = &base_norm - dw * &twice_w - dv * &twice_v
+                + (dw * dw + dv * dv - dw * dv) * &lattice.n;
+            #[cfg(test)]
+            assert_eq!(norm, tau_norm(&a, &b));
+            choices.push((norm, std::cmp::max(a.abs(), b.abs()), a.clone(), b.clone()));
+            a -= &lattice.v0;
+            b -= &lattice.v1;
+        }
+        row_a -= w0;
+        row_b -= w1;
+    }
+    choices.sort();
+    choices.into_iter().map(|(_, _, a, b)| (a, b)).collect()
+}
+
 fn hexagonal_representative_choices(scalar: &BigInt) -> Vec<(BigInt, BigInt)> {
     let lattice = &*SCALAR_LATTICE;
     let w0 = &lattice.u0 - 2 * &lattice.v0;
     let w1 = &lattice.u1 - 2 * &lattice.v1;
     let center_w = round_div(scalar * &lattice.v1, lattice.det.clone());
     let center_v = round_div(-scalar * &w1, lattice.det.clone());
-    let mut choices = Vec::with_capacity(9);
-    for dw in -1..=1 {
-        for dv in -1..=1 {
-            let i = &center_w + dw;
-            let j = &center_v + dv;
-            let a = scalar - &i * &w0 - &j * &lattice.v0;
-            let b = -&i * &w1 - &j * &lattice.v1;
-            choices.push((tau_norm(&a, &b), std::cmp::max(a.abs(), b.abs()), a, b));
-        }
-    }
-    choices.sort();
-    choices.into_iter().map(|(_, _, a, b)| (a, b)).collect()
+    hexagonal_grid_choices(scalar, center_w - 1, center_v - 1, 3, &w0, &w1)
 }
 
 fn hexagonal_four_corner_choices(scalar: &BigInt) -> Vec<(BigInt, BigInt)> {
@@ -1035,18 +1061,7 @@ fn hexagonal_four_corner_choices(scalar: &BigInt) -> Vec<(BigInt, BigInt)> {
     // Both numerators are nonnegative for the reduced scalar and this basis.
     let floor_w = (scalar * &lattice.v1) / &lattice.det;
     let floor_v = (-(scalar * &w1)) / &lattice.det;
-    let mut choices = Vec::with_capacity(4);
-    for dw in 0..=1 {
-        for dv in 0..=1 {
-            let i = &floor_w + dw;
-            let j = &floor_v + dv;
-            let a = scalar - &i * &w0 - &j * &lattice.v0;
-            let b = -&i * &w1 - &j * &lattice.v1;
-            choices.push((tau_norm(&a, &b), std::cmp::max(a.abs(), b.abs()), a, b));
-        }
-    }
-    choices.sort();
-    choices.into_iter().map(|(_, _, a, b)| (a, b)).collect()
+    hexagonal_grid_choices(scalar, floor_w, floor_v, 2, &w0, &w1)
 }
 
 // Nearby lattice representatives occupy at most 130 bits per coordinate.
@@ -3849,6 +3864,52 @@ mod eisenstein_tau_tests {
                     <= 5 * four.3 + 11 * four.4.iter().sum::<usize>());
             assert!(5 * chosen.3 + 11 * chosen.4.iter().sum::<usize>()
                     <= 5 * nearest.3 + 11 * nearest.4.iter().sum::<usize>());
+        }
+    }
+
+    #[test]
+    fn incremental_hex_grid_matches_naive_candidates() {
+        use num_integer::Integer;
+        let lattice = &*SCALAR_LATTICE;
+        let w0 = &lattice.u0 - 2 * &lattice.v0;
+        let w1: BigInt = &lattice.u1 - 2 * &lattice.v1;
+        let mut state = 0x9e3779b97f4a7c15u64;
+        for _ in 0..128 {
+            let mut scalar = BigInt::ZERO;
+            for _ in 0..4 {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                scalar = (scalar << 64) + BigInt::from(state);
+            }
+            let scalar = scalar % &lattice.n;
+            for side in [2, 3] {
+                let (first_w, first_v) = if side == 2 {
+                    ((&scalar * &lattice.v1).div_floor(&lattice.n),
+                     (-(&scalar * &w1)).div_floor(&lattice.n))
+                } else {
+                    (round_div(&scalar * &lattice.v1, lattice.det.clone()) - 1,
+                     round_div(-&scalar * &w1, lattice.det.clone()) - 1)
+                };
+                let mut naive = Vec::new();
+                for dw in 0..side {
+                    for dv in 0..side {
+                        let i = &first_w + dw;
+                        let j = &first_v + dv;
+                        let a = &scalar - &i * &w0 - &j * &lattice.v0;
+                        let b = -&i * &w1 - &j * &lattice.v1;
+                        naive.push((tau_norm(&a, &b), std::cmp::max(a.abs(), b.abs()), a, b));
+                    }
+                }
+                naive.sort();
+                let expected: Vec<_> = naive.into_iter().map(|(_, _, a, b)| (a, b)).collect();
+                let actual = if side == 2 {
+                    hexagonal_four_corner_choices(&scalar)
+                } else {
+                    hexagonal_representative_choices(&scalar)
+                };
+                assert_eq!(actual, expected);
+            }
         }
     }
 
