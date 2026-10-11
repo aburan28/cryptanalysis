@@ -243,13 +243,6 @@ def preflight(manifest):
     evidence["cgroup.procs"] = processes
     if processes is None or processes:
         problems.append("benchmark cgroup must be empty before dispatch")
-    cpu_stat_text = read(cg / "cpu.stat")
-    if not cpu_stat_text or not all(key in cpu_stat_text for key in
-                                    ("nr_throttled", "throttled_usec")):
-        problems.append("cpu.stat throttling counters unavailable")
-    if read(cg / "memory.events") is None:
-        problems.append("memory.events unavailable")
-    if read(cg / "cpu.pressure") is None:
     events = read(cg / "cgroup.events")
     evidence["cgroup.events"] = events
     if events is None or "populated 0" not in events.splitlines():
@@ -587,6 +580,7 @@ def execute(manifest, output):
                                 pair["reference"]["fields"][field] != pair["candidate"]["fields"].get(field)]
                     if mismatch:
                         issues.append("pair mismatch: " + ",".join(mismatch))
+                    mismatch = [field for field in manifest["pair_fields"]
                                 if any(row["fields"].get(field) != case["expected_fields"][field]
                                        for row in pair.values())]
                     if mismatch:
@@ -607,8 +601,6 @@ def execute(manifest, output):
     expected = 2 * len(manifest["cases"]) * manifest.get("repetitions", 1)
     artifact_hashes_after = {path: sha256(path) for path in manifest["artifacts"]}
     artifacts_stable = artifact_hashes_after == artifact_hashes_before
-    complete = (len(rows) == expected and len(pairs) == expected // 2 and
-                len(ratios) * 2 == expected and artifacts_stable)
     binary_hashes_after = {path: sha256(path) for path in sorted(binary_paths)}
     binaries_stable = binary_hashes_after == binary_hashes_before
     runner_stable = sha256(Path(__file__)) == runner_hash_before
@@ -633,7 +625,6 @@ def execute(manifest, output):
                "bootstrap95_by_target": bootstrap95,
                "artifact_sha256": artifact_hashes_before,
                "artifacts_stable": artifacts_stable,
-               "runner_sha256": sha256(Path(__file__)),
                "binary_sha256": binary_hashes_before,
                "binaries_stable": binaries_stable,
                "runner_sha256": runner_hash_before,
@@ -649,7 +640,6 @@ def only_worker(queue_root):
     with contextlib.ExitStack() as stack:
         lock_paths = [queue_root / "worker.lock"]
         if sys.platform == "linux":
-            lock_paths.append(Path("/run/lock/cryptanalysis-isolated-bench.lock"))
             lock_paths.append(HOST_LOCK_PATH)
         for path in lock_paths:
             lock = stack.enter_context(path.open("a+"))
@@ -684,7 +674,6 @@ def database(queue_root):
     return db
 
 
-def serve(queue_root, once=False):
 def serve(queue_root, once=False, shared_job_lock=None):
     with only_worker(queue_root):
         db = database(queue_root)
@@ -699,17 +688,6 @@ def serve(queue_root, once=False, shared_job_lock=None):
                 time.sleep(1)
                 continue
             job_id, raw = item
-            db.execute("UPDATE jobs SET status='running',started_ns=? WHERE id=?",
-                       (time.time_ns(), job_id))
-            output = queue_root / "results" / job_id
-            try:
-                summary = execute(json.loads(raw), output)
-                status = summary["status"]
-            except Exception as exc:
-                summary = {"status": "error", "error": type(exc).__name__ + ": " + str(exc)}
-                status = "error"
-            db.execute("UPDATE jobs SET status=?,finished_ns=?,output=?,summary=? WHERE id=?",
-                       (status, time.time_ns(), str(output), json.dumps(summary), job_id))
             with job_slot(shared_job_lock):
                 db.execute("UPDATE jobs SET status='running',started_ns=? WHERE id=?",
                            (time.time_ns(), job_id))
@@ -779,11 +757,6 @@ def main():
             for item in db.execute("SELECT id,status,created_ns,output FROM jobs ORDER BY created_ns"):
                 print(json.dumps(item))
     elif args.action == "serve":
-        serve(args.queue_root, args.once)
-    else:
-        with only_worker(args.queue_root):
-            output = args.queue_root / "results" / uuid.uuid4().hex
-            summary = execute(manifest, output)
         serve(args.queue_root, args.once, args.shared_job_lock)
     else:
         with only_worker(args.queue_root):
