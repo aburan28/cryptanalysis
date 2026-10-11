@@ -1,0 +1,139 @@
+{
+  "artifacts": {
+    "candidates": {
+      "path": "results/sage-low-degree-depth-twenty-one-20261007/candidates-delta.json",
+      "sha256": "b2202708b149f4cfcc2bd817be7650afa4b5018524a88558042433070cbac7d7"
+    },
+    "coefficient_audit": {
+      "path": "results/sage-low-degree-depth-twenty-one-20261007/coefficient-audit.json",
+      "sha256": "eec6d6eb8bf333bca98ebc2d83cd091618116608945d68b4622cde7e8de16013"
+    },
+    "conductor_audit": {
+      "path": "results/sage-low-degree-depth-twenty-one-20261007/conductor-audit.json",
+      "sha256": "4442e07ca4a0f072d1d52dd35b5d6c46ed40d2b1ed40a389a0a4e42ee5bcc3f2"
+    },
+    "holdout": {
+      "path": "results/sage-low-degree-depth-twenty-one-20261007/holdout.json",
+      "sha256": "b39fa28c65cf684ee7e1fdc37277d86046ab5216d33d320587135a8115e430b0"
+    },
+    "model_eligibility": {
+      "path": "results/sage-low-degree-depth-twenty-one-20261007/candidate-model-audit.json",
+      "sha256": "cb58f677fbfa3975787b342de5c9b81933714e872143c906a82b84fa63e40129"
+    },
+    "native_screen": {
+      "path": "results/sage-low-degree-depth-twenty-one-20261007/native-screen/screening-summary.json",
+      "sha256": "eeb8122414f7e4d2301a4c492753da143942547e1cfc1b67bf4f7b9b802413b1"
+    },
+    "protocol": {
+      "path": "protocol-depth-twenty-one-20261007.json",
+      "sha256": "2c754aabae43c0caf69134fcf460a497fbfde08286050502347ec083015289ae"
+    },
+    "retained_union": {
+      "path": "results/sage-low-degree-depth-twenty-one-20261007/retained-union.json",
+      "sha256": "9ef8683f93aa7e29a98104c886c3bf8e4f5b1d437abbf095d7ab0ae51b424f98"
+    }
+  },
+  "controls": [
+    "prospective protocol committed before candidate generation",
+    "fresh P-256 baseline in every screening block",
+    "identical native implementation for baseline and candidate",
+    "complete execution-position rotation within every block",
+    "tracked scalar relation verified after every timed trial",
+    "fresh 30-by-2-second holdout containing every unadjusted screening hit",
+    "candidate IDs deduplicated against the prior 2,786-curve union",
+    "deterministic model, coefficient, and conductor replays"
+  ],
+  "costs": {
+    "default_exact_class_group": "running",
+    "measured_seconds": {
+      "fresh_holdout": 369.778208094,
+      "native_screen_blocks": 2829.018302381,
+      "reusable_depth_20_21_discovery": 280.2168742379872
+    },
+    "modeled_costs": null,
+    "per_key_mapping": null
+  },
+  "exploration_boundary": {
+    "claim": "not found within this family and boundary",
+    "combined_curves_including_p256": 3410,
+    "combined_non_root_curves_with_native_measurements": 3409,
+    "edge_degrees": [
+      3,
+      5,
+      11,
+      13
+    ],
+    "maximum_depth": 21,
+    "new_curves": 624
+  },
+  "finding": "No reproducible iteration-rate advantage was found within depths 20 and 21 using edge degrees 3, 5, 11, and 13.",
+  "obligations": [
+    {
+      "name": "existence",
+      "scope": "624 new explicit candidates",
+      "status": "supported"
+    },
+    {
+      "name": "executable_construction",
+      "scope": "all edge kernels, maps, isomorphisms, and transported generators retained",
+      "status": "supported"
+    },
+    {
+      "name": "map_correctness",
+      "scope": "Sage checks plus path continuity and degree-product verification",
+      "status": "supported"
+    },
+    {
+      "name": "subgroup_preservation",
+      "scope": "prime-order checks, trivial kernel intersection, generator transport, and native scalar-relation checks",
+      "status": "supported"
+    },
+    {
+      "name": "endomorphism_conductor",
+      "scope": "all 624 additions have exact conductor 1 and level-zero horizontal paths",
+      "status": "supported"
+    },
+    {
+      "name": "measured_iteration_rate_advantage",
+      "scope": "5 screen hits; 0 fresh-holdout reproductions",
+      "status": "refuted"
+    },
+    {
+      "name": "dramatic_speedup",
+      "scope": "the user supplied no numerical threshold; report exact ratios only",
+      "status": "unknown"
+    },
+    {
+      "name": "host_isolated_speedup",
+      "scope": "CPU affinity is not an isolation-service receipt",
+      "status": "unknown"
+    },
+    {
+      "name": "per_key_transfer_cost",
+      "scope": "new path evaluation on P and Q was not timed",
+      "status": "unknown"
+    },
+    {
+      "name": "full_class_coverage",
+      "scope": "3,410 retained curves are bounded; exact class-group computation remains separate",
+      "status": "unknown"
+    }
+  ],
+  "open_obligations": [
+    "finish and independently check the exact class-number calculation",
+    "measure evaluation of each holdout-positive path on both ECDLP points",
+    "rerun any holdout-positive candidate under the repository host-isolation service",
+    "supply and verify a genuinely non-generic ECDLP algorithm for an algorithmic speedup claim"
+  ],
+  "question": "Do depth-20/21 low-degree isogeny transfers from P-256 expose a reproducible Pollard-rho iteration-rate advantage?",
+  "schema_version": 1,
+  "status": "draft_evidence_assessment",
+  "typed_correspondence": {
+    "destination": "E_i(F_p)[n] in short-Weierstrass form",
+    "kernel_intersection": "trivial because n is prime and differs from every edge degree",
+    "log_transport": "Q = kP implies phi(Q) = k phi(P); destination logarithm is the same k modulo n",
+    "map": "composition of explicit F_p-rational separable isogenies and recorded model isomorphisms",
+    "recovery": "no inverse point map is needed to recover k",
+    "source": "E_0(F_p)[n] for NIST P-256"
+  }
+}
