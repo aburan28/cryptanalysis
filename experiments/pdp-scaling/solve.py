@@ -1,6 +1,6 @@
 """Solve one descended PDP instance with one engine and report JSON.
 
-    python3 solve.py --engine {sat,msolve,mitm} --n 31 --m 3 --l 6 --seed 1 [--timeout S]
+    python3 solve.py --engine {sat,f5b,boolean-f5b-native,boolean-f5b-m4ri,msolve,mitm} --n 31 --m 3 --l 6 --seed 1 [--timeout S]
 
 Engines
   sat     CryptoMiniSat through pycryptosat.  Every monomial of degree >= 2
@@ -9,6 +9,19 @@ Engines
   msolve  msolve (F4-style Groebner basis, grevlex) over F_2 with the field
           equations v^2 + v added; the solution is read off the reduced
           basis.  Set MSOLVE=/path/to/msolve.
+  f5b    SymPy F5B on the complete descended Boolean ideal, including field
+          equations. Linear basis assignments are extracted and remaining
+          variables are enumerated under a hard process timeout. Every root is
+          replayed through the original ANF and elliptic-curve group law.
+  polybori  Sage/PolyBoRi on the complete Boolean ideal using its native
+          squarefree representation, with the same bounded extraction and
+          independent curve replay. This is a performance reference, not F5.
+  boolean-f5b-native  O3 C++ Boolean signature engine. Python independently
+          verifies its basis, original generators, roots, and curve relation.
+  boolean-f5b-m4ri  Bounded F5 signature prepass feeding an M4RI Boolean
+          Macaulay matrix and certified completion. Python independently
+          verifies the complete result. Set M4RI_PREFIX when M4RI is not in
+          the bundled Sage location.
   mitm    The combinatorial reference: meet-in-the-middle over the factor
           base itself, P_1 + ... + P_k = R - P_{k+1} - ... - P_m with
           k = ceil(m/2), in group operations.  No algebra at all.
@@ -21,7 +34,9 @@ and re-adding them.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import multiprocessing
 import os
 import subprocess
 import sys
@@ -30,6 +45,11 @@ import time
 
 from descend import Instance, make_instance, verify_solution
 from gf2n import Curve, GF2n, Point
+
+
+BOOLEAN_F5B_SIGNATURE_LIMIT = 128
+BOOLEAN_M4RI_SIGNATURE_LIMIT = 1
+BOOLEAN_M4RI_DEGREE = 8
 
 
 class Stopwatch:
@@ -213,6 +233,345 @@ def solve_msolve(inst: Instance, timeout: float, threads: int) -> dict:
             return res
     res["status"] = "gb-no-solution-found"
     return res
+
+
+def _f5b_child(pipe, inst: Instance, max_free: int) -> None:
+    try:
+        import sympy as sp
+
+        started = time.monotonic()
+        variables = sp.symbols(f"v0:{inst.nvars}")
+        monomials: dict[int, object] = {0: sp.Integer(1)}
+
+        def monomial(mask: int):
+            value = monomials.get(mask)
+            if value is None:
+                value = sp.Integer(1)
+                for j in range(inst.nvars):
+                    if (mask >> j) & 1:
+                        value *= variables[j]
+                monomials[mask] = value
+            return value
+
+        polynomials = [sum((monomial(mask) for mask in equation), sp.Integer(0))
+                       for equation in inst.equations() if equation]
+        polynomial_metrics = {
+            polynomial: (sp.Poly(polynomial, *variables, modulus=2).total_degree(),
+                         len(sp.Poly(polynomial, *variables, modulus=2).terms()))
+            for polynomial in polynomials
+        }
+        polynomials.sort(key=lambda polynomial: polynomial_metrics[polynomial])
+        polynomials.extend(variable**2 + variable for variable in variables)
+        encoding_seconds = time.monotonic() - started
+        basis_started = time.monotonic()
+        basis = sp.groebner(polynomials, *variables, modulus=2,
+                            order="grevlex", method="f5b")
+        basis_seconds = time.monotonic() - basis_started
+        basis_text = [str(polynomial.as_expr()) for polynomial in basis.polys]
+        basis_digest = hashlib.sha256("\n".join(basis_text).encode()).hexdigest()
+        basis_evidence = {"basis_sha256": basis_digest,
+                          "input_order": "degree_then_terms_ascending_field_last",
+                          "basis_sample": basis_text[:16]}
+        if len(basis.polys) == 1 and basis.polys[0].as_expr() == 1:
+            pipe.send({"status": "unsat", "complete": True,
+                       "encoding_seconds": encoding_seconds,
+                       "basis_seconds": basis_seconds, "basis_size": 1,
+                       **basis_evidence})
+            return
+        fixed: dict[int, int] = {}
+        for polynomial in basis.polys:
+            terms = polynomial.terms()
+            linear = [(powers.index(1), int(coefficient) & 1)
+                      for powers, coefficient in terms if sum(powers) == 1]
+            constant = sum((int(coefficient) & 1) for powers, coefficient in terms
+                           if sum(powers) == 0) & 1
+            if len(linear) == 1 and all(sum(powers) <= 1 for powers, _ in terms):
+                fixed[linear[0][0]] = constant
+        free = [j for j in range(inst.nvars) if j not in fixed]
+        result = {"status": "gb", "complete": len(free) <= max_free,
+                  "encoding_seconds": encoding_seconds,
+                  "basis_seconds": basis_seconds, "basis_size": len(basis.polys),
+                  "fixed_vars": len(fixed), "free_vars": len(free),
+                  **basis_evidence}
+        if len(free) > max_free:
+            pipe.send(result)
+            return
+        extraction_started = time.monotonic()
+        base = sum(value << j for j, value in fixed.items())
+        checked = 0
+        for selector in range(1 << len(free)):
+            assignment = base
+            for i, j in enumerate(free):
+                if (selector >> i) & 1:
+                    assignment |= 1 << j
+            checked += 1
+            if inst.evaluate(assignment) == 0 and verify_solution(inst, assignment):
+                result.update({"status": "solved", "assignment": assignment,
+                               "verified": True,
+                               "is_planted": same_points(inst, assignment)})
+                break
+        result["extraction_seconds"] = time.monotonic() - extraction_started
+        result["assignments_checked"] = checked
+        if result["status"] == "gb":
+            result["status"] = "gb-no-verified-solution"
+        pipe.send(result)
+    except BaseException as error:
+        pipe.send({"status": "error", "error_type": type(error).__name__,
+                   "detail": str(error)})
+    finally:
+        pipe.close()
+
+
+def solve_f5b(inst: Instance, timeout: float, threads: int) -> dict:
+    """Complete F5B basis and verified root extraction for bounded ANF systems."""
+    del threads  # SymPy F5B is single-threaded.
+    process_context = multiprocessing.get_context("fork")
+    receive, send = process_context.Pipe(duplex=False)
+    process = process_context.Process(target=_f5b_child, args=(send, inst, 20))
+    stopwatch = Stopwatch(children=True)
+    process.start()
+    send.close()
+    message = None
+    try:
+        if receive.poll(timeout):
+            try:
+                message = receive.recv()
+            except EOFError:
+                pass
+    finally:
+        if process.is_alive():
+            process.terminate()
+        process.join(timeout=1)
+        if process.is_alive():
+            process.kill()
+            process.join()
+        receive.close()
+    timing = stopwatch.report()
+    if message is None:
+        return {"status": "timeout", "complete": False, **timing}
+    message.update(timing)
+    return message
+
+
+def _polybori_child(pipe, inst: Instance, max_free: int) -> None:
+    try:
+        from sage.all import BooleanPolynomialRing
+
+        started = time.monotonic()
+        ring = BooleanPolynomialRing(inst.nvars, "v")
+        variables = ring.gens()
+        monomials = {0: ring.one()}
+
+        def monomial(mask: int):
+            value = monomials.get(mask)
+            if value is None:
+                value = ring.one()
+                for j in range(inst.nvars):
+                    if (mask >> j) & 1:
+                        value *= variables[j]
+                monomials[mask] = value
+            return value
+
+        polynomials = []
+        for equation in inst.equations():
+            if not equation:
+                continue
+            polynomial = ring.zero()
+            for mask in equation:
+                polynomial += monomial(mask)
+            polynomials.append(polynomial)
+        polynomials.sort(key=lambda polynomial: (polynomial.deg(), len(polynomial)))
+        encoding_seconds = time.monotonic() - started
+        basis_started = time.monotonic()
+        basis = ring.ideal(polynomials).groebner_basis()
+        basis_seconds = time.monotonic() - basis_started
+        basis_text = [str(polynomial) for polynomial in basis]
+        evidence = {
+            "basis_sha256": hashlib.sha256("\n".join(basis_text).encode()).hexdigest(),
+            "basis_sample": basis_text[:16],
+            "input_order": "degree_then_terms_ascending",
+        }
+        if basis_text == ["1"]:
+            pipe.send({"status": "unsat", "complete": True,
+                       "encoding_seconds": encoding_seconds,
+                       "basis_seconds": basis_seconds, "basis_size": 1,
+                       **evidence})
+            return
+        result = {"status": "gb", "complete": inst.nvars <= max_free,
+                  "encoding_seconds": encoding_seconds,
+                  "basis_seconds": basis_seconds, "basis_size": len(basis),
+                  "fixed_vars": 0, "free_vars": inst.nvars, **evidence}
+        if inst.nvars > max_free:
+            pipe.send(result)
+            return
+        extraction_started = time.monotonic()
+        checked = 0
+        for assignment in range(1 << inst.nvars):
+            checked += 1
+            if inst.evaluate(assignment) == 0 and verify_solution(inst, assignment):
+                result.update({"status": "solved", "assignment": assignment,
+                               "verified": True,
+                               "is_planted": same_points(inst, assignment)})
+                break
+        result["extraction_seconds"] = time.monotonic() - extraction_started
+        result["assignments_checked"] = checked
+        if result["status"] == "gb":
+            result["status"] = "gb-no-verified-solution"
+        pipe.send(result)
+    except BaseException as error:
+        pipe.send({"status": "error", "error_type": type(error).__name__,
+                   "detail": str(error)})
+    finally:
+        pipe.close()
+
+
+def solve_polybori(inst: Instance, timeout: float, threads: int) -> dict:
+    """Complete Boolean-native Gröbner reference with verified extraction."""
+    del threads
+    process_context = multiprocessing.get_context("fork")
+    receive, send = process_context.Pipe(duplex=False)
+    process = process_context.Process(target=_polybori_child, args=(send, inst, 20))
+    stopwatch = Stopwatch(children=True)
+    process.start()
+    send.close()
+    message = None
+    try:
+        if receive.poll(timeout):
+            try:
+                message = receive.recv()
+            except EOFError:
+                pass
+    finally:
+        if process.is_alive():
+            process.terminate()
+        process.join(timeout=1)
+        if process.is_alive():
+            process.kill()
+            process.join()
+        receive.close()
+    timing = stopwatch.report()
+    if message is None:
+        return {"status": "timeout", "complete": False, **timing}
+    message.update(timing)
+    return message
+
+
+def _boolean_f5b_child(pipe, inst: Instance, max_free: int,
+                       timeout: float, cache_dir=None) -> None:
+    engine = None
+    matrix_cache = None
+    try:
+        from boolean_f5b import BooleanF5B
+        from macaulay_cache import MacaulayCache
+
+        configured_cache = MacaulayCache.from_environment(cache_dir)
+        if cache_dir is not None or configured_cache.redis_store is not None:
+            matrix_cache = configured_cache
+        signature_limit = BOOLEAN_F5B_SIGNATURE_LIMIT
+        engine = BooleanF5B(inst.nvars, timeout=timeout, max_pairs=1_000_000,
+                            max_signature_insertions=signature_limit,
+                            matrix_cache=matrix_cache)
+        equations = [equation for equation in inst.equations() if equation]
+        equations.sort(key=lambda polynomial: (
+            max((monomial.bit_count() for monomial in polynomial), default=0),
+            len(polynomial)))
+        generators = [engine.from_terms(equation) for equation in equations]
+        basis = engine.basis(generators)
+        basis_text = ["+".join(str(mask) for mask in sorted(engine.terms(polynomial)))
+                      for polynomial in basis]
+        result = {
+            "status": "gb", "complete": inst.nvars <= max_free,
+            "basis_seconds": engine.stats["seconds"],
+            "basis_size": len(basis), "fixed_vars": 0,
+            "free_vars": inst.nvars,
+            "basis_sha256": engine.stats["basis_sha256"],
+            "basis_sample": basis_text[:16],
+            "input_order": "degree_then_terms_ascending",
+            "signature_criteria": "rewrite_only_boolean_quotient",
+            "signature_insertion_limit": signature_limit,
+            "groebner_verified": engine.stats["groebner_verified"],
+            "f5_stats": engine.stats,
+            "macaulay_cache": None if matrix_cache is None else matrix_cache.stats,
+        }
+        if basis == [engine.constant_one]:
+            result.update({"status": "unsat", "complete": True})
+            pipe.send(result)
+            return
+        if inst.nvars > max_free:
+            pipe.send(result)
+            return
+        extraction_started = time.monotonic()
+        checked = 0
+        for assignment in range(1 << inst.nvars):
+            checked += 1
+            if inst.evaluate(assignment) == 0 and verify_solution(inst, assignment):
+                result.update({"status": "solved", "assignment": assignment,
+                               "verified": True,
+                               "is_planted": same_points(inst, assignment)})
+                break
+        result["extraction_seconds"] = time.monotonic() - extraction_started
+        result["assignments_checked"] = checked
+        if result["status"] == "gb":
+            result["status"] = "gb-no-verified-solution"
+        pipe.send(result)
+    except TimeoutError as error:
+        pipe.send({"status": "timeout", "complete": False,
+                   "detail": str(error),
+                   "f5_stats": None if engine is None else engine.stats,
+                   "macaulay_cache": None if matrix_cache is None else matrix_cache.stats})
+    except BaseException as error:
+        pipe.send({"status": "error", "error_type": type(error).__name__,
+                   "detail": str(error)})
+    finally:
+        pipe.close()
+
+
+def solve_boolean_f5b(inst: Instance, timeout: float, threads: int,
+                      cache_dir=None) -> dict:
+    """Packed squarefree signature engine with complete bounded extraction."""
+    del threads
+    process_context = multiprocessing.get_context("fork")
+    receive, send = process_context.Pipe(duplex=False)
+    process = process_context.Process(
+        target=_boolean_f5b_child, args=(send, inst, 20, timeout, cache_dir))
+    stopwatch = Stopwatch(children=True)
+    process.start()
+    send.close()
+    message = None
+    try:
+        if receive.poll(timeout + 0.5):
+            try:
+                message = receive.recv()
+            except EOFError:
+                pass
+    finally:
+        if process.is_alive():
+            process.terminate()
+        process.join(timeout=1)
+        if process.is_alive():
+            process.kill()
+            process.join()
+        receive.close()
+    timing = stopwatch.report()
+    if message is None:
+        return {"status": "timeout", "complete": False, **timing}
+    message.update(timing)
+    return message
+
+
+def solve_boolean_f5b_native(inst: Instance, timeout: float, threads: int) -> dict:
+    """O3 compiled Boolean signature engine with Python verification."""
+    del threads
+    from boolean_native_runner import solve_native
+    return solve_native(inst, timeout, BOOLEAN_F5B_SIGNATURE_LIMIT)
+
+
+def solve_boolean_f5b_m4ri(inst: Instance, timeout: float, threads: int) -> dict:
+    """Bounded signatures plus dense GF(2) Macaulay completion and verification."""
+    del threads
+    from boolean_m4ri_runner import solve_m4ri
+    return solve_m4ri(inst, timeout, BOOLEAN_M4RI_SIGNATURE_LIMIT,
+                      BOOLEAN_M4RI_DEGREE)
 
 
 def _parse_msolve_basis(text: str) -> list[str]:
@@ -479,6 +838,11 @@ def _wdsat_variant(**kw):
 
 ENGINES = {
     "sat": solve_sat,
+    "f5b": solve_f5b,
+    "polybori": solve_polybori,
+    "boolean-f5b": solve_boolean_f5b,
+    "boolean-f5b-native": solve_boolean_f5b_native,
+    "boolean-f5b-m4ri": solve_boolean_f5b_m4ri,
     "msolve": solve_msolve,
     "mitm": solve_mitm,
     "wdsat": solve_wdsat,
@@ -495,6 +859,8 @@ ENGINES = {
 
 
 def main() -> None:
+    global BOOLEAN_F5B_SIGNATURE_LIMIT, BOOLEAN_M4RI_SIGNATURE_LIMIT
+    global BOOLEAN_M4RI_DEGREE
     ap = argparse.ArgumentParser()
     ap.add_argument("--engine", choices=ENGINES, required=True)
     ap.add_argument("--n", type=int, required=True)
@@ -503,12 +869,31 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--timeout", type=float, default=3600)
     ap.add_argument("--threads", type=int, default=1)
+    ap.add_argument("--signature-limit", type=int, default=128,
+                    help="boolean-f5b insertions before certified completion")
+    ap.add_argument("--m4ri-signature-limit", type=int, default=1,
+                    help="F5 insertions feeding boolean-f5b-m4ri")
+    ap.add_argument("--m4ri-degree", type=int, default=8,
+                    help="maximum Boolean Macaulay degree for boolean-f5b-m4ri")
+    ap.add_argument("--macaulay-cache-dir",
+                    help="opt-in persistent Boolean monomial/reducer-row cache")
     ap.add_argument(
         "--random-curve",
         action="store_true",
         help="random b instead of the Koblitz b = 1",
     )
     a = ap.parse_args()
+    if a.signature_limit < 1:
+        ap.error("--signature-limit must be positive")
+    if a.m4ri_signature_limit < 0:
+        ap.error("--m4ri-signature-limit must be nonnegative")
+    if a.m4ri_degree < 0:
+        ap.error("--m4ri-degree must be nonnegative")
+    if a.macaulay_cache_dir is not None and a.engine != "boolean-f5b":
+        ap.error("--macaulay-cache-dir requires --engine boolean-f5b")
+    BOOLEAN_F5B_SIGNATURE_LIMIT = a.signature_limit
+    BOOLEAN_M4RI_SIGNATURE_LIMIT = a.m4ri_signature_limit
+    BOOLEAN_M4RI_DEGREE = a.m4ri_degree
     t0 = time.monotonic()
     inst = make_instance(
         a.n,
@@ -519,7 +904,11 @@ def main() -> None:
         build_anf=a.engine != "mitm",
     )
     build = time.monotonic() - t0
-    res = ENGINES[a.engine](inst, a.timeout, a.threads)
+    if a.engine == "boolean-f5b":
+        res = solve_boolean_f5b(inst, a.timeout, a.threads,
+                                cache_dir=a.macaulay_cache_dir)
+    else:
+        res = ENGINES[a.engine](inst, a.timeout, a.threads)
     res.update(
         {
             "engine": a.engine,

@@ -7,10 +7,21 @@ base and complete method manifest, resolving all stage interfaces, and, for
 `ISO1`, verifying the linked isogeny route. Keep raw runs keyed by
 `(candidate_id, workload_id, run_id)` as required by `AGENTS.md`.
 
+The **primary** workload is one previously unseen public target point after
+reusable factor-base, index, and factor-log precomputation is ready. Its
+headline is verified IC online wall time paired with verified rho online wall
+time on the same point and resource conditions:
+`online_speedup = rho_online_wall_ns / IC_online_wall_ns`. The online clock
+includes all target-dependent queries and failed attempts through recovery
+and independent scalar replay. If evaluating a precomputed isogeny map on the
+target is needed, charge that target-dependent transport in `target_query`.
+Keep target-independent construction in separately reported cold/setup phases.
+Multi-target and amortized results are secondary.
+
 ## Freeze the comparison before timing
 
 For every matched cell, freeze the source curve and subgroup, field encoding,
-base recipe, target distribution, target and control seeds, cache state, query
+base recipe, one public target point, target and control seeds, cache state, query
 and resource caps, operation calibration, code hashes, rho reference, and
 success criterion. A factor-base comparison may vary the base recipe, but
 its source curve and workload remain the same. A solver comparison fixes the
@@ -27,6 +38,9 @@ natural yield. Exhaustive small-field or certified UNSAT controls can assess
 false positives; a timeout is censored, not UNSAT. Report result counts by
 `sat`, `verified_decomposition`, `proved_unsat`, `timeout`, `budget`, `error`,
 and `lift_rejected`, with the exact denominator and confidence interval.
+The analyzer's `verified_within_budget_query_rate` counts timeouts as queries
+that did not finish within the declared limit. It measures operational
+completion at that limit, not mathematical decomposition coverage.
 
 ## Exclusive measurements by stage
 
@@ -38,7 +52,7 @@ and `lift_rejected`, with the exact denominator and confidence interval.
 | Relation collection | All attempted ordinary targets, verified witnesses, false lifts, duplicate and dependent rows, useful rank increments, coefficient RHS checks, query cost and rank trajectory | Coverage, conditional solve rate, novel-row rate at frozen rank checkpoints, charged cost per useful row and time to required rank. |
 | Relation matrix LA | Exact matrix digest, modulus `r`, rows, columns, nonzeros, rank, solver/version, build cost, solve operations/time, memory, verified factor logs | Matched complete matrix solve cost; keep PDP Macaulay LA separate. |
 | Target descent and recovery | Independent holdout targets, failed descent attempts, recursive PDP costs, recovered scalar and `[k]G=Q` certificate | Verified completion fraction and incremental per-target cost. |
-| Whole pipeline | Every exclusive phase above, setup/cache policy, orchestration, failed attempts, total calibrated operations and wall time | Cold `S=C_total/sqrt(r)`, ratio to fixed rho and floor, and baseline/candidate total-cost ratio. |
+| Whole pipeline | Five exclusive target-online phases, one exact target, verified scalar and paired rho time; cold setup and calibrated operations separately | Primary `rho_online_wall_ns / IC_online_wall_ns`; cold `S=C_total/sqrt(r)` and operation ratios are supplementary when fully priced. |
 
 At a fixed row space, the diagnostic expected cost per new row can be written
 `mean_attempt_cost / (p_coverage * p_solve_given_coverage * p_novel_given_solved)`.
@@ -49,9 +63,10 @@ integrate observed costs along the rank trajectory for end-to-end collection
 cost. Charge construction, failed attempts and matrix work separately; do not
 reuse this local formula as a complete speedup.
 
-Save one JSON object per run in a `.jsonl` file. The machine contract in
-[`measurement_contract.json`](measurement_contract.json) fixes the eleven
-exclusive operation phases, required provenance and counts. Include both
+Save one JSON object per run in a `.jsonl` file. The version-2 machine contract in
+[`measurement_contract_v2.json`](measurement_contract_v2.json) fixes five exclusive
+online target phases and eleven supplementary cold operation phases, along
+with required provenance and counts. Include both
 `proposal_id` and `candidate_id` keys, with exactly one non-null; use the
 final candidate ID for a complete DLP. `workload_fixture_sha256` hashes the
 shared source curve/target workload and excludes candidate-specific base or
@@ -66,9 +81,21 @@ complete DLP record.
 The required PDP counts describe ordinary relation-query attempts. Keep
 target-descent attempts in the raw target trace and charge their cost only to
 the `target_descent` phase to avoid double counting.
-For a complete DLP, every phase is priced, the total equals their sum, and
-the scalar certificate is required. [`analyze.py`](analyze.py) validates these
-rules before reporting rates or a paired speedup.
+For a complete DLP, `target_count` is one, `precomputation_ready` is true,
+`target_point_sha256` identifies the exact public point, all five target-online
+phase times sum exactly to `online_wall_ns`, and the scalar certificate and
+verified paired `rho_online_wall_ns` are required. Incomplete runs retain
+partial online times but cannot claim a speedup. Cold operation totals are
+optional supplementary measurements; if supplied, every cold phase must be
+priced and sum exactly to the total. [`analyze.py`](analyze.py) validates these
+rules before reporting rates or a paired online speedup.
+
+The [version-1 contract](measurement_contract.json) remains valid for earlier
+receipts, including `accounting_mode: "verified_online_wall"`. That mode
+requires a same-point rho measurement and scalar replay while keeping
+unmeasured operation counts, operation ratios, and amortization null.
+`analyze.py` selects the validator by schema version; one input file must
+contain only one version.
 
 ## Isogeny activation gate
 
@@ -82,8 +109,9 @@ prove the source subgroup does not meet the kernel before transporting a DLP.
 Record the endomorphism-order conductor and `v_ell` level as proved, unknown,
 or inapplicable on **both** endpoints. Only then bind a route's ordered edge
 IDs and issue an `ISO1` candidate ID. Include map discovery/building and
-transport in cold cost; for a warm claim, name the number of source targets
-sharing that setup.
+source-curve setup in cold cost, but charge evaluation of the map on the one
+public target to its online interval. For a secondary multi-target claim,
+name the number of source targets sharing setup.
 
 ## Analysis and promotion
 
@@ -91,8 +119,9 @@ Use matched baseline/candidate inputs and resources. For rates, give numerator,
 denominator, a binomial interval or block bootstrap interval, and the count of
 censored cases. For costs, report all observed paired runs and a 95% paired
 confidence interval; state whether it includes no improvement. Never average
-only successful solves or erase a timeout. Compare operations in a calibrated
-common unit first, wall time and peak memory second. A component win is a
-stage result; a full IC win requires equal verified DLP workloads, complete
-exclusive costs, and the fixed rho and floor ratios in one table. Extrapolated
+only successful solves or erase a timeout. The primary complete-DLP comparison
+uses paired one-target online wall time; calibrated operations, cold cost, and
+peak memory are separate diagnostics. A component win is a stage result; a
+full IC win requires equal verified DLP workloads, exact online boundaries,
+and a paired rho online result. Extrapolated
 N131 costs remain predictions until measured with the complete pipeline.
