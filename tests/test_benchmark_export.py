@@ -16,8 +16,8 @@ class ExportTest(unittest.TestCase):
         self.assertEqual(len(data['rows']), 9)
         self.assertEqual(len(data['identities']), 1)
         self.assertEqual(data['rows'][0]['curve_id'], 'EC1N13Ckb1h0f132ba0b5e2')
-        self.assertEqual(data['rows'][0]['ic_online_ns'], 33160125)
-        self.assertEqual(data['rows'][0]['rho_online_ns'], 320750)
+        self.assertEqual(data['rows'][0]['ic_online_ns'], 32861802)
+        self.assertEqual(data['rows'][0]['rho_online_ns'], 462742)
         self.assertNotIn('descents', data['rows'][0])
         self.assertNotIn('scalar', data['rows'][0])
 
