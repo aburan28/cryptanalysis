@@ -1,0 +1,93 @@
+{
+  "status": "frozen before auto-routing source edit and confirmation timing",
+  "step_id": "sage-hardware-auto-cpu-v1",
+  "incumbent_hardware_source_sha256": "8536968a324539fa2df075c3c2d222c136071b1277c766d15279657772ebe83e",
+  "exploratory_intent_sha256": "465d820b7364795a4604563fe5f86c6e381a446da4bb4b9bb39174e00994a3a0",
+  "exploratory_summary_sha256": "cc95526bad59ecf3c093553619f1d68278309c924bd8be70632724143ea76703",
+  "rule": {
+    "backend_request": "auto",
+    "point_container_types": [
+      "list",
+      "tuple"
+    ],
+    "degrees": [
+      67,
+      131
+    ],
+    "normalized_power": 65,
+    "minimum_points": 4096,
+    "selected_backend": "cpu",
+    "otherwise": "sage"
+  },
+  "fallback": "If the optional native CPU backend cannot initialize, continue with Sage; explicit backend selection still raises. Preserve iterator behavior by routing only exact list/tuple containers.",
+  "primary_cases": [
+    {
+      "degree": 67,
+      "points": 4096,
+      "power": 65,
+      "a": 1
+    },
+    {
+      "degree": 131,
+      "points": 4096,
+      "power": 65,
+      "a": 1
+    },
+    {
+      "degree": 131,
+      "points": 16384,
+      "power": 65,
+      "a": 1
+    },
+    {
+      "degree": 131,
+      "points": 1024,
+      "power": 65,
+      "a": 1
+    },
+    {
+      "degree": 131,
+      "points": 4096,
+      "power": 1,
+      "a": 1
+    }
+  ],
+  "confirmation_cases": [
+    {
+      "degree": 67,
+      "points": 8192,
+      "power": 65,
+      "a": 0
+    },
+    {
+      "degree": 131,
+      "points": 6144,
+      "power": 65,
+      "a": 0
+    },
+    {
+      "degree": 131,
+      "points": 4096,
+      "power": 65,
+      "a": 1,
+      "alternate_modulus": true
+    },
+    {
+      "degree": 131,
+      "points": 1024,
+      "power": 65,
+      "a": 0
+    },
+    {
+      "degree": 19,
+      "points": 4096,
+      "power": 1,
+      "a": 1
+    }
+  ],
+  "rounds": 12,
+  "seed_base_primary": 2026094101,
+  "seed_base_confirmation": 2026094201,
+  "acceptance": "All outputs exact and contract tests pass; routed cells have cold CPU speedup >=1.10x each and >1.25x geometric mean, nonrouted cells show no worse than 0.98x versus direct Sage, fresh-process RSS within 5% or 2 MiB. Setup, first verified call and cleanup are charged.",
+  "cloud_spend": 0
+}

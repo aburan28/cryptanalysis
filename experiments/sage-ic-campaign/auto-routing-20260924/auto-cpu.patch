@@ -1,0 +1,88 @@
+diff --git a/src/sage/schemes/elliptic_curves/binary_hardware.py b/src/sage/schemes/elliptic_curves/binary_hardware.py
+index 07ee90d..ca4eed1 100644
+--- a/src/sage/schemes/elliptic_curves/binary_hardware.py
++++ b/src/sage/schemes/elliptic_curves/binary_hardware.py
+@@ -5,8 +5,8 @@ Optional hardware backends for exact binary Frobenius batches.
+ One fixed Frobenius power is a GF(2)-linear map. This module represents it
+ using byte lookup tables and identical uint32 XOR arithmetic on CPU, Metal,
+ CUDA, and OpenCL. GPU adapters are opt-in; source portability is not a claim
+-of measured acceleration on a device. No dispatch threshold is inferred
+-from a different machine. ``backend='auto'`` conservatively uses Sage.
++of measured acceleration on a device. ``backend='auto'`` selects portable CPU
++for measured large, high-power batches and uses Sage otherwise.
+ 
+ GPU buffers use polynomial-basis coordinates of the actual Sage field,
+ not normal-basis coordinates or an assumed reduction polynomial. The
+@@ -107,8 +107,9 @@ class FrobeniusPlan:
+     Reusable map for valid Sage points on one Koblitz curve.
+ 
+     ``backend`` is ``'sage'``, ``'cpu'``, ``'metal'``, ``'cuda'``, or
+-    ``'opencl'``. ``'auto'`` selects the existing Sage implementation until
+-    device-specific end-to-end calibration has been established. CUDA
++    ``'opencl'``. ``'auto'`` selects portable CPU for exact list/tuple batches
++    of at least 4096 points at degree 67 or 131 and power 65; otherwise it
++    uses Sage. The optional CPU plan is created on the first routed call. CUDA
+     requires CuPy; OpenCL requires PyOpenCL and a GPU driver. CPU/Metal
+     require the optional native module. Missing backends raise explicitly.
+ 
+@@ -124,6 +125,7 @@ class FrobeniusPlan:
+         a = _curve_coefficient(curve)
+         if (a != 0 and a != 1) or curve.a6() != 1:
+             raise ValueError('a Koblitz curve is required')
++        self._auto_requested = backend == 'auto'
+         if backend == 'auto':
+             backend = 'sage'
+         if backend not in ('sage', 'cpu', 'metal', 'cuda', 'opencl'):
+@@ -140,8 +142,12 @@ class FrobeniusPlan:
+             raise ValueError('invalid device index or CPU thread count')
+         self._lock = threading.Lock()
+         self._context = None
++        self._auto_plan = None
++        self._auto_disabled = False
++        self._native_library = native_library
+         self._closed = False
+         self.last_gpu_seconds = None
++        self.last_backend = backend
+         self.device_name = 'Sage CPU'
+         self.table_seconds = 0.0
+         self.codec = 'native-ntl' if _codec is not None and _codec.supports(self.field) else 'python'
+@@ -318,7 +324,29 @@ class FrobeniusPlan:
+         """Return ordinary Sage points, with all conversion work included."""
+         if self._closed:
+             raise RuntimeError('plan is closed')
++        if (self._auto_requested and type(points) in (list, tuple)
++                and len(points) >= 4096 and self.degree in (67, 131)
++                and self.power == 65 and self.codec == 'native-ntl'):
++            with self._lock:
++                if self._closed:
++                    raise RuntimeError('plan is closed')
++                if self._auto_plan is None and not self._auto_disabled:
++                    try:
++                        self._auto_plan = FrobeniusPlan(
++                            self.curve, self.power, backend='cpu',
++                            device=self.device, cpu_threads=self.cpu_threads,
++                            native_library=self._native_library)
++                    except (RuntimeError, OSError):
++                        self._auto_disabled = True
++                    else:
++                        self.table_seconds = self._auto_plan.table_seconds
++                        self.setup_seconds += self._auto_plan.setup_seconds
++                        self.device_name = self._auto_plan.device_name
++                if self._auto_plan is not None:
++                    self.last_backend = 'cpu'
++                    return self._auto_plan.apply(points)
+         if self.backend == 'sage':
++            self.last_backend = 'sage'
+             return frobenius_points(self.curve, points, self.power)
+         data, infinity = self.pack_points(points)
+         return self._unpack_points(self.apply_words(data), infinity)
+@@ -326,6 +354,9 @@ class FrobeniusPlan:
+     def close(self):
+         """Release native resources. The plan cannot be used after closing."""
+         with self._lock:
++            if self._auto_plan is not None:
++                self._auto_plan.close()
++                self._auto_plan = None
+             if not self._closed and self._context:
+                 self._lib.bh_metal_destroy(self._context)
+                 self._context = None

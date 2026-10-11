@@ -38,7 +38,9 @@ They must **not** be presented as gains over the newer native Sage path in
 the preceding PR. The [fresh three-arm rebaseline](../sage-ic-campaign/metal-rebaseline-20260924/RESULT.md)
 shows that native Sage wins in its tested power-1 cells, while reusable table
 plans win in its tested power-65 cells. Metal was slower than table CPU for
-the complete API in those new cells. The plan therefore keeps `auto` on Sage.
+the complete API in those new cells. At this foundation revision, `auto`
+remained on Sage. The later [auto-routing experiment](../sage-ic-campaign/auto-routing-20260924/RESULT.md)
+proposes a narrow portable CPU route with separate cold-cost evidence.
 
 The native C++ self-test passed under x86-64 Rosetta and UBSan. No physical
 x86 timing, CUDA/OpenCL hardware timing, or successful ASan run is claimed.
