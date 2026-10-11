@@ -23,6 +23,8 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--repetitions", type=int, default=5)
     parser.add_argument("--timeout-s", type=int, default=30)
+    parser.add_argument("--candidate-kind", choices=("projective", "fixed-affine"),
+                        default="projective")
     args = parser.parse_args()
     repo = args.repo_root.resolve(strict=True)
     here = repo / "experiments/prime-j0-secp256k1-native"
@@ -36,6 +38,9 @@ def main():
     assert len(fixture["cases"]) == 86
     assert fixture["reference_sha256"] == sha(here / "lazy_tau_screen.py")
     assert fixture["generator_sha256"] == sha(here / "make_eisenstein_pair_fixture.py")
+    candidate_flag = ("--benchmark-scalar-w3-fixed-case"
+                      if args.candidate_kind == "fixed-affine"
+                      else "--benchmark-scalar-w3-case")
     cases = []
     for index, row in enumerate(fixture["cases"]):
         assert row["index"] == index and not row["expected_identity"]
@@ -50,7 +55,7 @@ def main():
             "expected_result": row["expected_x_hex"] + ":" + row["expected_y_hex"],
             "reference": [str(binary), "--benchmark-scalar-w2-case",
                           str(fixture_path), str(index)],
-            "candidate": [str(binary), "--benchmark-scalar-w3-case",
+            "candidate": [str(binary), candidate_flag,
                           str(fixture_path), str(index)],
         })
     artifacts = [
@@ -86,7 +91,8 @@ def main():
             "field conversion, output formatting, and expected-point comparison."),
         "pair_fields": ["curve", "base_x", "base_y", "scalar"],
         "result_field": "point",
-        "comparison_kind": "eisenstein-unit-width2-vs-three-orbit-width3",
+        "comparison_kind": (
+            "eisenstein-unit-width2-vs-three-orbit-width3-" + args.candidate_kind),
         "workload_sha256": sha(fixture_path),
         "cases": cases,
     }

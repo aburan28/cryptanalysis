@@ -703,6 +703,36 @@ impl Jacobian {
         }
     }
 
+    fn generator_double_affine() -> Self {
+        // Independently encoded affine [2]G, reusable for the fixed base.
+        Self {
+            x: Pair {
+                a: Signed::from_u128(39571750039759320469005814233182742570),
+                b: Signed::from_u128(23117704555952405709182437912065710380).neg(),
+            },
+            y: Pair {
+                a: Signed::from_u128(109017640759474938754441562896770968623).neg(),
+                b: Signed::from_u128(37092078001139422955848364496811764852).neg(),
+            },
+            z: Pair::one(),
+        }
+    }
+
+    fn generator_degree_seven_affine() -> Self {
+        // Independently encoded affine (1+tau)G = (2-omega)G.
+        Self {
+            x: Pair {
+                a: Signed::from_u128(129987983644354379872830216152808785537),
+                b: Signed::from_u128(13530545791547049079317607471229238394),
+            },
+            y: Pair {
+                a: Signed::from_u128(156123508168863827064609719845496060777),
+                b: Signed::from_u128(87739319779398525397782622722836580630),
+            },
+            z: Pair::one(),
+        }
+    }
+
     fn is_identity(self) -> bool {
         self.z.is_zero()
     }
@@ -1224,22 +1254,37 @@ fn scalar_multiply_width_two(scalar: &BigInt) -> (Jacobian, BigInt, BigInt, usiz
     (point, a, b, digits.len(), nonzero_digits)
 }
 
-fn scalar_multiply_width_three(scalar: &BigInt) -> (Jacobian, BigInt, BigInt, usize, [usize; 3]) {
+fn scalar_multiply_width_three(
+    scalar: &BigInt,
+    affine_fixed: bool,
+) -> (Jacobian, BigInt, BigInt, usize, [usize; 3]) {
     let lattice = &*SCALAR_LATTICE;
     let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
     let (a, b) = short_representative(&residue);
     let (digits, terminal) = recode_tau_width_three(a.clone(), b.clone());
     let generator = Jacobian::generator();
-    let doubled = generator.double();
-    // (1+tau)G = (2-omega)G; one doubling and one mixed add prepare
-    // all three width-three digit orbits.
-    let degree_seven = doubled.add_mixed(generator.omega().neg());
+    let (doubled, degree_seven) = if affine_fixed {
+        (
+            Jacobian::generator_double_affine(),
+            Jacobian::generator_degree_seven_affine(),
+        )
+    } else {
+        let doubled = generator.double();
+        // (1+tau)G = (2-omega)G; one doubling and one mixed add prepare
+        // all three width-three digit orbits for a one-use base.
+        let degree_seven = doubled.add_mixed(generator.omega().neg());
+        (doubled, degree_seven)
+    };
     let bases = [generator, doubled, degree_seven];
     let orbits = bases.map(|base| [base, base.omega(), base.omega().omega()]);
-    let caches = [doubled, degree_seven].map(|base| {
-        let z2 = base.z.mul(base.z);
-        (z2, z2.mul(base.z))
-    });
+    let caches = if affine_fixed {
+        None
+    } else {
+        Some([doubled, degree_seven].map(|base| {
+            let z2 = base.z.mul(base.z);
+            (z2, z2.mul(base.z))
+        }))
+    };
     let point_for = |d: WidthThreeDigit| {
         let point = orbits[d.orbit][d.unit.omega_power];
         if d.unit.sign < 0 {
@@ -1254,10 +1299,10 @@ fn scalar_multiply_width_three(scalar: &BigInt) -> (Jacobian, BigInt, BigInt, us
         point = point.tau();
         if let Some(d) = digit {
             let q = point_for(d);
-            point = if d.orbit == 0 {
+            point = if d.orbit == 0 || affine_fixed {
                 point.add_mixed(q)
             } else {
-                let (z2, z3) = caches[d.orbit - 1];
+                let (z2, z3) = caches.expect("projective Z cache")[d.orbit - 1];
                 point.add_cached(q, z2, z3)
             };
             orbit_counts[d.orbit] += 1;
@@ -1266,7 +1311,13 @@ fn scalar_multiply_width_three(scalar: &BigInt) -> (Jacobian, BigInt, BigInt, us
     (point, a, b, digits.len(), orbit_counts)
 }
 
-fn check_generator_case(fixture_path: &str, index: usize, timed: bool, width_three: bool) {
+fn check_generator_case(
+    fixture_path: &str,
+    index: usize,
+    timed: bool,
+    width_three: bool,
+    affine_fixed: bool,
+) {
     let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("read fixture"))
         .expect("parse fixture");
     assert_eq!(fixture["schema"].as_u64(), Some(1));
@@ -1290,14 +1341,16 @@ fn check_generator_case(fixture_path: &str, index: usize, timed: bool, width_thr
     let start = Instant::now();
     let scalar = scalar_from_hex(scalar_hex);
     let point = if width_three {
-        scalar_multiply_width_three(&scalar).0
+        scalar_multiply_width_three(&scalar, affine_fixed).0
     } else {
         scalar_multiply_width_two(&scalar).0
     };
     let actual = point.affine_hex();
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if width_three {
+    let mode = if affine_fixed {
+        "eisenstein_w3_fixed"
+    } else if width_three {
         "eisenstein_w3"
     } else {
         "eisenstein_w2"
@@ -1315,14 +1368,17 @@ fn main() {
         && (args[0] == "--benchmark-scalar-w2-case"
             || args[0] == "--check-scalar-w2-case"
             || args[0] == "--benchmark-scalar-w3-case"
-            || args[0] == "--check-scalar-w3-case")
+            || args[0] == "--check-scalar-w3-case"
+            || args[0] == "--benchmark-scalar-w3-fixed-case"
+            || args[0] == "--check-scalar-w3-fixed-case")
     {
         let index = args[2].parse::<usize>().expect("case index");
         check_generator_case(
             &args[1],
             index,
             args[0].starts_with("--benchmark-"),
-            args[0].ends_with("w3-case"),
+            args[0].contains("w3-"),
+            args[0].ends_with("w3-fixed-case"),
         );
         return;
     }
@@ -1331,13 +1387,18 @@ fn main() {
             || args == ["--tau"]
             || args == ["--scalar"]
             || args == ["--scalar-w2"]
-            || args == ["--scalar-w3"],
-        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2|--scalar-w3]"
+            || args == ["--scalar-w3"]
+            || args == ["--scalar-w3-fixed"],
+        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2|--scalar-w3|--scalar-w3-fixed]"
     );
     let tau_mode = args == ["--tau"];
-    let scalar_mode = args == ["--scalar"] || args == ["--scalar-w2"] || args == ["--scalar-w3"];
+    let scalar_mode = args == ["--scalar"]
+        || args == ["--scalar-w2"]
+        || args == ["--scalar-w3"]
+        || args == ["--scalar-w3-fixed"];
     let width_two = args == ["--scalar-w2"];
-    let width_three = args == ["--scalar-w3"];
+    let affine_fixed = args == ["--scalar-w3-fixed"];
+    let width_three = args == ["--scalar-w3"] || affine_fixed;
     for line in io::stdin().lock().lines() {
         let line = line.expect("input line");
         if line.trim().is_empty() {
@@ -1348,7 +1409,8 @@ fn main() {
             assert_eq!(fields.len(), 1, "expected one hexadecimal scalar");
             let scalar = scalar_from_hex(fields[0]);
             let (point, a, b, tau_steps, nonzero_digits, orbit_counts) = if width_three {
-                let (point, a, b, tau_steps, orbit_counts) = scalar_multiply_width_three(&scalar);
+                let (point, a, b, tau_steps, orbit_counts) =
+                    scalar_multiply_width_three(&scalar, affine_fixed);
                 (
                     point,
                     a,
@@ -1372,7 +1434,7 @@ fn main() {
                     "tau_steps": tau_steps,
                     "nonzero_digits": nonzero_digits,
                     "orbit_counts": orbit_counts,
-                    "radix": if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
+                    "radix": if affine_fixed { "orbit-w3-fixed" } else if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
                 })
             );
             continue;
@@ -1440,6 +1502,31 @@ mod eisenstein_tau_tests {
                 Pair::one().strings()
             );
         }
+    }
+
+    #[test]
+    fn fixed_width_three_affine_seeds_match_projective_construction() {
+        let generator = Jacobian::generator();
+        let doubled = generator.double();
+        let degree_seven = doubled.add_mixed(generator.omega().neg());
+        let fixed_doubled = Jacobian::generator_double_affine();
+        let fixed_degree_seven = Jacobian::generator_degree_seven_affine();
+        assert!(same_point(doubled, fixed_doubled));
+        assert!(same_point(degree_seven, fixed_degree_seven));
+        assert_eq!(
+            fixed_doubled.affine_hex(),
+            concat!(
+                "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5:",
+                "1ae168fea63dc339a3c58419466ceaeef7f632653266d0e1236431a950cfe52a"
+            )
+        );
+        assert_eq!(
+            fixed_degree_seven.affine_hex(),
+            concat!(
+                "213ac9c75608233a9b7752aa91dc05355faf26913c5ce5b580610a0b6dcdcc9b:",
+                "e2f2b16e9b1b736e2ef0ed95c84cadf3d2a4daa70efe4b15974e0dce288c3b8a"
+            )
+        );
     }
 
     #[test]
