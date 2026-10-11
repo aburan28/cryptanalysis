@@ -51,7 +51,7 @@ eprint: $(PDF)
 
 deanonymize: $(TEX)
 	@if [ ! -f AUTHORS ]; then \
-	  echo "ERROR: AUTHORS file missing — see ../AUTHORS.example"; exit 1; fi
+	  echo "ERROR: AUTHORS file missing — see ../ecdlp-constant/AUTHORS.example"; exit 1; fi
 	@cp $(TEX) $(TEX).anon-backup
 	@python3 -c 'import re; \
 tex = open("$(TEX)").read(); \
