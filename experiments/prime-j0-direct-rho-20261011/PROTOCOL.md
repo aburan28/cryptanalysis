@@ -22,3 +22,9 @@ panel before using it for any comparative operation or timing result. Keep
 the same cover, atlas, input law, table bytes, and generated Rust source
 outside this arithmetic change. Host-isolated paired timing is required for
 a CPU performance claim.
+
+The promotion panel uses 4,096 independent uniform 256-bit scalars, reduced
+modulo the subgroup order only for disjointness checks. It excludes all
+previous fixed-base panels in the source list embedded in the panel record.
+The two variants execute the same recoding and use the same atlas and seeds;
+only their final four-bucket combination differs.
