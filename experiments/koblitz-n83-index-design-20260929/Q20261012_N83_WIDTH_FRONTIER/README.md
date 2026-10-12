@@ -65,9 +65,26 @@ summed to 8.335 s, and Sage replay took 20.4 s locally; these are exploratory
 CPU costs. The exact
 counts and allocation bounds are the result.
 
-The next experiment should compare the **shifted width-11 root-only layout**
-with the **shifted width-10 cached-coordinate layout** on frozen ordinary
-queries. It must count exact hits, verified relations, novel rank, all failed
-attempts, full target-dependent stages, and peak RSS under the same 8 GiB
-cap. A candidate ID and one-target online speedup remain unset until the
-complete method and same-point rho reference are measured.
+## Decision for the next decomposition experiment
+
+The exact uniform-target subset first moments in `frontier.json` separate
+the four- and five-summand questions:
+
+| Shifted base | `C(B,4)/r` | `C(B,5)/r` |
+| --- | ---: | ---: |
+| width 10 | 0.0000011375 | 0.020506 |
+| width 11 | 0.000018881 | 0.687003 |
+| width 12 | 0.00026934 | 19.0465 |
+
+A full four-summand root index for shifted width 11 has a small natural
+relation first moment despite its root-only payload fitting within 8 GiB.
+The next useful width comparison is therefore a **five-summand ordinary
+query**: subtract one enumerated base point, use the four-summand solver on
+the residual, and measure verified relations and novel matrix rank for
+shifted widths 11 and 12 under frozen target and resource conditions. Width
+12 needs a bounded or streamed root index because even its compact root
+payload exceeds 8 GiB. Preserve all failed attempts, index preparation,
+target-dependent stages, and peak RSS. The width-10 cached versus width-11
+root-only comparison remains a stage cost control if a four-summand workload
+needs it. A candidate ID and one-target online speedup remain unset until
+the complete method and same-point rho reference are measured.
