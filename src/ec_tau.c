@@ -1701,7 +1701,8 @@ static int tau_wide_prepare_impl(const ca_group *g, const ca_elem *point, int sc
                         continue;
                     }
                     ca_tau4_digit value = pre.pos.base.digit[slot];
-                    int64_t term_a = value.a, term_b = value.b;
+                    int64_t term_a = (int64_t)(unsigned char)value.a;
+                    int64_t term_b = (int64_t)(unsigned char)value.b;
                     for (unsigned j = 0; j < position; j++) {
                         int64_t next_a = -3 * term_b, next_b = term_a + 3 * term_b;
                         term_a = next_a;
