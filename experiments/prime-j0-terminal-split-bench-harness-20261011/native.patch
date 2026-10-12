@@ -1,0 +1,108 @@
+--- a/src/bin/eisenstein_fixed.rs
++++ b/src/bin/eisenstein_fixed.rs
+@@ -3577,10 +3577,10 @@
+     let preparation_start = Instant::now();
+     LazyLock::force(&SCALAR_LATTICE);
+     LazyLock::force(&DECODE_CONSTANTS);
+-    if (123..=166).contains(&unit_orbit_format) {
++    if (123..=167).contains(&unit_orbit_format) {
+         LazyLock::force(&HYBRID_FIELD);
+     }
+-    if (124..=166).contains(&unit_orbit_format) {
++    if (124..=167).contains(&unit_orbit_format) {
+         LazyLock::force(&BINARY_INVERSE_R3);
+     }
+     let retained_bytes = if unit_orbit_format != 0 {
+@@ -3626,11 +3626,15 @@
+         LazyLock::force(&GLV_COMB10_POINTS);
+     }
+     let scalar = scalar_from_hex(scalar_hex);
+-    let scalar_words = (125..=166).contains(&unit_orbit_format)
++    let scalar_words = (125..=167).contains(&unit_orbit_format)
+         .then(|| scalar_words_256(&scalar)).flatten();
+     let preparation_ms = preparation_start.elapsed().as_secs_f64() * 1000.0;
+     let start = Instant::now();
+-    let actual = if unit_orbit_format == 166 {
++    let actual = if unit_orbit_format == 167 {
++        unit_orbit_windows::multiply_u256_tau_split_terminal_point(
++            scalar_words.expect("split-terminal requires unsigned 256-bit scalar")
++        )
++    } else if unit_orbit_format == 166 {
+         unit_orbit_windows::multiply_u256_tau_dual_rho0_direct_gauge_xyzz_tau(
+             scalar_words.expect("direct rho0 requires unsigned 256-bit scalar")
+         ).0
+@@ -3846,7 +3850,9 @@
+     };
+     assert_eq!(actual, expected, "benchmark output mismatch");
+     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+-    let mode = if unit_orbit_format == 166 {
++    let mode = if unit_orbit_format == 167 {
++        "unit_orbit_u256_tau_split_terminal_fixed"
++    } else if unit_orbit_format == 166 {
+         "unit_orbit_u256_tau_dual_rho0_direct_gauge_xyzz_tau_fixed"
+     } else if unit_orbit_format == 165 {
+         "unit_orbit_u256_tau_dual_rho0_folded_gauge_xyzz_tau_fixed"
+@@ -4030,7 +4036,9 @@
+ fn main() {
+     let args: Vec<String> = std::env::args().skip(1).collect();
+     if args.len() == 2
+-        && (args[0].starts_with("--check-scalar-unit-orbit-windows")
++        && (args[0].starts_with("--check-scalar-unit-orbit-u256-tau-split-terminal")
++            || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-tau-split-terminal")
++            || args[0].starts_with("--check-scalar-unit-orbit-windows")
+             || args[0].starts_with("--benchmark-scalar-unit-orbit-windows")
+             || args[0].starts_with("--check-scalar-unit-orbit-word")
+             || args[0].starts_with("--benchmark-scalar-unit-orbit-word")
+@@ -4130,7 +4138,9 @@
+             || args[0].starts_with("--benchmark-scalar-unit-orbit-radix943"))
+         && args[0].ends_with("-fixed-fixture")
+     {
+-        let format = if args[0].contains("unit-orbit-u256-tau-dual-rho0-direct-gauge-xyzz-tau-fixed-fixture") {
++        let format = if args[0].contains("unit-orbit-u256-tau-split-terminal-fixed-fixture") {
++            167
++        } else if args[0].contains("unit-orbit-u256-tau-dual-rho0-direct-gauge-xyzz-tau-fixed-fixture") {
+             166
+         } else if args[0].contains("unit-orbit-u256-tau-dual-rho0-folded-gauge-xyzz-tau-fixed-fixture") {
+             165
+@@ -4387,6 +4397,8 @@
+             || args[0] == "--check-scalar-unit-orbit-u256-sector15-fixed-case"
+             || args[0] == "--benchmark-scalar-unit-orbit-u256-sector16-fixed-case"
+             || args[0] == "--check-scalar-unit-orbit-u256-sector16-fixed-case"
++            || args[0] == "--benchmark-scalar-unit-orbit-u256-tau-split-terminal-fixed-case"
++            || args[0] == "--check-scalar-unit-orbit-u256-tau-split-terminal-fixed-case"
+             || args[0] == "--benchmark-scalar-unit-orbit-u256-tau-dual-rho0-folded-gauge-xyzz-tau-fixed-case"
+             || args[0] == "--check-scalar-unit-orbit-u256-tau-dual-rho0-direct-gauge-xyzz-tau-fixed-case"
+             || args[0] == "--benchmark-scalar-unit-orbit-u256-tau-dual-rho0-direct-gauge-xyzz-tau-fixed-case"
+@@ -4494,7 +4506,9 @@
+             args[0].contains("w6-comb13-hex9-radius2"),
+             args[0].contains("w6-comb13-hex9-graph33"),
+             args[0].contains("w6-comb13-hex9-graphaware33"),
+-            if args[0].contains("unit-orbit-u256-tau-dual-rho0-direct-gauge-xyzz-tau") {
++            if args[0].contains("unit-orbit-u256-tau-split-terminal") {
++                167
++            } else if args[0].contains("unit-orbit-u256-tau-dual-rho0-direct-gauge-xyzz-tau") {
+                 166
+             } else if args[0].contains("unit-orbit-u256-tau-dual-rho0-folded-gauge-xyzz-tau") {
+                 165
+--- a/src/bin/eisenstein_fixed/unit_orbit_windows.rs
++++ b/src/bin/eisenstein_fixed/unit_orbit_windows.rs
+@@ -3454,7 +3454,7 @@
+ }
+ 
+ pub(super) fn warm_format(format: u8) -> usize {
+-    if format == 65 || format == 66 {
++    if format == 65 || format == 66 || format == 67 {
+         std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+         std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+         std::sync::LazyLock::force(&U256_BETA_CANONICAL);
+@@ -5525,6 +5525,10 @@
+         buckets[1].add_xyzz(buckets[2].tau()).tau()
+     ).affine_hex_binary_inverse();
+     (point, chosen)
++}
++
++pub(super) fn multiply_u256_tau_split_terminal_point(scalar_words: [u64; 4]) -> String {
++    multiply_u256_tau_split_terminal(scalar_words).0
+ }
+ 
+ fn multiply_u256_sector_with<const N: usize>(

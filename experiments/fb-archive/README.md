@@ -3,13 +3,15 @@
 Reproducible, content-addressed copies of the factor bases used by the IC
 experiments: the full AGENTS.md `factor_base` record, the exact `field` and
 `curve` records it belongs to, and (when enumerated) the sorted usable point set
-whose SHA-256 is the record's `enumerated_set_sha256`.
+or a declared lossless orbit encoding. The digest uses the encoding stated in
+each factor-base record.
 
 ```bash
 python3 fbarchive.py export --n 19 --family geomtrace --l 5              # one toy base (pdpkernel.c)
 python3 fbarchive.py export-suite --suite full                           # every ic-bench base
 python3 fbarchive.py export --n 131 --family geomtraceu --l 12           # ECC2K-130, pure Python
 python3 fbarchive.py export --n 131 --family prefix --l 28 --no-points   # recipe and basis only
+python3 orbit_base_archive.py                                             # n83 known-log orbit base
 python3 fbarchive.py verify [--rebuild [--rebuild-max-points 300]]      # check the index
 python3 fbarchive.py upload [--dry-run] [--require]                     # to $IC_ARCHIVE_S3_URI
 python3 sweeps.py export && python3 sweeps.py verify [--all-cells NAME]  # large sweeps, recipe only
@@ -38,10 +40,28 @@ python3 -m pytest -q .
   per complete payload, 80 MiB per part, and 4,096 parts. Plain gzip/xz and the
   default S3 behavior are unchanged. The upload command includes all parts.
 
+The [n83 known-log orbit archive](bases/EC1N83Ckb1h876c2921cb64/knownlogorbit-s831043-7056f3b1f520.json.gz)
+uses `ic-factor-base-orbit-archive/1` and has `points_included` set to
+`orbit-compressed` in the same index. Its 48,194 strictly sorted canonical
+keys are packed as 21-byte little-endian integers, then base64-encoded in
+the compressed archive. Together with the exact n83 curve and the declared
+sign/Frobenius action, they define 8,000,204 distinct subgroup points.
+The index's `l` cell and the recipe's `l` value are empty and null because
+this orbit family has no nominal subspace dimension.
+`enumerated_set_sha256` hashes the packed representative keys; it is not a
+bytewise hash of an expanded eight-million-point list. The archive includes
+the exact candidate factor-base record, field and curve records, builder and
+binary hashes, and the source-bound independent checked-Sage replay receipt.
+`verify` checks the compressed representation, identity, digest and count;
+`verify --rebuild` also compares it with the tracked source binary and replay
+receipt. The expanded points are not materialized in the archive.
+
 `verify` rechecks every digest and count, and flags files that are not in the index.
-`--rebuild` also regenerates each base from its recipe and requires byte-identical
-content. CI rebuilds everything up to 300 points; a full rebuild takes a few
-minutes, most of it the N131 `l = 12` bases.
+`--rebuild` also regenerates ordinary bases from their recipes and requires
+byte-identical content. For the n83 orbit base it rechecks the tracked
+representative binary and the independent Sage replay receipt. CI rebuilds
+ordinary bases up to 300 points; a full rebuild takes a few minutes, most of
+it the N131 `l = 12` bases.
 
 ## Builders
 
@@ -183,6 +203,13 @@ stores a base only when the rebuilt `factor_base_sha256` equals the cited one,
 and reports anything it cannot rebuild. It backfilled 2,466 bases from
 `fb-search` (scans and trace-equation runs) and `pdp-degree-heuristics`
 (per-attempt profiling), all of them byte-exact.
+stores a base only when the rebuilt `factor_base_sha256` or
+`enumerated_set_sha256` equals a cited digest for that recipe, and reports
+anything it cannot rebuild. It backfilled 2,466 bases from
+`fb-search` (scans and trace-equation runs) and `pdp-degree-heuristics`
+(per-attempt profiling), all of them byte-exact, plus 103 archives for 105
+`fb-search` online-prediction and stage-ids citations (94 record digests and 11
+point-set digests, 0 rebuild mismatches).
 
 The remaining debt (`unarchived.csv`) is bases that no builder here can
 reproduce: a prime-field base (`bielliptic-quartic`) and a rational "fraction"
@@ -295,3 +322,50 @@ digest and with every count the experiment recorded, and `--upload` puts it at
 `<prefix>/factor-base-sweeps/<name>/points/<label>.bin.gz`. Generating
 `--write-index` here recomputed every recorded count of all three sweeps from
 the shards with no mismatch.
+
+## Streaming point and orbit metadata shards
+
+`orbit_shards.py` provides a separate `ic-factor-base-shards/1` format for
+enumerated bases too large for one JSON object. A producer streams **strictly
+sorted** `(x, y)` rows; the writer retains at most `--shard-records` rows
+per compressed shard and builds a content-addressed manifest. Its
+`enumerated_set_sha256` is computed incrementally using the existing
+canonical sorted-point-list encoding, so the final count and digest must
+match the existing `factor_base` record. A recipe-only base has unknown
+`B` and digest and cannot claim a completed point archive.
+
+Input `--record` is a small JSON object containing the existing `field`,
+`curve`, and `factor_base` records. Input `--rows` is JSONL or `-` for
+standard input. Each row has exactly these seven fields:
+
+```json
+{"point":[12,34],"subgroup_projection":null,"orbit_key":null,"frobenius_phase":null,"sign":null,"column_id":null,"column_coefficient":null}
+```
+
+The coordinates use the field record's unsigned integer encoding.
+`orbit_key` names an implementation-defined projected quotient key;
+`frobenius_phase` is an exponent from `0` to `n-1`;
+`sign` is `-1` or `1`. The column ID and coefficient must both be
+present or both null. The archive verifies **structure, hashes, order, and
+agreement with the enumerated point set declared by the existing digest**.
+It does **not** prove subgroup projection, orbit equivalence, phase,
+coefficient, or usefulness for point decomposition; manifests explicitly
+carry `annotations_verified: false`. Publish a separate mathematical
+verification receipt before using these annotations as relation columns.
+
+```bash
+python3 orbit_shards.py ingest --record base-record.json --rows sorted-points.jsonl \
+    --out /data/factor-bases --shard-records 100000
+python3 orbit_shards.py verify /data/factor-bases/manifests/<sha256>.json
+```
+
+The producer may also call `write_shards(root, record, row_iterator)`
+directly without materializing its point set. Each shard stores canonical
+JSONL in deterministic gzip, with compressed and uncompressed SHA-256,
+byte count, record count, and first/last point in the manifest. The
+content-addressed manifest includes the complete base record and its
+original `factor_base_sha256`; it is independent of absolute paths and
+measurement run IDs. Keep `candidate_id`, `workload_id`, and `run_id`
+in a separate benchmark table under the AGENTS.md measurement contract.
+This format is a storage substrate for a future nonlinear orbit-union
+generator, not evidence that such a base improves relation yield at N131.

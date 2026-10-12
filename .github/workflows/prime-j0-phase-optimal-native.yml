@@ -1,0 +1,133 @@
+name: prime-j0-phase-optimal-native
+
+# Correctness replay only; wall-time ratios require the isolated host gate.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/prime-j0-phase-optimal-native.yml"
+      - "experiments/prime-j0-phase-optimal-20261011/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  native:
+    name: Linux x86-64 exact-cover and point replay
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify exact optimum, atlas, and frozen paths
+        run: |
+          set -euo pipefail
+          python3 experiments/prime-j0-phase-optimal-20261011/verify.py
+          python3 experiments/prime-j0-phase-optimal-20261011/verify_native_atlas.py
+          python3 experiments/prime-j0-phase-optimal-20261011/verify_holdout.py
+          python3 experiments/prime-j0-phase-optimal-20261011/phase_cost.py
+          git diff --exit-code -- \
+            experiments/prime-j0-phase-optimal-20261011/check.json \
+            experiments/prime-j0-phase-optimal-20261011/native-atlas-check.json \
+            experiments/prime-j0-phase-optimal-20261011/holdout-check.json \
+            experiments/prime-j0-phase-optimal-20261011/phase-cost.json
+
+      - name: Materialize source-pinned native evaluator
+        run: |
+          set -euo pipefail
+          python3 experiments/prime-j0-phase-optimal-20261011/materialize_native.py \
+            "$RUNNER_TEMP/phase-optimal-native"
+
+      - name: Replay full Rust suite and frozen point panel
+        run: |
+          set -euo pipefail
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/phase-optimal-target"
+          cargo test --locked --release \
+            --manifest-path "$RUNNER_TEMP/phase-optimal-native/Cargo.toml" \
+            --bin eisenstein_fixed -- --test-threads=2 --nocapture \
+            > "$RUNNER_TEMP/native-tests.log" 2>&1 || {
+              tail -80 "$RUNNER_TEMP/native-tests.log"
+              exit 1
+            }
+          grep -F 'test result: ok. 143 passed; 0 failed;' \
+            "$RUNNER_TEMP/native-tests.log"
+          grep -F 'phase_optimal_tau_cases=4096 active_rho=0 rho_terms=0 additions=49152 gauge_products=18077 retained_bytes=59032928' \
+            "$RUNNER_TEMP/native-tests.log"
+
+      - name: Replay independent boundary points
+        run: |
+          set -euo pipefail
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/phase-optimal-target"
+          cargo build --locked --release \
+            --manifest-path "$RUNNER_TEMP/phase-optimal-native/Cargo.toml" \
+            --bin eisenstein_fixed
+          "$CARGO_TARGET_DIR/release/eisenstein_fixed" \
+            --check-scalar-unit-orbit-u256-tau-dual-rho0-direct-gauge-xyzz-tau-fixed-fixture \
+            experiments/prime-j0-tau-bucket-two-x-20261010/edge-fixture.json \
+            > "$RUNNER_TEMP/native-edge.stdout" \
+            2> "$RUNNER_TEMP/native-edge.stderr"
+          test ! -s "$RUNNER_TEMP/native-edge.stderr"
+          python3 - <<'PY'
+          import importlib.util
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path('experiments/prime-j0-power2-residual-20261010/verify_fixture.py')
+          spec = importlib.util.spec_from_file_location('independent_edge', path)
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          fixture = Path('experiments/prime-j0-tau-bucket-two-x-20261010/edge-fixture.json')
+          raw = (Path(os.environ['RUNNER_TEMP']) / 'native-edge.stdout').read_bytes()
+          record = module.check_fixture(
+              'unit_orbit_u256_tau_dual_rho0_direct_gauge_xyzz_tau_fixed',
+              'edge', fixture, raw, 10)
+          assert record['cases'] == 10
+          print(json.dumps(record, sort_keys=True))
+          PY
+
+      - name: Bind Linux outputs to source and workload hashes
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from hashlib import sha256
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ['RUNNER_TEMP'])
+          paths = {
+              'native-tests.log': root / 'native-tests.log',
+              'native-edge.stdout': root / 'native-edge.stdout',
+              'native-edge.stderr': root / 'native-edge.stderr',
+              'phase-materialization.json': root / 'phase-optimal-native/phase-materialization.json',
+              'cover-phase-optimal.bin': Path('experiments/prime-j0-phase-optimal-20261011/cover-phase-optimal.bin'),
+              'holdout-inputs.json': Path('experiments/prime-j0-phase-optimal-20261011/holdout-inputs.json'),
+          }
+          record = {name: sha256(path.read_bytes()).hexdigest()
+                    for name, path in paths.items() if path.is_file()}
+          (root / 'phase-optimal-linux-receipt.json').write_text(
+              json.dumps(record, indent=2, sort_keys=True) + '\n')
+          print(json.dumps(record, sort_keys=True))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prime-j0-phase-optimal-native-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/native-tests.log
+            ${{ runner.temp }}/native-edge.stdout
+            ${{ runner.temp }}/native-edge.stderr
+            ${{ runner.temp }}/phase-optimal-linux-receipt.json
+            ${{ runner.temp }}/phase-optimal-native/phase-materialization.json
+          if-no-files-found: warn
