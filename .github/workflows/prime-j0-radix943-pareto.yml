@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/prime-j0-radix943-pareto.yml"
       - "experiments/prime-j0-radix943-pareto-20261012/**"
+      - "experiments/prime-j0-radix943-termination-20261012/**"
       - "experiments/prime-j0-secp256k1-native/**"
       - "experiments/prime-j0-gauge-tree-20261012/GaugeTree.lean"
       - "experiments/prime-j0-pareto-tree-20261012/ParetoCost.lean"
@@ -95,7 +96,7 @@ jobs:
           cmp "$RUNNER_TEMP/fixture.out" "$folder/cli-fixture.txt"
 
   proof:
-    name: Pinned Lean reconstruction and tree proof
+    name: Pinned Lean reconstruction and termination proofs
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -111,3 +112,6 @@ jobs:
           set -euo pipefail
           python3 experiments/prime-j0-radix943-pareto-20261012/freeze.py --proof
           git diff --exit-code -- experiments/prime-j0-radix943-pareto-20261012/lean-build.txt
+          python3 experiments/prime-j0-radix943-termination-20261012/check.py --proof
+          git diff --exit-code -- experiments/prime-j0-radix943-termination-20261012/lean-build.txt
+          python3 experiments/prime-j0-radix943-termination-20261012/check.py --check
