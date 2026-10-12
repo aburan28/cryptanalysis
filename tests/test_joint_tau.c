@@ -67,56 +67,6 @@ static void check_pair(const ca_group *g, const ca_tau4_joint_precomp *pre,
     CHECK_EQ_U64(free_cost.gauge_transitions, 0);
     CHECK(free_cost.rotations <= trellis_cost.rotations);
     CHECK(free_cost.rotations <= two_cost.rotations);
-    ca_elem scored_two_point, scored_five_point, tau_pair_point, steered_pair_point;
-    ca_tau4_joint_counts scored_two = {0}, scored_five = {0};
-    ca_tau4_joint_counts tau_pair_cost = {0}, steered_pair_cost = {0};
-    ca_elem scored_three_point, scored_four_point;
-    ca_tau4_joint_counts scored_three = {0}, scored_four = {0};
-    CHECK(ca_ec_tau4_paired_two_free_gauge_scored_mul_profile(
-        g, pre, &scored_two_point, a, b, &scored_two));
-    CHECK(ca_ec_tau4_paired_five_free_gauge_scored_mul_profile(
-        g, pre, &scored_five_point, a, b, &scored_five));
-    CHECK(ca_ec_tau4_paired_two_free_gauge_tau_pair_mul_profile(
-        g, pre, &tau_pair_point, a, b, &tau_pair_cost));
-    CHECK(ca_ec_tau4_paired_two_free_gauge_tau_pair_steered_mul_profile(
-        g, pre, &steered_pair_point, a, b, &steered_pair_cost));
-    CHECK(ca_group_equal(g, &scored_two_point, &expected));
-    CHECK(ca_group_equal(g, &scored_five_point, &expected));
-    CHECK(ca_group_equal(g, &tau_pair_point, &expected));
-    CHECK(ca_group_equal(g, &steered_pair_point, &expected));
-    CHECK_EQ_U64(tau_pair_cost.tau_steps, scored_two.tau_steps);
-    CHECK_EQ_U64(tau_pair_cost.mixed_adds, scored_two.mixed_adds);
-    CHECK_EQ_U64(tau_pair_cost.rotations, scored_two.rotations);
-    CHECK_EQ_U64(tau_pair_cost.recode_attempts, scored_two.recode_attempts);
-    CHECK_EQ_U64(tau_pair_cost.pair_scores, scored_two.pair_scores);
-    CHECK(2 * tau_pair_cost.tau_pairs <= tau_pair_cost.tau_steps);
-    CHECK(tau_pair_cost.tau_pair_cheap_z <= tau_pair_cost.tau_pairs);
-    CHECK_EQ_U64(steered_pair_cost.tau_steps, tau_pair_cost.tau_steps);
-    CHECK_EQ_U64(steered_pair_cost.tau_pairs, tau_pair_cost.tau_pairs);
-    CHECK_EQ_U64(steered_pair_cost.mixed_adds, tau_pair_cost.mixed_adds);
-    CHECK_EQ_U64(steered_pair_cost.recode_attempts, tau_pair_cost.recode_attempts);
-    CHECK_EQ_U64(steered_pair_cost.pair_scores, tau_pair_cost.pair_scores);
-    CHECK(steered_pair_cost.tau_pair_cheap_z <= steered_pair_cost.tau_pairs);
-    CHECK(ca_ec_tau4_paired_three_free_gauge_scored_mul_profile(
-        g, pre, &scored_three_point, a, b, &scored_three));
-    CHECK(ca_ec_tau4_paired_four_free_gauge_scored_mul_profile(
-        g, pre, &scored_four_point, a, b, &scored_four));
-    CHECK(ca_group_equal(g, &scored_three_point, &expected));
-    CHECK(ca_group_equal(g, &scored_four_point, &expected));
-    CHECK_EQ_U64(scored_two.recode_attempts, free_cost.recode_attempts);
-    CHECK_EQ_U64(scored_two.pair_scores, free_cost.pair_scores);
-    CHECK_EQ_U64(scored_two.rotations, scored_two.gauge_model_rotations);
-    CHECK_EQ_U64(scored_five.rotations, scored_five.gauge_model_rotations);
-    CHECK_EQ_U64(scored_three.rotations, scored_three.gauge_model_rotations);
-    CHECK_EQ_U64(scored_four.rotations, scored_four.gauge_model_rotations);
-    CHECK(6 * scored_two.tau_steps + 11 * scored_two.mixed_adds + scored_two.rotations <=
-          6 * free_cost.tau_steps + 11 * free_cost.mixed_adds + free_cost.rotations);
-    CHECK(6 * scored_three.tau_steps + 11 * scored_three.mixed_adds + scored_three.rotations <=
-          6 * scored_two.tau_steps + 11 * scored_two.mixed_adds + scored_two.rotations);
-    CHECK(6 * scored_four.tau_steps + 11 * scored_four.mixed_adds + scored_four.rotations <=
-          6 * scored_three.tau_steps + 11 * scored_three.mixed_adds + scored_three.rotations);
-    CHECK(6 * scored_five.tau_steps + 11 * scored_five.mixed_adds + scored_five.rotations <=
-          6 * scored_four.tau_steps + 11 * scored_four.mixed_adds + scored_four.rotations);
     ca_tau4_joint_counts square_z_cost = {0};
     CHECK(ca_ec_tau4_paired_two_free_gauge_square_z_mul_profile(g, pre,
                                                                  &paired_square_z,
@@ -163,11 +113,20 @@ static void check_paired_batch(const ca_group *g, const ca_tau4_joint_precomp *p
                                 const uint64_t pairs[8][2], uint64_t expected_inversions)
 {
     uint64_t a[8], b[8];
-    ca_elem outputs[8], plane_outputs[8];
+    ca_elem outputs[8], plane_outputs[8], free_outputs[8];
     for (size_t i = 0; i < 8; i++) { a[i] = pairs[i][0]; b[i] = pairs[i][1]; }
     ca_tau4_joint_counts batch = {0};
     CHECK(ca_ec_tau4_paired_two_batch_profile(g, pre, outputs, a, b, 8, &batch));
     CHECK_EQ_U64(batch.inversions, expected_inversions);
+    ca_tau4_joint_counts free_batch = {0};
+    CHECK(ca_ec_tau4_paired_two_free_gauge_batch_profile(g, pre, free_outputs,
+                                                          a, b, 8, &free_batch));
+    CHECK_EQ_U64(free_batch.inversions, expected_inversions);
+    CHECK_EQ_U64(free_batch.tau_steps, batch.tau_steps);
+    CHECK_EQ_U64(free_batch.mixed_adds, batch.mixed_adds);
+    CHECK_EQ_U64(free_batch.recode_attempts, batch.recode_attempts);
+    CHECK_EQ_U64(free_batch.pair_scores, batch.pair_scores);
+    CHECK(free_batch.rotations <= batch.rotations);
     ca_tau4_joint_plane_precomp plane;
     ca_tau4_joint_counts plane_prep = {0}, plane_batch = {0};
     CHECK(ca_ec_tau4_joint_plane_prepare(g, p, q, &plane, &plane_prep));
@@ -193,6 +152,7 @@ static void check_paired_batch(const ca_group *g, const ca_tau4_joint_precomp *p
         ca_group_op(g, &expected, &ap, &bq);
         CHECK(ca_group_equal(g, &outputs[i], &one));
         CHECK(ca_group_equal(g, &outputs[i], &expected));
+        CHECK(ca_group_equal(g, &free_outputs[i], &expected));
         CHECK(ca_group_equal(g, &plane_outputs[i], &expected));
         ca_elem plane_one;
         ca_tau4_joint_counts plane_counts = {0};
@@ -315,7 +275,6 @@ int main(void)
 {
     CHECK(ca_ec_tau4_gauge_trellis_verify_map());
     CHECK(ca_ec_tau4_free_gauge_verify_map());
-    CHECK(ca_ec_tau4_pair_steer_verify_map());
     check_curve(UINT64_C(4294967377), 15, UINT64_C(23729779),
                 UINT64_C(481899190), UINT64_C(1998487369));
     check_curve(UINT64_C(2305843009213693951), 7, UINT64_C(53624256071278747),

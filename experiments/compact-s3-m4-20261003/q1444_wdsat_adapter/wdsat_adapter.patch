@@ -1,0 +1,67 @@
+diff --git a/src/wdsat.c b/src/wdsat.c
+index a4ddb36..e96ae66 100644
+--- a/src/wdsat.c
++++ b/src/wdsat.c
+@@ -47,0 +48,6 @@ static int_t set[__ID_SIZE__];
++static inline void q1444_count_branch(int_t conf[]) {
++    ++conf[0];
++    if ((conf[0] & 65535LL) == 0)
++        fprintf(stderr, "q1444_branch_counter=%lld\n", conf[0]);
++}
++
+@@ -122 +128 @@ bool wdsat_solve_rest(int_t l, int_t set_end, int_t conf[]) {
+-	conf[0]++;
++	q1444_count_branch(conf);
+@@ -171 +177 @@ bool wdsat_solve_rest_XG(int_t l, int_t nb_min_vars, int_t conf[]) {
+-	conf[0]++;
++	q1444_count_branch(conf);
+@@ -226 +232 @@ bool go_left(int_t h, int_t h_end, bool search_prune_point, int_t conf[])
+-	conf[0]++;
++	q1444_count_branch(conf);
+@@ -302 +308 @@ bool go_left_XG(int_t h, int_t h_end, bool search_prune_point, int_t conf[])
+-	conf[0]++;
++	q1444_count_branch(conf);
+@@ -503 +509,4 @@ bool wdsat_solve(int_t n, int_t new_l, int_t new_m, char *irr, char *X3, int_t x
+-	wdsat_infer_unitary();
++	if (!wdsat_infer_unitary()) {
++		printf("UNSAT on unit propagation\n");
++		return false;
++	}
+diff --git a/src/xorgauss.c b/src/xorgauss.c
+index 0198635..945cdcb 100644
+--- a/src/xorgauss.c
++++ b/src/xorgauss.c
+@@ -52 +52,14 @@ int_t xorgauss_step_mask_top;
+-int_t xorgauss_mask_list[__ID_SIZE__][__ID_SIZE__ + 1];
++int_t *xorgauss_mask_list[__ID_SIZE__];
++static size_t xorgauss_mask_list_capacity[__ID_SIZE__];
++
++static void ensure_mask_list_row(int_t index, size_t required) {
++	assert(index >= 0 && index < __ID_SIZE__);
++	if(xorgauss_mask_list_capacity[index] >= required) return;
++	size_t capacity = xorgauss_mask_list_capacity[index];
++	if(capacity < 8) capacity = 8;
++	while(capacity < required) capacity *= 2;
++	int_t *grown = realloc(xorgauss_mask_list[index], capacity * sizeof(int_t));
++	assert(grown != NULL);
++	xorgauss_mask_list[index] = grown;
++	xorgauss_mask_list_capacity[index] = capacity;
++}
+@@ -666,0 +680,3 @@ bool xorgauss_infer(int_t v) {
++#ifndef __XG_ENHANCED__
++	ensure_mask_list_row(xorgauss_mask_list_top, 4);
++#endif
+@@ -716,0 +733,2 @@ bool xorgauss_infer(int_t v) {
++		ensure_mask_list_row(xorgauss_mask_list_top,
++		                     (size_t)xorgauss_mask_list[xorgauss_mask_list_top][0] + 1);
+@@ -799 +816,0 @@ void xorgauss_undo() {
+-
+diff --git a/src/xorgauss.h b/src/xorgauss.h
+index 981c3f1..fdff43e 100644
+--- a/src/xorgauss.h
++++ b/src/xorgauss.h
+@@ -44 +44 @@ extern int_t xorgauss_step_mask_top;
+-extern int_t xorgauss_mask_list[__ID_SIZE__][__ID_SIZE__ + 1];
++extern int_t *xorgauss_mask_list[__ID_SIZE__];
+@@ -146 +145,0 @@ if(!_boolean_vector_fprint_i) fprintf(stdout, " F"); \
+-

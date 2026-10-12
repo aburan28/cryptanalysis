@@ -2,6 +2,7 @@ name: P-256 isogeny search
 
 "on":
   push:
+    branches: [main]
     paths:
       - "experiments/p256-isogeny-search-20261005/**"
       - ".github/workflows/p256-isogeny-search.yml"
@@ -12,6 +13,10 @@ name: P-256 isogeny search
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   test-and-control-run:

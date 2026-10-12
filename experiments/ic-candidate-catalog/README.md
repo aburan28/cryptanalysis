@@ -156,6 +156,11 @@ restricts the full source Frobenius partition to the separately frozen
 `j != j²`, so direct coordinate Frobenius is not its endomorphism; any
 transport-induced quotient still needs a priced implementation. This is
 matrix geometry for proposal `Q1420`, not a PDP or IC speed result.
+An [independent W24 intersection certificate](../ecc2k130-w24-orbit-occupancy-20261009/RESULT.md)
+replays all 130 Frobenius powers with integer and checked-Sage arithmetic;
+the prior 8,384,348-column exact source count remains the decision input.
+It freezes an independent full reciprocal-overlap replay to close the
+remaining verification gap in that count.
 
 The [exact W24/m6 tuple-capacity screen](../ecc2k130-263-w24-mitm-capacity-20261005/RESULT.md)
 parks a **full materialized raw-point** 2+4 pair index and 3+3 triple index
@@ -291,13 +296,19 @@ closed; prioritize a structurally different, bounded implicit PDP screen
 over further expansion of this exact SAT encoding.
 
 The [Q1421 normal-weight-four source-base protocol](../ecc2k130-normal-weight4-base-20261009/PROTOCOL.md)
-uses the already verified 131-coordinate normal basis to define a distinct,
-Frobenius-stable six-summand factor-base policy on the exact polynomial-basis
-ECC2K-130 source curve. Its 11,716,640 raw weight-four field parameters form
-89,440 cyclic orbits; exact rational, reciprocal, subgroup-point, and
-matrix-column counts are pending the preregistered census and independent
-Sage replay. It is a proposal with `candidate_id: null`, separate from the
-sampled type-II normal-basis weight-six four-summand policy and from Q1420.
+defines a Frobenius-stable six-summand factor-base policy on the exact
+polynomial-basis ECC2K-130 source curve, using the independently verified
+131-coordinate normal basis. Its [completed census result](../ecc2k130-normal-weight4-base-20261009/RESULT.md)
+replays all 89,440 cyclic orbits of 11,716,640 raw weight-four parameters and
+finds 44,824 rational orbits, no in-base reciprocal pairs, `B=11,743,888`
+usable subgroup points, and `K=44,824` potential signed-Frobenius columns.
+Checked Sage independently matches every count and digest and verifies
+sampled group points and Frobenius actions. Both frozen count gates pass; the
+next test is a matched ordinary-query six-summand PDP comparison at equal
+actual `B` against the four Q1420 geometries. Q1421 remains a proposal with
+`candidate_id: null` until the full pipeline is specified and measured,
+separate from the sampled type-II normal-basis weight-six four-summand policy
+and from Q1420.
 
 The [preregistered cold full-rank one-target control](../ecc2k130-cold-fullrank-20261006/RESULT.md)
 assigns canonical `IC1`/workload/run IDs to independently replayed n37 and n41

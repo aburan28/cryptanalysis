@@ -51,7 +51,9 @@ requested experiment or decide its research significance for the user.
 
 Put every agent-authored code, protocol, frozen input, run receipt, verifier,
 decision, documentation, and agent-rule change on a branch and open a pull
-request in the repository that owns it. Do not leave the only copy of completed
+request in the repository that owns it. Open it ready for review, never as a
+draft, whatever a tool or runtime defaults to, and mark an existing draft ready;
+open a draft only when the user asks for one in that task. Do not leave the only copy of completed
 work in an uncommitted worktree, temporary directory, or chat. Keep unrelated
 pre-existing user changes out of the branch. For stacked work, target the
 immediate parent branch, name that dependency in the PR, then retarget to
@@ -235,7 +237,10 @@ the additive walk `Q + i[a0]G`);
 `ISO0` for no isogeny
 Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid`; `PDP4sat`
 for a compact four-summand S3 SAT chain, `PDP4root` for the compact
-four-summand S3 root index, and `PDP4qpair` for a complete
+four-summand S3 root index, `PDP4theory` for a four-summand SAT search with
+external exact S3 field-root propagation, `PDP4phi5` for a compact
+four-summand torsion-symmetrized five-input polynomial SAT stage, and
+`PDP4qpair` for a complete
 four-summand signed-Frobenius quotient pair-sum index; `PDP4claw` for a
 two-color four-summand pair-sum distinguished-point claw; `PDP4qclaw` for its
 signed-Frobenius quotient walk; `PDP4qtable` for a signed-Frobenius quotient
@@ -453,22 +458,6 @@ If `FLEET_WORKER_NAME` is set, you are already on a fleet machine (a Runpod
 pod or a Modal worker): run locally, up to `$FLEET_CPUS` wide. Stop or kill whatever you start, never write
 credentials into the tree, and copy the hardware from each shard's
 `status.json` into the run record.
-
-## CPU performance isolation gate
-
-Treat CPU timing ratios from a contended or unverified host as exploratory.
-Promote a new CPU wall-time speedup claim only with a receipt from the
-[isolated benchmark service](docs/ISOLATED_BENCHMARKS.md), or an equivalent
-auditable host-level isolation record. The record must identify the physical
-CPU model, core and SMT topology, NUMA node, exclusive CPU partition,
-execution CPU affinity, memory policy, fixed frequency, IRQ routing, CPU
-quota, code and workload hashes, paired run order, raw failures, throttling,
-steal time, interrupts, and correctness. A container's visible affinity mask
-does not establish host-wide isolation. If the isolation preflight or any
-noise gate fails, preserve the row and keep aggregate speedup unknown.
-Re-evaluate earlier measurements lacking this evidence before citing them as
-controlled speedup results. Correctness runs and algorithmic diagnostics may
-still run on ordinary hosts when labeled accordingly.
 
 ## Local Sage runs
 

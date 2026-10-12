@@ -13,7 +13,6 @@ the benchmark subprocesses alone enter the isolated partition.
 The strict preflight requires a physical Linux host with administrative
 control, an empty cgroup v2 `cpuset.cpus.partition=isolated` partition whose
 exclusive effective CPU and NUMA sets match the manifest, full SMT sibling
-coverage, `nohz_full` on those CPUs, a fixed `performance` frequency, no CPU
 coverage, `cgroup.events populated 0` across descendants, `nohz_full` on
 those CPUs, a fixed `performance` frequency, no CPU
 quota, no overlapping effective IRQ affinity, a housekeeping-only service
@@ -85,7 +84,6 @@ python3 /workspace/cryptanalysis/scripts/isolated_bench.py --queue-root /workspa
 
 `serve` holds both a queue lock and a fixed host-wide lock under `/run/lock`
 for its whole lifetime. A second server, even with a different queue
-directory, or a direct run refuses to start. Keep the SQLite queue on a
 directory, or a direct run refuses to start. If the host also uses the
 `exp-run` launcher, start the service with its existing serial lock:
 
@@ -142,8 +140,14 @@ cc -O3 -std=c11 -Iinclude experiments/prime-j0-tau-20260930/large-rho-20261002/b
 ```
 
 Build and correctness checks are outside the online timer. Generate the
-exact 160-target panel from the
-frozen scalar law with [make_j0_isolated_manifest.py](../scripts/make_j0_isolated_manifest.py):
+exact 160-target panel from the frozen scalar law with
+[make_j0_isolated_manifest.py](../scripts/make_j0_isolated_manifest.py).
+The generator calls each executable's `--print-target` fixture mode, checks
+that both produce the same public point, and freezes the expected scalar in
+the manifest. The timed `--public-target` command receives the point
+coordinates and walk seed, with no expected scalar in its arguments. Its
+`online_ms` covers the rho solve and independent point replay; fixture
+construction stays outside that interval:
 
 ```sh
 python3 scripts/make_j0_isolated_manifest.py \
@@ -170,6 +174,7 @@ was run on a heavily loaded Mac. Its timing ratios remain exploratory until
 replayed through a qualifying isolated host. Historical results elsewhere
 in the repository need an isolation audit before they are treated as
 controlled performance claims.
+
 ## Frozen manifest and result contract
 
 Each `cases` entry is one previously unseen target. Freeze its exact input
