@@ -1,0 +1,88 @@
+\section{Related work and what is not new here}
+\label{sec:related}
+
+\paragraph{Automorphisms in Pollard rho.}
+Walking on classes of an automorphism group of order $A$ saves
+$\sqrt A$ in the expected number of steps: negation
+\citep{wienerzuccherato1998}, Frobenius on Koblitz curves
+\citep{wienerzuccherato1998,glv2000,glv2001}, and the equivalence-class
+treatment of \citet{duursma1999}. The ECC2K-130 campaign
+\citep{bailey2009,bos2010,bernstein2010} uses the $\langle\sigma,-1\rangle$
+classes of order $262$ with an iteration $P\leftarrow P+\sigma^{j(P)}(P)$
+whose branch $j$ depends on the normal-basis Hamming weight, and
+normalizes a distinguished point ``by taking the lexicographically
+smallest value among $x_R,x_R^2,\dots,x_R^{2^{130}}$ in normal-basis
+representation'' \citep{bailey2009}. That is the canonical form of
+Definition~\ref{def:sf} with $\prec$ the numeric order of the normal
+word; the form is not new. What is new is the exact shortcut for
+computing it (Section~\ref{sec:canonicalization}), the measurement of
+what it costs relative to the group operation it sits next to
+(Section~\ref{sec:bench-canon}), and the observation that in a walk
+that canonicalizes every step it is the dominant cost
+(Section~\ref{sec:bench-rho}).
+
+\paragraph{Frobenius-invariant factor bases.}
+\citet{ggmp2020} answer the question of how the Frobenius endomorphism
+can speed up index calculus on subfield curves: with a factor base
+closed under $\pi$ a relation can be ``rewrit[ten] in terms of a smaller
+factor base consisting of representatives for each Frobenius orbit'',
+which ``allows to reduce the number of linearly independent relations we
+need to collect by a factor $n$'' and reduces the linear-algebra cost by
+$n^2$; they construct such bases from Galois-invariant subspaces via
+linearised polynomials and from the Couveignes--Lercier isogeny
+construction, show how Frobenius-shifted bases give the full $m!$
+symmetry-breaking saving without an $m^2$ linear-algebra penalty
+(their Theorem~3.2), and conclude that these improvements ``do not lead
+to index calculus algorithms faster than Pollard $\rho$ on instances
+used in practice''. The idea descends from Galois-invariant factor
+bases in finite fields \citep{jouxlercier2006}. Everything in
+Section~\ref{sec:ic-recap} is theirs. They define the orbit
+representative ``in an ad-hoc manner'' and do not price it; this paper
+is about that price and about the layouts that make the rewritten
+relations cheap to produce and verify. The sibling repository's
+structural finding that a Galois-invariant \emph{subspace} base has a
+quotient gain of at most $n$ and is a net loss of $57$--$96$ bits at
+$n=131$ and $73$--$122$ bits at $n=163$ for $m\le5$, because the
+$\pi$-stable subspaces of $\FF_{2^n}$ have dimensions
+$\{0,1,n-1,n\}$ when $\ord_n(2)=n-1$, is the exact-spectrum
+counterpart of their Lemma~4.1 and is why the end-to-end evidence here
+stops at $n=83$.\art{crypto-autoresearcher:knowledge/findings/KN-FIND-b9a41d}
+
+\paragraph{Symmetries in the decomposition.}
+\citet{gg2014} reduce the factor base by torsion orbits (a factor $1/4$
+and then $1/8$ on binary Edwards curves, with the matrix cost falling
+by the square), break symmetry for a net $(m-1)!$ and conclude that rho
+``is still much faster'' at reasonable sizes;
+\citet{fghr2014,fhjrv2014} use the symmetric group and small-order
+torsion to lower the degrees of the summation polynomials. The
+$2$-torsion symmetrisation measured in the sibling repository
+(the \texttt{sym} arms of the sibling repository's symmetrised
+end-to-end study) is in that line and is orthogonal to the Frobenius phase: it
+lowers columns and degrees, never the trial count.
+
+\paragraph{Index calculus on binary curves.}
+The summation-polynomial method is \citet{semaev2004}, made
+subexponential in a range of extension degrees by \citet{gaudry2009}
+and \citet{diem2011}; the binary-field case with Gr\"obner bases is
+\citet{fppr2012,petitquisquater2012}, with the variable choices of
+\citet{hpst2013,shantzteske2013} and the linearised-polynomial view of
+\citet{huang2015}. None of these papers reports the cost of orbit
+canonicalization or a phase-carrying data layout, which is the gap this
+paper fills; all of them agree with the verdict of
+Section~\ref{sec:bench-e2e} that the method does not reach rho at
+cryptographic sizes.
+
+\paragraph{Least rotation.}
+Booth's and Duval's algorithms compute the least rotation of a string
+in linear time with a failure function; Lemma~\ref{lem:zerogap} is the
+binary special case in which the alphabet has two letters and the
+comparison is numeric, and it trades the linear scan for a constant
+number of whole-word rotations. We are not aware of it being stated
+before, but it is elementary and we would not be surprised.
+
+\paragraph{Measurement discipline.}
+The unit, the classes and the isolation gate of
+Section~\ref{sec:bench-method} are taken from the companion
+measurement paper \citep{ecdlpconstant}, which this paper should be
+read alongside: it supplies the matched rho and the floors; this paper
+supplies the representation underneath both.
