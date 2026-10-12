@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - name: Install clang-tidy
         # The runner image ships a packages.microsoft.com apt source that
@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - name: Install cppcheck
         # See the clang-tidy job: a flaky bundled apt repo must not fail update.
@@ -76,7 +76,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - name: Build with the analyzer, warnings as errors
         # -fanalyzer is a separate engine from clang-analyzer and catches a
@@ -94,7 +94,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -124,7 +124,7 @@ jobs:
           mapfile -t paths < <(
             git diff --name-only --diff-filter=ACMR "$base"...HEAD -- \
               '*.c' '*.h' '*.cu' '*.cuh' |
-              grep -Ev '(^|/)generated/|^experiments/sage-ic-campaign/[^/]+/(source|baseline|candidate-v1)/' || true
+              grep -Ev '(^|/)generated/|^experiments/sage-ic-campaign/[^/]+/(source|baseline|candidate-v1)/|^experiments/koblitz-pair-claw-20260929/runs/([^/]+/)*(sources[-a-z0-9]*|control-sources|full-sources)/' || true
           )
           if [ "${#paths[@]}" -eq 0 ]; then
             echo "no non-generated C/CUDA files changed"
@@ -148,19 +148,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - name: shellcheck
         run: |
           sudo apt-get update || true
           sudo apt-get install -y --no-install-recommends shellcheck
-          shellcheck scripts/*.sh deploy/*/*.sh
+          shellcheck scripts/*.sh deploy/*/*.sh usecases/ecc2k130/deploy/helm/check.sh
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
 
       - name: actionlint
         # Also runs shellcheck over every `run:` block in these workflows.
-        uses: docker://rhysd/actionlint:1.7.7
-        with:
-          args: -color
+        run: |
+          GOBIN="$RUNNER_TEMP/actionlint-bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          "$RUNNER_TEMP/actionlint-bin/actionlint" -color
 
   # ----------------------------------------------------------- coverage ----
   coverage:
@@ -168,7 +172,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - name: Install gcovr
         run: |

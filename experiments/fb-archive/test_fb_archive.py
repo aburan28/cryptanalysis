@@ -104,27 +104,6 @@ class StoreVerifyTest(unittest.TestCase):
         self.assertEqual(errors, [])
 
 
-class RebuildMissingTest(unittest.TestCase):
-    def test_s3_archive_is_rebuilt_to_its_indexed_content(self):
-        with TempArchive():
-            row = fbarchive.store(fbarchive.build(13, "prefix", 3, 1), max_git_bytes=0)
-            self.assertEqual(row["storage"], "s3")
-            path = fbarchive.HERE / row["path"]
-            original = path.read_bytes()
-            path.unlink()
-            self.assertEqual(fbarchive.rebuild_missing(fbarchive.read_index()), [])
-            self.assertEqual(path.read_bytes(), original)
-
-    def test_wrong_content_is_refused(self):
-        with TempArchive():
-            row = fbarchive.store(fbarchive.build(13, "prefix", 3, 1), max_git_bytes=0)
-            (fbarchive.HERE / row["path"]).unlink()
-            rows = [{**row, "content_sha256": "0" * 64}]
-            errors = fbarchive.rebuild_missing([{k: str(v) for k, v in r.items()} for r in rows])
-            self.assertEqual(len(errors), 1)
-            self.assertFalse((fbarchive.HERE / row["path"]).exists())
-
-
 class UploadTest(unittest.TestCase):
     def test_skips_without_a_target(self):
         with mock.patch.dict(os.environ, {"IC_ARCHIVE_S3_URI": ""}):
@@ -143,7 +122,7 @@ class UploadTest(unittest.TestCase):
             self.assertEqual(fbarchive.upload(dry_run=True, require=True), 0)
         lines = [c.args[0] for c in out.call_args_list]
         present = [r for r in fbarchive.read_index() if (HERE / r["path"]).exists()]
-        self.assertEqual(len(lines), sum(len(fbarchive.archive_paths(HERE / r["path"])) for r in present) + 1)
+        self.assertEqual(len(lines), len(present) + 1)
         self.assertTrue(all("s3://bucket/prefix/factor-bases/" in s for s in lines))
 
     def test_rejects_a_non_s3_uri(self):

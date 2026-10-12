@@ -1,0 +1,52 @@
+{
+  "kind": "q1476_trace_syndrome_design_protocol",
+  "proposal_id": "Q1476",
+  "candidate_id": null,
+  "run_id": null,
+  "isogeny": "none",
+  "point_decomposition_stage_code": "PDP4hybrid",
+  "question": "Does exposing the rational-point trace homomorphism as exact parity clauses improve the four-free-leaf chained-S3 search on the frozen N53 and N83 targets?",
+  "mathematical_source": "Kosters and Yeo, Notes on summation polynomials, arXiv:1503.08001v3, Section 4.2, Proposition 4.2; https://arxiv.org/html/1503.08001v3",
+  "mathematical_scope": "For E: y^2+xy=x^3+1 over F_(2^n), phi(P)=Tr(x(P)) is additive for rational points; phi(-P)=phi(P). In the declared normal basis every basis vector has trace one, so Tr(x) is the XOR of its coordinate bits. Any genuine nonidentity chained-S3 relation obeys parity(x0)+parity(x1)+parity(mid0)=0, parity(x2)+parity(x3)+parity(mid1)=0, and parity(mid0)+parity(mid1)+parity(target_x)=0. These are necessary conditions only; retain independent group replay.",
+  "parent_q1475_protocol_sha256": "b29bfa6d11dcc6ae6217b925273f6769e5ff882339d71a8206749d23fcb4a2e1",
+  "parent_q1475_input_manifest_sha256": "c48feebecd6cdbfa5da8420d198ba5c3288a01f0135a08896d349477428a4032",
+  "parent_native_solver_binary_sha256": "7c926bfbd30516f661f8822b6a8034bdf0822fde076dc00580624e5216a98c80",
+  "controlled_change": "Append exact Tseitin CNF for the three trace-parity equations to each unchanged Q1475 ordered-leaf CNF. Keep the same native solver binary, target inputs, bases, decision policy, and resource caps.",
+  "curves": {
+    "53": {
+      "curve_id": "EC1N53Ckb1hf77aab617904",
+      "factor_base_actual_B": 2756,
+      "folded_columns_K": 26,
+      "factor_base_enumerated_set_sha256": "cf9bb366bb3cd429693e6891d6b0619e8f942a86f3a8308f737795cbaf8b2d70"
+    },
+    "83": {
+      "curve_id": "EC1N83Ckb1h876c2921cb64",
+      "factor_base_actual_B": 1934066,
+      "folded_columns_K": 11651,
+      "factor_base_enumerated_set_sha256": "1b4110f055c88a4b1be2bfdd4bdb1cfca62bc41f49f0a5cac7698f7d4fc35325"
+    }
+  },
+  "run_order": [
+    "n53_pinned_sorted",
+    "n83_pinned_sorted",
+    "n53_full_coset",
+    "n83_planted_unpinned",
+    "n53_ordinary",
+    "n83_ordinary"
+  ],
+  "pair_candidate_cap": 250000,
+  "conflict_cap": 1000000,
+  "native_wall_cap_seconds": 60,
+  "external_safeguard_seconds": 75,
+  "decision_policy": "joint_tail_leaf_quarter_shift",
+  "validation_gates": [
+    "verify normal-basis coordinate parity equals field trace and the trace homomorphism on independently constructed rational points at N53 and N83",
+    "verify every appended XOR gate exhaustively and retain all parent CNF clauses byte-for-byte",
+    "recover and independently replay the two pinned sorted controls before free-leaf cases",
+    "retain all capped, absent, error, and successful case receipts; independently replay any returned four-point relation"
+  ],
+  "selection_scope": "The N53 full-coset target was selected for a known-representable control in Q1474 after its pair-table witness was known. It is not an unbiased yield observation. The ordinary targets were frozen before Q1476 and have one query per degree.",
+  "claim_limit": "Trace parity is a sound necessary condition, not a solution method by itself. Pinned controls do not estimate natural yield. Censored free-leaf cases do not measure successful solve cost. CPU wall intervals without host isolation are exploratory. No complete N131 work exponent or sub-2^61 claim follows from this design.",
+  "complete_n131_log2_work": null,
+  "challenge_run_admitted": false
+}

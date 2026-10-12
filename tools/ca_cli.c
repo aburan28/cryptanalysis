@@ -73,6 +73,7 @@
 #include "ca_internal.h" /* ca_now: the CLI already links the static library */
 
 #include <fcntl.h>
+#include <errno.h>
 #include <limits.h>
 #include <pthread.h>
 #include <signal.h>
@@ -99,8 +100,11 @@ static int arg_is(int i, const char *name)
 
 static const char *opt(const char *name)
 {
-    for (int i = 2; i + 1 < argc_g; i++)
-        if (arg_is(i, name)) return argv_g[i + 1];
+    for (int i = 2; i < argc_g; i++) {
+        if (!arg_is(i, name)) continue;
+        if (i + 1 == argc_g) die("option requires a value");
+        return argv_g[i + 1];
+    }
     return NULL;
 }
 
@@ -115,10 +119,19 @@ static uint64_t opt_u64(const char *name, uint64_t def)
 {
     const char *v = opt(name);
     if (!v) return def;
+    if (v[0] == '-') die("option value must be nonnegative");
     char *end = NULL;
+    errno = 0;
     unsigned long long u = strtoull(v, &end, 0);
-    if (end == v || *end != '\0') die("option value is not an integer");
+    if (end == v || *end != '\0' || errno == ERANGE) die("option value is not a valid uint64 integer");
     return (uint64_t)u;
+}
+
+static uint32_t opt_u32(const char *name, uint32_t def)
+{
+    uint64_t value = opt_u64(name, def);
+    if (value > UINT32_MAX) die("option value exceeds uint32 range");
+    return (uint32_t)value;
 }
 
 /* strtod, not atof: atof cannot report a malformed value (cert-err34-c). */
@@ -543,9 +556,10 @@ static int cmd_ic(void)
     ca_ic_params_default(&pr);
     const char *m = opt("--method");
     if (m && !strcmp(m, "rexp")) pr.method = CA_IC_RANDOM_EXPONENT;
-    pr.factor_base_bound = (uint32_t)opt_u64("--B", 0);
-    pr.sieve_radius = (uint32_t)opt_u64("--C", 0);
-    pr.threads = (uint32_t)opt_u64("--threads", 1);
+    else if (m && strcmp(m, "lsieve")) die("--method must be lsieve or rexp");
+    pr.factor_base_bound = opt_u32("--B", 0);
+    pr.sieve_radius = opt_u32("--C", 0);
+    pr.threads = opt_u32("--threads", 1);
     pr.seed = opt_u64("--seed", 0);
     pr.verbose = flag("--verbose") || flag("-v");
     uint64_t x = 0;

@@ -3,11 +3,17 @@ name: gpueff
 # export or the measured ceilings it builds a machine profile from change.
 on:
   push:
+    branches: [main]
     paths: ['gpueff/**', 'ecc2k130/runner/aws/worker.py',
             'ecc2k130/runner/benchmarks/hardware-limits/result.json', '.github/workflows/gpueff.yml']
   pull_request:
     paths: ['gpueff/**', 'ecc2k130/runner/aws/worker.py',
             'ecc2k130/runner/benchmarks/hardware-limits/result.json', '.github/workflows/gpueff.yml']
+# A new commit supersedes runs for this PR or branch; manual runs stay independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
 permissions:
   contents: read
 env:
@@ -22,8 +28,8 @@ jobs:
       matrix:
         python: ['3.9', '3.12']
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
       - name: Install promtool

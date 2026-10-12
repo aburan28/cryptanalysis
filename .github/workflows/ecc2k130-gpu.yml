@@ -12,17 +12,9 @@ name: ecc2k130-gpu
 # and no device re-walk comes from here.
 
 on:
-  push:
-    branches: ["**"]
-    paths:
-      - "ecc2k130/**"
-      - "fpga/model/**"
-      - ".github/workflows/ecc2k130-gpu.yml"
-  pull_request:
-    paths:
-      - "ecc2k130/**"
-      - "fpga/model/**"
-      - ".github/workflows/ecc2k130-gpu.yml"
+  # Retired 2026-10-11: this gate guards a study that has been quiet for 7+ days, and its
+  # push/pull_request triggers were fanning out across the account's shared runners. Run it
+  # on demand, or restore its push/pull_request triggers from git history to bring it back.
   workflow_dispatch:
 
 permissions:
@@ -48,7 +40,7 @@ jobs:
         cxx: [g++, clang++]
         walk: [sigma, table]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: make test
         run: make test WALK=${{ matrix.walk }} CXX=${{ matrix.cxx }} CC=${{ matrix.cxx == 'g++' && 'gcc' || 'clang' }}
 
@@ -61,8 +53,8 @@ jobs:
       matrix:
         walk: [sigma, table]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - uses: actions/cache@v6
@@ -81,8 +73,8 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Build existing and artifact Metal clients
@@ -97,7 +89,7 @@ jobs:
           python3 -m unittest discover -s tests -p 'test_publish_tables.py' -v
           python3 -m unittest discover -s tests -p 'test_artifact_walk.py' -v
           python3 -m unittest discover -s research/step_table -p 'test_*.py' -v
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.9"
       - name: Python 3.9 artifact replay compatibility

@@ -2,6 +2,7 @@ name: GPU RREF experiment evidence
 
 on:
   push:
+    branches: [main]
     paths:
       - 'experiments/groebner-perf-20260924/round6/**'
       - 'experiments/groebner-perf-20260924/round7/**'
@@ -12,6 +13,11 @@ on:
       - 'experiments/groebner-perf-20260924/round7/**'
       - '.github/workflows/gpu-rref-evidence.yml'
 
+# A new commit supersedes runs for this PR or branch; manual runs stay independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
 permissions:
   contents: read
 
@@ -19,10 +25,10 @@ jobs:
   evidence:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Audit retained measurements and source snapshots
@@ -33,7 +39,7 @@ jobs:
   host-build:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - name: Install M4RI

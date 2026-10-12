@@ -1,25 +1,10 @@
 name: Conditional quadratic lifting
 
 on:
-  pull_request:
-    paths:
-      - 'experiments/groebner-perf-20260924/round31/**'
-      - 'experiments/groebner-perf-20260924/round27/**'
-      - 'experiments/groebner-perf-20260924/round23/**'
-      - 'experiments/groebner-perf-20260924/round20/**'
-      - 'experiments/groebner-perf-20260924/round18/**'
-      - 'experiments/groebner-perf-20260924/round17/**'
-      - 'experiments/groebner-perf-20260924/round15/**'
-      - 'experiments/groebner-perf-20260924/round14/**'
-      - 'experiments/groebner-perf-20260924/round4/**'
-      - 'experiments/groebner-perf-20260924/round2/**'
-      - 'experiments/pdp-scaling/**'
-      - 'experiments/pdp-degree-heuristics/**'
-      - '.github/workflows/quadratic-lifting.yml'
-  push:
-    paths:
-      - 'experiments/groebner-perf-20260924/round31/**'
-      - '.github/workflows/quadratic-lifting.yml'
+  # Retired 2026-10-11: this gate guards a study that has been quiet for 7+ days, and its
+  # push/pull_request triggers were fanning out across the account's shared runners. Run it
+  # on demand, or restore its push/pull_request triggers from git history to bring it back.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -38,10 +23,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Install numerical dependency

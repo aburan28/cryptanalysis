@@ -1,6 +1,19 @@
 # Claim-to-evidence map
 
-All implementation paths below are relative to `ecc2k130/research/candidates/goal22/`. The paper is tied to that archive, not to a changing production profile.
+Table-walk implementation paths below are relative to `ecc2k130/runner/research/candidates/goal22/`. Frobenius-walk evidence is in `ecc2k130/runner/research/production/`. The paper is tied to those archives, not to a changing production profile.
+
+| Revision-2 claim | Primary evidence | Scope |
+| --- | --- | --- |
+| Frobenius walk 17.625650 B/s, +2.7734% paired | `production/2026-09-21-frobenius-fused-confirm.json`; `FROBENIUS-FUSION.md` | Five pairs, one GPU, DP32 collecting, identical 705-record corpus |
+| Frobenius walk `c = 1.08–1.10` (n = 23–59), no fruitless cycles | `aburan28/crypto` `ecc2k130/WALK-CONSTANT.md` §3–4 | Scaled curves; `n = 131` value is an extrapolation |
+| No exceptional additions on the Frobenius walk | Proof in paper §8.2 (`x + x^(2^j) = 0` iff `x ∈ F_2`; trace argument) | Exact |
+| Table-walk rule v1 admits 24 τ-relation 4-cycles; 11.6% / 53.7% trapped at DP34 / DP32 | `WALK-CONSTANT.md` §5–6 (counts measured; trap rates from the model) | `n = 131` figures are model outputs on measured rates |
+| Table walk 4.85–6.26× Frobenius cost per solve at DP32; repaired rule projected 0.81–0.86× | `WALK-CONSTANT.md` §6, §11; `CYCLE-ESCAPE-V3.md` | Projection; v3 GPU rate unmeasured |
+| `clmad` alone +22.4%; layout +68% | `aburan28/crypto` `ecc2k130/THROUGHPUT-30B.md` | Ratios of separate receipts, not paired |
+| Bitsliced control 0.852294 B/s | `aburan28/crypto` `ecc2k130/PACKED.md` | CUDA 12.8.1, not paired with later rows |
+| 3.9 GPU-years expected | `2^60.9 / 17.625650e9` | Projection from measured rate and constant |
+
+## Table-walk claims (revision 1, unchanged)
 
 | Manuscript claim | Primary evidence | Scope |
 | --- | --- | --- |

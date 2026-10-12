@@ -13,6 +13,7 @@ on:
       - 'ecc2k130/runner/codegen/indexcalc.py'
       - '.github/workflows/sage-binary-hardware.yml'
   push:
+    branches: [main]
     paths:
       - 'experiments/sage-binary-hardware/**'
       - 'experiments/sage-ic-campaign/**'
@@ -25,6 +26,11 @@ on:
       - '.github/workflows/sage-binary-hardware.yml'
   workflow_dispatch:
 
+# A new commit supersedes runs for this PR or branch; manual runs stay independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
 permissions:
   contents: read
 
@@ -33,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Reconstruct the Sage patch and check recorded measurements
         run: python3 experiments/sage-binary-hardware/verify_archive.py
       - name: Check native versus hardware rebaseline

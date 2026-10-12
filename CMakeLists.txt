@@ -12,6 +12,15 @@ option(CA_BUILD_SHARED "Build the shared library" ON)
 option(CA_BUILD_STATIC "Build the static library" ON)
 option(CA_BUILD_TOOLS "Build the ca CLI and benchmark" ON)
 option(CA_BUILD_TESTS "Build the C test-suite" ON)
+option(CA_BUILD_TAU_CHAIN_BENCH "Build the isolated tau scalar-chain workload" OFF)
+option(CA_BUILD_RHO_ORBIT_BENCH "Build the one-target j0 rho orbit workload" OFF)
+option(CA_BUILD_JOINT_TAU_BENCH "Build the prepared public double-scalar tau workload" OFF)
+option(CA_BUILD_PAIRED_RHO_BENCH "Build the one-target paired-lattice rho workload" OFF)
+option(CA_RHO_J0_COORDINATE_ORBIT "Use the experimental coordinate j0 rho orbit representative" OFF)
+option(CA_RHO_J0_FACTORED_HASH "Use the experimental factored legacy j0 rho orbit hash" OFF)
+if(CA_RHO_J0_COORDINATE_ORBIT AND CA_RHO_J0_FACTORED_HASH)
+  message(FATAL_ERROR "Choose at most one experimental j0 rho orbit reducer")
+endif()
 option(CA_NATIVE "Compile with -march=native" OFF)
 # OFF, ON (= address,undefined), or an explicit -fsanitize= list such as
 # "thread" or "memory".  ON is kept so existing invocations keep working.
@@ -110,6 +119,11 @@ function(ca_configure_target tgt)
   endif()
   target_compile_options(${tgt} PRIVATE $<$<COMPILE_LANGUAGE:C>:${CA_WARNINGS}>)
   target_compile_definitions(${tgt} PRIVATE CA_BUILDING _GNU_SOURCE)
+  if(CA_RHO_J0_COORDINATE_ORBIT)
+    target_compile_definitions(${tgt} PRIVATE CA_RHO_J0_COORDINATE_ORBIT=1)
+  elseif(CA_RHO_J0_FACTORED_HASH)
+    target_compile_definitions(${tgt} PRIVATE CA_RHO_J0_FACTORED_HASH=1)
+  endif()
   if(CA_J0_TAU_RHO)
     target_compile_definitions(${tgt} PRIVATE CA_J0_TAU_RHO=1)
     if(CA_J0_TAU_RHO_WIDTH STREQUAL "4")
@@ -184,11 +198,85 @@ if(CA_BUILD_TOOLS)
   target_include_directories(ca_perfbench PRIVATE src cuda)
   target_compile_options(ca_perfbench PRIVATE ${CA_WARNINGS})
   ca_sanitize(ca_perfbench)
+  # `ca_bench --json` records the commit the build was configured at.  The
+  # reflog is a configure dependency, so a commit or checkout reconfigures and
+  # the define follows HEAD; without git the field is written as null.
+  find_package(Git QUIET)
+  if(Git_FOUND)
+    execute_process(COMMAND ${GIT_EXECUTABLE} -C ${CMAKE_CURRENT_SOURCE_DIR} rev-parse HEAD
+                    RESULT_VARIABLE CA_GIT_RC OUTPUT_VARIABLE CA_GIT_COMMIT
+                    OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(CA_GIT_RC EQUAL 0)
+      target_compile_definitions(ca_bench PRIVATE CA_GIT_COMMIT="${CA_GIT_COMMIT}")
+      execute_process(COMMAND ${GIT_EXECUTABLE} -C ${CMAKE_CURRENT_SOURCE_DIR}
+                              rev-parse --git-path logs/HEAD
+                      RESULT_VARIABLE CA_GIT_LOG_RC OUTPUT_VARIABLE CA_GIT_LOG
+                      OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+      if(CA_GIT_LOG_RC EQUAL 0)
+        get_filename_component(CA_GIT_LOG "${CA_GIT_LOG}" ABSOLUTE
+                               BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+        if(EXISTS "${CA_GIT_LOG}")
+          set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CA_GIT_LOG}")
+        endif()
+      endif()
+    endif()
+  endif()
+endif()
+
+if(CA_BUILD_TAU_CHAIN_BENCH)
+  add_executable(ca_tau_chain_bench
+                 experiments/prime-j0-cost-aware-chain/bench.c)
+  target_link_libraries(ca_tau_chain_bench PRIVATE ${CA_LINK_TARGET})
+  target_include_directories(ca_tau_chain_bench PRIVATE src)
+  target_compile_options(ca_tau_chain_bench PRIVATE ${CA_WARNINGS})
+  ca_sanitize(ca_tau_chain_bench)
+  add_executable(ca_tau_chain_design64
+                 experiments/prime-j0-cost-aware-chain/bench.c)
+  target_compile_definitions(ca_tau_chain_design64 PRIVATE SCALARS=64)
+  target_link_libraries(ca_tau_chain_design64 PRIVATE ${CA_LINK_TARGET})
+  target_include_directories(ca_tau_chain_design64 PRIVATE src)
+  target_compile_options(ca_tau_chain_design64 PRIVATE ${CA_WARNINGS})
+  ca_sanitize(ca_tau_chain_design64)
+endif()
+
+if(CA_BUILD_RHO_ORBIT_BENCH)
+  add_executable(ca_rho_orbit_bench
+                 experiments/prime-j0-cost-aware-chain/rho_orbit_one_target.c)
+  target_link_libraries(ca_rho_orbit_bench PRIVATE ${CA_LINK_TARGET})
+  target_include_directories(ca_rho_orbit_bench PRIVATE src)
+  target_compile_options(ca_rho_orbit_bench PRIVATE ${CA_WARNINGS})
+  if(CA_RHO_J0_COORDINATE_ORBIT)
+    target_compile_definitions(ca_rho_orbit_bench PRIVATE CA_RHO_J0_COORDINATE_ORBIT=1)
+  elseif(CA_RHO_J0_FACTORED_HASH)
+    target_compile_definitions(ca_rho_orbit_bench PRIVATE CA_RHO_J0_FACTORED_HASH=1)
+  endif()
+  ca_sanitize(ca_rho_orbit_bench)
+endif()
+
+if(CA_BUILD_JOINT_TAU_BENCH)
+  add_executable(ca_joint_tau_bench experiments/prime-j0-joint-tau-stream/bench.c)
+  target_link_libraries(ca_joint_tau_bench PRIVATE ${CA_LINK_TARGET})
+  target_include_directories(ca_joint_tau_bench PRIVATE src)
+  target_compile_options(ca_joint_tau_bench PRIVATE ${CA_WARNINGS})
+  ca_sanitize(ca_joint_tau_bench)
+  add_executable(ca_joint_tau_hist experiments/prime-j0-hot-orbit-table/hist.c)
+  target_link_libraries(ca_joint_tau_hist PRIVATE ${CA_LINK_TARGET})
+  target_include_directories(ca_joint_tau_hist PRIVATE src)
+  target_compile_options(ca_joint_tau_hist PRIVATE ${CA_WARNINGS})
+  ca_sanitize(ca_joint_tau_hist)
+endif()
+
+if(CA_BUILD_PAIRED_RHO_BENCH)
+  add_executable(ca_paired_rho_bench experiments/prime-j0-paired-rho-startup/bench.c)
+  target_link_libraries(ca_paired_rho_bench PRIVATE ${CA_LINK_TARGET})
+  target_include_directories(ca_paired_rho_bench PRIVATE src)
+  target_compile_options(ca_paired_rho_bench PRIVATE ${CA_WARNINGS})
+  ca_sanitize(ca_paired_rho_bench)
 endif()
 
 if(CA_BUILD_TESTS)
   enable_testing()
-  set(CA_TESTS modarith group bsgs rho kangaroo grumpy precomp curve pohlig cheon linalg indexcalc ffi gpu coord)
+  set(CA_TESTS modarith group bsgs rho kangaroo grumpy precomp curve joint_tau pohlig cheon linalg indexcalc ffi gpu coord)
   foreach(t ${CA_TESTS})
     if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_${t}.c)
       add_executable(test_${t} tests/test_${t}.c)
@@ -199,6 +287,16 @@ if(CA_BUILD_TESTS)
       add_test(NAME ${t} COMMAND test_${t})
     endif()
   endforeach()
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(
+      NAME ecc2k130-usecase
+      COMMAND ${Python3_EXECUTABLE} -m unittest discover
+              -s usecases/ecc2k130/tests -v)
+    set_tests_properties(
+      ecc2k130-usecase
+      PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+  endif()
 endif()
 
 # ---- fuzzing ---------------------------------------------------------------

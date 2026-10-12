@@ -1,0 +1,61 @@
+{
+  "kind": "q1486_pre_registered_exact_window_pair_domain_stage_design",
+  "proposal_id": "Q1486",
+  "candidate_id": null,
+  "run_id": null,
+  "isogeny": "none",
+  "claim_scope": "Test whether exact cyclic-window-valid pair completions and target-coupled midpoint domains can recover a fully unpinned known-satisfiable N83 four-summand relation, then an ordinary N83 relation, on Q1481's exact full window-orbit base. This is a PDP stage diagnostic; it is not a complete IC solve or N131 2^x.",
+  "parent_inputs": "Q1482 byte-identical six CNFs, planted fixtures, ordinary public points and target-preimage lists; only the native-theory variable map is extended with the existing window-selector IDs and exact ONB window masks",
+  "instances": {
+    "53": {
+      "curve_id": "EC1N53Ckb1hf77aab617904",
+      "nominal_window_dimension_d": 14,
+      "actual_usable_B": 430360,
+      "folded_K": 4060,
+      "enumerated_set_sha256": "42e746657e39ea4d07aafc873110339e314cd685b3bd8493eb3c60aed1354ba5"
+    },
+    "83": {
+      "curve_id": "EC1N83Ckb1h876c2921cb64",
+      "nominal_window_dimension_d": 23,
+      "actual_usable_B": 348006384,
+      "folded_K": 2096424,
+      "enumerated_set_sha256": "f2d7771988cbd03fa4ea3145fc3870e5a3fc44171b9a57165257f016cdeb19d4"
+    }
+  },
+  "point_decomposition": {
+    "m": 4,
+    "stage_code": "PDP4hybrid",
+    "chain": "balanced three-S3 chain, unchanged Q1482 CNF",
+    "solver_family": "CaDiCaL plus native exact F2^n roots and cyclic-window domain theory",
+    "theory_delta": "Extend the native variable map with Q1482's existing four window-selector rows and each start's exact ONB coordinate mask. Decide a positive selector for each leaf before bounding pair completions. Enumerate only nonzero leaf x values consistent with all assigned leaf bits and extendable to the assigned window selectors; intersect target-conditioned left and exact right second-midpoint domains. Cache keys and every domain clause guard include assigned window-selector states. Preserve the Q1485 final exact conditioned join.",
+    "soundness_basis": "A leaf completion is admitted exactly when it is nonzero, matches assigned coordinate bits, lies in every positively selected cyclic window, and when no window is positive lies in at least one not-false window. This is precisely the existential completion of Q1482's window clauses. Domain intersection and guarded midpoint implications therefore exclude no CNF-valid S3 chain.",
+    "decision_order": "target selector; one positive cyclic-window selector per leaf by SAT branching; left and right leaf coordinates until exact pair-completion bounds hold; second midpoint; remaining coordinates and first midpoint",
+    "left_pair_domain_cap": 4096,
+    "right_pair_domain_cap": 4096,
+    "final_conditioned_pair_cap": 16384,
+    "solver_wall_cap_seconds": 60,
+    "external_process_safeguard_seconds": 75,
+    "solver_conflict_cap": 1000000
+  },
+  "run_order": [
+    "n53_planted_pinned",
+    "n83_planted_pinned",
+    "n53_planted_unpinned",
+    "n83_planted_unpinned",
+    "n53_ordinary",
+    "n83_ordinary"
+  ],
+  "controls": [
+    "Exhaustively validate exact window completion against the original CNF clauses and direct S3 chain on a small field, including partially assigned window selectors and sound guarded rejection/implication.",
+    "Both pinned N53/N83 public-point controls must independently replay as four-distinct-column relations.",
+    "The N83 unpinned planted target has a known witness, but a successful planted run is not an ordinary-yield estimate."
+  ],
+  "success_gates": [
+    "Freeze source, binary, checked Sage runtime, byte-identical CNF and target hashes, extended map hashes, caps, and PS1 stage IDs before running.",
+    "Report all six statuses, including failures and timeouts, with counted SAT and field operations, stage wall intervals, peak RSS and independent model replay.",
+    "Only an independently verified unpinned ordinary N83 relation supplies a successful N83 PDP stage cost; a frozen ordinary panel is still required for yield and rank.",
+    "Keep complete N131 2^x null and the challenge gate closed until all IC phases are charged in one unit."
+  ],
+  "complete_n131_log2_work": null,
+  "challenge_run_admitted": false
+}
