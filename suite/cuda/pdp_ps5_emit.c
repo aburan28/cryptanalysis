@@ -1,0 +1,199 @@
+/*
+ * pdp_ps5_emit.c - generate the PS-5 kernel's straight-line code from a
+ * `pdp-slp/1` program file.
+ *
+ *   pdp_ps5_emit PROGRAM.slp OUT_PREFIX [--expect-sha256 HEX]
+ *
+ * Reads PROGRAM.slp and its sidecar PROGRAM.slp.json (n, l, tasks, inputs,
+ * sha256), recomputes the SHA-256 of the program bytes and refuses to go on if
+ * it differs from the sidecar's or from --expect-sha256, validates the
+ * program, and writes
+ *
+ *   OUT_PREFIX.h    #defines: n, l, tasks, operation counts, the program hash,
+ *                   and PS5_BODY_INC naming the next file
+ *   OUT_PREFIX.inc  one statement per operation, in program order, in chunks of
+ *                   --chunk operations (default 2048):
+ *                     PS5_DEF(K, PS5_XAND(PS5_W(A), PS5_W(B), PS5_W(C)));  (K = the wire)
+ *                   PS5_DEF, PS5_W and the chunk markers are bound by
+ *                   pdp_ps5_device.cuh: wires are locals on the device and one
+ *                   array in the host emulation.  The header also carries
+ *                   PS5_OUTPUT_LIST (the program's outputs) and PS5_CALL_CHUNKS.
+ *
+ * Every operation of the program becomes one `lop3` (PS5_* in
+ * pdp_ps5_device.cuh): the fused xor-and gate `a ^ (b & c)` is one ternary
+ * operation, which is why the program counts it as one gate.  The emitter does
+ * not fuse anything else, so the number of `lop3` issues per program run is
+ * exactly the program's fused gate count.  Prints a JSON summary on stdout.
+ */
+#include "pdp_ps5_slp.h"
+
+int main(int argc, char **argv)
+{
+    const char *expect = NULL;
+    long chunk = 2048;
+    if (argc < 3) {
+        fprintf(stderr, "usage: %s PROGRAM.slp OUT_PREFIX [--expect-sha256 HEX] [--chunk OPS]\n",
+                argv[0]);
+        return 2;
+    }
+    for (int i = 3; i + 1 < argc; i += 2) {
+        if (strcmp(argv[i], "--expect-sha256") == 0) expect = argv[i + 1];
+        else if (strcmp(argv[i], "--chunk") == 0) chunk = atol(argv[i + 1]);
+        else {
+            fprintf(stderr, "unknown option %s\n", argv[i]);
+            return 2;
+        }
+    }
+    const char *prog_path = argv[1], *prefix = argv[2];
+
+    size_t len = 0;
+    uint8_t *buf = ps5_read_file(prog_path, &len);
+    if (!buf) {
+        fprintf(stderr, "cannot read %s\n", prog_path);
+        return 1;
+    }
+    char side_path[4096];
+    snprintf(side_path, sizeof side_path, "%s.json", prog_path);
+    size_t slen = 0;
+    uint8_t *side = ps5_read_file(side_path, &slen);
+    if (!side) {
+        fprintf(stderr, "cannot read the sidecar %s\n", side_path);
+        return 1;
+    }
+    char format[32] = "", side_sha[65] = "", sha[65];
+    ps5_json_str((const char *)side, "format", format, sizeof format);
+    ps5_json_str((const char *)side, "sha256", side_sha, sizeof side_sha);
+    const long long n = ps5_json_int((const char *)side, "n");
+    const long long l = ps5_json_int((const char *)side, "l");
+    const long long tasks = ps5_json_int((const char *)side, "tasks");
+    const long long inputs = ps5_json_int((const char *)side, "inputs");
+    if (strcmp(format, "pdp-slp/1") != 0 || n <= 0 || l <= 0 || tasks <= 0 || inputs <= 0) {
+        fprintf(stderr, "sidecar %s is not a pdp-slp/1 description\n", side_path);
+        return 1;
+    }
+    ps5_sha256_hex(buf, len, sha);
+    if (strcmp(sha, side_sha) != 0) {
+        fprintf(stderr, "program hash %s differs from the sidecar's %s\n", sha, side_sha);
+        return 1;
+    }
+    if (expect && strcmp(sha, expect) != 0) {
+        fprintf(stderr, "program hash %s differs from the expected %s\n", sha, expect);
+        return 1;
+    }
+
+    Ps5Prog p;
+    char err[256];
+    if (ps5_slp_parse(buf, len, &p, err, sizeof err) != 0) {
+        fprintf(stderr, "invalid program: %s\n", err);
+        return 1;
+    }
+    if (p.n_inputs != (uint32_t)inputs || p.count[PS5_T_INPUT] != (size_t)inputs ||
+        p.n_outs != (size_t)(2 * tasks) || inputs != 6 * n * tasks) {
+        fprintf(stderr,
+                "shape mismatch: inputs %u (ops %zu) vs sidecar %lld (6*n*tasks = %lld); "
+                "outputs %zu vs %lld\n",
+                p.n_inputs, p.count[PS5_T_INPUT], inputs, 6 * n * tasks, p.n_outs, 2 * tasks);
+        return 1;
+    }
+    {   /* every input number exactly once */
+        unsigned char *seen = (unsigned char *)calloc((size_t)inputs, 1);
+        for (size_t i = 0; i < p.n_ops; ++i) {
+            if (p.ops[i].tag != PS5_T_INPUT) continue;
+            if (p.ops[i].a >= (uint32_t)inputs || seen[p.ops[i].a]++) {
+                fprintf(stderr, "input %u is out of range or repeated\n", p.ops[i].a);
+                return 1;
+            }
+        }
+        free(seen);
+    }
+
+    char path[4200];
+    snprintf(path, sizeof path, "%s.inc", prefix);
+    FILE *inc = fopen(path, "w");
+    if (!inc) {
+        fprintf(stderr, "cannot write %s\n", path);
+        return 1;
+    }
+    fprintf(inc,
+            "/* generated by pdp_ps5_emit from a pdp-slp/1 program, SHA-256 %s; do not edit.\n"
+            " * n = %lld, l = %lld, %lld tasks, %zu operations. */\n",
+            sha, n, l, tasks, p.n_ops);
+    if (chunk < 1) chunk = 1;
+    size_t n_chunks = 0;
+    for (size_t i = 0; i < p.n_ops; ++i) {
+        const Ps5Op *o = &p.ops[i];
+        if (i % (size_t)chunk == 0) fprintf(inc, "PS5_CHUNK_BEGIN(%zu)\n", n_chunks);
+        switch (o->tag) {
+        case PS5_T_INPUT: {
+            const long long k = o->a;
+            fprintf(inc, "PS5_DEF(%zu, PS5_INPUT(%lld, %lld, %lld, %lld));\n", i, k / (6 * n),
+                    (k % (6 * n)) / n, k % n, k);
+            break;
+        }
+        case PS5_T_ZERO: fprintf(inc, "PS5_DEF(%zu, 0u);\n", i); break;
+        case PS5_T_ONES: fprintf(inc, "PS5_DEF(%zu, ~0u);\n", i); break;
+        case PS5_T_NOT: fprintf(inc, "PS5_DEF(%zu, PS5_NOT(PS5_W(%u)));\n", i, o->a); break;
+        case PS5_T_XOR: fprintf(inc, "PS5_DEF(%zu, PS5_XOR(PS5_W(%u), PS5_W(%u)));\n", i, o->a, o->b); break;
+        case PS5_T_AND: fprintf(inc, "PS5_DEF(%zu, PS5_AND(PS5_W(%u), PS5_W(%u)));\n", i, o->a, o->b); break;
+        case PS5_T_OR: fprintf(inc, "PS5_DEF(%zu, PS5_OR(PS5_W(%u), PS5_W(%u)));\n", i, o->a, o->b); break;
+        case PS5_T_XAND:
+            fprintf(inc, "PS5_DEF(%zu, PS5_XAND(PS5_W(%u), PS5_W(%u), PS5_W(%u)));\n", i, o->a, o->b, o->c);
+            break;
+        }
+        if ((i + 1) % (size_t)chunk == 0 || i + 1 == p.n_ops) {
+            fprintf(inc, "PS5_CHUNK_END(%zu)\n", n_chunks);
+            ++n_chunks;
+        }
+    }
+    if (fclose(inc) != 0) {
+        fprintf(stderr, "write error on %s\n", path);
+        return 1;
+    }
+
+    /* Gates: every non-input, non-constant operation is one lop3. */
+    const size_t g_xor = p.count[PS5_T_XOR], g_and = p.count[PS5_T_AND], g_or = p.count[PS5_T_OR],
+                 g_not = p.count[PS5_T_NOT], g_xand = p.count[PS5_T_XAND];
+    const size_t fused = g_xor + g_and + g_or + g_not + g_xand;
+    const size_t unfused = g_xor + g_and + g_or + g_not + 2 * g_xand;
+
+    const char *base = strrchr(prefix, '/');
+    base = base ? base + 1 : prefix;
+    snprintf(path, sizeof path, "%s.h", prefix);
+    FILE *h = fopen(path, "w");
+    if (!h) {
+        fprintf(stderr, "cannot write %s\n", path);
+        return 1;
+    }
+    fprintf(h,
+            "/* generated by pdp_ps5_emit; do not edit. */\n"
+            "#define PS5_N %lld\n#define PS5_L %lld\n#define PS5_TASKS %lld\n"
+            "#define PS5_INPUTS %lld\n#define PS5_OUTPUTS %zu\n#define PS5_OPS %zu\n"
+            "#define PS5_N_XOR %zu\n#define PS5_N_AND %zu\n#define PS5_N_OR %zu\n"
+            "#define PS5_N_NOT %zu\n#define PS5_N_XAND %zu\n#define PS5_N_ZERO %zu\n"
+            "#define PS5_N_ONES %zu\n"
+            "#define PS5_GATES_FUSED %zu\n#define PS5_GATES_UNFUSED %zu\n"
+            "#define PS5_PROGRAM_SHA256 \"%s\"\n#define PS5_BODY_INC \"%s.inc\"\n"
+            "#define PS5_CHUNKS %zu\n",
+            n, l, tasks, inputs, p.n_outs, p.n_ops, g_xor, g_and, g_or, g_not, g_xand,
+            p.count[PS5_T_ZERO], p.count[PS5_T_ONES], fused, unfused, sha, base, n_chunks);
+    fprintf(h, "#define PS5_CALL_CHUNKS");
+    for (size_t c = 0; c < n_chunks; ++c) fprintf(h, " \\\n    PS5_CALL(%zu)", c);
+    fprintf(h, "\n#define PS5_OUTPUT_LIST");
+    for (size_t j = 0; j < p.n_outs; ++j) fprintf(h, " \\\n    PS5_OUTPUT(%zu, %u)", j, p.outs[j]);
+    fprintf(h, "\n");
+    if (fclose(h) != 0) {
+        fprintf(stderr, "write error on %s\n", path);
+        return 1;
+    }
+
+    printf("{\"tool\":\"pdp_ps5_emit\",\"program\":\"%s\",\"sha256\":\"%s\",\"sidecar_sha256_equal\":true,"
+           "\"n\":%lld,\"l\":%lld,\"tasks\":%lld,\"inputs\":%lld,\"outputs\":%zu,\"ops\":%zu,"
+           "\"xor\":%zu,\"and\":%zu,\"or\":%zu,\"not\":%zu,\"xand\":%zu,\"zero\":%zu,\"ones\":%zu,"
+           "\"lop3_per_run\":%zu,\"two_input_ops_per_run\":%zu}\n",
+           prog_path, sha, n, l, tasks, inputs, p.n_outs, p.n_ops, g_xor, g_and, g_or, g_not,
+           g_xand, p.count[PS5_T_ZERO], p.count[PS5_T_ONES], fused, unfused);
+    ps5_slp_free(&p);
+    free(buf);
+    free(side);
+    return 0;
+}
