@@ -48,15 +48,37 @@ launch and base loading are excluded from that interval but included in each
 receipt's exploratory wrapper wall time. This is a PDP stage result, so the
 complete N131 solve-work field and one-target IC/rho comparison stay null.
 
-The separate [Q1526 conditional N131 W7 pair-index screen](../q20261012_q1526_pair_hyperparams/RESULT.md)
-remains **2^86.184702 pair-add attempts**, **25.184702 bits above 2^61**,
-under its sampled W7 base and optimistic independent-query/rank assumptions.
-Q1529 does not transfer N83 W≤5 relation yield to that sampled N131 base.
-Its measured throughput and memory now allow a resource-sized N83 table
-fraction to be selected before the next exact-base relation trial. A larger
-table fraction, followed by independent group replay of every exact hit and
-rank-novelty measurement, is the next experiment that can change the
-relation-supply estimate.
+## Query-unit reconciliation and conditional N131 improvement
+
+The native search reuses one base-pair sum for all `2n` signed/Frobenius
+lifts, charging one complement addition per lift. [Q1526](../q20261012_q1526_pair_hyperparams/RESULT.md)
+charges two additions **per lifted query point**. Its full-index W≤7 N131
+model is `2^86.184702` pair additions, 25.184702 bits above `2^61`.
+Retaining its exact inputs, uniform-query law, sampled W≤7 base, and
+optimistic rank novelty, the native reuse changes that conditional charge
+from `T+2Q` to `T+(1+1/262)Q`:
+
+| Conditional N131 W≤7 model | Pair additions, log₂ | Gap above 2^61 |
+| --- | ---: | ---: |
+| Q1526, two per lifted query | 86.184702 | 25.184702 bits |
+| Q1529, 262 complements per representative | **85.190199** | **24.190199 bits** |
+
+The quotient reuse saves **0.994504 bits** in this operation model. The
+N131 native implementation and natural relation/rank yields still require
+measurement, so this is a conditional stage estimate. It does not set the
+complete N131 solve-work field.
+
+The exact N83 W≤5 cross-orbit domain is
+`83·K·(K−1) = 2,890,379,710,356` descriptors. The `2^18`-entry table
+samples fraction `2^-23.394396` of it. Applying Q1526's successful-query
+law to the exact N83 `B`, subgroup order, and this fraction, then dividing
+lifted queries by 166, gives **2^48.249913 representatives per expected
+relation**. Each `2^20` ordinary prefix covers only `2^-28.249913` of that
+conditional expectation. This explains the zero-match measurement's limited
+yield information; repeated hyperparameter cells search the same prefix.
+The next useful change must improve relation probability per charged query
+or make a much larger table fraction affordable. Independent group replay
+and rank-novelty accounting remain required for any exact hits.
 
 ## Reproduction
 
@@ -67,5 +89,7 @@ Then run `run.py`, `validate.py`, and `analyze.py` in that directory with
 Apple clang 17, source digests, and the binary SHA-256. The [protocol](protocol.json)
 pins both public targets, workloads, the exact base, and output source. Each
 cell preserves stdout, stderr, status, phase timings, memory, and hashes.
-Q1529 makes no new mathematical theorem; its counting formula is checked
-against the native loop bounds in `validate.py` and `analyze.py`.
+The [Lean proof map](FORMALIZATION.md) checks the finite model arithmetic;
+the query law and rank novelty remain explicit model assumptions. The
+counting formula is checked against the native loop bounds in `validate.py`
+and `analyze.py`.
