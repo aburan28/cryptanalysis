@@ -1,0 +1,22 @@
+digraph EC_Opt_Overview {
+  // Layer-stack overview of elliptic-curve arithmetic optimizations.
+  // Companion to ec_optimizations.dot (full technique graph).
+  rankdir=TB;
+  splines=spline;
+  nodesep=0.35;
+  ranksep=0.45;
+  fontname="Helvetica";
+  fontsize=12;
+  label="Elliptic-curve arithmetic optimizations: layer overview (see full technique graph for evidence)";
+  labelloc=t;
+  node [fontname="Helvetica", fontsize=11];
+  edge [fontname="Helvetica", fontsize=9];
+
+  FIELD [label="FIELD  GF(p), p < 2^64\nMontgomery mult 5.9 ns", shape=box, style="filled,bold", fillcolor="#dbeafe"];
+  POINT [label="POINT  affine Weierstrass\nbatch inversion 10.6x", shape=box, style="filled,bold", fillcolor="#dbeafe"];
+  SCALAR [label="SCALAR  mult / endomorphisms\nfixed-base table, GLV folds", shape=box, style="filled,bold", fillcolor="#dbeafe"];
+  ENGINE [label="ENGINE  rho / BSGS / IC / Cheon\nauto-sizing, DP tables, sieves", shape=box, style="filled,bold", fillcolor="#dbeafe"];
+  FLEET [label="FLEET  GPU / FPGA / Sage batch\n8 walks per thread 5.5x", shape=box, style="filled,bold", fillcolor="#dbeafe"];
+
+  FIELD -> POINT -> SCALAR -> ENGINE -> FLEET [penwidth=2.0];
+}
