@@ -11,10 +11,42 @@ use std::sync::LazyLock;
 const WIDTHS: [u8; 14] = [10, 10, 10, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9];
 const WIDTHS15: [u8; 15] = [8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9];
 const WIDTHS16: [u8; 16] = [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9];
+const FRONTIER16_WIDTHS: [u8; 16] = [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9];
+const FRONTIER15_BUDGET_WIDTHS: [u8; 15] = [8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9];
+const SOLINAS_UNIT_CONSTANT_BYTES: usize = 3 * size_of::<super::U256>();
+const FRONTIER17_WIDTHS: [u8; 17] = [7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7];
+const FRONTIER18_WIDTHS: [u8; 18] = [7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 7];
+const FRONTIER19_WIDTHS: [u8; 19] = [6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 6];
 const CAP_BYTES: usize = 90 * (1 << 20);
 const RADIX13: usize = 943;
 const RADIX13_WINDOWS: usize = 13;
 const RADIX13_CAP_BYTES: usize = 140 * (1 << 20);
+const RADIX384: usize = 384;
+const RADIX384_WINDOWS: usize = 15;
+const TAU384_MATCHING_ATLAS: &[u8] = include_bytes!(
+    "../../../../prime-j0-tau384-matching-20261010/atlas.bin"
+);
+const FRONTIER7_FULL_ATLAS: &[u8] = include_bytes!(
+    "../../../../prime-j0-tau-frontier-20261010/w7-d128/atlas-w7.bin"
+);
+const FRONTIER7_FINAL_ATLAS: &[u8] = include_bytes!(
+    "../../../../prime-j0-tau-frontier-20261010/w7-d90/atlas-w7.bin"
+);
+const FRONTIER8_FULL_ATLAS: &[u8] = include_bytes!(
+    "../../../../prime-j0-tau-frontier-20261010/w8-d256/atlas-w8.bin"
+);
+const FRONTIER9_FINAL_ATLAS: &[u8] = include_bytes!(
+    "../../../../prime-j0-tau-power16-20261010/atlas-w9.bin"
+);
+const FRONTIER9_FULL_ATLAS: &[u8] = include_bytes!(
+    "../../../../prime-j0-bound-budget15-20261010/atlas-w9.bin"
+);
+const FRONTIER6_FULL_ATLAS: &[u8] = include_bytes!(
+    "../../../../prime-j0-tau-frontier-20261010/w6-d64/atlas-w6.bin"
+);
+const FRONTIER6_FINAL_ATLAS: &[u8] = include_bytes!(
+    "../../../../prime-j0-tau-frontier-20261010/w6-d44/atlas-w6.bin"
+);
 const TAU_BUCKET_RADIX: usize = 1021;
 const TAU_BUCKET_CAP_BYTES: usize = 90 * (1 << 20);
 const TAU_BUCKET_ATLAS: &[u8] = include_bytes!(
@@ -56,7 +88,7 @@ impl Signed192 {
     }
 
     fn rem_euclid_power_of_two(self, width: u8) -> usize {
-        assert!((8..=10).contains(&width));
+        assert!((6..=10).contains(&width));
         let base = 1u64 << width;
         let remainder = self.limbs[0] & (base - 1);
         if self.negative && remainder != 0 {
@@ -67,7 +99,7 @@ impl Signed192 {
     }
 
     fn div_exact_power_of_two(self, width: u8) -> Self {
-        assert!((8..=10).contains(&width));
+        assert!((6..=10).contains(&width));
         let shift = u32::from(width);
         assert_eq!(self.limbs[0] & ((1u64 << shift) - 1), 0);
         let limbs: [u64; 3] = std::array::from_fn(|index| {
@@ -100,6 +132,37 @@ impl Signed192 {
         let signed_rem = if self.negative { -(rem as i32) } else { rem as i32 };
         let quotient = Self { negative: self.negative && limbs != [0; 3], limbs };
         (quotient, signed_rem, signed_rem.rem_euclid(radix as i32) as usize)
+    }
+
+    fn div_rem_radix384_fast(self) -> (Self, i32, usize) {
+        // The certified representative has norm <= n/3, so each coordinate
+        // is below 2^129 in magnitude. Subsequent digits preserve this bound.
+        assert!(self.limbs[2] <= 1);
+        let low_seven = self.limbs[0] & 127;
+        let y_low = (self.limbs[0] >> 7) | (self.limbs[1] << 57);
+        let y_high = (self.limbs[1] >> 7) | (self.limbs[2] << 57);
+        // x = 128*y + low_seven, and 384 = 128*3. Since 2^64 = 3*K+1,
+        // the two word quotients are independent constant divisions by 3.
+        const K: u64 = u64::MAX / 3;
+        let high_quotient = y_high / 3;
+        let high_remainder = y_high - 3 * high_quotient;
+        let low_quotient = y_low / 3;
+        let low_remainder = y_low - 3 * low_quotient;
+        let carry = u64::from(high_remainder + low_remainder >= 3);
+        let remainder = low_seven
+            + 128 * (high_remainder + low_remainder - 3 * carry);
+        let low_word = high_remainder * K + low_quotient + carry;
+        let quotient = Self {
+            negative: self.negative && (low_word != 0 || high_quotient != 0),
+            limbs: [low_word, high_quotient, 0],
+        };
+        let signed_remainder = if self.negative {
+            -(remainder as i32)
+        } else {
+            remainder as i32
+        };
+        (quotient, signed_remainder,
+         signed_remainder.rem_euclid(RADIX384 as i32) as usize)
     }
 
     fn div_rem_radix13(self) -> (Self, i32, usize) {
@@ -163,7 +226,7 @@ impl OrbitAtlas {
     }
 
     fn new_radix(base: usize) -> Self {
-        assert_eq!(base, RADIX13);
+        assert!(base == RADIX13 || base == RADIX384);
         Self::with_base(0, base)
     }
 
@@ -194,7 +257,13 @@ impl OrbitAtlas {
                 }
             }
         }
-        assert_eq!(digits.len(), (base * base + 8) / 6);
+        let expected_orbits = if base == RADIX384 {
+            // Burnside fixed counts: B², 4, 3, 3, 1, 1.
+            (base * base + 12) / 6
+        } else {
+            (base * base + 8) / 6
+        };
+        assert_eq!(digits.len(), expected_orbits);
         assert!(codes.iter().all(|&code| code != u32::MAX));
         assert_eq!(digits[0], (0, 0));
         Self {
@@ -226,6 +295,10 @@ impl OrbitAtlas {
     fn digit_word_radix13(&self, a: Signed192, b: Signed192) -> ((i32, i32), usize, usize) {
         assert_eq!(self.base(), RADIX13);
         self.digit_residue(a.rem_euclid_radix13(), b.rem_euclid_radix13())
+    }
+
+    fn digit_word_small_radix(&self, a: usize, b: usize) -> ((i32, i32), usize, usize) {
+        self.digit_residue(a, b)
     }
 
     fn digit_residue(&self, ra: usize, rb: usize) -> ((i32, i32), usize, usize) {
@@ -554,11 +627,269 @@ struct U256Affine {
     y: super::U256,
 }
 
+// The three cube-root images share y; sign is applied when a term is selected.
+#[derive(Clone, Copy)]
+struct U256OrbitXAffine {
+    x: [super::U256; 3],
+    y: super::U256,
+}
+
+#[derive(Clone, Copy)]
+struct U256TauPair {
+    plain: U256Affine,
+    tau: U256Affine,
+}
+
+#[derive(Clone, Copy)]
+struct U256OrbitTauPair {
+    plain: U256OrbitXAffine,
+    tau: U256OrbitXAffine,
+}
+
+// For beta^2 + beta + 1 = 0, m = x + beta*x = -beta^2*x.
+// Store (x, m, y): beta*x = m - x and beta^2*x = -m.
+#[derive(Clone, Copy)]
+struct U256TwoXAffine {
+    x: super::U256,
+    minus_x_beta2: super::U256,
+    y: super::U256,
+}
+
+#[derive(Clone, Copy)]
+struct U256TwoXOrbitTauPair {
+    plain: U256TwoXAffine,
+    tau: U256TwoXAffine,
+}
+
+impl U256TwoXAffine {
+    fn from_affine(point: U256Affine) -> Self {
+        let x_beta = u256_mul(point.x, U256_BETA_UNITS[1]);
+        Self { x: point.x, minus_x_beta2: u256_add(point.x, x_beta), y: point.y }
+    }
+
+    fn unit(self, code: usize) -> U256Affine {
+        assert!(code < 6);
+        let x = match code / 2 {
+            0 => self.x,
+            1 => u256_sub(self.minus_x_beta2, self.x),
+            2 => u256_sub(super::U256::ZERO, self.minus_x_beta2),
+            _ => unreachable!(),
+        };
+        let y = if code & 1 == 0 { self.y } else {
+            u256_sub(super::U256::ZERO, self.y)
+        };
+        U256Affine { x, y }
+    }
+}
+
+trait U256UnitWindowPoint: Copy {
+    fn selected_unit<const SOLINAS: bool>(self, code: usize) -> U256Affine;
+}
+
+impl U256UnitWindowPoint for U256TwoXAffine {
+    fn selected_unit<const SOLINAS: bool>(self, code: usize) -> U256Affine {
+        assert!(!SOLINAS);
+        self.unit(code)
+    }
+}
+
+impl U256UnitWindowPoint for U256Affine {
+    fn selected_unit<const SOLINAS: bool>(self, code: usize) -> U256Affine {
+        if SOLINAS { self.unit_solinas(code) } else { self.unit(code) }
+    }
+}
+
+impl U256TwoXOrbitTauPair {
+    fn from_pair(pair: U256TauPair) -> Self {
+        Self { plain: U256TwoXAffine::from_affine(pair.plain),
+               tau: U256TwoXAffine::from_affine(pair.tau) }
+    }
+
+    fn select(self, exponent: usize, unit_code: usize) -> U256Affine {
+        assert!(exponent < 2);
+        if exponent == 0 { self.plain.unit(unit_code) }
+        else { self.tau.unit(unit_code) }
+    }
+}
+
+impl U256OrbitTauPair {
+    fn from_pair(pair: U256TauPair) -> Self {
+        Self {
+            plain: U256OrbitXAffine::from_affine(pair.plain),
+            tau: U256OrbitXAffine::from_affine(pair.tau),
+        }
+    }
+
+    fn select(self, exponent: usize, unit_code: usize) -> U256Affine {
+        if exponent == 0 { self.plain.unit(unit_code) }
+        else { self.tau.unit(unit_code) }
+    }
+}
+
 #[derive(Clone, Copy)]
 struct U256Jacobian {
     x: super::U256,
     y: super::U256,
     z: super::U256,
+}
+
+#[derive(Clone, Copy)]
+struct U256XYZZ {
+    x: super::U256,
+    y: super::U256,
+    zz: super::U256,
+    zzz: super::U256,
+}
+
+impl U256XYZZ {
+    fn identity() -> Self {
+        Self { x: super::U256::ZERO, y: super::HYBRID_FIELD.0.r_mod_n,
+               zz: super::U256::ZERO, zzz: super::U256::ZERO }
+    }
+
+    fn from_affine(point: U256Affine) -> Self {
+        let one = super::HYBRID_FIELD.0.r_mod_n;
+        Self { x: point.x, y: point.y, zz: one, zzz: one }
+    }
+
+    fn is_identity(self) -> bool {
+        bool::from(self.zz.ct_is_zero())
+    }
+
+    fn rotate_power_solinas(self, power: usize) -> Self {
+        assert!(power < 3);
+        if power == 0 || self.is_identity() { return self; }
+        Self { x: u256_mul_const_solinas(self.x, U256_BETA_CANONICAL[power]), ..self }
+    }
+
+    fn into_jacobian(self) -> U256Jacobian {
+        if self.is_identity() { return U256Jacobian::identity(); }
+        // x=X/ZZ, y=Y/ZZZ, and ZZ^3=ZZZ^2. Taking Z'=ZZ gives
+        // X'=X*ZZ and Y'=Y*ZZZ in ordinary Jacobian coordinates.
+        U256Jacobian { x: u256_mul(self.x, self.zz),
+                       y: u256_mul(self.y, self.zzz), z: self.zz }
+    }
+
+    // Sutherland's XYZZ mixed addition, with a=0 and an affine second point.
+    fn add_mixed(self, q: U256Affine) -> Self {
+        if self.is_identity() { return Self::from_affine(q); }
+        let u2 = u256_mul(q.x, self.zz);
+        let s2 = u256_mul(q.y, self.zzz);
+        let p = u256_sub(u2, self.x);
+        let r = u256_sub(s2, self.y);
+        if bool::from(p.ct_is_zero()) {
+            return if bool::from(r.ct_is_zero()) { self.double() }
+                   else { Self::identity() };
+        }
+        let pp = u256_square(p);
+        let ppp = u256_mul(p, pp);
+        let qx = u256_mul(self.x, pp);
+        let rx = u256_sub(u256_sub(u256_square(r), ppp), u256_add(qx, qx));
+        let ry = u256_sub(u256_mul(r, u256_sub(qx, rx)), u256_mul(self.y, ppp));
+        let rzz = u256_mul(self.zz, pp);
+        let rzzz = u256_mul(self.zzz, ppp);
+        Self { x: rx, y: ry, zz: rzz, zzz: rzzz }
+    }
+
+    // Add a Jacobian point while keeping the first bucket in XYZZ form.
+    fn add_jacobian(self, q: U256Jacobian) -> Self {
+        if q.is_identity() { return self; }
+        let qzz = u256_square(q.z);
+        let qzzz = u256_mul(qzz, q.z);
+        if self.is_identity() {
+            return Self { x: q.x, y: q.y, zz: qzz, zzz: qzzz };
+        }
+        let u1 = u256_mul(self.x, qzz);
+        let u2 = u256_mul(q.x, self.zz);
+        let s1 = u256_mul(self.y, qzzz);
+        let s2 = u256_mul(q.y, self.zzz);
+        let h = u256_sub(u2, u1);
+        let r = u256_sub(s2, s1);
+        if bool::from(h.ct_is_zero()) {
+            return if bool::from(r.ct_is_zero()) { self.double() }
+                   else { Self::identity() };
+        }
+        let hh = u256_square(h);
+        let hhh = u256_mul(h, hh);
+        let v = u256_mul(u1, hh);
+        let rx = u256_sub(u256_sub(u256_square(r), hhh), u256_add(v, v));
+        let ry = u256_sub(u256_mul(r, u256_sub(v, rx)), u256_mul(s1, hhh));
+        let rzz = u256_mul(u256_mul(self.zz, qzz), hh);
+        let rzzz = u256_mul(u256_mul(self.zzz, qzzz), hhh);
+        Self { x: rx, y: ry, zz: rzz, zzz: rzzz }
+    }
+
+    fn add_xyzz(self, q: Self) -> Self {
+        if self.is_identity() { return q; }
+        if q.is_identity() { return self; }
+        let u1 = u256_mul(self.x, q.zz);
+        let u2 = u256_mul(q.x, self.zz);
+        let s1 = u256_mul(self.y, q.zzz);
+        let s2 = u256_mul(q.y, self.zzz);
+        let h = u256_sub(u2, u1);
+        let r = u256_sub(s2, s1);
+        if bool::from(h.ct_is_zero()) {
+            return if bool::from(r.ct_is_zero()) { self.double() }
+                   else { Self::identity() };
+        }
+        let hh = u256_square(h);
+        let hhh = u256_mul(h, hh);
+        let v = u256_mul(u1, hh);
+        let rx = u256_sub(u256_sub(u256_square(r), hhh), u256_add(v, v));
+        let ry = u256_sub(u256_mul(r, u256_sub(v, rx)), u256_mul(s1, hhh));
+        let rzz = u256_mul(u256_mul(self.zz, q.zz), hh);
+        let rzzz = u256_mul(u256_mul(self.zzz, q.zzz), hhh);
+        Self { x: rx, y: ry, zz: rzz, zzz: rzzz }
+    }
+
+    // Apply the degree-three endomorphism without choosing a Jacobian Z.
+    fn tau(self) -> Self {
+        if self.is_identity() || bool::from(self.x.ct_is_zero()) {
+            return Self::identity();
+        }
+        let x3 = u256_mul(u256_square(self.x), self.x);
+        let y2 = u256_square(self.y);
+        let three_x3 = u256_add(u256_add(x3, x3), x3);
+        let four_y2 = u256_add(u256_add(y2, y2), u256_add(y2, y2));
+        let rx = u256_sub(four_y2, three_x3);
+        let inner = u256_sub(three_x3, u256_add(rx, rx));
+        let ry = u256_mul(inner, self.y);
+        let w = u256_sub(self.x, u256_mul(self.x, U256_BETA_UNITS[1]));
+        let w2 = u256_square(w);
+        let w3 = u256_mul(w2, w);
+        let rzz = u256_mul(w2, self.zz);
+        let rzzz = u256_mul(w3, self.zzz);
+        Self { x: rx, y: ry, zz: rzz, zzz: rzzz }
+    }
+
+    fn double(self) -> Self {
+        if self.is_identity() || bool::from(self.y.ct_is_zero()) {
+            return Self::identity();
+        }
+        let u = u256_add(self.y, self.y);
+        let v = u256_square(u);
+        let w = u256_mul(u, v);
+        let s = u256_mul(self.x, v);
+        let xx = u256_square(self.x);
+        let m = u256_add(u256_add(xx, xx), xx);
+        let rx = u256_sub(u256_square(m), u256_add(s, s));
+        let ry = u256_sub(u256_mul(m, u256_sub(s, rx)), u256_mul(w, self.y));
+        let rzz = u256_mul(v, self.zz);
+        let rzzz = u256_mul(w, self.zzz);
+        Self { x: rx, y: ry, zz: rzz, zzz: rzzz }
+    }
+
+    fn affine_hex_binary_inverse(self) -> String {
+        if self.is_identity() { return "identity".to_owned(); }
+        let ctx = &super::HYBRID_FIELD.0;
+        let inv_zzz = super::hybrid_binary_invert(self.zzz, ctx);
+        let inv_z = ctx.mont_mul(&self.zz, &inv_zzz);
+        let inv_zz = ctx.mont_sqr(&inv_z);
+        let x = ctx.mont_mul(&self.x, &inv_zz);
+        let y = ctx.mont_mul(&self.y, &inv_zzz);
+        format!("{}:{}", hex::encode(ctx.from_montgomery(&x).to_bytes_be()),
+                hex::encode(ctx.from_montgomery(&y).to_bytes_be()))
+    }
 }
 
 fn u256_add(a: super::U256, b: super::U256) -> super::U256 {
@@ -573,6 +904,40 @@ fn u256_mul(a: super::U256, b: super::U256) -> super::U256 {
     super::HYBRID_FIELD.0.mont_mul(&a, &b)
 }
 
+// For p=2^256-c, c=2^32+977, fold the high half of a 512-bit product
+// back into the low half. Inputs and result are canonical field residues.
+// The first fold leaves at most one high bit; after any second overflow the
+// low half is below c, so the third fixed fold cannot overflow.
+fn u256_mul_const_solinas(value: super::U256, constant: super::U256) -> super::U256 {
+    const C: u128 = (1u128 << 32) + 977;
+    let (low, high) = super::U256::mul_wide(&value, &constant);
+    let mut limbs = [0u64; 5];
+    let mut carry = 0u128;
+    for index in 0..4 {
+        let sum = (high.0[index] as u128) * C + (low.0[index] as u128) + carry;
+        limbs[index] = sum as u64;
+        carry = sum >> 64;
+    }
+    limbs[4] = carry as u64;
+    for _ in 0..3 {
+        let folded = (limbs[4] as u128) * C;
+        limbs[4] = 0;
+        let sum = (limbs[0] as u128) + (folded as u64 as u128);
+        limbs[0] = sum as u64;
+        let mut carry = (sum >> 64) + (folded >> 64);
+        for limb in limbs.iter_mut().take(4).skip(1) {
+            let sum = (*limb as u128) + carry;
+            *limb = sum as u64;
+            carry = sum >> 64;
+        }
+        limbs[4] = carry as u64;
+    }
+    debug_assert_eq!(limbs[4], 0);
+    let result = super::Uint([limbs[0], limbs[1], limbs[2], limbs[3]]);
+    let (reduced, borrow) = super::U256::sbb(&result, &super::HYBRID_FIELD.0.n);
+    super::U256::cmov(&result, &reduced, subtle::Choice::from((borrow ^ 1) as u8))
+}
+
 fn u256_square(a: super::U256) -> super::U256 {
     super::HYBRID_FIELD.0.mont_sqr(&a)
 }
@@ -585,7 +950,26 @@ static U256_BETA_UNITS: LazyLock<[super::U256; 3]> = LazyLock::new(|| {
     [ctx.r_mod_n, omega, ctx.mont_sqr(&omega)]
 });
 
+static U256_BETA_CANONICAL: LazyLock<[super::U256; 3]> = LazyLock::new(|| {
+    let ctx = &super::HYBRID_FIELD.0;
+    [super::U256::ONE,
+     ctx.from_montgomery(&U256_BETA_UNITS[1]),
+     ctx.from_montgomery(&U256_BETA_UNITS[2])]
+});
+
 impl U256Affine {
+    fn unit_solinas(self, code: usize) -> Self {
+        assert!(code < 6);
+        let power = code / 2;
+        let x = if power == 0 { self.x } else {
+            u256_mul_const_solinas(self.x, U256_BETA_CANONICAL[power])
+        };
+        let y = if code & 1 == 0 { self.y } else {
+            u256_sub(super::U256::ZERO, self.y)
+        };
+        Self { x, y }
+    }
+
     fn unit(self, code: usize) -> Self {
         assert!(code < 6);
         let power = code / 2;
@@ -596,6 +980,25 @@ impl U256Affine {
             u256_sub(super::U256::ZERO, self.y)
         };
         Self { x, y }
+    }
+}
+
+impl U256OrbitXAffine {
+    fn from_affine(point: U256Affine) -> Self {
+        Self {
+            x: [point.x,
+                u256_mul(point.x, U256_BETA_UNITS[1]),
+                u256_mul(point.x, U256_BETA_UNITS[2])],
+            y: point.y,
+        }
+    }
+
+    fn unit(self, code: usize) -> U256Affine {
+        assert!(code < 6);
+        let y = if code & 1 == 0 { self.y } else {
+            u256_sub(super::U256::ZERO, self.y)
+        };
+        U256Affine { x: self.x[code / 2], y }
     }
 }
 
@@ -660,6 +1063,45 @@ impl U256Jacobian {
         let rx = u256_sub(u256_sub(u256_square(v), hhh), u256_add(xhh, xhh));
         let ry = u256_sub(u256_mul(v, u256_sub(xhh, rx)), u256_mul(self.y, hhh));
         let rz = u256_mul(self.z, h);
+        Self { x: rx, y: ry, z: rz }
+    }
+
+    fn add_projective(self, q: Self) -> Self {
+        if self.is_identity() { return q; }
+        if q.is_identity() { return self; }
+        let z1_squared = u256_square(self.z);
+        let z2_squared = u256_square(q.z);
+        let u1 = u256_mul(self.x, z2_squared);
+        let u2 = u256_mul(q.x, z1_squared);
+        let s1 = u256_mul(self.y, u256_mul(q.z, z2_squared));
+        let s2 = u256_mul(q.y, u256_mul(self.z, z1_squared));
+        let h = u256_sub(u2, u1);
+        let r = u256_sub(s2, s1);
+        if bool::from(h.ct_is_zero()) {
+            return if bool::from(r.ct_is_zero()) { self.double() }
+                   else { Self::identity() };
+        }
+        let hh = u256_square(h);
+        let hhh = u256_mul(h, hh);
+        let v = u256_mul(u1, hh);
+        let rx = u256_sub(u256_sub(u256_square(r), hhh), u256_add(v, v));
+        let ry = u256_sub(u256_mul(r, u256_sub(v, rx)), u256_mul(s1, hhh));
+        let rz = u256_mul(u256_mul(self.z, q.z), h);
+        Self { x: rx, y: ry, z: rz }
+    }
+
+    fn tau(self) -> Self {
+        if self.is_identity() || bool::from(self.x.ct_is_zero()) {
+            return Self::identity();
+        }
+        let x3 = u256_mul(u256_square(self.x), self.x);
+        let y2 = u256_square(self.y);
+        let three_x3 = u256_add(u256_add(x3, x3), x3);
+        let four_y2 = u256_add(u256_add(y2, y2), u256_add(y2, y2));
+        let rx = u256_sub(four_y2, three_x3);
+        let inner = u256_sub(three_x3, u256_add(rx, rx));
+        let ry = u256_mul(inner, self.y);
+        let rz = u256_mul(u256_sub(self.x, self.rotate_power(1).x), self.z);
         Self { x: rx, y: ry, z: rz }
     }
 
@@ -841,6 +1283,806 @@ impl Radix13Tables {
 }
 
 static RADIX13_TABLES: LazyLock<Radix13Tables> = LazyLock::new(Radix13Tables::new);
+
+struct Radix384Tables {
+    atlas: OrbitAtlas,
+    windows: Vec<Box<[U256Affine]>>,
+    retained_bytes: usize,
+}
+
+impl Radix384Tables {
+    fn new() -> Self {
+        assert_eq!(size_of::<U256Affine>(), 64);
+        let atlas = OrbitAtlas::new_radix(RADIX384);
+        assert_eq!(atlas.digits.len(), 24_578);
+        let mut windows = Vec::with_capacity(RADIX384_WINDOWS);
+        let mut base = Jacobian::generator();
+        for index in 0..RADIX384_WINDOWS {
+            windows.push(build_u256_window(&atlas.digits, base));
+            if index + 1 < RADIX384_WINDOWS {
+                base = affine_multiples(base, RADIX384).pop().unwrap();
+            }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        assert_eq!(entries, 368_670);
+        let retained_bytes = entries * size_of::<U256Affine>()
+            + atlas.codes.len() * size_of::<u32>()
+            + atlas.digits.len() * size_of::<(i16, i16)>()
+            + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[U256Affine]>>();
+        assert!(retained_bytes < 32 * (1 << 20));
+        Self { atlas, windows, retained_bytes }
+    }
+}
+
+static RADIX384_TABLES: LazyLock<Radix384Tables> = LazyLock::new(Radix384Tables::new);
+
+struct Tau384MatchingAtlas {
+    codes: &'static [u8],
+    seeds: &'static [u8],
+}
+
+impl Tau384MatchingAtlas {
+    fn new() -> Self {
+        let bytes = TAU384_MATCHING_ATLAS;
+        assert_eq!(&bytes[..4], b"T384");
+        let seed_count = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
+        assert_eq!(seed_count, 18_074);
+        let code_bytes = RADIX384 * RADIX384 * 4;
+        assert_eq!(bytes.len(), 8 + code_bytes + 4 * seed_count);
+        let atlas = Self {
+            codes: &bytes[8..8 + code_bytes],
+            seeds: &bytes[8 + code_bytes..],
+        };
+        assert_eq!(&atlas.seeds[..4], &[0, 0, 0, 0]);
+        for ra in 0..RADIX384 {
+            for rb in 0..RADIX384 {
+                let (digit, _, _, _) = atlas.digit_residue(ra, rb);
+                assert!(norm(digit) <= 253 * 253);
+            }
+        }
+        atlas
+    }
+
+    fn seed_digits(&self) -> Vec<(i16, i16)> {
+        self.seeds.chunks_exact(4).map(|chunk| {
+            (i16::from_le_bytes(chunk[..2].try_into().unwrap()),
+             i16::from_le_bytes(chunk[2..].try_into().unwrap()))
+        }).collect()
+    }
+
+    fn digit_residue(&self, ra: usize, rb: usize) -> ((i32, i32), usize, usize, usize) {
+        let offset = 4 * (ra * RADIX384 + rb);
+        let code = u32::from_le_bytes(self.codes[offset..offset + 4].try_into().unwrap()) as usize;
+        let (seed_id, exponent, unit_code) = (code >> 4, (code >> 3) & 1, code & 7);
+        assert!(seed_id < self.seeds.len() / 4 && unit_code < 6);
+        let offset = 4 * seed_id;
+        let (a, b) = (
+            i16::from_le_bytes(self.seeds[offset..offset + 2].try_into().unwrap()),
+            i16::from_le_bytes(self.seeds[offset + 2..offset + 4].try_into().unwrap()),
+        );
+        let seed = (i32::from(a), i32::from(b));
+        let digit = if exponent == 0 { seed }
+                    else { (-3 * seed.1, seed.0 + 3 * seed.1) };
+        let digit = unit_images(digit)[unit_code];
+        assert_eq!((digit.0.rem_euclid(RADIX384 as i32) as usize,
+                    digit.1.rem_euclid(RADIX384 as i32) as usize), (ra, rb));
+        (digit, seed_id, exponent, unit_code)
+    }
+}
+
+struct Tau384MatchingTables {
+    atlas: Tau384MatchingAtlas,
+    windows: Vec<Box<[U256Affine]>>,
+    retained_bytes: usize,
+}
+
+impl Tau384MatchingTables {
+    fn new() -> Self {
+        let atlas = Tau384MatchingAtlas::new();
+        let seeds = atlas.seed_digits();
+        let mut windows = Vec::with_capacity(RADIX384_WINDOWS);
+        let mut base = Jacobian::generator();
+        for index in 0..RADIX384_WINDOWS {
+            windows.push(build_u256_window(&seeds, base));
+            if index + 1 < RADIX384_WINDOWS {
+                base = affine_multiples(base, RADIX384).pop().unwrap();
+            }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        assert_eq!(entries, RADIX384_WINDOWS * 18_074);
+        let retained_bytes = entries * size_of::<U256Affine>()
+            + TAU384_MATCHING_ATLAS.len()
+            + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[U256Affine]>>();
+        assert!(retained_bytes < 24_283_336);
+        Self { atlas, windows, retained_bytes }
+    }
+}
+
+static TAU384_MATCHING_TABLES: LazyLock<Tau384MatchingTables> =
+    LazyLock::new(Tau384MatchingTables::new);
+
+struct FrontierAtlas {
+    width: u8,
+    codes: &'static [u8],
+    seeds: &'static [u8],
+}
+
+impl FrontierAtlas {
+    fn from_bytes(bytes: &'static [u8], width: u8, bound: i64,
+                  expected_seeds: usize) -> Self {
+        assert!((6..=9).contains(&width));
+        assert_eq!(&bytes[..4], &[b'T', b'2', b'B', b'0' + width]);
+        let seed_count = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
+        assert_eq!(seed_count, expected_seeds);
+        let radix = 1usize << width;
+        let code_bytes = 4 * radix * radix;
+        assert_eq!(bytes.len(), 8 + code_bytes + 4 * seed_count);
+        let atlas = Self {
+            width,
+            codes: &bytes[8..8 + code_bytes],
+            seeds: &bytes[8 + code_bytes..],
+        };
+        assert_eq!(&atlas.seeds[..4], &[0, 0, 0, 0]);
+        for ra in 0..radix {
+            for rb in 0..radix {
+                let (digit, _, _, _) = atlas.digit_residue(ra, rb);
+                assert!(norm(digit) <= bound * bound);
+            }
+        }
+        atlas
+    }
+
+    fn seed_digits(&self) -> Vec<(i16, i16)> {
+        self.seeds.chunks_exact(4).map(|chunk| {
+            (i16::from_le_bytes(chunk[..2].try_into().unwrap()),
+             i16::from_le_bytes(chunk[2..].try_into().unwrap()))
+        }).collect()
+    }
+
+    fn digit_residue(&self, ra: usize, rb: usize) -> ((i32, i32), usize, usize, usize) {
+        let radix = 1usize << self.width;
+        assert!(ra < radix && rb < radix);
+        let offset = 4 * (ra * radix + rb);
+        let code = u32::from_le_bytes(self.codes[offset..offset + 4].try_into().unwrap()) as usize;
+        let (seed_id, exponent, unit_code) = (code >> 4, (code >> 3) & 1, code & 7);
+        assert!(seed_id < self.seeds.len() / 4 && unit_code < 6);
+        let offset = 4 * seed_id;
+        let (a, b) = (
+            i16::from_le_bytes(self.seeds[offset..offset + 2].try_into().unwrap()),
+            i16::from_le_bytes(self.seeds[offset + 2..offset + 4].try_into().unwrap()),
+        );
+        let seed = (i32::from(a), i32::from(b));
+        let digit = if exponent == 0 { seed }
+                    else { (-3 * seed.1, seed.0 + 3 * seed.1) };
+        let digit = unit_images(digit)[unit_code];
+        assert_eq!((digit.0.rem_euclid(radix as i32) as usize,
+                    digit.1.rem_euclid(radix as i32) as usize), (ra, rb));
+        (digit, seed_id, exponent, unit_code)
+    }
+}
+
+struct Frontier17Tables {
+    full7: FrontierAtlas,
+    final7: FrontierAtlas,
+    full8: FrontierAtlas,
+    windows: Vec<Box<[U256Affine]>>,
+    retained_bytes: usize,
+}
+
+impl Frontier17Tables {
+    fn new() -> Self {
+        let full7 = FrontierAtlas::from_bytes(FRONTIER7_FULL_ATLAS, 7, 128, 1_367);
+        let final7 = FrontierAtlas::from_bytes(FRONTIER7_FINAL_ATLAS, 7, 90, 1_631);
+        let full8 = FrontierAtlas::from_bytes(FRONTIER8_FULL_ATLAS, 8, 256, 5_463);
+        let mut windows = Vec::with_capacity(FRONTIER17_WIDTHS.len());
+        let mut base = Jacobian::generator();
+        for (index, &width) in FRONTIER17_WIDTHS.iter().enumerate() {
+            let atlas = if index + 1 == FRONTIER17_WIDTHS.len() { &final7 }
+                        else if width == 7 { &full7 } else { &full8 };
+            windows.push(build_u256_window(&atlas.seed_digits(), base));
+            for _ in 0..width { base = base.double(); }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        assert_eq!(entries, 64_463);
+        let retained_bytes = entries * size_of::<U256Affine>()
+            + FRONTIER7_FULL_ATLAS.len() + FRONTIER7_FINAL_ATLAS.len()
+            + FRONTIER8_FULL_ATLAS.len() + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[U256Affine]>>();
+        assert!(retained_bytes < 4_600_000);
+        Self { full7, final7, full8, windows, retained_bytes }
+    }
+
+    fn atlas(&self, index: usize) -> &FrontierAtlas {
+        if index + 1 == FRONTIER17_WIDTHS.len() { &self.final7 }
+        else if FRONTIER17_WIDTHS[index] == 7 { &self.full7 }
+        else { &self.full8 }
+    }
+}
+
+static FRONTIER17_TABLES: LazyLock<Frontier17Tables> = LazyLock::new(Frontier17Tables::new);
+
+struct Frontier19Tables {
+    full6: FrontierAtlas,
+    final6: FrontierAtlas,
+    full7: FrontierAtlas,
+    windows: Vec<Box<[U256Affine]>>,
+    retained_bytes: usize,
+}
+
+impl Frontier19Tables {
+    fn new() -> Self {
+        let full6 = FrontierAtlas::from_bytes(FRONTIER6_FULL_ATLAS, 6, 64, 343);
+        let final6 = FrontierAtlas::from_bytes(FRONTIER6_FINAL_ATLAS, 6, 44, 415);
+        let full7 = FrontierAtlas::from_bytes(FRONTIER7_FULL_ATLAS, 7, 128, 1_367);
+        let mut windows = Vec::with_capacity(FRONTIER19_WIDTHS.len());
+        let mut base = Jacobian::generator();
+        for (index, &width) in FRONTIER19_WIDTHS.iter().enumerate() {
+            let atlas = if index + 1 == FRONTIER19_WIDTHS.len() { &final6 }
+                        else if width == 6 { &full6 } else { &full7 };
+            windows.push(build_u256_window(&atlas.seed_digits(), base));
+            for _ in 0..width { base = base.double(); }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        assert_eq!(entries, 21_949);
+        let retained_bytes = entries * size_of::<U256Affine>()
+            + FRONTIER6_FULL_ATLAS.len() + FRONTIER6_FINAL_ATLAS.len()
+            + FRONTIER7_FULL_ATLAS.len() + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[U256Affine]>>();
+        assert!(retained_bytes < 1_600_000);
+        Self { full6, final6, full7, windows, retained_bytes }
+    }
+
+    fn atlas(&self, index: usize) -> &FrontierAtlas {
+        if index + 1 == FRONTIER19_WIDTHS.len() { &self.final6 }
+        else if FRONTIER19_WIDTHS[index] == 6 { &self.full6 }
+        else { &self.full7 }
+    }
+}
+
+static FRONTIER19_TABLES: LazyLock<Frontier19Tables> = LazyLock::new(Frontier19Tables::new);
+
+struct Frontier19OrbitXTables {
+    full6: FrontierAtlas,
+    final6: FrontierAtlas,
+    full7: FrontierAtlas,
+    windows: Vec<Box<[U256OrbitXAffine]>>,
+    retained_bytes: usize,
+}
+
+impl Frontier19OrbitXTables {
+    fn new() -> Self {
+        let full6 = FrontierAtlas::from_bytes(FRONTIER6_FULL_ATLAS, 6, 64, 343);
+        let final6 = FrontierAtlas::from_bytes(FRONTIER6_FINAL_ATLAS, 6, 44, 415);
+        let full7 = FrontierAtlas::from_bytes(FRONTIER7_FULL_ATLAS, 7, 128, 1_367);
+        let mut windows = Vec::with_capacity(FRONTIER19_WIDTHS.len());
+        let mut base = Jacobian::generator();
+        for (index, &width) in FRONTIER19_WIDTHS.iter().enumerate() {
+            let atlas = if index + 1 == FRONTIER19_WIDTHS.len() { &final6 }
+                        else if width == 6 { &full6 } else { &full7 };
+            let plain = build_u256_window(&atlas.seed_digits(), base);
+            windows.push(plain.iter().copied().map(U256OrbitXAffine::from_affine)
+                .collect::<Vec<_>>().into_boxed_slice());
+            for _ in 0..width { base = base.double(); }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        assert_eq!(entries, 21_949);
+        assert_eq!(size_of::<U256OrbitXAffine>(), 128);
+        let retained_bytes = entries * size_of::<U256OrbitXAffine>()
+            + FRONTIER6_FULL_ATLAS.len() + FRONTIER6_FINAL_ATLAS.len()
+            + FRONTIER7_FULL_ATLAS.len() + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[U256OrbitXAffine]>>();
+        assert!(retained_bytes < 4_553_140);
+        Self { full6, final6, full7, windows, retained_bytes }
+    }
+
+    fn atlas(&self, index: usize) -> &FrontierAtlas {
+        if index + 1 == FRONTIER19_WIDTHS.len() { &self.final6 }
+        else if FRONTIER19_WIDTHS[index] == 6 { &self.full6 }
+        else { &self.full7 }
+    }
+}
+
+static FRONTIER19_ORBIT_X_TABLES: LazyLock<Frontier19OrbitXTables> =
+    LazyLock::new(Frontier19OrbitXTables::new);
+
+struct Frontier19TauExpandedTables {
+    full6: FrontierAtlas,
+    final6: FrontierAtlas,
+    full7: FrontierAtlas,
+    windows: Vec<Box<[U256TauPair]>>,
+    retained_bytes: usize,
+}
+
+impl Frontier19TauExpandedTables {
+    fn new() -> Self {
+        let full6 = FrontierAtlas::from_bytes(FRONTIER6_FULL_ATLAS, 6, 64, 343);
+        let final6 = FrontierAtlas::from_bytes(FRONTIER6_FINAL_ATLAS, 6, 44, 415);
+        let full7 = FrontierAtlas::from_bytes(FRONTIER7_FULL_ATLAS, 7, 128, 1_367);
+        let mut windows = Vec::with_capacity(FRONTIER19_WIDTHS.len());
+        let mut base = Jacobian::generator();
+        for (index, &width) in FRONTIER19_WIDTHS.iter().enumerate() {
+            let atlas = if index + 1 == FRONTIER19_WIDTHS.len() { &final6 }
+                        else if width == 6 { &full6 } else { &full7 };
+            let seeds = atlas.seed_digits();
+            let plain = build_u256_window(&seeds, base);
+            let tau = build_u256_window(&seeds, base.tau());
+            assert_eq!(plain.len(), tau.len());
+            windows.push(plain.iter().copied().zip(tau.iter().copied())
+                .map(|(plain, tau)| U256TauPair { plain, tau })
+                .collect::<Vec<_>>().into_boxed_slice());
+            for _ in 0..width { base = base.double(); }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        assert_eq!(entries, 21_949);
+        assert_eq!(size_of::<U256TauPair>(), 128);
+        let retained_bytes = entries * size_of::<U256TauPair>()
+            + FRONTIER6_FULL_ATLAS.len() + FRONTIER6_FINAL_ATLAS.len()
+            + FRONTIER7_FULL_ATLAS.len() + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[U256TauPair]>>();
+        assert_eq!(retained_bytes, 2_916_756);
+        Self { full6, final6, full7, windows, retained_bytes }
+    }
+
+    fn atlas(&self, index: usize) -> &FrontierAtlas {
+        if index + 1 == FRONTIER19_WIDTHS.len() { &self.final6 }
+        else if FRONTIER19_WIDTHS[index] == 6 { &self.full6 }
+        else { &self.full7 }
+    }
+}
+
+static FRONTIER19_TAU_EXPANDED_TABLES: LazyLock<Frontier19TauExpandedTables> =
+    LazyLock::new(Frontier19TauExpandedTables::new);
+
+struct Frontier19OrbitTauTables {
+    full6: FrontierAtlas,
+    final6: FrontierAtlas,
+    full7: FrontierAtlas,
+    windows: Vec<Box<[U256OrbitTauPair]>>,
+    retained_bytes: usize,
+}
+
+impl Frontier19OrbitTauTables {
+    fn new() -> Self {
+        let full6 = FrontierAtlas::from_bytes(FRONTIER6_FULL_ATLAS, 6, 64, 343);
+        let final6 = FrontierAtlas::from_bytes(FRONTIER6_FINAL_ATLAS, 6, 44, 415);
+        let full7 = FrontierAtlas::from_bytes(FRONTIER7_FULL_ATLAS, 7, 128, 1_367);
+        let mut windows = Vec::with_capacity(FRONTIER19_WIDTHS.len());
+        let mut base = Jacobian::generator();
+        for (index, &width) in FRONTIER19_WIDTHS.iter().enumerate() {
+            let atlas = if index + 1 == FRONTIER19_WIDTHS.len() { &final6 }
+                        else if width == 6 { &full6 } else { &full7 };
+            let seeds = atlas.seed_digits();
+            let plain = build_u256_window(&seeds, base);
+            let tau = build_u256_window(&seeds, base.tau());
+            assert_eq!(plain.len(), tau.len());
+            windows.push(plain.iter().copied().zip(tau.iter().copied())
+                .map(|(plain, tau)| U256OrbitTauPair::from_pair(U256TauPair { plain, tau }))
+                .collect::<Vec<_>>().into_boxed_slice());
+            for _ in 0..width { base = base.double(); }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        assert_eq!(entries, 21_949);
+        assert_eq!(size_of::<U256OrbitTauPair>(), 256);
+        let retained_bytes = entries * size_of::<U256OrbitTauPair>()
+            + FRONTIER6_FULL_ATLAS.len() + FRONTIER6_FINAL_ATLAS.len()
+            + FRONTIER7_FULL_ATLAS.len() + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[U256OrbitTauPair]>>();
+        assert!(retained_bytes < 5_800_000);
+        Self { full6, final6, full7, windows, retained_bytes }
+    }
+
+    fn atlas(&self, index: usize) -> &FrontierAtlas {
+        if index + 1 == FRONTIER19_WIDTHS.len() { &self.final6 }
+        else if FRONTIER19_WIDTHS[index] == 6 { &self.full6 }
+        else { &self.full7 }
+    }
+}
+
+static FRONTIER19_ORBIT_TAU_TABLES: LazyLock<Frontier19OrbitTauTables> =
+    LazyLock::new(Frontier19OrbitTauTables::new);
+
+struct Frontier17OrbitTauTables {
+    full7: FrontierAtlas,
+    final7: FrontierAtlas,
+    full8: FrontierAtlas,
+    windows: Vec<Box<[U256OrbitTauPair]>>,
+    retained_bytes: usize,
+}
+
+impl Frontier17OrbitTauTables {
+    fn new() -> Self {
+        let full7 = FrontierAtlas::from_bytes(FRONTIER7_FULL_ATLAS, 7, 128, 1_367);
+        let final7 = FrontierAtlas::from_bytes(FRONTIER7_FINAL_ATLAS, 7, 90, 1_631);
+        let full8 = FrontierAtlas::from_bytes(FRONTIER8_FULL_ATLAS, 8, 256, 5_463);
+        let mut windows = Vec::with_capacity(FRONTIER17_WIDTHS.len());
+        let mut base = Jacobian::generator();
+        for (index, &width) in FRONTIER17_WIDTHS.iter().enumerate() {
+            let atlas = if index + 1 == FRONTIER17_WIDTHS.len() { &final7 }
+                        else if width == 7 { &full7 } else { &full8 };
+            let seeds = atlas.seed_digits();
+            let plain = build_u256_window(&seeds, base);
+            let tau = build_u256_window(&seeds, base.tau());
+            assert_eq!(plain.len(), tau.len());
+            windows.push(plain.iter().copied().zip(tau.iter().copied())
+                .map(|(plain, tau)| U256OrbitTauPair::from_pair(U256TauPair { plain, tau }))
+                .collect::<Vec<_>>().into_boxed_slice());
+            for _ in 0..width { base = base.double(); }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        assert_eq!(entries, 64_463);
+        assert_eq!(size_of::<U256OrbitTauPair>(), 256);
+        let retained_bytes = entries * size_of::<U256OrbitTauPair>()
+            + FRONTIER7_FULL_ATLAS.len() + FRONTIER7_FINAL_ATLAS.len()
+            + FRONTIER8_FULL_ATLAS.len() + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[U256OrbitTauPair]>>();
+        assert_eq!(retained_bytes, 16_930_036);
+        Self { full7, final7, full8, windows, retained_bytes }
+    }
+
+    fn atlas(&self, index: usize) -> &FrontierAtlas {
+        if index + 1 == FRONTIER17_WIDTHS.len() { &self.final7 }
+        else if FRONTIER17_WIDTHS[index] == 7 { &self.full7 }
+        else { &self.full8 }
+    }
+}
+
+static FRONTIER17_ORBIT_TAU_TABLES: LazyLock<Frontier17OrbitTauTables> =
+    LazyLock::new(Frontier17OrbitTauTables::new);
+
+struct Frontier17TwoXOrbitTauTables {
+    full7: FrontierAtlas,
+    final7: FrontierAtlas,
+    full8: FrontierAtlas,
+    windows: Vec<Box<[U256TwoXOrbitTauPair]>>,
+    retained_bytes: usize,
+}
+
+impl Frontier17TwoXOrbitTauTables {
+    fn new() -> Self {
+        let full7 = FrontierAtlas::from_bytes(FRONTIER7_FULL_ATLAS, 7, 128, 1_367);
+        let final7 = FrontierAtlas::from_bytes(FRONTIER7_FINAL_ATLAS, 7, 90, 1_631);
+        let full8 = FrontierAtlas::from_bytes(FRONTIER8_FULL_ATLAS, 8, 256, 5_463);
+        let mut windows = Vec::with_capacity(FRONTIER17_WIDTHS.len());
+        let mut base = Jacobian::generator();
+        for (index, &width) in FRONTIER17_WIDTHS.iter().enumerate() {
+            let atlas = if index + 1 == FRONTIER17_WIDTHS.len() { &final7 }
+                        else if width == 7 { &full7 } else { &full8 };
+            let seeds = atlas.seed_digits();
+            let plain = build_u256_window(&seeds, base);
+            let tau = build_u256_window(&seeds, base.tau());
+            assert_eq!(plain.len(), tau.len());
+            windows.push(plain.iter().copied().zip(tau.iter().copied())
+                .map(|(plain, tau)| U256TwoXOrbitTauPair::from_pair(U256TauPair { plain, tau }))
+                .collect::<Vec<_>>().into_boxed_slice());
+            for _ in 0..width { base = base.double(); }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        assert_eq!(entries, 64_463);
+        assert_eq!(size_of::<U256TwoXOrbitTauPair>(), 192);
+        let retained_bytes = entries * size_of::<U256TwoXOrbitTauPair>()
+            + FRONTIER7_FULL_ATLAS.len() + FRONTIER7_FINAL_ATLAS.len()
+            + FRONTIER8_FULL_ATLAS.len() + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[U256TwoXOrbitTauPair]>>();
+        assert_eq!(retained_bytes, 12_804_404);
+        Self { full7, final7, full8, windows, retained_bytes }
+    }
+
+    fn atlas(&self, index: usize) -> &FrontierAtlas {
+        if index + 1 == FRONTIER17_WIDTHS.len() { &self.final7 }
+        else if FRONTIER17_WIDTHS[index] == 7 { &self.full7 }
+        else { &self.full8 }
+    }
+}
+
+static FRONTIER17_TWO_X_ORBIT_TAU_TABLES: LazyLock<Frontier17TwoXOrbitTauTables> =
+    LazyLock::new(Frontier17TwoXOrbitTauTables::new);
+
+struct Frontier18OrbitTauTables {
+    full7: FrontierAtlas,
+    final7: FrontierAtlas,
+    full8: FrontierAtlas,
+    windows: Vec<Box<[U256OrbitTauPair]>>,
+    retained_bytes: usize,
+}
+
+impl Frontier18OrbitTauTables {
+    fn new() -> Self {
+        let full7 = FrontierAtlas::from_bytes(FRONTIER7_FULL_ATLAS, 7, 128, 1_367);
+        let final7 = FrontierAtlas::from_bytes(FRONTIER7_FINAL_ATLAS, 7, 90, 1_631);
+        let full8 = FrontierAtlas::from_bytes(FRONTIER8_FULL_ATLAS, 8, 256, 5_463);
+        let mut windows = Vec::with_capacity(FRONTIER18_WIDTHS.len());
+        let mut base = Jacobian::generator();
+        for (index, &width) in FRONTIER18_WIDTHS.iter().enumerate() {
+            let atlas = if index + 1 == FRONTIER18_WIDTHS.len() { &final7 }
+                        else if width == 7 { &full7 } else { &full8 };
+            let seeds = atlas.seed_digits();
+            let plain = build_u256_window(&seeds, base);
+            let tau = build_u256_window(&seeds, base.tau());
+            assert_eq!(plain.len(), tau.len());
+            windows.push(plain.iter().copied().zip(tau.iter().copied())
+                .map(|(plain, tau)| U256OrbitTauPair::from_pair(U256TauPair { plain, tau }))
+                .collect::<Vec<_>>().into_boxed_slice());
+            for _ in 0..width { base = base.double(); }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        assert_eq!(entries, 37_158);
+        assert_eq!(size_of::<U256OrbitTauPair>(), 256);
+        let retained_bytes = entries * size_of::<U256OrbitTauPair>()
+            + FRONTIER7_FULL_ATLAS.len() + FRONTIER7_FINAL_ATLAS.len()
+            + FRONTIER8_FULL_ATLAS.len() + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[U256OrbitTauPair]>>();
+        assert_eq!(retained_bytes, 9_939_972);
+        Self { full7, final7, full8, windows, retained_bytes }
+    }
+
+    fn atlas(&self, index: usize) -> &FrontierAtlas {
+        if index + 1 == FRONTIER18_WIDTHS.len() { &self.final7 }
+        else if FRONTIER18_WIDTHS[index] == 7 { &self.full7 }
+        else { &self.full8 }
+    }
+}
+
+static FRONTIER18_ORBIT_TAU_TABLES: LazyLock<Frontier18OrbitTauTables> =
+    LazyLock::new(Frontier18OrbitTauTables::new);
+
+struct Frontier18TwoXOrbitTauTables {
+    full7: FrontierAtlas,
+    final7: FrontierAtlas,
+    full8: FrontierAtlas,
+    windows: Vec<Box<[U256TwoXOrbitTauPair]>>,
+    retained_bytes: usize,
+}
+
+impl Frontier18TwoXOrbitTauTables {
+    fn new() -> Self {
+        let full7 = FrontierAtlas::from_bytes(FRONTIER7_FULL_ATLAS, 7, 128, 1_367);
+        let final7 = FrontierAtlas::from_bytes(FRONTIER7_FINAL_ATLAS, 7, 90, 1_631);
+        let full8 = FrontierAtlas::from_bytes(FRONTIER8_FULL_ATLAS, 8, 256, 5_463);
+        let mut windows = Vec::with_capacity(FRONTIER18_WIDTHS.len());
+        let mut base = Jacobian::generator();
+        for (index, &width) in FRONTIER18_WIDTHS.iter().enumerate() {
+            let atlas = if index + 1 == FRONTIER18_WIDTHS.len() { &final7 }
+                        else if width == 7 { &full7 } else { &full8 };
+            let seeds = atlas.seed_digits();
+            let plain = build_u256_window(&seeds, base);
+            let tau = build_u256_window(&seeds, base.tau());
+            assert_eq!(plain.len(), tau.len());
+            windows.push(plain.iter().copied().zip(tau.iter().copied())
+                .map(|(plain, tau)| U256TwoXOrbitTauPair::from_pair(U256TauPair { plain, tau }))
+                .collect::<Vec<_>>().into_boxed_slice());
+            for _ in 0..width { base = base.double(); }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        assert_eq!(entries, 37_158);
+        assert_eq!(size_of::<U256TwoXOrbitTauPair>(), 192);
+        let retained_bytes = entries * size_of::<U256TwoXOrbitTauPair>()
+            + FRONTIER7_FULL_ATLAS.len() + FRONTIER7_FINAL_ATLAS.len()
+            + FRONTIER8_FULL_ATLAS.len() + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[U256TwoXOrbitTauPair]>>();
+        assert_eq!(retained_bytes, 7_561_860);
+        Self { full7, final7, full8, windows, retained_bytes }
+    }
+
+    fn atlas(&self, index: usize) -> &FrontierAtlas {
+        if index + 1 == FRONTIER18_WIDTHS.len() { &self.final7 }
+        else if FRONTIER18_WIDTHS[index] == 7 { &self.full7 }
+        else { &self.full8 }
+    }
+}
+
+static FRONTIER18_TWO_X_ORBIT_TAU_TABLES: LazyLock<Frontier18TwoXOrbitTauTables> =
+    LazyLock::new(Frontier18TwoXOrbitTauTables::new);
+
+struct Frontier18BucketTwoXTables {
+    full7: FrontierAtlas,
+    final7: FrontierAtlas,
+    full8: FrontierAtlas,
+    windows: Vec<Box<[U256TwoXAffine]>>,
+    retained_bytes: usize,
+}
+
+impl Frontier18BucketTwoXTables {
+    fn new() -> Self {
+        let full7 = FrontierAtlas::from_bytes(FRONTIER7_FULL_ATLAS, 7, 128, 1_367);
+        let final7 = FrontierAtlas::from_bytes(FRONTIER7_FINAL_ATLAS, 7, 90, 1_631);
+        let full8 = FrontierAtlas::from_bytes(FRONTIER8_FULL_ATLAS, 8, 256, 5_463);
+        let mut windows = Vec::with_capacity(FRONTIER18_WIDTHS.len());
+        let mut base = Jacobian::generator();
+        for (index, &width) in FRONTIER18_WIDTHS.iter().enumerate() {
+            let atlas = if index + 1 == FRONTIER18_WIDTHS.len() { &final7 }
+                        else if width == 7 { &full7 } else { &full8 };
+            let seeds = atlas.seed_digits();
+            let plain = build_u256_window(&seeds, base);
+            windows.push(plain.iter().copied().map(U256TwoXAffine::from_affine)
+                .collect::<Vec<_>>().into_boxed_slice());
+            for _ in 0..width { base = base.double(); }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        assert_eq!(entries, 37_158);
+        assert_eq!(size_of::<U256TwoXAffine>(), 96);
+        let retained_bytes = entries * size_of::<U256TwoXAffine>()
+            + FRONTIER7_FULL_ATLAS.len() + FRONTIER7_FINAL_ATLAS.len()
+            + FRONTIER8_FULL_ATLAS.len() + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[U256TwoXAffine]>>();
+        assert_eq!(retained_bytes, 3_994_692);
+        Self { full7, final7, full8, windows, retained_bytes }
+    }
+
+    fn atlas(&self, index: usize) -> &FrontierAtlas {
+        if index + 1 == FRONTIER18_WIDTHS.len() { &self.final7 }
+        else if FRONTIER18_WIDTHS[index] == 7 { &self.full7 }
+        else { &self.full8 }
+    }
+}
+
+static FRONTIER18_BUCKET_TWO_X_TABLES: LazyLock<Frontier18BucketTwoXTables> =
+    LazyLock::new(Frontier18BucketTwoXTables::new);
+
+struct Frontier17BucketTwoXTables {
+    full7: FrontierAtlas,
+    final7: FrontierAtlas,
+    full8: FrontierAtlas,
+    windows: Vec<Box<[U256TwoXAffine]>>,
+    retained_bytes: usize,
+}
+
+impl Frontier17BucketTwoXTables {
+    fn new() -> Self {
+        let full7 = FrontierAtlas::from_bytes(FRONTIER7_FULL_ATLAS, 7, 128, 1_367);
+        let final7 = FrontierAtlas::from_bytes(FRONTIER7_FINAL_ATLAS, 7, 90, 1_631);
+        let full8 = FrontierAtlas::from_bytes(FRONTIER8_FULL_ATLAS, 8, 256, 5_463);
+        let mut windows = Vec::with_capacity(FRONTIER17_WIDTHS.len());
+        let mut base = Jacobian::generator();
+        for (index, &width) in FRONTIER17_WIDTHS.iter().enumerate() {
+            let atlas = if index + 1 == FRONTIER17_WIDTHS.len() { &final7 }
+                        else if width == 7 { &full7 } else { &full8 };
+            let seeds = atlas.seed_digits();
+            let plain = build_u256_window(&seeds, base);
+            windows.push(plain.iter().copied().map(U256TwoXAffine::from_affine)
+                .collect::<Vec<_>>().into_boxed_slice());
+            for _ in 0..width { base = base.double(); }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        assert_eq!(entries, 64_463);
+        assert_eq!(size_of::<U256TwoXAffine>(), 96);
+        let retained_bytes = entries * size_of::<U256TwoXAffine>()
+            + FRONTIER7_FULL_ATLAS.len() + FRONTIER7_FINAL_ATLAS.len()
+            + FRONTIER8_FULL_ATLAS.len() + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[U256TwoXAffine]>>();
+        assert_eq!(retained_bytes, 6_615_956);
+        Self { full7, final7, full8, windows, retained_bytes }
+    }
+
+    fn atlas(&self, index: usize) -> &FrontierAtlas {
+        if index + 1 == FRONTIER17_WIDTHS.len() { &self.final7 }
+        else if FRONTIER17_WIDTHS[index] == 7 { &self.full7 }
+        else { &self.full8 }
+    }
+}
+
+static FRONTIER17_BUCKET_TWO_X_TABLES: LazyLock<Frontier17BucketTwoXTables> =
+    LazyLock::new(Frontier17BucketTwoXTables::new);
+
+struct Frontier16BucketTwoXTables {
+    full8: FrontierAtlas,
+    final9: FrontierAtlas,
+    windows: Vec<Box<[U256TwoXAffine]>>,
+    retained_bytes: usize,
+}
+
+impl Frontier16BucketTwoXTables {
+    fn new() -> Self {
+        let full8 = FrontierAtlas::from_bytes(FRONTIER8_FULL_ATLAS, 8, 256, 5_463);
+        let final9 = FrontierAtlas::from_bytes(FRONTIER9_FINAL_ATLAS, 9, 363, 25_869);
+        let mut windows = Vec::with_capacity(FRONTIER16_WIDTHS.len());
+        let mut base = Jacobian::generator();
+        for (index, &width) in FRONTIER16_WIDTHS.iter().enumerate() {
+            let atlas = if index + 1 == FRONTIER16_WIDTHS.len() { &final9 } else { &full8 };
+            let seeds = atlas.seed_digits();
+            let plain = build_u256_window(&seeds, base);
+            windows.push(plain.iter().copied().map(U256TwoXAffine::from_affine)
+                .collect::<Vec<_>>().into_boxed_slice());
+            for _ in 0..width { base = base.double(); }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        assert_eq!(entries, 107_814);
+        assert_eq!(size_of::<U256TwoXAffine>(), 96);
+        let retained_bytes = entries * size_of::<U256TwoXAffine>()
+            + FRONTIER8_FULL_ATLAS.len() + FRONTIER9_FINAL_ATLAS.len()
+            + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[U256TwoXAffine]>>();
+        assert_eq!(retained_bytes, 11_786_576);
+        Self { full8, final9, windows, retained_bytes }
+    }
+
+    fn atlas(&self, index: usize) -> &FrontierAtlas {
+        if index + 1 == FRONTIER16_WIDTHS.len() { &self.final9 } else { &self.full8 }
+    }
+}
+
+static FRONTIER16_BUCKET_TWO_X_TABLES: LazyLock<Frontier16BucketTwoXTables> =
+    LazyLock::new(Frontier16BucketTwoXTables::new);
+
+struct Frontier16BucketAffineTables {
+    full8: FrontierAtlas,
+    final9: FrontierAtlas,
+    windows: Vec<Box<[U256Affine]>>,
+    retained_bytes: usize,
+}
+
+impl Frontier16BucketAffineTables {
+    fn new() -> Self {
+        let full8 = FrontierAtlas::from_bytes(FRONTIER8_FULL_ATLAS, 8, 256, 5_463);
+        let final9 = FrontierAtlas::from_bytes(FRONTIER9_FINAL_ATLAS, 9, 363, 25_869);
+        let mut windows = Vec::with_capacity(FRONTIER16_WIDTHS.len());
+        let mut base = Jacobian::generator();
+        for (index, &width) in FRONTIER16_WIDTHS.iter().enumerate() {
+            let atlas = if index + 1 == FRONTIER16_WIDTHS.len() { &final9 } else { &full8 };
+            windows.push(build_u256_window(&atlas.seed_digits(), base));
+            for _ in 0..width { base = base.double(); }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        assert_eq!(entries, 107_814);
+        assert_eq!(size_of::<U256Affine>(), 64);
+        let retained_bytes = entries * size_of::<U256Affine>()
+            + FRONTIER8_FULL_ATLAS.len() + FRONTIER9_FINAL_ATLAS.len()
+            + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[U256Affine]>>();
+        assert_eq!(retained_bytes, 8_336_528);
+        Self { full8, final9, windows, retained_bytes }
+    }
+
+    fn atlas(&self, index: usize) -> &FrontierAtlas {
+        if index + 1 == FRONTIER16_WIDTHS.len() { &self.final9 } else { &self.full8 }
+    }
+}
+
+static FRONTIER16_BUCKET_AFFINE_TABLES: LazyLock<Frontier16BucketAffineTables> =
+    LazyLock::new(Frontier16BucketAffineTables::new);
+
+struct Frontier15BudgetAffineTables {
+    full8: FrontierAtlas,
+    full9: FrontierAtlas,
+    final9: FrontierAtlas,
+    windows: Vec<Box<[U256Affine]>>,
+    retained_bytes: usize,
+}
+
+impl Frontier15BudgetAffineTables {
+    fn new() -> Self {
+        let full8 = FrontierAtlas::from_bytes(FRONTIER8_FULL_ATLAS, 8, 256, 5_463);
+        let full9 = FrontierAtlas::from_bytes(FRONTIER9_FULL_ATLAS, 9, 512, 21_847);
+        let final9 = FrontierAtlas::from_bytes(FRONTIER9_FINAL_ATLAS, 9, 363, 25_869);
+        let mut windows = Vec::with_capacity(FRONTIER15_BUDGET_WIDTHS.len());
+        let mut base = Jacobian::generator();
+        for (index, &width) in FRONTIER15_BUDGET_WIDTHS.iter().enumerate() {
+            let atlas = if index + 1 == FRONTIER15_BUDGET_WIDTHS.len() { &final9 }
+                        else if width == 8 { &full8 } else { &full9 };
+            windows.push(build_u256_window(&atlas.seed_digits(), base));
+            for _ in 0..width { base = base.double(); }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        assert_eq!(entries, 233_423);
+        assert_eq!(size_of::<U256Affine>(), 64);
+        let retained_bytes = entries * size_of::<U256Affine>()
+            + FRONTIER8_FULL_ATLAS.len() + FRONTIER9_FULL_ATLAS.len()
+            + FRONTIER9_FINAL_ATLAS.len() + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[U256Affine]>>();
+        assert_eq!(retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES, 17_511_596);
+        Self { full8, full9, final9, windows, retained_bytes }
+    }
+
+    fn atlas(&self, index: usize) -> &FrontierAtlas {
+        if index + 1 == FRONTIER15_BUDGET_WIDTHS.len() { &self.final9 }
+        else if FRONTIER15_BUDGET_WIDTHS[index] == 8 { &self.full8 }
+        else { &self.full9 }
+    }
+}
+
+static FRONTIER15_BUDGET_AFFINE_TABLES: LazyLock<Frontier15BudgetAffineTables> =
+    LazyLock::new(Frontier15BudgetAffineTables::new);
 
 struct TauBucketAtlas {
     codes: &'static [u8],
@@ -1089,6 +2331,122 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 57 {
+        return warm_format(56);
+    }
+    if format == 56 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_CANONICAL);
+        return FRONTIER15_BUDGET_AFFINE_TABLES.retained_bytes
+            + SOLINAS_UNIT_CONSTANT_BYTES;
+    }
+    if format == 55 {
+        std::sync::LazyLock::force(&U256_BETA_CANONICAL);
+        return warm_format(54) + SOLINAS_UNIT_CONSTANT_BYTES;
+    }
+    if format == 54 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return FRONTIER16_BUCKET_AFFINE_TABLES.retained_bytes;
+    }
+    if format == 53 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return FRONTIER16_BUCKET_TWO_X_TABLES.retained_bytes;
+    }
+    if format == 52 || format == 51 {
+        return warm_format(format - 4);
+    }
+    if format == 50 || format == 49 {
+        return warm_format(format - 2);
+    }
+    if format == 48 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return FRONTIER17_BUCKET_TWO_X_TABLES.retained_bytes;
+    }
+    if format == 47 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return FRONTIER18_BUCKET_TWO_X_TABLES.retained_bytes;
+    }
+    if format == 46 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return FRONTIER18_TWO_X_ORBIT_TAU_TABLES.retained_bytes;
+    }
+    if format == 45 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return FRONTIER17_TWO_X_ORBIT_TAU_TABLES.retained_bytes;
+    }
+    if format == 44 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return FRONTIER18_ORBIT_TAU_TABLES.retained_bytes;
+    }
+    if format == 43 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return FRONTIER17_ORBIT_TAU_TABLES.retained_bytes;
+    }
+    if format == 42 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return FRONTIER19_ORBIT_TAU_TABLES.retained_bytes;
+    }
+    if format == 41 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return FRONTIER19_ORBIT_TAU_TABLES.retained_bytes;
+    }
+    if format == 40 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return FRONTIER19_TAU_EXPANDED_TABLES.retained_bytes;
+    }
+    if format == 39 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return FRONTIER19_ORBIT_X_TABLES.retained_bytes;
+    }
+    if format == 38 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return FRONTIER19_TABLES.retained_bytes;
+    }
+    if format == 37 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return FRONTIER17_TABLES.retained_bytes;
+    }
+    if format == 35 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return TAU384_MATCHING_TABLES.retained_bytes;
+    }
+    if format == 33 || format == 34 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return RADIX384_TABLES.retained_bytes;
+    }
     if format == 31 || format == 32 {
         std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
         std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
@@ -1441,6 +2799,812 @@ pub(super) fn multiply_u256_sector16(
     scalar_words: [u64; 4],
 ) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
     multiply_u256_sector_with(scalar_words, &WIDTHS16, &SECTOR16_U256_TABLES)
+}
+
+pub(super) fn multiply_u256_radix384(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*RADIX384_TABLES;
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize); RADIX384_WINDOWS];
+    let mut nonidentity = 0usize;
+    for choice in &mut choices {
+        let (quotient_a, rem_a, residue_a) = a.div_rem_small_radix(RADIX384 as u64);
+        let (quotient_b, rem_b, residue_b) = b.div_rem_small_radix(RADIX384 as u64);
+        let (digit, orbit_id, unit_code) =
+            tables.atlas.digit_word_small_radix(residue_a, residue_b);
+        a = quotient_a.adjust_small_radix_quotient(rem_a, digit.0, RADIX384 as i32);
+        b = quotient_b.adjust_small_radix_quotient(rem_b, digit.1, RADIX384 as i32);
+        *choice = (orbit_id, unit_code);
+        nonidentity += usize::from(orbit_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "radix-384 recoding did not terminate");
+    let (point, gauge_products) = evaluate_u256_gauge(&choices, &tables.windows);
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes, fallback, corner, gauge_products)
+}
+
+pub(super) fn multiply_u256_radix384_fast(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*RADIX384_TABLES;
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize); RADIX384_WINDOWS];
+    let mut nonidentity = 0usize;
+    for choice in &mut choices {
+        let (quotient_a, rem_a, residue_a) = a.div_rem_radix384_fast();
+        let (quotient_b, rem_b, residue_b) = b.div_rem_radix384_fast();
+        let (digit, orbit_id, unit_code) =
+            tables.atlas.digit_word_small_radix(residue_a, residue_b);
+        a = quotient_a.adjust_small_radix_quotient(rem_a, digit.0, RADIX384 as i32);
+        b = quotient_b.adjust_small_radix_quotient(rem_b, digit.1, RADIX384 as i32);
+        *choice = (orbit_id, unit_code);
+        nonidentity += usize::from(orbit_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "fast radix-384 recoding did not terminate");
+    let (point, gauge_products) = evaluate_u256_gauge(&choices, &tables.windows);
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes, fallback, corner, gauge_products)
+}
+
+pub(super) fn multiply_u256_tau384_matching(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*TAU384_MATCHING_TABLES;
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize, 0usize); RADIX384_WINDOWS];
+    let mut nonidentity = 0usize;
+    for choice in &mut choices {
+        let (quotient_a, rem_a, residue_a) = a.div_rem_radix384_fast();
+        let (quotient_b, rem_b, residue_b) = b.div_rem_radix384_fast();
+        let (digit, seed_id, exponent, unit_code) =
+            tables.atlas.digit_residue(residue_a, residue_b);
+        a = quotient_a.adjust_small_radix_quotient(rem_a, digit.0, RADIX384 as i32);
+        b = quotient_b.adjust_small_radix_quotient(rem_b, digit.1, RADIX384 as i32);
+        *choice = (seed_id, exponent, unit_code);
+        nonidentity += usize::from(seed_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "tau384 matching recoding did not terminate");
+
+    let mut buckets = [U256Jacobian::identity(); 2];
+    let mut gauge = None;
+    let mut gauge_products = 0usize;
+    for power in [1usize, 2, 0] {
+        if !choices.iter().any(|&(seed, _, code)| seed != 0 && code / 2 == power) {
+            continue;
+        }
+        if let Some(previous) = gauge {
+            let delta = (previous + 3 - power) % 3;
+            if delta != 0 {
+                for bucket in &mut buckets {
+                    if !bucket.is_identity() {
+                        *bucket = bucket.rotate_power(delta);
+                        gauge_products += 1;
+                    }
+                }
+            }
+        }
+        gauge = Some(power);
+        for (index, &(seed_id, exponent, unit_code)) in choices.iter().enumerate() {
+            if seed_id == 0 || unit_code / 2 != power { continue; }
+            buckets[exponent] = buckets[exponent]
+                .add_mixed(tables.windows[index][seed_id].unit(unit_code & 1));
+        }
+    }
+    if let Some(power) = gauge {
+        if power != 0 {
+            for bucket in &mut buckets {
+                if !bucket.is_identity() {
+                    *bucket = bucket.rotate_power(power);
+                    gauge_products += 1;
+                }
+            }
+        }
+    }
+    assert!(gauge_products <= 4);
+    let point = buckets[0].add_projective(buckets[1].tau())
+        .affine_hex_binary_inverse();
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes, fallback, corner, gauge_products)
+}
+
+pub(super) fn multiply_u256_tau_frontier17(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*FRONTIER17_TABLES;
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize, 0usize); FRONTIER17_WIDTHS.len()];
+    let mut nonidentity = 0usize;
+    for (index, choice) in choices.iter_mut().enumerate() {
+        let width = FRONTIER17_WIDTHS[index];
+        let residue_a = a.rem_euclid_power_of_two(width);
+        let residue_b = b.rem_euclid_power_of_two(width);
+        let (digit, seed_id, exponent, unit_code) =
+            tables.atlas(index).digit_residue(residue_a, residue_b);
+        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+        *choice = (seed_id, exponent, unit_code);
+        nonidentity += usize::from(seed_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "frontier17 recoding did not terminate");
+
+    let mut buckets = [U256Jacobian::identity(); 2];
+    let mut gauge = None;
+    let mut gauge_products = 0usize;
+    for power in [1usize, 2, 0] {
+        if !choices.iter().any(|&(seed, _, code)| seed != 0 && code / 2 == power) {
+            continue;
+        }
+        if let Some(previous) = gauge {
+            let delta = (previous + 3 - power) % 3;
+            if delta != 0 {
+                for bucket in &mut buckets {
+                    if !bucket.is_identity() {
+                        *bucket = bucket.rotate_power(delta);
+                        gauge_products += 1;
+                    }
+                }
+            }
+        }
+        gauge = Some(power);
+        for (index, &(seed_id, exponent, unit_code)) in choices.iter().enumerate() {
+            if seed_id == 0 || unit_code / 2 != power { continue; }
+            buckets[exponent] = buckets[exponent]
+                .add_mixed(tables.windows[index][seed_id].unit(unit_code & 1));
+        }
+    }
+    if let Some(power) = gauge {
+        if power != 0 {
+            for bucket in &mut buckets {
+                if !bucket.is_identity() {
+                    *bucket = bucket.rotate_power(power);
+                    gauge_products += 1;
+                }
+            }
+        }
+    }
+    assert!(gauge_products <= 4);
+    let point = buckets[0].add_projective(buckets[1].tau())
+        .affine_hex_binary_inverse();
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes, fallback, corner, gauge_products)
+}
+
+pub(super) fn multiply_u256_tau_frontier19(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*FRONTIER19_TABLES;
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize, 0usize); FRONTIER19_WIDTHS.len()];
+    let mut nonidentity = 0usize;
+    for (index, choice) in choices.iter_mut().enumerate() {
+        let width = FRONTIER19_WIDTHS[index];
+        let residue_a = a.rem_euclid_power_of_two(width);
+        let residue_b = b.rem_euclid_power_of_two(width);
+        let (digit, seed_id, exponent, unit_code) =
+            tables.atlas(index).digit_residue(residue_a, residue_b);
+        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+        *choice = (seed_id, exponent, unit_code);
+        nonidentity += usize::from(seed_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "frontier19 recoding did not terminate");
+
+    let mut buckets = [U256Jacobian::identity(); 2];
+    let mut gauge = None;
+    let mut gauge_products = 0usize;
+    for power in [1usize, 2, 0] {
+        if !choices.iter().any(|&(seed, _, code)| seed != 0 && code / 2 == power) {
+            continue;
+        }
+        if let Some(previous) = gauge {
+            let delta = (previous + 3 - power) % 3;
+            if delta != 0 {
+                for bucket in &mut buckets {
+                    if !bucket.is_identity() {
+                        *bucket = bucket.rotate_power(delta);
+                        gauge_products += 1;
+                    }
+                }
+            }
+        }
+        gauge = Some(power);
+        for (index, &(seed_id, exponent, unit_code)) in choices.iter().enumerate() {
+            if seed_id == 0 || unit_code / 2 != power { continue; }
+            buckets[exponent] = buckets[exponent]
+                .add_mixed(tables.windows[index][seed_id].unit(unit_code & 1));
+        }
+    }
+    if let Some(power) = gauge {
+        if power != 0 {
+            for bucket in &mut buckets {
+                if !bucket.is_identity() {
+                    *bucket = bucket.rotate_power(power);
+                    gauge_products += 1;
+                }
+            }
+        }
+    }
+    assert!(gauge_products <= 4);
+    let point = buckets[0].add_projective(buckets[1].tau())
+        .affine_hex_binary_inverse();
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes, fallback, corner, gauge_products)
+}
+
+pub(super) fn multiply_u256_tau_frontier19_orbit_x(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*FRONTIER19_ORBIT_X_TABLES;
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize, 0usize); FRONTIER19_WIDTHS.len()];
+    let mut nonidentity = 0usize;
+    for (index, choice) in choices.iter_mut().enumerate() {
+        let width = FRONTIER19_WIDTHS[index];
+        let residue_a = a.rem_euclid_power_of_two(width);
+        let residue_b = b.rem_euclid_power_of_two(width);
+        let (digit, seed_id, exponent, unit_code) =
+            tables.atlas(index).digit_residue(residue_a, residue_b);
+        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+        *choice = (seed_id, exponent, unit_code);
+        nonidentity += usize::from(seed_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "frontier19 orbit-X recoding did not terminate");
+
+    let mut buckets = [U256Jacobian::identity(); 2];
+    for (index, &(seed_id, exponent, unit_code)) in choices.iter().enumerate() {
+        if seed_id == 0 { continue; }
+        buckets[exponent] = buckets[exponent]
+            .add_mixed(tables.windows[index][seed_id].unit(unit_code));
+    }
+    let point = buckets[0].add_projective(buckets[1].tau())
+        .affine_hex_binary_inverse();
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes, fallback, corner, 0)
+}
+
+pub(super) fn multiply_u256_tau_frontier19_expanded(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*FRONTIER19_TAU_EXPANDED_TABLES;
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize, 0usize); FRONTIER19_WIDTHS.len()];
+    let mut nonidentity = 0usize;
+    for (index, choice) in choices.iter_mut().enumerate() {
+        let width = FRONTIER19_WIDTHS[index];
+        let residue_a = a.rem_euclid_power_of_two(width);
+        let residue_b = b.rem_euclid_power_of_two(width);
+        let (digit, seed_id, exponent, unit_code) =
+            tables.atlas(index).digit_residue(residue_a, residue_b);
+        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+        *choice = (seed_id, exponent, unit_code);
+        nonidentity += usize::from(seed_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "frontier19 expanded recoding did not terminate");
+
+    let mut bucket = U256Jacobian::identity();
+    let mut gauge = None;
+    let mut gauge_products = 0usize;
+    for power in [1usize, 2, 0] {
+        if !choices.iter().any(|&(seed, _, code)| seed != 0 && code / 2 == power) {
+            continue;
+        }
+        if let Some(previous) = gauge {
+            let delta = (previous + 3 - power) % 3;
+            if delta != 0 && !bucket.is_identity() {
+                bucket = bucket.rotate_power(delta);
+                gauge_products += 1;
+            }
+        }
+        gauge = Some(power);
+        for (index, &(seed_id, exponent, unit_code)) in choices.iter().enumerate() {
+            if seed_id == 0 || unit_code / 2 != power { continue; }
+            let pair = tables.windows[index][seed_id];
+            let selected = if exponent == 0 { pair.plain } else { pair.tau };
+            bucket = bucket.add_mixed(selected.unit(unit_code & 1));
+        }
+    }
+    if let Some(power) = gauge {
+        if power != 0 && !bucket.is_identity() {
+            bucket = bucket.rotate_power(power);
+            gauge_products += 1;
+        }
+    }
+    assert!(gauge_products <= 2);
+    let point = bucket.affine_hex_binary_inverse();
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes, fallback, corner, gauge_products)
+}
+
+pub(super) fn multiply_u256_tau_frontier19_orbit_tau(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*FRONTIER19_ORBIT_TAU_TABLES;
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize, 0usize); FRONTIER19_WIDTHS.len()];
+    let mut nonidentity = 0usize;
+    for (index, choice) in choices.iter_mut().enumerate() {
+        let width = FRONTIER19_WIDTHS[index];
+        let residue_a = a.rem_euclid_power_of_two(width);
+        let residue_b = b.rem_euclid_power_of_two(width);
+        let (digit, seed_id, exponent, unit_code) =
+            tables.atlas(index).digit_residue(residue_a, residue_b);
+        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+        *choice = (seed_id, exponent, unit_code);
+        nonidentity += usize::from(seed_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "frontier19 orbit-tau recoding did not terminate");
+
+    let mut bucket = U256Jacobian::identity();
+    for (index, &(seed_id, exponent, unit_code)) in choices.iter().enumerate() {
+        if seed_id == 0 { continue; }
+        bucket = bucket.add_mixed(tables.windows[index][seed_id].select(exponent, unit_code));
+    }
+    let point = bucket.affine_hex_binary_inverse();
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes, fallback, corner, 0)
+}
+
+pub(super) fn multiply_u256_tau_frontier19_xyzz(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*FRONTIER19_ORBIT_TAU_TABLES;
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize, 0usize); FRONTIER19_WIDTHS.len()];
+    let mut nonidentity = 0usize;
+    for (index, choice) in choices.iter_mut().enumerate() {
+        let width = FRONTIER19_WIDTHS[index];
+        let residue_a = a.rem_euclid_power_of_two(width);
+        let residue_b = b.rem_euclid_power_of_two(width);
+        let (digit, seed_id, exponent, unit_code) =
+            tables.atlas(index).digit_residue(residue_a, residue_b);
+        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+        *choice = (seed_id, exponent, unit_code);
+        nonidentity += usize::from(seed_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "frontier19 XYZZ recoding did not terminate");
+
+    let mut bucket = U256XYZZ::identity();
+    for (index, &(seed_id, exponent, unit_code)) in choices.iter().enumerate() {
+        if seed_id == 0 { continue; }
+        bucket = bucket.add_mixed(tables.windows[index][seed_id].select(exponent, unit_code));
+    }
+    let point = bucket.affine_hex_binary_inverse();
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes, fallback, corner, 0)
+}
+
+pub(super) fn multiply_u256_tau_frontier17_orbit_xyzz(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*FRONTIER17_ORBIT_TAU_TABLES;
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize, 0usize); FRONTIER17_WIDTHS.len()];
+    let mut nonidentity = 0usize;
+    for (index, choice) in choices.iter_mut().enumerate() {
+        let width = FRONTIER17_WIDTHS[index];
+        let residue_a = a.rem_euclid_power_of_two(width);
+        let residue_b = b.rem_euclid_power_of_two(width);
+        let (digit, seed_id, exponent, unit_code) =
+            tables.atlas(index).digit_residue(residue_a, residue_b);
+        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+        *choice = (seed_id, exponent, unit_code);
+        nonidentity += usize::from(seed_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "frontier17 orbit XYZZ recoding did not terminate");
+
+    let mut bucket = U256XYZZ::identity();
+    for (index, &(seed_id, exponent, unit_code)) in choices.iter().enumerate() {
+        if seed_id == 0 { continue; }
+        bucket = bucket.add_mixed(tables.windows[index][seed_id].select(exponent, unit_code));
+    }
+    let point = bucket.affine_hex_binary_inverse();
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes, fallback, corner, 0)
+}
+
+pub(super) fn multiply_u256_tau_frontier18_orbit_xyzz(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*FRONTIER18_ORBIT_TAU_TABLES;
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize, 0usize); FRONTIER18_WIDTHS.len()];
+    let mut nonidentity = 0usize;
+    for (index, choice) in choices.iter_mut().enumerate() {
+        let width = FRONTIER18_WIDTHS[index];
+        let residue_a = a.rem_euclid_power_of_two(width);
+        let residue_b = b.rem_euclid_power_of_two(width);
+        let (digit, seed_id, exponent, unit_code) =
+            tables.atlas(index).digit_residue(residue_a, residue_b);
+        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+        *choice = (seed_id, exponent, unit_code);
+        nonidentity += usize::from(seed_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "frontier18 orbit XYZZ recoding did not terminate");
+
+    let mut bucket = U256XYZZ::identity();
+    for (index, &(seed_id, exponent, unit_code)) in choices.iter().enumerate() {
+        if seed_id == 0 { continue; }
+        bucket = bucket.add_mixed(tables.windows[index][seed_id].select(exponent, unit_code));
+    }
+    let point = bucket.affine_hex_binary_inverse();
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes, fallback, corner, 0)
+}
+
+pub(super) fn multiply_u256_tau_frontier17_two_x_xyzz(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*FRONTIER17_TWO_X_ORBIT_TAU_TABLES;
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize, 0usize); FRONTIER17_WIDTHS.len()];
+    let mut nonidentity = 0usize;
+    for (index, choice) in choices.iter_mut().enumerate() {
+        let width = FRONTIER17_WIDTHS[index];
+        let residue_a = a.rem_euclid_power_of_two(width);
+        let residue_b = b.rem_euclid_power_of_two(width);
+        let (digit, seed_id, exponent, unit_code) =
+            tables.atlas(index).digit_residue(residue_a, residue_b);
+        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+        *choice = (seed_id, exponent, unit_code);
+        nonidentity += usize::from(seed_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "frontier17 two-X recoding did not terminate");
+
+    let mut bucket = U256XYZZ::identity();
+    for (index, &(seed_id, exponent, unit_code)) in choices.iter().enumerate() {
+        if seed_id == 0 { continue; }
+        bucket = bucket.add_mixed(tables.windows[index][seed_id].select(exponent, unit_code));
+    }
+    let point = bucket.affine_hex_binary_inverse();
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes, fallback, corner, 0)
+}
+
+pub(super) fn multiply_u256_tau_frontier18_two_x_xyzz(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*FRONTIER18_TWO_X_ORBIT_TAU_TABLES;
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize, 0usize); FRONTIER18_WIDTHS.len()];
+    let mut nonidentity = 0usize;
+    for (index, choice) in choices.iter_mut().enumerate() {
+        let width = FRONTIER18_WIDTHS[index];
+        let residue_a = a.rem_euclid_power_of_two(width);
+        let residue_b = b.rem_euclid_power_of_two(width);
+        let (digit, seed_id, exponent, unit_code) =
+            tables.atlas(index).digit_residue(residue_a, residue_b);
+        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+        *choice = (seed_id, exponent, unit_code);
+        nonidentity += usize::from(seed_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "frontier18 two-X recoding did not terminate");
+
+    let mut bucket = U256XYZZ::identity();
+    for (index, &(seed_id, exponent, unit_code)) in choices.iter().enumerate() {
+        if seed_id == 0 { continue; }
+        bucket = bucket.add_mixed(tables.windows[index][seed_id].select(exponent, unit_code));
+    }
+    let point = bucket.affine_hex_binary_inverse();
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes, fallback, corner, 0)
+}
+
+fn multiply_u256_tau_bucket_two_x_with<const N: usize, const SOLINAS: bool,
+                                      T: U256UnitWindowPoint>(
+    scalar_words: [u64; 4],
+    widths: &[u8; N],
+    atlas: impl Fn(usize) -> &'static FrontierAtlas,
+    windows: &[Box<[T]>],
+    retained_bytes: usize,
+    direct_merge: bool,
+    xyzz_tau: bool,
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize, 0usize); N];
+    let mut nonidentity = 0usize;
+    for (index, choice) in choices.iter_mut().enumerate() {
+        let width = widths[index];
+        let residue_a = a.rem_euclid_power_of_two(width);
+        let residue_b = b.rem_euclid_power_of_two(width);
+        let (digit, seed_id, exponent, unit_code) =
+            atlas(index).digit_residue(residue_a, residue_b);
+        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+        *choice = (seed_id, exponent, unit_code);
+        nonidentity += usize::from(seed_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "two-bucket recoding did not terminate");
+
+    let mut buckets = [U256XYZZ::identity(); 2];
+    for (index, &(seed_id, exponent, unit_code)) in choices.iter().enumerate() {
+        if seed_id == 0 { continue; }
+        buckets[exponent] = buckets[exponent].add_mixed(
+            windows[index][seed_id].selected_unit::<SOLINAS>(unit_code));
+    }
+    let point = if xyzz_tau {
+        buckets[0].add_xyzz(buckets[1].tau()).affine_hex_binary_inverse()
+    } else {
+        let transformed = buckets[1].into_jacobian().tau();
+        if direct_merge {
+            buckets[0].add_jacobian(transformed).affine_hex_binary_inverse()
+        } else {
+            buckets[0].into_jacobian().add_projective(transformed).affine_hex_binary_inverse()
+        }
+    };
+    (point, representative, nonidentity.saturating_sub(1),
+     retained_bytes, fallback, corner, 0)
+}
+
+pub(super) fn multiply_u256_tau_frontier18_bucket_two_x(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let tables: &'static Frontier18BucketTwoXTables = &*FRONTIER18_BUCKET_TWO_X_TABLES;
+    multiply_u256_tau_bucket_two_x_with::<18, false, _>(scalar_words, &FRONTIER18_WIDTHS,
+        |index| tables.atlas(index), &tables.windows, tables.retained_bytes, false, false)
+}
+
+pub(super) fn multiply_u256_tau_frontier17_bucket_two_x(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let tables: &'static Frontier17BucketTwoXTables = &*FRONTIER17_BUCKET_TWO_X_TABLES;
+    multiply_u256_tau_bucket_two_x_with::<17, false, _>(scalar_words, &FRONTIER17_WIDTHS,
+        |index| tables.atlas(index), &tables.windows, tables.retained_bytes, false, false)
+}
+
+pub(super) fn multiply_u256_tau_frontier18_bucket_two_x_direct(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let tables: &'static Frontier18BucketTwoXTables = &*FRONTIER18_BUCKET_TWO_X_TABLES;
+    multiply_u256_tau_bucket_two_x_with::<18, false, _>(scalar_words, &FRONTIER18_WIDTHS,
+        |index| tables.atlas(index), &tables.windows, tables.retained_bytes, true, false)
+}
+
+pub(super) fn multiply_u256_tau_frontier17_bucket_two_x_direct(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let tables: &'static Frontier17BucketTwoXTables = &*FRONTIER17_BUCKET_TWO_X_TABLES;
+    multiply_u256_tau_bucket_two_x_with::<17, false, _>(scalar_words, &FRONTIER17_WIDTHS,
+        |index| tables.atlas(index), &tables.windows, tables.retained_bytes, true, false)
+}
+
+pub(super) fn multiply_u256_tau_frontier18_bucket_two_x_xyzz_tau(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let tables: &'static Frontier18BucketTwoXTables = &*FRONTIER18_BUCKET_TWO_X_TABLES;
+    multiply_u256_tau_bucket_two_x_with::<18, false, _>(scalar_words, &FRONTIER18_WIDTHS,
+        |index| tables.atlas(index), &tables.windows, tables.retained_bytes, true, true)
+}
+
+pub(super) fn multiply_u256_tau_frontier17_bucket_two_x_xyzz_tau(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let tables: &'static Frontier17BucketTwoXTables = &*FRONTIER17_BUCKET_TWO_X_TABLES;
+    multiply_u256_tau_bucket_two_x_with::<17, false, _>(scalar_words, &FRONTIER17_WIDTHS,
+        |index| tables.atlas(index), &tables.windows, tables.retained_bytes, true, true)
+}
+
+pub(super) fn multiply_u256_tau_frontier16_bucket_two_x_xyzz_tau(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let tables: &'static Frontier16BucketTwoXTables = &*FRONTIER16_BUCKET_TWO_X_TABLES;
+    multiply_u256_tau_bucket_two_x_with::<16, false, _>(scalar_words, &FRONTIER16_WIDTHS,
+        |index| tables.atlas(index), &tables.windows, tables.retained_bytes, true, true)
+}
+
+pub(super) fn multiply_u256_tau_frontier16_bucket_affine_xyzz_tau(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let tables: &'static Frontier16BucketAffineTables = &*FRONTIER16_BUCKET_AFFINE_TABLES;
+    multiply_u256_tau_bucket_two_x_with::<16, false, _>(scalar_words, &FRONTIER16_WIDTHS,
+        |index| tables.atlas(index), &tables.windows, tables.retained_bytes, true, true)
+}
+
+pub(super) fn multiply_u256_tau_frontier16_bucket_affine_solinas_xyzz_tau(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let tables: &'static Frontier16BucketAffineTables = &*FRONTIER16_BUCKET_AFFINE_TABLES;
+    let mut result = multiply_u256_tau_bucket_two_x_with::<16, true, _>(
+        scalar_words, &FRONTIER16_WIDTHS, |index| tables.atlas(index),
+        &tables.windows, tables.retained_bytes, true, true);
+    result.3 += SOLINAS_UNIT_CONSTANT_BYTES;
+    result
+}
+
+pub(super) fn multiply_u256_tau_frontier15_budget_affine_solinas_xyzz_tau(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let tables: &'static Frontier15BudgetAffineTables = &*FRONTIER15_BUDGET_AFFINE_TABLES;
+    let mut result = multiply_u256_tau_bucket_two_x_with::<15, true, _>(
+        scalar_words, &FRONTIER15_BUDGET_WIDTHS, |index| tables.atlas(index),
+        &tables.windows, tables.retained_bytes, true, true);
+    result.3 += SOLINAS_UNIT_CONSTANT_BYTES;
+    result
+}
+
+pub(super) fn multiply_u256_tau_frontier15_budget_affine_solinas_gauge_xyzz_tau(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables: &'static Frontier15BudgetAffineTables = &*FRONTIER15_BUDGET_AFFINE_TABLES;
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize, 0usize); 15];
+    let mut nonidentity = 0usize;
+    for (index, choice) in choices.iter_mut().enumerate() {
+        let width = FRONTIER15_BUDGET_WIDTHS[index];
+        let residue_a = a.rem_euclid_power_of_two(width);
+        let residue_b = b.rem_euclid_power_of_two(width);
+        let (digit, seed_id, exponent, unit_code) =
+            tables.atlas(index).digit_residue(residue_a, residue_b);
+        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+        *choice = (seed_id, exponent, unit_code);
+        nonidentity += usize::from(seed_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "fifteen-window gauge recoding did not terminate");
+
+    let mut buckets = [U256XYZZ::identity(); 2];
+    let mut gauge_products = 0usize;
+    for exponent in 0..2 {
+        let mut gauge = None;
+        for power in [1usize, 2, 0] {
+            if !choices.iter().any(|&(seed, bucket, unit)|
+                                   seed != 0 && bucket == exponent && unit / 2 == power) {
+                continue;
+            }
+            if let Some(previous) = gauge {
+                let delta = (previous + 3 - power) % 3;
+                if delta != 0 && !buckets[exponent].is_identity() {
+                    buckets[exponent] = buckets[exponent].rotate_power_solinas(delta);
+                    gauge_products += 1;
+                }
+            }
+            gauge = Some(power);
+            for (index, &(seed_id, bucket, unit_code)) in choices.iter().enumerate() {
+                if seed_id == 0 || bucket != exponent || unit_code / 2 != power { continue; }
+                buckets[exponent] = buckets[exponent].add_mixed(
+                    tables.windows[index][seed_id].unit_solinas(unit_code & 1));
+            }
+        }
+        if let Some(power) = gauge {
+            if power != 0 && !buckets[exponent].is_identity() {
+                buckets[exponent] = buckets[exponent].rotate_power_solinas(power);
+                gauge_products += 1;
+            }
+        }
+    }
+    assert!(gauge_products <= 4);
+    let point = buckets[0].add_xyzz(buckets[1].tau()).affine_hex_binary_inverse();
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES,
+     fallback, corner, gauge_products)
 }
 
 fn multiply_u256_sector_with<const N: usize>(
@@ -2684,6 +4848,1461 @@ mod tests {
                  scalars.len(), SECTOR_U256_TABLES.retained_bytes,
                  SECTOR15_U256_TABLES.retained_bytes,
                  SECTOR16_U256_TABLES.retained_bytes, hex::encode(counts));
+    }
+
+    #[test]
+    fn radix384_atlas_and_all_table_points_match_independent_group_sums() {
+        fn multiply_small(base: Jacobian, multiplier: i32) -> Jacobian {
+            let mut result = Jacobian::identity();
+            let addend = base.into_affine();
+            let magnitude = multiplier.unsigned_abs();
+            for bit in (0..(32 - magnitude.leading_zeros())).rev() {
+                result = result.double();
+                if (magnitude >> bit) & 1 != 0 {
+                    result = result.add_mixed(addend);
+                }
+            }
+            if multiplier < 0 { result.neg() } else { result }
+        }
+
+        let tables = &*RADIX384_TABLES;
+        assert_eq!(tables.atlas.digits.len(), 24_578);
+        assert_eq!(tables.windows.len(), 15);
+        for ra in 0..RADIX384 {
+            for rb in 0..RADIX384 {
+                let (digit, orbit, code) = tables.atlas.digit_residue(ra, rb);
+                let canonical = tables.atlas.digits[orbit];
+                assert_eq!(tables.atlas.digits[orbit],
+                           nearest_digit(unit_images((ra as i32, rb as i32))
+                               .map(|(a, b)| (a.rem_euclid(RADIX384 as i32),
+                                             b.rem_euclid(RADIX384 as i32)))
+                               .into_iter().min().unwrap(), RADIX384 as i32));
+                assert_eq!(digit, unit_images((canonical.0.into(), canonical.1.into()))[code]);
+                assert_eq!((digit.0.rem_euclid(RADIX384 as i32),
+                            digit.1.rem_euclid(RADIX384 as i32)),
+                           (ra as i32, rb as i32));
+                assert!(3 * norm(digit) <= (RADIX384 * RADIX384) as i64);
+            }
+        }
+
+        let mut base = Jacobian::generator();
+        for (window, row) in tables.windows.iter().enumerate() {
+            assert_eq!(row.len(), 24_578);
+            let tau_base = base.tau();
+            let max_a = tables.atlas.digits.iter().map(|d| d.0.unsigned_abs())
+                .max().unwrap() as usize;
+            let max_b = tables.atlas.digits.iter().map(|d| d.1.unsigned_abs())
+                .max().unwrap() as usize;
+            // Each coordinate multiple is obtained by binary multiplication,
+            // separately from build_window's repeated-addition tables.
+            let a_multiples: Vec<_> = (0..=max_a)
+                .map(|k| multiply_small(base, k as i32).into_affine()).collect();
+            let b_multiples: Vec<_> = (0..=max_b)
+                .map(|k| multiply_small(tau_base, k as i32).into_affine()).collect();
+            assert_eq!(tables.atlas.digits[0], (0, 0));
+            assert_eq!(row[0].x.0, super::super::U256::ZERO.0);
+            assert_eq!(row[0].y.0, super::super::U256::ZERO.0);
+            let mut expected_points = Vec::with_capacity(row.len() - 1);
+            for &(a, b) in tables.atlas.digits.iter().skip(1) {
+                let left = if a < 0 { a_multiples[a.unsigned_abs() as usize].neg() }
+                           else { a_multiples[a as usize] };
+                let right = if b < 0 { b_multiples[b.unsigned_abs() as usize].neg() }
+                            else { b_multiples[b as usize] };
+                let expected = if left.is_identity() { right }
+                    else if right.is_identity() { left }
+                    else { left.add_mixed(right) };
+                assert!(!expected.is_identity());
+                expected_points.push(expected);
+            }
+            let affine = batch_to_affine(&expected_points);
+            for (index, point) in affine.iter().enumerate() {
+                assert_eq!(row[index + 1].x.0, super::super::hybrid_pair_mont(point.x).0,
+                           "window {window} slot {} x", index + 1);
+                assert_eq!(row[index + 1].y.0, super::super::hybrid_pair_mont(point.y).0,
+                           "window {window} slot {} y", index + 1);
+            }
+            if window + 1 < RADIX384_WINDOWS {
+                base = multiply_small(base, RADIX384 as i32);
+            }
+        }
+        println!("radix384_residues={} table_slots={} retained_bytes={}",
+                 RADIX384 * RADIX384, RADIX384_WINDOWS * tables.atlas.digits.len(),
+                 tables.retained_bytes);
+    }
+
+    #[test]
+    fn radix384_matches_fresh_panel_and_independent_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-radix384-20261010/fresh-inputs.json"
+        )).unwrap();
+        assert_eq!(panel["seed"], 20261010134i64);
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let tables = &*RADIX384_TABLES;
+        let mut histogram = [0usize; RADIX384_WINDOWS];
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_sector15(words);
+            let candidate = multiply_u256_radix384(words);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            assert_eq!((candidate.4, candidate.5), (reference.4, reference.5),
+                       "representative selection {index}");
+            assert_eq!(candidate.3, tables.retained_bytes);
+            assert!(candidate.2 <= 14 && candidate.6 <= 2);
+            histogram[candidate.2] += 1;
+
+            let (mut a, mut b) = (candidate.1.0.to_bigint(), candidate.1.1.to_bigint());
+            let mut choices = [(0usize, 0usize); RADIX384_WINDOWS];
+            let radix = BigInt::from(RADIX384);
+            for (window, choice) in choices.iter_mut().enumerate() {
+                let (digit, orbit, code) = tables.atlas.digit(&a, &b);
+                *choice = (orbit, code);
+                a = (a - digit.0) / &radix;
+                b = (b - digit.1) / &radix;
+                assert_eq!(tables.atlas.digits[orbit],
+                           nearest_digit(unit_images((digit.0, digit.1))
+                               .map(|(x, y)| (x.rem_euclid(RADIX384 as i32),
+                                             y.rem_euclid(RADIX384 as i32)))
+                               .into_iter().min().unwrap(), RADIX384 as i32),
+                           "canonical digit {index}/{window}");
+            }
+            assert!(a.is_zero() && b.is_zero(), "reconstruction {index}");
+            assert_eq!(candidate.2,
+                       choices.iter().filter(|&&(orbit, _)| orbit != 0)
+                           .count().saturating_sub(1), "additions {index}");
+            let replay = evaluate_u256_gauge(&choices, &tables.windows);
+            assert_eq!((candidate.0.as_str(), candidate.6),
+                       (replay.0.as_str(), replay.1), "staged choices {index}");
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+        println!("radix384_panel_cases={} retained_bytes={} addition_histogram={histogram:?}",
+                 scalars.len(), tables.retained_bytes);
+    }
+
+    #[test]
+    fn two_limb_radix384_division_matches_generic_at_boundaries() {
+        let high_words = [0u64, 1, 2, 3, (1u64 << 57) - 1,
+                          1u64 << 57, (1u64 << 58) - 3,
+                          (1u64 << 58) - 2, (1u64 << 58) - 1];
+        let low_words = [0u64, 1, 2, 3, 383, 384, 385,
+                         u64::MAX - 3, u64::MAX - 2,
+                         u64::MAX - 1, u64::MAX];
+        let mut cases = 0usize;
+        for high in high_words {
+            for low in low_words {
+                for low_seven in [0u8, 1, 127] {
+                    let magnitude: BigInt = ((BigInt::from(high) << 64usize)
+                        + BigInt::from(low)) * BigInt::from(128u32)
+                        + BigInt::from(low_seven);
+                    for value in [magnitude.clone(), -magnitude] {
+                        let word = Signed192::from_bigint(&value);
+                        assert_eq!(word.div_rem_radix384_fast(),
+                                   word.div_rem_small_radix(RADIX384 as u64),
+                                   "high={high} low={low} low_seven={low_seven}");
+                        cases += 1;
+                    }
+                }
+            }
+        }
+        for value in -5000..=5000 {
+            let word = Signed192::from_i32(value);
+            assert_eq!(word.div_rem_radix384_fast(),
+                       word.div_rem_small_radix(RADIX384 as u64));
+            cases += 1;
+        }
+        println!("fast_radix384_division_cases={cases}");
+    }
+
+    #[test]
+    fn two_limb_radix384_recoder_matches_prior_panel() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-radix384-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let tables = &*RADIX384_TABLES;
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_radix384(words);
+            let candidate = multiply_u256_radix384_fast(words);
+            assert_eq!(candidate, reference, "whole scalar {index}");
+            let (mut a, mut b) = candidate.1;
+            for window in 0..RADIX384_WINDOWS {
+                let old_a = a.div_rem_small_radix(RADIX384 as u64);
+                let old_b = b.div_rem_small_radix(RADIX384 as u64);
+                assert_eq!(a.div_rem_radix384_fast(), old_a,
+                           "coordinate a {index}/{window}");
+                assert_eq!(b.div_rem_radix384_fast(), old_b,
+                           "coordinate b {index}/{window}");
+                let (digit, _, _) = tables.atlas.digit_residue(old_a.2, old_b.2);
+                a = old_a.0.adjust_small_radix_quotient(old_a.1, digit.0,
+                                                         RADIX384 as i32);
+                b = old_b.0.adjust_small_radix_quotient(old_b.1, digit.1,
+                                                         RADIX384 as i32);
+            }
+            assert!(a.is_zero() && b.is_zero());
+        }
+        println!("fast_radix384_prior_panel_cases={}", scalars.len());
+    }
+
+    #[test]
+    fn two_limb_radix384_matches_fresh_panel_and_independent_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-radix384-fast-20261010/fresh-inputs.json"
+        )).unwrap();
+        assert_eq!(panel["seed"], 20261010135i64);
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let tables = &*RADIX384_TABLES;
+        let mut divisions = 0usize;
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_radix384(words);
+            let candidate = multiply_u256_radix384_fast(words);
+            assert_eq!(candidate, reference, "whole scalar {index}");
+            assert_eq!(candidate.3, 24_283_336);
+            assert!(candidate.2 <= 14 && candidate.6 <= 2);
+            let (mut a, mut b) = candidate.1;
+            for window in 0..RADIX384_WINDOWS {
+                let old_a = a.div_rem_small_radix(RADIX384 as u64);
+                let old_b = b.div_rem_small_radix(RADIX384 as u64);
+                assert_eq!(a.div_rem_radix384_fast(), old_a,
+                           "coordinate a {index}/{window}");
+                assert_eq!(b.div_rem_radix384_fast(), old_b,
+                           "coordinate b {index}/{window}");
+                let (digit, _, _) = tables.atlas.digit_residue(old_a.2, old_b.2);
+                a = old_a.0.adjust_small_radix_quotient(old_a.1, digit.0,
+                                                         RADIX384 as i32);
+                b = old_b.0.adjust_small_radix_quotient(old_b.1, digit.1,
+                                                         RADIX384 as i32);
+                divisions += 2;
+            }
+            assert!(a.is_zero() && b.is_zero(), "reconstruction {index}");
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+        assert_eq!(divisions, 122_880);
+        println!("fast_radix384_fresh_panel_cases={} division_checks={divisions}",
+                 scalars.len());
+    }
+
+    #[test]
+    fn tau384_projective_ops_match_independent_group_points() {
+        let encode = |point: Jacobian| {
+            let affine = point.into_affine();
+            U256Jacobian::from_affine(U256Affine {
+                x: super::super::hybrid_pair_mont(affine.x),
+                y: super::super::hybrid_pair_mont(affine.y),
+            })
+        };
+        let values = [1u32, 2, 3, 7, 19, 257];
+        for left_scalar in values {
+            let left = independent_binary_point(&BigInt::from(left_scalar));
+            let encoded = encode(left);
+            assert_eq!(encoded.tau().affine_hex_binary_inverse(),
+                       left.tau().affine_hex(), "tau scalar {left_scalar}");
+            assert!(encoded.add_projective(U256Jacobian::identity())
+                         .affine_hex_binary_inverse() == left.affine_hex());
+            let inverse = U256Jacobian {
+                y: u256_sub(super::super::U256::ZERO, encoded.y), ..encoded
+            };
+            assert!(encoded.add_projective(inverse).is_identity());
+            for right_scalar in values {
+                let right = encode(independent_binary_point(&BigInt::from(right_scalar)));
+                let expected = independent_binary_point(
+                    &BigInt::from(left_scalar + right_scalar)).affine_hex();
+                assert_eq!(encoded.add_projective(right).affine_hex_binary_inverse(),
+                           expected, "add {left_scalar}+{right_scalar}");
+            }
+        }
+    }
+
+    #[test]
+    fn xyzz_jacobian_merge_matches_projective_sum_and_exceptions() {
+        let first = FRONTIER19_TABLES.windows[0][1];
+        let second = FRONTIER19_TABLES.windows[1][1];
+        let p = U256XYZZ::from_affine(first).double();
+        let q = U256Jacobian::from_affine(second).double();
+        assert_eq!(U256XYZZ::identity().add_jacobian(q).affine_hex_binary_inverse(),
+                   q.affine_hex_binary_inverse());
+        assert_eq!(p.add_jacobian(U256Jacobian::identity()).affine_hex_binary_inverse(),
+                   p.affine_hex_binary_inverse());
+        let inverse = U256Jacobian {
+            y: u256_sub(super::super::U256::ZERO, p.into_jacobian().y),
+            ..p.into_jacobian()
+        };
+        assert!(p.add_jacobian(inverse).is_identity());
+        assert_eq!(p.add_jacobian(p.into_jacobian()).affine_hex_binary_inverse(),
+                   p.double().affine_hex_binary_inverse());
+        for left in [p, p.add_mixed(second), p.double()] {
+            for right in [q, q.double(), q.add_mixed(first)] {
+                assert_eq!(left.add_jacobian(right).affine_hex_binary_inverse(),
+                           left.into_jacobian().add_projective(right)
+                               .affine_hex_binary_inverse());
+            }
+        }
+    }
+
+    #[test]
+    fn xyzz_tau_and_projective_merge_match_jacobian_and_fresh_scalars() {
+        let first = FRONTIER19_TABLES.windows[0][1];
+        let second = FRONTIER19_TABLES.windows[1][1];
+        let p = U256XYZZ::from_affine(first).double();
+        let q = U256XYZZ::from_affine(second).double();
+        assert!(U256XYZZ::identity().tau().is_identity());
+        assert_eq!(q.tau().affine_hex_binary_inverse(),
+                   q.into_jacobian().tau().affine_hex_binary_inverse());
+        assert_eq!(U256XYZZ::identity().add_xyzz(q).affine_hex_binary_inverse(),
+                   q.affine_hex_binary_inverse());
+        assert_eq!(p.add_xyzz(U256XYZZ::identity()).affine_hex_binary_inverse(),
+                   p.affine_hex_binary_inverse());
+        let inverse = U256XYZZ {
+            y: u256_sub(super::super::U256::ZERO, p.y), ..p
+        };
+        assert!(p.add_xyzz(inverse).is_identity());
+        assert_eq!(p.add_xyzz(p).affine_hex_binary_inverse(),
+                   p.double().affine_hex_binary_inverse());
+        for left in [p, p.add_mixed(second), p.double()] {
+            for right in [q, q.double(), q.add_mixed(first)] {
+                assert_eq!(left.add_xyzz(right).affine_hex_binary_inverse(),
+                           left.into_jacobian().add_projective(right.into_jacobian())
+                               .affine_hex_binary_inverse());
+            }
+        }
+
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-tau-bucket-two-x-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            assert_eq!(multiply_u256_tau_frontier17_bucket_two_x_xyzz_tau(words).0,
+                       multiply_u256_tau_frontier17_bucket_two_x_direct(words).0,
+                       "frontier17 scalar {index}");
+            assert_eq!(multiply_u256_tau_frontier18_bucket_two_x_xyzz_tau(words).0,
+                       multiply_u256_tau_frontier18_bucket_two_x_direct(words).0,
+                       "frontier18 scalar {index}");
+        }
+    }
+
+    #[test]
+    fn frontier16_bucket_two_x_matches_prior_panel_and_binary_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-tau-bucket-two-x-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let tables = &*FRONTIER16_BUCKET_TWO_X_TABLES;
+        assert_eq!(tables.retained_bytes, 11_786_576);
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let candidate = multiply_u256_tau_frontier16_bucket_two_x_xyzz_tau(words);
+            let sector16 = multiply_u256_sector16(words);
+            let tau384 = multiply_u256_tau384_matching(words);
+            assert_eq!(candidate.0, sector16.0, "sector16 point {index}");
+            assert_eq!(candidate.0, tau384.0, "tau384 point {index}");
+            assert_eq!(candidate.1, sector16.1, "representative {index}");
+            assert_eq!((candidate.4, candidate.5), (sector16.4, sector16.5),
+                       "selector {index}");
+            assert!(candidate.2 <= 15 && candidate.6 == 0);
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "binary point {index}");
+            }
+        }
+    }
+
+    #[test]
+    fn frontier16_compact_affine_matches_two_x_and_binary_points() {
+        let compact = &*FRONTIER16_BUCKET_AFFINE_TABLES;
+        let two_x = &*FRONTIER16_BUCKET_TWO_X_TABLES;
+        assert_eq!(compact.retained_bytes, 8_336_528);
+        assert_eq!(compact.windows.len(), two_x.windows.len());
+        let mut checked = 0usize;
+        for (left, right) in compact.windows.iter().zip(&two_x.windows) {
+            assert_eq!(left.len(), right.len());
+            for (plain, packed) in left.iter().zip(right.iter()) {
+                assert_eq!(plain.x.0, packed.x.0);
+                assert_eq!(plain.y.0, packed.y.0);
+                checked += 1;
+            }
+        }
+        assert_eq!(checked, 107_814);
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-frontier16-xyzz-tau-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let candidate = multiply_u256_tau_frontier16_bucket_affine_xyzz_tau(words);
+            let reference = multiply_u256_tau_frontier16_bucket_two_x_xyzz_tau(words);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            assert_eq!((candidate.2, candidate.4, candidate.5, candidate.6),
+                       (reference.2, reference.4, reference.5, reference.6),
+                       "metadata {index}");
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "binary point {index}");
+            }
+        }
+    }
+
+    #[test]
+    fn solinas_cube_root_product_matches_montgomery_field_and_units() {
+        let field = &super::super::HYBRID_FIELD.0;
+        assert_eq!(field.n.0,
+                   [0xffff_fffe_ffff_fc2f, u64::MAX, u64::MAX, u64::MAX]);
+        let (p_minus_one, borrow) = super::super::U256::sbb(
+            &field.n, &super::super::U256::ONE);
+        assert_eq!(borrow, 0);
+        let mut samples = vec![super::super::U256::ZERO, super::super::U256::ONE,
+                               p_minus_one, super::super::Uint([u64::MAX, 0, 0, 0])];
+        let mut state = 0x7c15_3d0e_1a87_4f69u64;
+        for _ in 0..65_536 {
+            let mut limbs = [0u64; 4];
+            for limb in &mut limbs {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                *limb = state;
+            }
+            let mut value = super::super::Uint(limbs);
+            if !bool::from(value.ct_lt(&field.n)) {
+                value = super::super::U256::sbb(&value, &field.n).0;
+            }
+            samples.push(value);
+        }
+        for (index, value) in samples.into_iter().enumerate() {
+            for power in 1..=2 {
+                let actual = u256_mul_const_solinas(value, U256_BETA_CANONICAL[power]);
+                let expected = u256_mul(value, U256_BETA_UNITS[power]);
+                assert_eq!(actual.0, expected.0, "sample {index} power {power}");
+                if index < 1024 {
+                    let independent = super::super::U256::from_biguint(
+                        &((value.to_biguint() * U256_BETA_CANONICAL[power].to_biguint())
+                          % field.n.to_biguint()));
+                    assert_eq!(actual.0, independent.0,
+                               "independent sample {index} power {power}");
+                }
+            }
+        }
+        let row = &FRONTIER16_BUCKET_AFFINE_TABLES.windows[0];
+        for point in row.iter().copied().take(1024) {
+            for unit in 0..6 {
+                let actual = point.unit_solinas(unit);
+                let expected = point.unit(unit);
+                assert_eq!(actual.x.0, expected.x.0, "unit {unit}");
+                assert_eq!(actual.y.0, expected.y.0, "unit {unit}");
+            }
+        }
+    }
+
+    #[test]
+    fn frontier16_solinas_units_match_compact_affine_and_binary_points() {
+        assert_eq!(warm_format(55), 8_336_624);
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-frontier16-compact-affine-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let candidate = multiply_u256_tau_frontier16_bucket_affine_solinas_xyzz_tau(words);
+            let reference = multiply_u256_tau_frontier16_bucket_affine_xyzz_tau(words);
+            assert_eq!(candidate.3, 8_336_624);
+            assert_eq!(reference.3, 8_336_528);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "binary point {index}");
+            }
+        }
+    }
+
+    #[test]
+    fn frontier15_bound_budget_replays_prior_panel_and_binary_points() {
+        let tables = &*FRONTIER15_BUDGET_AFFINE_TABLES;
+        assert_eq!(warm_format(56), 17_511_596);
+        assert_eq!(tables.windows.len(), 15);
+        assert_eq!(tables.windows.iter().map(|row| row.len()).sum::<usize>(), 233_423);
+        assert_eq!(tables.full9.seeds.len() / 4, 21_847);
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-frontier16-compact-affine-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let mut additions = 0usize;
+        let mut baseline_additions = 0usize;
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let candidate = multiply_u256_tau_frontier15_budget_affine_solinas_xyzz_tau(words);
+            let reference = multiply_u256_tau_frontier16_bucket_affine_solinas_xyzz_tau(words);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            assert_eq!((candidate.4, candidate.5, candidate.6),
+                       (reference.4, reference.5, reference.6), "metadata {index}");
+            assert!(candidate.2 <= 14, "addition bound {index}");
+            additions += candidate.2;
+            baseline_additions += reference.2;
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent binary {index}");
+            }
+        }
+        println!("bound_budget15_retained_bytes={} candidate_additions={} baseline_additions={}",
+                 warm_format(56), additions, baseline_additions);
+    }
+
+    #[test]
+    fn frontier15_gauge_matches_per_term_units_and_binary_points() {
+        assert_eq!(warm_format(57), warm_format(56));
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-bound-budget15-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let mut gauge_products = 0usize;
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let candidate = multiply_u256_tau_frontier15_budget_affine_solinas_gauge_xyzz_tau(words);
+            let reference = multiply_u256_tau_frontier15_budget_affine_solinas_xyzz_tau(words);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            assert_eq!((candidate.2, candidate.3, candidate.4, candidate.5),
+                       (reference.2, reference.3, reference.4, reference.5),
+                       "metadata {index}");
+            assert!(candidate.6 <= 4, "gauge count {index}");
+            gauge_products += candidate.6;
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent binary {index}");
+            }
+        }
+        assert_eq!(gauge_products, 15_323);
+        println!("frontier15_gauge_products={gauge_products} prior_per_term_products=40981");
+    }
+
+    #[test]
+    fn frontier16_bucket_all_points_match_independent_group_sums() {
+        fn multiply_small(base: Jacobian, multiplier: i32) -> Jacobian {
+            let mut result = Jacobian::identity();
+            let addend = base.into_affine();
+            let magnitude = multiplier.unsigned_abs();
+            for bit in (0..(32 - magnitude.leading_zeros())).rev() {
+                result = result.double();
+                if (magnitude >> bit) & 1 != 0 {
+                    result = result.add_mixed(addend);
+                }
+            }
+            if multiplier < 0 { result.neg() } else { result }
+        }
+        let tables = &*FRONTIER16_BUCKET_TWO_X_TABLES;
+        let mut base = Jacobian::generator();
+        let mut checked = 0usize;
+        for (window, row) in tables.windows.iter().enumerate() {
+            let seeds = tables.atlas(window).seed_digits();
+            assert_eq!(row.len(), seeds.len());
+            let tau_base = base.tau();
+            let max_a = seeds.iter().map(|d| d.0.unsigned_abs()).max().unwrap() as usize;
+            let max_b = seeds.iter().map(|d| d.1.unsigned_abs()).max().unwrap() as usize;
+            let a_multiples: Vec<_> = (0..=max_a)
+                .map(|k| multiply_small(base, k as i32).into_affine()).collect();
+            let b_multiples: Vec<_> = (0..=max_b)
+                .map(|k| multiply_small(tau_base, k as i32).into_affine()).collect();
+            let mut expected = Vec::with_capacity(row.len() - 1);
+            for &(a, b) in seeds.iter().skip(1) {
+                let left = if a < 0 { a_multiples[a.unsigned_abs() as usize].neg() }
+                           else { a_multiples[a as usize] };
+                let right = if b < 0 { b_multiples[b.unsigned_abs() as usize].neg() }
+                            else { b_multiples[b as usize] };
+                let sum = if left.is_identity() { right }
+                    else if right.is_identity() { left }
+                    else { left.add_mixed(right) };
+                assert!(!sum.is_identity());
+                expected.push(sum);
+            }
+            let affine = batch_to_affine(&expected);
+            for (index, point) in affine.iter().enumerate() {
+                let actual = row[index + 1].unit(0);
+                assert_eq!(actual.x.0, super::super::hybrid_pair_mont(point.x).0,
+                           "window {window} slot {} x", index + 1);
+                assert_eq!(actual.y.0, super::super::hybrid_pair_mont(point.y).0,
+                           "window {window} slot {} y", index + 1);
+                checked += 1;
+            }
+            for _ in 0..FRONTIER16_WIDTHS[window] { base = base.double(); }
+        }
+        assert_eq!(checked, 107_814 - 16);
+        println!("frontier16_independent_nonzero_points={checked} retained_bytes={}",
+                 tables.retained_bytes);
+    }
+
+    #[test]
+    fn tau384_all_window_points_match_independent_group_sums() {
+        fn multiply_small(base: Jacobian, multiplier: i32) -> Jacobian {
+            let mut result = Jacobian::identity();
+            let addend = base.into_affine();
+            let magnitude = multiplier.unsigned_abs();
+            for bit in (0..(32 - magnitude.leading_zeros())).rev() {
+                result = result.double();
+                if (magnitude >> bit) & 1 != 0 {
+                    result = result.add_mixed(addend);
+                }
+            }
+            if multiplier < 0 { result.neg() } else { result }
+        }
+        let tables = &*TAU384_MATCHING_TABLES;
+        let seeds = tables.atlas.seed_digits();
+        assert_eq!(seeds[0], (0, 0));
+        assert_eq!(tables.retained_bytes, 18_013_472);
+        let max_a = seeds.iter().map(|d| d.0.unsigned_abs()).max().unwrap() as usize;
+        let max_b = seeds.iter().map(|d| d.1.unsigned_abs()).max().unwrap() as usize;
+        let mut base = Jacobian::generator();
+        for (window, row) in tables.windows.iter().enumerate() {
+            assert_eq!(row.len(), 18_074);
+            let tau_base = base.tau();
+            let a_multiples: Vec<_> = (0..=max_a)
+                .map(|k| multiply_small(base, k as i32).into_affine()).collect();
+            let b_multiples: Vec<_> = (0..=max_b)
+                .map(|k| multiply_small(tau_base, k as i32).into_affine()).collect();
+            let mut expected = Vec::with_capacity(row.len() - 1);
+            for &(a, b) in seeds.iter().skip(1) {
+                let left = if a < 0 { a_multiples[a.unsigned_abs() as usize].neg() }
+                           else { a_multiples[a as usize] };
+                let right = if b < 0 { b_multiples[b.unsigned_abs() as usize].neg() }
+                            else { b_multiples[b as usize] };
+                let sum = if left.is_identity() { right }
+                    else if right.is_identity() { left }
+                    else { left.add_mixed(right) };
+                assert!(!sum.is_identity());
+                expected.push(sum);
+            }
+            let affine = batch_to_affine(&expected);
+            for (index, point) in affine.iter().enumerate() {
+                assert_eq!(row[index + 1].x.0,
+                           super::super::hybrid_pair_mont(point.x).0,
+                           "window {window} slot {} x", index + 1);
+                assert_eq!(row[index + 1].y.0,
+                           super::super::hybrid_pair_mont(point.y).0,
+                           "window {window} slot {} y", index + 1);
+            }
+            if window + 1 < RADIX384_WINDOWS {
+                base = multiply_small(base, RADIX384 as i32);
+            }
+        }
+        println!("tau384_table_slots={} retained_bytes={}",
+                 RADIX384_WINDOWS * seeds.len(), tables.retained_bytes);
+    }
+
+    #[test]
+    fn frontier17_all_window_points_match_independent_group_sums() {
+        fn multiply_small(base: Jacobian, multiplier: i32) -> Jacobian {
+            let mut result = Jacobian::identity();
+            let addend = base.into_affine();
+            let magnitude = multiplier.unsigned_abs();
+            for bit in (0..(32 - magnitude.leading_zeros())).rev() {
+                result = result.double();
+                if (magnitude >> bit) & 1 != 0 {
+                    result = result.add_mixed(addend);
+                }
+            }
+            if multiplier < 0 { result.neg() } else { result }
+        }
+        let tables = &*FRONTIER17_TABLES;
+        assert_eq!(tables.retained_bytes, 4_553_140);
+        let mut base = Jacobian::generator();
+        let mut checked = 0usize;
+        for (window, row) in tables.windows.iter().enumerate() {
+            let seeds = tables.atlas(window).seed_digits();
+            assert_eq!(row.len(), seeds.len());
+            let tau_base = base.tau();
+            let max_a = seeds.iter().map(|d| d.0.unsigned_abs()).max().unwrap() as usize;
+            let max_b = seeds.iter().map(|d| d.1.unsigned_abs()).max().unwrap() as usize;
+            let a_multiples: Vec<_> = (0..=max_a)
+                .map(|k| multiply_small(base, k as i32).into_affine()).collect();
+            let b_multiples: Vec<_> = (0..=max_b)
+                .map(|k| multiply_small(tau_base, k as i32).into_affine()).collect();
+            let mut expected = Vec::with_capacity(row.len() - 1);
+            for &(a, b) in seeds.iter().skip(1) {
+                let left = if a < 0 { a_multiples[a.unsigned_abs() as usize].neg() }
+                           else { a_multiples[a as usize] };
+                let right = if b < 0 { b_multiples[b.unsigned_abs() as usize].neg() }
+                            else { b_multiples[b as usize] };
+                let sum = if left.is_identity() { right }
+                    else if right.is_identity() { left }
+                    else { left.add_mixed(right) };
+                assert!(!sum.is_identity());
+                expected.push(sum);
+            }
+            let affine = batch_to_affine(&expected);
+            for (index, point) in affine.iter().enumerate() {
+                assert_eq!(row[index + 1].x.0,
+                           super::super::hybrid_pair_mont(point.x).0,
+                           "window {window} slot {} x", index + 1);
+                assert_eq!(row[index + 1].y.0,
+                           super::super::hybrid_pair_mont(point.y).0,
+                           "window {window} slot {} y", index + 1);
+                checked += 1;
+            }
+            for _ in 0..FRONTIER17_WIDTHS[window] { base = base.double(); }
+        }
+        assert_eq!(checked, 64_463 - 17);
+        println!("frontier17_independent_nonzero_points={} retained_bytes={}",
+                 checked, tables.retained_bytes);
+    }
+
+    #[test]
+    fn frontier19_all_window_points_match_independent_group_sums() {
+        fn multiply_small(base: Jacobian, multiplier: i32) -> Jacobian {
+            let mut result = Jacobian::identity();
+            let addend = base.into_affine();
+            let magnitude = multiplier.unsigned_abs();
+            for bit in (0..(32 - magnitude.leading_zeros())).rev() {
+                result = result.double();
+                if (magnitude >> bit) & 1 != 0 {
+                    result = result.add_mixed(addend);
+                }
+            }
+            if multiplier < 0 { result.neg() } else { result }
+        }
+        let tables = &*FRONTIER19_TABLES;
+        let mut base = Jacobian::generator();
+        let mut checked = 0usize;
+        for (window, row) in tables.windows.iter().enumerate() {
+            let seeds = tables.atlas(window).seed_digits();
+            assert_eq!(row.len(), seeds.len());
+            let tau_base = base.tau();
+            let max_a = seeds.iter().map(|d| d.0.unsigned_abs()).max().unwrap() as usize;
+            let max_b = seeds.iter().map(|d| d.1.unsigned_abs()).max().unwrap() as usize;
+            let a_multiples: Vec<_> = (0..=max_a)
+                .map(|k| multiply_small(base, k as i32).into_affine()).collect();
+            let b_multiples: Vec<_> = (0..=max_b)
+                .map(|k| multiply_small(tau_base, k as i32).into_affine()).collect();
+            let mut expected = Vec::with_capacity(row.len() - 1);
+            for &(a, b) in seeds.iter().skip(1) {
+                let left = if a < 0 { a_multiples[a.unsigned_abs() as usize].neg() }
+                           else { a_multiples[a as usize] };
+                let right = if b < 0 { b_multiples[b.unsigned_abs() as usize].neg() }
+                            else { b_multiples[b as usize] };
+                let sum = if left.is_identity() { right }
+                    else if right.is_identity() { left }
+                    else { left.add_mixed(right) };
+                assert!(!sum.is_identity());
+                expected.push(sum);
+            }
+            let affine = batch_to_affine(&expected);
+            for (index, point) in affine.iter().enumerate() {
+                assert_eq!(row[index + 1].x.0,
+                           super::super::hybrid_pair_mont(point.x).0,
+                           "window {window} slot {} x", index + 1);
+                assert_eq!(row[index + 1].y.0,
+                           super::super::hybrid_pair_mont(point.y).0,
+                           "window {window} slot {} y", index + 1);
+                checked += 1;
+            }
+            for _ in 0..FRONTIER19_WIDTHS[window] { base = base.double(); }
+        }
+        assert_eq!(checked, 21_949 - 19);
+        println!("frontier19_independent_nonzero_points={} retained_bytes={}",
+                 checked, tables.retained_bytes);
+    }
+
+    #[test]
+    fn frontier17_matches_prior_panel_and_binary_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-tau384-matching-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        let tables = &*FRONTIER17_TABLES;
+        assert_eq!(tables.windows.len(), 17);
+        assert_eq!(tables.windows.iter().map(|row| row.len()).sum::<usize>(), 64_463);
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_tau384_matching(words);
+            let candidate = multiply_u256_tau_frontier17(words);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            assert_eq!((candidate.4, candidate.5), (reference.4, reference.5),
+                       "selector {index}");
+            assert!(candidate.2 <= 16 && candidate.6 <= 4);
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "binary point {index}");
+            }
+        }
+        println!("frontier17_table_slots=64463 retained_bytes={}", tables.retained_bytes);
+    }
+
+    #[test]
+    fn frontier19_matches_prior_panel_and_binary_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-tau384-matching-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        let tables = &*FRONTIER19_TABLES;
+        assert_eq!(tables.windows.len(), 19);
+        assert_eq!(tables.windows.iter().map(|row| row.len()).sum::<usize>(), 21_949);
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_tau384_matching(words);
+            let candidate = multiply_u256_tau_frontier19(words);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            assert_eq!((candidate.4, candidate.5), (reference.4, reference.5),
+                       "selector {index}");
+            assert!(candidate.2 <= 18 && candidate.6 <= 4);
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "binary point {index}");
+            }
+        }
+        println!("frontier19_table_slots=21949 retained_bytes={}", tables.retained_bytes);
+    }
+
+    #[test]
+    fn frontier19_orbit_x_all_units_match_independent_point_table() {
+        let plain = &*FRONTIER19_TABLES;
+        let cached = &*FRONTIER19_ORBIT_X_TABLES;
+        assert_eq!(cached.windows.len(), 19);
+        let mut checked = 0usize;
+        for (window, (source, row)) in plain.windows.iter()
+                .zip(cached.windows.iter()).enumerate() {
+            assert_eq!(source.len(), row.len());
+            for (slot, (&point, &entry)) in source.iter().zip(row.iter()).enumerate().skip(1) {
+                for code in 0..6 {
+                    let expected = point.unit(code);
+                    let actual = entry.unit(code);
+                    assert_eq!(actual.x.0, expected.x.0,
+                               "window {window} slot {slot} unit {code} x");
+                    assert_eq!(actual.y.0, expected.y.0,
+                               "window {window} slot {slot} unit {code} y");
+                    checked += 1;
+                }
+            }
+        }
+        assert_eq!(checked, 21_930 * 6);
+        assert_eq!(cached.windows.iter().map(|row| row.len()).sum::<usize>(), 21_949);
+        println!("frontier19_orbit_x_checked_units={checked} retained_bytes={}",
+                 cached.retained_bytes);
+    }
+
+    #[test]
+    fn frontier19_orbit_x_matches_prior_panel_and_binary_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-tau384-matching-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let tables = &*FRONTIER19_ORBIT_X_TABLES;
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_tau_frontier19(words);
+            let candidate = multiply_u256_tau_frontier19_orbit_x(words);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            assert_eq!((candidate.4, candidate.5), (reference.4, reference.5),
+                       "selector {index}");
+            assert!(candidate.2 <= 18 && candidate.6 == 0);
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "binary point {index}");
+            }
+        }
+        println!("frontier19_orbit_x_table_slots=21949 retained_bytes={}",
+                 tables.retained_bytes);
+    }
+
+    #[test]
+    fn frontier19_expanded_table_matches_tau_of_every_plain_point() {
+        let plain = &*FRONTIER19_TABLES;
+        let expanded = &*FRONTIER19_TAU_EXPANDED_TABLES;
+        let mut checked = 0usize;
+        for (window, (source, row)) in plain.windows.iter()
+                .zip(expanded.windows.iter()).enumerate() {
+            assert_eq!(source.len(), row.len());
+            for (slot, (&point, &pair)) in source.iter().zip(row.iter()).enumerate().skip(1) {
+                assert_eq!(pair.plain.x.0, point.x.0, "window {window} slot {slot} x");
+                assert_eq!(pair.plain.y.0, point.y.0, "window {window} slot {slot} y");
+                let mapped = U256Jacobian::from_affine(point).tau();
+                assert!(!mapped.is_identity());
+                let z2 = u256_square(mapped.z);
+                let z3 = u256_mul(z2, mapped.z);
+                assert_eq!(mapped.x.0, u256_mul(pair.tau.x, z2).0,
+                           "window {window} slot {slot} tau x");
+                assert_eq!(mapped.y.0, u256_mul(pair.tau.y, z3).0,
+                           "window {window} slot {slot} tau y");
+                checked += 1;
+            }
+        }
+        assert_eq!(checked, 21_930);
+        println!("frontier19_expanded_checked_tau_points={checked} retained_bytes={}",
+                 expanded.retained_bytes);
+    }
+
+    #[test]
+    fn frontier19_expanded_matches_prior_panel_and_binary_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-tau384-matching-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let tables = &*FRONTIER19_TAU_EXPANDED_TABLES;
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_tau_frontier19(words);
+            let candidate = multiply_u256_tau_frontier19_expanded(words);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            assert_eq!((candidate.4, candidate.5), (reference.4, reference.5),
+                       "selector {index}");
+            assert!(candidate.2 <= 18 && candidate.6 <= 2);
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "binary point {index}");
+            }
+        }
+        println!("frontier19_expanded_table_slots=21949 retained_bytes={}",
+                 tables.retained_bytes);
+    }
+
+    #[test]
+    fn frontier19_orbit_tau_all_images_match_expanded_table() {
+        let source = &*FRONTIER19_TAU_EXPANDED_TABLES;
+        let fused = &*FRONTIER19_ORBIT_TAU_TABLES;
+        let mut checked = 0usize;
+        for (window, (source_row, fused_row)) in source.windows.iter()
+                .zip(fused.windows.iter()).enumerate() {
+            assert_eq!(source_row.len(), fused_row.len());
+            for (slot, (&pair, &entry)) in source_row.iter().zip(fused_row.iter())
+                    .enumerate().skip(1) {
+                for exponent in 0..2 {
+                    let source_point = if exponent == 0 { pair.plain } else { pair.tau };
+                    for code in 0..6 {
+                        let expected = source_point.unit(code);
+                        let actual = entry.select(exponent, code);
+                        assert_eq!(actual.x.0, expected.x.0,
+                                   "window {window} slot {slot} tau {exponent} unit {code} x");
+                        assert_eq!(actual.y.0, expected.y.0,
+                                   "window {window} slot {slot} tau {exponent} unit {code} y");
+                        checked += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(checked, 21_930 * 12);
+        assert_eq!(fused.windows.iter().map(|row| row.len()).sum::<usize>(), 21_949);
+        println!("frontier19_orbit_tau_checked_images={checked} retained_bytes={}",
+                 fused.retained_bytes);
+    }
+
+    #[test]
+    fn frontier19_orbit_tau_matches_prior_panel_and_binary_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-tau384-matching-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let tables = &*FRONTIER19_ORBIT_TAU_TABLES;
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_tau_frontier19_expanded(words);
+            let candidate = multiply_u256_tau_frontier19_orbit_tau(words);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            assert_eq!((candidate.4, candidate.5), (reference.4, reference.5),
+                       "selector {index}");
+            assert!(candidate.2 <= 18 && candidate.6 == 0);
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "binary point {index}");
+            }
+        }
+        println!("frontier19_orbit_tau_table_slots=21949 retained_bytes={}",
+                 tables.retained_bytes);
+    }
+
+    #[test]
+    fn frontier19_xyzz_mixed_group_law_matches_jacobian() {
+        let tables = &*FRONTIER19_TABLES;
+        let first = tables.windows[0][1];
+        assert!(U256XYZZ::identity().is_identity());
+        assert_eq!(U256XYZZ::identity().add_mixed(first).affine_hex_binary_inverse(),
+                   U256Jacobian::from_affine(first).affine_hex_binary_inverse());
+        assert!(U256XYZZ::from_affine(first).add_mixed(first.unit(1)).is_identity());
+        assert_eq!(U256XYZZ::from_affine(first).add_mixed(first)
+                       .affine_hex_binary_inverse(),
+                   U256Jacobian::from_affine(first).add_mixed(first)
+                       .affine_hex_binary_inverse());
+
+        let mut xyzz = U256XYZZ::identity();
+        let mut jacobian = U256Jacobian::identity();
+        for index in 0..128 {
+            let window = index % tables.windows.len();
+            let row = &tables.windows[window];
+            let point = row[1 + (index * 17 % (row.len() - 1))].unit(index % 6);
+            xyzz = xyzz.add_mixed(point);
+            jacobian = jacobian.add_mixed(point);
+            assert_eq!(xyzz.affine_hex_binary_inverse(),
+                       jacobian.affine_hex_binary_inverse(), "step {index}");
+            if !xyzz.is_identity() {
+                assert_eq!(u256_square(xyzz.zzz).0,
+                           u256_mul(xyzz.zz, u256_square(xyzz.zz)).0,
+                           "XYZZ invariant step {index}");
+            }
+        }
+    }
+
+    #[test]
+    fn frontier19_xyzz_matches_prior_panel_and_binary_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-orbit-tau-fusion-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_tau_frontier19_orbit_tau(words);
+            let candidate = multiply_u256_tau_frontier19_xyzz(words);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            assert_eq!((candidate.4, candidate.5), (reference.4, reference.5),
+                       "selector {index}");
+            assert_eq!(candidate.3, reference.3, "retained bytes {index}");
+            assert!(candidate.2 <= 18 && candidate.6 == 0);
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "binary point {index}");
+            }
+        }
+    }
+
+    #[test]
+    fn frontier17_orbit_xyzz_all_images_match_independent_table() {
+        let source = &*FRONTIER17_TABLES;
+        let fused = &*FRONTIER17_ORBIT_TAU_TABLES;
+        let mut checked = 0usize;
+        for (window, (source_row, fused_row)) in source.windows.iter()
+                .zip(fused.windows.iter()).enumerate() {
+            assert_eq!(source_row.len(), fused_row.len());
+            for (slot, (&point, &entry)) in source_row.iter().zip(fused_row.iter())
+                    .enumerate().skip(1) {
+                let mapped = U256Jacobian::from_affine(point).tau();
+                assert!(!mapped.is_identity());
+                let z2 = u256_square(mapped.z);
+                let z3 = u256_mul(z2, mapped.z);
+                let tau = entry.select(1, 0);
+                assert_eq!(mapped.x.0, u256_mul(tau.x, z2).0,
+                           "window {window} slot {slot} tau x");
+                assert_eq!(mapped.y.0, u256_mul(tau.y, z3).0,
+                           "window {window} slot {slot} tau y");
+                for exponent in 0..2 {
+                    let source_point = if exponent == 0 { point } else { tau };
+                    for code in 0..6 {
+                        let expected = source_point.unit(code);
+                        let actual = entry.select(exponent, code);
+                        assert_eq!(actual.x.0, expected.x.0,
+                                   "window {window} slot {slot} tau {exponent} unit {code} x");
+                        assert_eq!(actual.y.0, expected.y.0,
+                                   "window {window} slot {slot} tau {exponent} unit {code} y");
+                        checked += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(checked, (64_463 - 17) * 12);
+        println!("frontier17_orbit_xyzz_checked_images={checked} retained_bytes={}",
+                 fused.retained_bytes);
+    }
+
+    #[test]
+    fn frontier17_orbit_xyzz_matches_prior_panel_and_binary_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-xyzz-orbit-tau-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let tables = &*FRONTIER17_ORBIT_TAU_TABLES;
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_tau_frontier19_xyzz(words);
+            let candidate = multiply_u256_tau_frontier17_orbit_xyzz(words);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            assert_eq!((candidate.4, candidate.5), (reference.4, reference.5),
+                       "selector {index}");
+            assert!(candidate.2 <= 16 && candidate.6 == 0);
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "binary point {index}");
+            }
+        }
+        println!("frontier17_orbit_xyzz_table_slots=64463 retained_bytes={}",
+                 tables.retained_bytes);
+    }
+
+    #[test]
+    fn frontier18_orbit_xyzz_all_images_match_independent_points() {
+        let fused = &*FRONTIER18_ORBIT_TAU_TABLES;
+        let mut checked = 0usize;
+        let mut base = Jacobian::generator();
+        for (window, &width) in FRONTIER18_WIDTHS.iter().enumerate() {
+            let seeds = fused.atlas(window).seed_digits();
+            let plain = build_u256_window(&seeds, base);
+            let tau = build_u256_window(&seeds, base.tau());
+            let row = &fused.windows[window];
+            assert_eq!(plain.len(), row.len());
+            for slot in 1..row.len() {
+                for exponent in 0..2 {
+                    let source = if exponent == 0 { plain[slot] } else { tau[slot] };
+                    for code in 0..6 {
+                        let expected = source.unit(code);
+                        let actual = row[slot].select(exponent, code);
+                        assert_eq!(actual.x.0, expected.x.0,
+                                   "window {window} slot {slot} tau {exponent} unit {code} x");
+                        assert_eq!(actual.y.0, expected.y.0,
+                                   "window {window} slot {slot} tau {exponent} unit {code} y");
+                        checked += 1;
+                    }
+                }
+            }
+            for _ in 0..width { base = base.double(); }
+        }
+        assert_eq!(checked, (37_158 - 18) * 12);
+        println!("frontier18_orbit_xyzz_checked_images={checked} retained_bytes={}",
+                 fused.retained_bytes);
+    }
+
+    #[test]
+    fn frontier18_orbit_xyzz_matches_prior_panel_and_binary_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-xyzz-orbit-tau-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let tables = &*FRONTIER18_ORBIT_TAU_TABLES;
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_tau_frontier19_xyzz(words);
+            let candidate = multiply_u256_tau_frontier18_orbit_xyzz(words);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            assert_eq!((candidate.4, candidate.5), (reference.4, reference.5),
+                       "selector {index}");
+            assert!(candidate.2 <= 17 && candidate.6 == 0);
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "binary point {index}");
+            }
+        }
+        println!("frontier18_orbit_xyzz_table_slots=37158 retained_bytes={}",
+                 tables.retained_bytes);
+    }
+
+    #[test]
+    fn frontier17_two_x_all_images_match_full_orbit_table() {
+        let compressed = &*FRONTIER17_TWO_X_ORBIT_TAU_TABLES;
+        let full = &*FRONTIER17_ORBIT_TAU_TABLES;
+        let mut checked = 0usize;
+        for (window, (small, large)) in compressed.windows.iter()
+                .zip(full.windows.iter()).enumerate() {
+            assert_eq!(small.len(), large.len());
+            for slot in 1..small.len() {
+                for exponent in 0..2 {
+                    for code in 0..6 {
+                        let expected = large[slot].select(exponent, code);
+                        let actual = small[slot].select(exponent, code);
+                        assert_eq!(actual.x.0, expected.x.0,
+                                   "window {window} slot {slot} tau {exponent} unit {code} x");
+                        assert_eq!(actual.y.0, expected.y.0,
+                                   "window {window} slot {slot} tau {exponent} unit {code} y");
+                        checked += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(checked, (64_463 - 17) * 12);
+        println!("frontier17_two_x_checked_images={checked} retained_bytes={}",
+                 compressed.retained_bytes);
+    }
+
+    #[test]
+    fn frontier17_two_x_matches_prior_panel_and_binary_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-frontier18-orbit-xyzz-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let tables = &*FRONTIER17_TWO_X_ORBIT_TAU_TABLES;
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_tau_frontier17_orbit_xyzz(words);
+            let candidate = multiply_u256_tau_frontier17_two_x_xyzz(words);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            assert_eq!((candidate.4, candidate.5), (reference.4, reference.5),
+                       "selector {index}");
+            assert!(candidate.2 <= 16 && candidate.6 == 0);
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "binary point {index}");
+            }
+        }
+        println!("frontier17_two_x_table_slots=64463 retained_bytes={}",
+                 tables.retained_bytes);
+    }
+
+    #[test]
+    fn frontier18_two_x_all_images_match_full_orbit_table() {
+        let compressed = &*FRONTIER18_TWO_X_ORBIT_TAU_TABLES;
+        let full = &*FRONTIER18_ORBIT_TAU_TABLES;
+        let mut checked = 0usize;
+        for (window, (small, large)) in compressed.windows.iter()
+                .zip(full.windows.iter()).enumerate() {
+            assert_eq!(small.len(), large.len());
+            for slot in 1..small.len() {
+                for exponent in 0..2 {
+                    for code in 0..6 {
+                        let expected = large[slot].select(exponent, code);
+                        let actual = small[slot].select(exponent, code);
+                        assert_eq!(actual.x.0, expected.x.0,
+                                   "window {window} slot {slot} tau {exponent} unit {code} x");
+                        assert_eq!(actual.y.0, expected.y.0,
+                                   "window {window} slot {slot} tau {exponent} unit {code} y");
+                        checked += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(checked, (37_158 - 18) * 12);
+        println!("frontier18_two_x_checked_images={checked} retained_bytes={}",
+                 compressed.retained_bytes);
+    }
+
+    #[test]
+    fn frontier18_two_x_matches_prior_panel_and_binary_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-frontier18-orbit-xyzz-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let tables = &*FRONTIER18_TWO_X_ORBIT_TAU_TABLES;
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_tau_frontier18_orbit_xyzz(words);
+            let candidate = multiply_u256_tau_frontier18_two_x_xyzz(words);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            assert_eq!((candidate.4, candidate.5), (reference.4, reference.5),
+                       "selector {index}");
+            assert!(candidate.2 <= 17 && candidate.6 == 0);
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "binary point {index}");
+            }
+        }
+        println!("frontier18_two_x_table_slots=37158 retained_bytes={}",
+                 tables.retained_bytes);
+    }
+
+    #[test]
+    fn frontier18_bucket_two_x_all_plain_images_match_full_table() {
+        let bucket = &*FRONTIER18_BUCKET_TWO_X_TABLES;
+        let full = &*FRONTIER18_ORBIT_TAU_TABLES;
+        let mut checked = 0usize;
+        for (window, (small, large)) in bucket.windows.iter()
+                .zip(full.windows.iter()).enumerate() {
+            assert_eq!(small.len(), large.len());
+            for slot in 1..small.len() {
+                for code in 0..6 {
+                    let expected = large[slot].select(0, code);
+                    let actual = small[slot].unit(code);
+                    assert_eq!(actual.x.0, expected.x.0,
+                               "window {window} slot {slot} unit {code} x");
+                    assert_eq!(actual.y.0, expected.y.0,
+                               "window {window} slot {slot} unit {code} y");
+                    checked += 1;
+                }
+            }
+        }
+        assert_eq!(checked, (37_158 - 18) * 6);
+        println!("frontier18_bucket_plain_images={checked} retained_bytes={}",
+                 bucket.retained_bytes);
+    }
+
+    #[test]
+    fn frontier18_bucket_two_x_matches_prior_panel_and_binary_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-two-x-orbit-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let tables = &*FRONTIER18_BUCKET_TWO_X_TABLES;
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_tau_frontier18_two_x_xyzz(words);
+            let candidate = multiply_u256_tau_frontier18_bucket_two_x(words);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            assert_eq!((candidate.4, candidate.5), (reference.4, reference.5),
+                       "selector {index}");
+            assert!(candidate.2 <= 17 && candidate.6 == 0);
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "binary point {index}");
+            }
+        }
+        println!("frontier18_bucket_table_slots=37158 retained_bytes={}",
+                 tables.retained_bytes);
+    }
+
+    #[test]
+    fn frontier17_bucket_two_x_all_plain_images_match_full_table() {
+        let bucket = &*FRONTIER17_BUCKET_TWO_X_TABLES;
+        let full = &*FRONTIER17_ORBIT_TAU_TABLES;
+        let mut checked = 0usize;
+        for (window, (small, large)) in bucket.windows.iter()
+                .zip(full.windows.iter()).enumerate() {
+            assert_eq!(small.len(), large.len());
+            for slot in 1..small.len() {
+                for code in 0..6 {
+                    let expected = large[slot].select(0, code);
+                    let actual = small[slot].unit(code);
+                    assert_eq!(actual.x.0, expected.x.0,
+                               "window {window} slot {slot} unit {code} x");
+                    assert_eq!(actual.y.0, expected.y.0,
+                               "window {window} slot {slot} unit {code} y");
+                    checked += 1;
+                }
+            }
+        }
+        assert_eq!(checked, (64_463 - 17) * 6);
+        println!("frontier17_bucket_plain_images={checked} retained_bytes={}",
+                 bucket.retained_bytes);
+    }
+
+    #[test]
+    fn frontier17_bucket_two_x_matches_prior_panel_and_binary_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-two-x-orbit-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let tables = &*FRONTIER17_BUCKET_TWO_X_TABLES;
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_tau_frontier17_two_x_xyzz(words);
+            let candidate = multiply_u256_tau_frontier17_bucket_two_x(words);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            assert_eq!((candidate.4, candidate.5), (reference.4, reference.5),
+                       "selector {index}");
+            assert!(candidate.2 <= 16 && candidate.6 == 0);
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "binary point {index}");
+            }
+        }
+        println!("frontier17_bucket_table_slots=64463 retained_bytes={}",
+                 tables.retained_bytes);
+    }
+
+    #[test]
+    fn tau384_matching_matches_fresh_panel_and_binary_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-tau384-matching-20261010/fresh-inputs.json"
+        )).unwrap();
+        assert_eq!(panel["seed"], 20261010136i64);
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let tables = &*TAU384_MATCHING_TABLES;
+        assert_eq!(tables.retained_bytes, 18_013_472);
+        assert_eq!(tables.atlas.seeds.len() / 4, 18_074);
+        let mut nonidentity_by_bucket = [0usize; 2];
+        let mut candidate_gauge_hist = [0usize; 5];
+        let mut reference_gauge_hist = [0usize; 3];
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_radix384_fast(words);
+            let candidate = multiply_u256_tau384_matching(words);
+            assert_eq!(candidate.0, reference.0, "point {index}");
+            assert_eq!(candidate.1, reference.1, "representative {index}");
+            assert_eq!((candidate.4, candidate.5), (reference.4, reference.5),
+                       "selector {index}");
+            assert!(candidate.2 <= 14 && candidate.6 <= 4);
+            candidate_gauge_hist[candidate.6] += 1;
+            reference_gauge_hist[reference.6] += 1;
+            let (mut a, mut b) = candidate.1;
+            for window in 0..RADIX384_WINDOWS {
+                let (qa, ra, residue_a) = a.div_rem_radix384_fast();
+                let (qb, rb, residue_b) = b.div_rem_radix384_fast();
+                let (digit, seed, exponent, _) =
+                    tables.atlas.digit_residue(residue_a, residue_b);
+                assert!(norm(digit) <= 253 * 253, "digit {index}/{window}");
+                nonidentity_by_bucket[exponent] += usize::from(seed != 0);
+                a = qa.adjust_small_radix_quotient(ra, digit.0, RADIX384 as i32);
+                b = qb.adjust_small_radix_quotient(rb, digit.1, RADIX384 as i32);
+            }
+            assert!(a.is_zero() && b.is_zero(), "reconstruction {index}");
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "binary point {index}");
+            }
+        }
+        println!("tau384_panel_cases={} retained_bytes={} bucket_nonidentity={:?} candidate_gauge_hist={:?} reference_gauge_hist={:?}",
+                 scalars.len(), tables.retained_bytes, nonidentity_by_bucket,
+                 candidate_gauge_hist, reference_gauge_hist);
     }
 
     #[test]
