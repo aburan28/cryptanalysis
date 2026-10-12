@@ -20,9 +20,13 @@ global integer-radix census. `screen.py` reconstructs the existing frozen
 4,096-scalar design panel and compares selected-term counts with the
 radix-416 design on the identical representatives. `check.py` builds the
 central Lean theorems and audits their axioms. These sources and outputs
-are frozen before generating a disjoint public-point holdout. Freeze the
-holdout generator and independent replay implementation before drawing
-its scalar inputs. A native evaluator must then rebuild the point tables,
+are frozen before generating a disjoint public-point holdout. The
+`holdout.py` generator uses seed `20261012152` for 512 distinct scalars,
+checks disjointness against its listed prior panels, and derives expected
+public points with a separate projective binary multiplier. Freeze that
+generator and `holdout_replay.py` together before drawing the inputs.
+The independent replay must accumulate every selected point with a
+separate affine group law. A native evaluator must then rebuild the point tables,
 audit the atlas, and replay every held-out public point.
 
 For a CPU speed comparison, pair complete multiplications on the same
