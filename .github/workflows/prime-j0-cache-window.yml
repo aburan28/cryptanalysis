@@ -86,7 +86,9 @@ jobs:
               tail -40 "$RUNNER_TEMP/native-tests.log"
               exit 1
             }
-          grep -F 'test result: ok. 129 passed; 0 failed;' "$RUNNER_TEMP/native-tests.log"
+          grep -E '^test result: ok\. [0-9]+ passed; 0 failed;' "$RUNNER_TEMP/native-tests.log"
+          grep -F 'radix943_pareto_replays_full_panel_and_independent_points ... ok' \
+            "$RUNNER_TEMP/native-tests.log"
 
       - name: Build executable and replay all fixture points
         run: |
