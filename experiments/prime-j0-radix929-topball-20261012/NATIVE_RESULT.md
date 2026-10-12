@@ -52,3 +52,5 @@ point combination, and comparison with the independently supplied point.
 Its `verified=1 online_ms=...` output is suitable for the serial isolated
 benchmark service once the host preflight passes. This local ARM64 run was
 used for exact point and memory checks; no CPU speed ratio is inferred.
+The paired format-174 workload and host-specific manifest commands are in
+[`ISOLATED_PANEL.md`](ISOLATED_PANEL.md).

@@ -30,7 +30,8 @@ fn radix929_fixture(path: &str, only_case: Option<usize>) {
         assert_eq!(case["index"].as_u64(), Some(index as u64));
         assert_eq!(case["base_x_hex"].as_str(), Some(GENERATOR_X_HEX));
         assert_eq!(case["base_y_hex"].as_str(), Some(GENERATOR_Y_HEX));
-        let scalar = scalar_from_hex(case["scalar_hex"].as_str().expect("scalar"));
+        let scalar_hex = case["scalar_hex"].as_str().expect("scalar");
+        let scalar = scalar_from_hex(scalar_hex);
         let words = scalar_words_256(&scalar).expect("unsigned 256-bit scalar");
         let expected = if case["expected_identity"].as_bool() == Some(true) {
             "identity".to_owned()
@@ -48,7 +49,9 @@ fn radix929_fixture(path: &str, only_case: Option<usize>) {
         if only_case.is_some() {
             println!("verified=1 online_ms={online_ms:.6} index={index} \
                       additions={additions} rotations={rotations} \
-                      retained_bytes={retained_bytes} point={point}");
+                      retained_bytes={retained_bytes} point={point} \
+                      curve=secp256k1 base_x={GENERATOR_X_HEX} \
+                      base_y={GENERATOR_Y_HEX} scalar={scalar_hex}");
         } else {
             println!("{}", json!({"index": index, "verified": true,
                 "point": point, "additions": additions,
