@@ -70,6 +70,19 @@ def recipes_in(rel: str) -> dict[str, set[tuple]]:
     return out
 
 
+def doc_digests(doc: dict) -> set[str]:
+    """Return the record and enumerated-set digests satisfied by an archive."""
+    digests = set()
+    record_digest = doc.get(refs.KEY)
+    if isinstance(record_digest, str) and refs.HEX64.fullmatch(record_digest):
+        digests.add(record_digest)
+    factor_base = doc.get("factor_base")
+    enum_digest = factor_base.get("enumerated_set_sha256") if isinstance(factor_base, dict) else None
+    if isinstance(enum_digest, str) and refs.HEX64.fullmatch(enum_digest):
+        digests.add(enum_digest)
+    return digests
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("experiments", nargs="+", help="experiment directories, repository-relative")
@@ -105,7 +118,7 @@ def main() -> int:
         except Exception as exc:  # noqa: BLE001 -- report and keep going
             print(f"  build failed {r}: {exc}", flush=True)
             continue
-        got = {doc["factor_base_sha256"], doc["factor_base"]["enumerated_set_sha256"]}
+        got = doc_digests(doc)
         if got & ds:
             if not args.dry_run:
                 fbarchive.store(doc)
