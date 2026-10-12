@@ -2331,7 +2331,7 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
-    if format == 58 {
+    if format == 68 {
         std::sync::LazyLock::force(&U256_BETA_CANONICAL);
         return warm_format(30) + SOLINAS_UNIT_CONSTANT_BYTES;
     }
