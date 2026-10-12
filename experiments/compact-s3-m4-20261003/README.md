@@ -2431,21 +2431,24 @@ natural-yield estimate, and N83 successful cost remains unknown.
 
 ## Next goal
 
-Test a **fully coupled four-leaf search** that leaves both internal
-midpoints existential while it reasons about many cyclic windows at once.
-Q1485 through Q1487 all choose or constrain a narrow midpoint slice and
-find no unpinned relation; another faster fixed-midpoint oracle is unlikely
-to answer the solve-cost question. Pre-register a compact symbolic support
-method, check it against direct enumeration on small fields, and reuse the
-exact Q1481/Q1482 N53/N83 curves, bases, public points and limits. Its
-first gate is one independently verified, fully unpinned known-satisfiable
-N83 relation without constructing the full pair table. The next gate is
-one ordinary N83 relation, followed by a frozen ordinary-query panel for
-useful yield and novel rank. Count failed attempts, SAT propagation,
-field arithmetic, memory, and target-dependent wall intervals alongside
-Q1482/Q1483/Q1485/Q1486/Q1487/Q1488. If only the planted control passes, retain
-ordinary cost and N131 complete work as unknown. A complete N131 `2^x`
-also requires its exact usable base, relation collection, final matrix
+Build and measure a **fully coupled algebraic four-leaf pair-support
+mechanism** that leaves both internal midpoints existential and reasons
+about many factor-base completions on both sides of the join across cyclic
+windows, beyond Q1485/Q1486's single-left, bounded 4,096-completion local
+domains. Q1485 through Q1487 all choose or constrain a narrow midpoint
+slice and find no unpinned relation; another faster fixed-midpoint oracle
+is unlikely to answer the solve-cost question. Pre-register a compact
+symbolic support method, check it against direct enumeration on small
+fields, and reuse the exact Q1481/Q1482 N53/N83 curves, bases, public points,
+and limits. Its first gate is one independently verified, fully unpinned
+known-satisfiable N83 relation without constructing the full pair table.
+The next gate is one ordinary N83 relation, followed by a frozen
+ordinary-query panel for useful relation yield and novel rank. Count failed
+attempts, SAT propagation, field arithmetic, memory, and target-dependent
+wall intervals alongside Q1482/Q1483/Q1485/Q1486/Q1487/Q1488, pairing N53/N83
+inputs and operation-count boundaries. If only the planted control passes,
+retain ordinary cost and N131 complete work as unknown. A complete N131
+`2^x` also requires its exact usable base, relation collection, final matrix
 solve, target descent, and independent scalar replay.
 ## Next goal
 
