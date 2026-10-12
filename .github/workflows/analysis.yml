@@ -5,15 +5,16 @@ name: analysis
 # backlog.  Building and testing lives in ci.yml.
 on:
   push:
-    branches: ["**"]
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
   pull_request:
+  merge_group:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: analysis-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 defaults:
@@ -21,8 +22,30 @@ defaults:
     shell: bash
 
 jobs:
+  changes:
+    name: Select affected jobs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      selected: ${{ steps.scope.outputs.selected }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/actions/ci-scope/
+            /.github/ci/
+            /scripts/ci_scope.py
+      - id: scope
+        uses: ./.github/actions/ci-scope
+        with:
+          workflow: analysis.yml
+
   # --------------------------------------------------------- clang-tidy ----
   clang-tidy:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').clang-tidy) != 'false')) }}
     name: clang-tidy
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -50,6 +73,8 @@ jobs:
 
   # ----------------------------------------------------------- cppcheck ----
   cppcheck:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').cppcheck) != 'false')) }}
     name: cppcheck
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -72,6 +97,8 @@ jobs:
 
   # ------------------------------------------------------- gcc analyzer ----
   gcc-analyzer:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').gcc-analyzer) != 'false')) }}
     name: gcc -fanalyzer
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -90,6 +117,8 @@ jobs:
 
   # ------------------------------------------------------------- format ----
   format:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').format) != 'false')) }}
     name: clang-format (changed lines)
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -144,11 +173,16 @@ jobs:
 
   # --------------------------------------------------------- shell + yml ----
   lint-scripts:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').lint-scripts) != 'false')) }}
     name: shellcheck + actionlint
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+
+      - name: CI scope regression cases
+        run: python3 -m unittest discover -s tests -p test_ci_scope.py -v
 
       - name: shellcheck
         run: |
@@ -164,9 +198,11 @@ jobs:
 
   # ----------------------------------------------------------- coverage ----
   coverage:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').coverage) != 'false')) }}
     name: coverage
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 30 }}
     steps:
       - uses: actions/checkout@v7
 

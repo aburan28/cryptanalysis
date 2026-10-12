@@ -8,6 +8,7 @@ on:
       - 'experiments/groebner-perf-20260924/round51/producer.cpp'
       - '.github/workflows/producer-coefficient-transform.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - 'experiments/groebner-perf-20260924/round67/**'
       - 'experiments/groebner-perf-20260924/round40/fixtures/**'
@@ -18,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: producer-coefficient-transform-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -29,7 +30,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 30 }}
     steps:
       - uses: actions/checkout@v7
         with:

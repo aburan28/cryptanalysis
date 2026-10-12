@@ -11,7 +11,7 @@ name: fpga
 
 on:
   push:
-    branches: ["**"]
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - "fpga/**"
       - ".github/workflows/fpga.yml"
@@ -25,7 +25,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 defaults:
@@ -37,7 +37,7 @@ jobs:
   simulate:
     name: model and testbenches (DIGIT=${{ matrix.digit }})
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 40 }}
     strategy:
       fail-fast: false
       matrix:
@@ -78,7 +78,7 @@ jobs:
   synthesise:
     name: yosys area report
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 30 }}
     steps:
       - uses: actions/checkout@v7
       - name: Install yosys

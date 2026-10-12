@@ -5,15 +5,16 @@ name: ci
 # fuzz.yml, so no two workflows compile the same thing twice.
 on:
   push:
-    branches: ["**"]
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
   pull_request:
+  merge_group:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 defaults:
@@ -21,7 +22,29 @@ defaults:
     shell: bash
 
 jobs:
+  changes:
+    name: Select affected jobs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      selected: ${{ steps.scope.outputs.selected }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/actions/ci-scope/
+            /.github/ci/
+            /scripts/ci_scope.py
+      - id: scope
+        uses: ./.github/actions/ci-scope
+        with:
+          workflow: ci.yml
+
   isolated-bench-contract:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').isolated-bench-contract) != 'false')) }}
     name: Isolated benchmark contract
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -32,6 +55,8 @@ jobs:
 
   # ------------------------------------------------------------- build ----
   build:
+    needs: changes
+    if: ${{ !cancelled() }}
     name: ${{ matrix.os }} / ${{ matrix.cc }} / ${{ matrix.build_type }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
@@ -48,26 +73,32 @@ jobs:
       CC: ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').build) != 'false'))
 
       - name: Configure
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').build) != 'false'))
         run: |
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -DCA_WERROR=ON
 
       - name: Build
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').build) != 'false'))
         run: cmake --build build -j"$(getconf _NPROCESSORS_ONLN)"
 
       - name: Test
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').build) != 'false'))
         run: ctest --test-dir build --output-on-failure -j2
 
       - name: CLI smoke test
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').build) != 'false'))
         # Every subcommand, with the answers checked where they are known in
         # closed form. The script is the guard on "every public header is
         # reachable from the command line".
         run: ./scripts/cli_smoke.sh ./build/ca
 
       - name: CLI spot checks on a larger modulus
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').build) != 'false'))
         run: |
           set -eux
           ./build/ca gen --group zp --p 2000000579 --order 1000000289 --x 123456789 --seed 1
@@ -76,6 +107,7 @@ jobs:
           ./build/ca ic --p 1099511627791 --g 3 --h 123456789 --threads 2
 
       - name: Reject a malformed numeric option
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').build) != 'false'))
         # ca_cli parses with strtoull/strtod and must refuse junk rather than
         # silently solving for 0.
         run: |
@@ -86,9 +118,11 @@ jobs:
 
   # -------------------------------------------------------- sanitizers ----
   sanitizers:
+    needs: changes
+    if: ${{ !cancelled() }}
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 40 }}
     strategy:
       fail-fast: false
       matrix:
@@ -107,8 +141,10 @@ jobs:
       TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
     steps:
       - uses: actions/checkout@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').sanitizers) != 'false'))
 
       - name: Configure
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').sanitizers) != 'false'))
         run: |
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
@@ -116,12 +152,15 @@ jobs:
             -DCA_BUILD_SHARED=OFF -DCA_WERROR=ON
 
       - name: Build
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').sanitizers) != 'false'))
         run: cmake --build build -j"$(getconf _NPROCESSORS_ONLN)"
 
       - name: Test
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').sanitizers) != 'false'))
         run: ctest --test-dir build --output-on-failure
 
       - name: Exercise the threaded solvers
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').sanitizers) != 'false'))
         # ctest runs each solver single-threaded by default; these two drive
         # the worker pools that TSan is here for.
         run: |
@@ -132,9 +171,11 @@ jobs:
 
   # ---------------------------------------------------------- valgrind ----
   valgrind:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').valgrind) != 'false')) }}
     name: Valgrind memcheck
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 30 }}
     steps:
       - uses: actions/checkout@v7
 
@@ -165,6 +206,8 @@ jobs:
 
   # ----------------------------------------------------------- install ----
   install:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').install) != 'false')) }}
     name: Install and consume
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -221,9 +264,11 @@ jobs:
 
   # ------------------------------------------------------- cuda kernel ----
   cuda-kernel:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').cuda-kernel) != 'false')) }}
     name: CUDA kernel (compile + register report)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 30 }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

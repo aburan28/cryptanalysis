@@ -16,13 +16,14 @@ on:
       - 'experiments/pdp-scaling/**'
       - '.github/workflows/mapped-metal.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - 'experiments/groebner-perf-20260924/round24/**'
       - '.github/workflows/mapped-metal.yml'
 permissions:
   contents: read
 concurrency:
-  group: mapped-metal-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   correctness:

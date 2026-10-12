@@ -1,14 +1,23 @@
 name: Restricted GPU affine projection
 
 on:
+  merge_group:
+  workflow_dispatch:
   pull_request:
     paths:
+      - ".github/ci/**"
+      - ".github/actions/ci-scope/**"
+      - "scripts/ci_scope.py"
       - 'experiments/groebner-perf-20260924/**'
       - 'experiments/pdp-scaling/**'
       - 'experiments/pdp-degree-heuristics/**'
       - '.github/workflows/restricted-gpu-affine.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
+      - ".github/ci/**"
+      - ".github/actions/ci-scope/**"
+      - "scripts/ci_scope.py"
       - 'experiments/groebner-perf-20260924/**'
       - 'experiments/pdp-scaling/**'
       - 'experiments/pdp-degree-heuristics/**'
@@ -18,28 +27,54 @@ permissions:
   contents: read
 
 concurrency:
-  group: restricted-restricted-affine-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Select affected jobs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      selected: ${{ steps.scope.outputs.selected }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/actions/ci-scope/
+            /.github/ci/
+            /scripts/ci_scope.py
+      - id: scope
+        uses: ./.github/actions/ci-scope
+        with:
+          workflow: restricted-gpu-affine.yml
+
   correctness:
+    needs: changes
+    if: ${{ !cancelled() }}
     name: Restricted GPU affine projection (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 90 }}
     steps:
       - uses: actions/checkout@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         with:
           persist-credentials: false
       - uses: actions/setup-python@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         with:
           python-version: '3.12'
       - name: Install numerical dependency
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         run: python -m pip install numpy==2.4.0
       - name: Build portable dependencies and selected backend
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         shell: bash
         run: |
           mkdir -p restricted-affine-evidence
@@ -55,7 +90,7 @@ jobs:
           python experiments/groebner-perf-20260924/round49/build.py "${flags[@]}" > restricted-affine-evidence/build-49.log 2>&1
           python experiments/groebner-perf-20260924/round50/build.py "${flags[@]}" > restricted-affine-evidence/build-50.log 2>&1
       - name: Detect actual Metal availability
-        if: runner.os == 'macOS'
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false')) && (runner.os == 'macOS')
         working-directory: experiments/groebner-perf-20260924/round50
         run: |
           python - <<'PY'
@@ -74,11 +109,13 @@ jobs:
                   output.write('QUADRATIC_TEST_METAL=1\n')
           PY
       - name: Exercise proof semantics and charged failure boundaries
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         run: python -m unittest discover -s experiments/groebner-perf-20260924/round50 -p 'test_*.py' -v > restricted-affine-evidence/unit-tests.log 2>&1
       - name: Independently replay GPU row witnesses and affine spaces
-        if: env.QUADRATIC_TEST_METAL == '1'
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false')) && (env.QUADRATIC_TEST_METAL == '1')
         run: python -u experiments/groebner-perf-20260924/round50/test_projection.py --output restricted-affine-evidence/projection-oracle.json > restricted-affine-evidence/projection-oracle.log 2>&1
       - name: Validate frozen systems and fresh complete queries
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         shell: bash
         run: |
           flags=()
@@ -87,9 +124,10 @@ jobs:
           fi
           python -u experiments/groebner-perf-20260924/round50/validate_native.py "${flags[@]}" --output restricted-affine-evidence/correctness.json.gz > restricted-affine-evidence/validation.log 2>&1
       - name: Independently audit every complete proof from original equations
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         run: python -u experiments/groebner-perf-20260924/round50/audit_queries.py --input restricted-affine-evidence/correctness.json.gz --output restricted-affine-evidence/independent-audit.json > restricted-affine-evidence/independent-audit.log 2>&1
       - name: Retain rebuilt binaries and actual runner identity
-        if: always()
+        if: ${{ (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false')) && (!cancelled()) }}
         run: |
           python - <<'PY'
           import json, os, pathlib, platform, shutil
@@ -105,7 +143,7 @@ jobs:
               shutil.copytree(kernel, out / 'native' / 'pdp-degree-heuristics', dirs_exist_ok=True)
           PY
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false')) && (!cancelled()) }}
         with:
           name: restricted-affine-${{ matrix.os }}
           path: restricted-affine-evidence/

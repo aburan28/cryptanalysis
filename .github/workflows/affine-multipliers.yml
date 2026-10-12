@@ -20,6 +20,7 @@ on:
       - 'experiments/pdp-degree-heuristics/**'
       - '.github/workflows/affine-multipliers.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - 'experiments/groebner-perf-20260924/round34/**'
       - 'experiments/groebner-perf-20260924/round33/**'
@@ -31,7 +32,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: affine-multipliers-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -42,7 +43,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 60 }}
     steps:
       - uses: actions/checkout@v7
         with:

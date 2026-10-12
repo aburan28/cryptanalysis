@@ -13,7 +13,7 @@ name: ecc2k130-gpu
 
 on:
   push:
-    branches: ["**"]
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - "ecc2k130/**"
       - "fpga/model/**"
@@ -29,7 +29,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 defaults:
@@ -55,7 +55,7 @@ jobs:
   cuda:
     name: kernel compile (WALK=${{ matrix.walk }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 30 }}
     strategy:
       fail-fast: false
       matrix:

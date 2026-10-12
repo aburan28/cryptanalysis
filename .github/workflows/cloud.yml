@@ -6,11 +6,16 @@ name: cloud
 # definitions import.
 on:
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths: ['cloud/**', 'ecc2k130/scripts/fetch_cuda.sh', '.github/workflows/cloud.yml']
   pull_request:
     paths: ['cloud/**', 'ecc2k130/scripts/fetch_cuda.sh', '.github/workflows/cloud.yml']
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest

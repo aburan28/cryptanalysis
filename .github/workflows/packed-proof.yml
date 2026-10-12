@@ -6,6 +6,7 @@ on:
       - 'experiments/groebner-perf-20260924/round5/**'
       - '.github/workflows/packed-proof.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - 'experiments/groebner-perf-20260924/round11/**'
       - 'experiments/groebner-perf-20260924/round5/**'
@@ -13,7 +14,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: packed-proof-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   proof:

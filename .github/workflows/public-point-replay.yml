@@ -10,6 +10,7 @@ on:
       - 'experiments/pdp-scaling/**'
       - '.github/workflows/public-point-replay.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - 'experiments/groebner-perf-20260924/round17/**'
       - 'experiments/groebner-perf-20260924/round15/**'
@@ -21,7 +22,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: public-point-replay-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   correctness:
