@@ -25,6 +25,17 @@ design scalar reconstructed its pinned Eisenstein representative. The
 [design receipt](design.json) retain the exact assumptions, per-radix
 census, source hashes, atlas digest, and paired selected terms.
 
-The next gate is a disjoint public-point holdout, independently replayed
-and checked by a native evaluator. A matched complete-operation run on a
-qualifying isolated host will determine the CPU timing tradeoff.
+The first post-replay-source holdout is disjoint from the listed prior
+panels. Its 512 expected public points matched a separate affine group
+replay and the opt-in native evaluator. It selected 9,216 terms against
+7,680 for radix 416 on the identical scalars. The point-stream digest is
+`e67942606b1b71f33c641d3e66dfb8862be3dac407d26126419d830342cd6517`.
+The native build retained **4,568,960 bytes**, including the atlas,
+ordinary tables, terminal axes, and unit constants. The
+[independent replay](holdout-replay.json) and
+[native replay](native-replay.json) bind sources, inputs, table counts,
+and every public point.
+
+The next gate is a second disjoint public-point panel drawn after the
+native source freeze. A matched complete-operation run on a qualifying
+isolated host will determine the CPU timing tradeoff.

@@ -26,8 +26,13 @@ checks disjointness against its listed prior panels, and derives expected
 public points with a separate projective binary multiplier. Freeze that
 generator and `holdout_replay.py` together before drawing the inputs.
 The independent replay must accumulate every selected point with a
-separate affine group law. A native evaluator must then rebuild the point tables,
-audit the atlas, and replay every held-out public point.
+separate affine group law. The first panel is also used to bring up the
+native evaluator. Freeze the native evaluator, its build overlay, a second
+generator (`holdout2.py`, seed `20261012153`), and both second-panel
+replay checkers before drawing the second inputs. That second panel must
+exclude the first panel as well as every listed prior panel. The native
+evaluator must rebuild the point tables, audit the atlas, and replay every
+second-panel public point against its independent expected point.
 
 For a CPU speed comparison, pair complete multiplications on the same
 frozen scalars and resource envelope under the repository's isolated
