@@ -45,10 +45,21 @@ Mac. The [raw result](full_audit_local/raw.json),
 [runner](full_audit.py), and [receipt](full_audit_local/record.json) preserve
 the source/input hashes and phase accounting.
 
+A [same-binary sparse28 baseline](full_reference_local/summary.json) also
+completed the full-capacity target stage with the same exact certificate. Its
+target process CPU was 38.106 s versus 39.261 s for the sidecar, a
+reference/candidate ratio of 0.971. The measured target-stage wall intervals
+were 349.124 s and 453.082 s, respectively, during severe Mac contention.
+The [baseline runner](full_reference_audit.py) and raw receipt preserve this
+negative diagnostic; the sequential local runs do not qualify as a controlled
+wall-time comparison. The probe reduction therefore has no measured full-capacity
+CPU win in this local check.
+
 The full-capacity Tier 1 replay uses the same frozen target with alternating
 paired orders, complete raw results, instance and cgroup receipts, and the
-repository's Tier 1 promotion gate. The active RunPod container is occupied
-by a separate solver, so this replay awaits an idle instance.
+repository's Tier 1 promotion gate. The GitHub-hosted Linux workflow on this
+branch supplies a fresh instance; the active RunPod container is occupied by
+a separate solver.
 
 ## Reproduction
 

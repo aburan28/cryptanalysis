@@ -117,12 +117,14 @@ def main():
                  experiment / "Cargo.lock", experiment / "screen.py",
                  experiment / "verify_screen.py", experiment / "full_audit.py",
                  screen / "protocol.json", screen / "summary.json", parent_path,
+                 experiment / "full_reference_audit.py",
                  experiment / "test_record.json", experiment / "test.stdout.txt",
                  experiment / "test.stderr.txt",
                  base / "restore_crypto_source.py", base / "verify.py",
                  stage, bridge, reps, reference]
     artifacts += sorted(screen.glob("run_*"))
     artifacts += sorted((experiment / "full_audit_local").glob("*"))
+    artifacts += sorted((experiment / "full_reference_local").glob("*"))
     artifacts += sorted(path for path in (base / "crypto_source_snapshot").rglob("*")
                         if path.is_file())
     if any(not path.is_file() for path in artifacts):

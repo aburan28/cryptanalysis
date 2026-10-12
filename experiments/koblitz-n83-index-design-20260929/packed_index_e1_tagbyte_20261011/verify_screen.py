@@ -131,10 +131,44 @@ def verify():
             audit_summary["candidate_phase_residual_ns"] !=
             int(audit_raw["timing_ns"]["target_pdp_and_native_check"]) - phase_ns):
         raise ValueError("full-capacity summary differs")
+    baseline = HERE / "full_reference_local"
+    baseline_protocol_path = baseline / "protocol.json"
+    baseline_raw_path = baseline / "raw.json"
+    baseline_protocol = load(baseline_protocol_path)
+    baseline_record = load(baseline / "record.json")
+    baseline_raw = load(baseline_raw_path)
+    baseline_summary = load(baseline / "summary.json")
+    if (baseline_protocol["source_sha256"] != source or
+            baseline_protocol["cargo_manifest_sha256"] != cargo or
+            baseline_protocol["cargo_lock_sha256"] != digest(HERE / "Cargo.lock") or
+            baseline_protocol["runner_sha256"] != digest(HERE / "full_reference_audit.py") or
+            baseline_protocol["binary_sha256"] != audit_protocol["binary_sha256"] or
+            baseline_protocol["reference_sha256"] != digest(BASE / "run_2_sparse28.json") or
+            baseline_protocol["workload_id"] != tier["workload_id"] or
+            baseline_record["status"] != "COMPLETED" or
+            baseline_record["exit_code"] != 0 or
+            baseline_record["protocol_sha256"] != digest(baseline_protocol_path) or
+            baseline_record["raw_sha256"] != digest(baseline_raw_path) or
+            baseline_raw["native_source_sha256"] != source or
+            baseline_raw["cargo_manifest_sha256"] != cargo or
+            baseline_raw["index_mode"] != MODES[0] or
+            baseline_raw["root_table_tag_byte_allocated_bytes"] != 0 or
+            baseline_raw["peak_rss_bytes"] > 5500 * (1 << 20) or
+            any(baseline_raw[field] != full[field] for field in PAIR_FIELDS) or
+            baseline_summary["status"] != "PASS" or
+            baseline_summary["protocol_sha256"] != digest(baseline_protocol_path) or
+            baseline_summary["raw_sha256"] != digest(baseline_raw_path) or
+            baseline_summary["pair_certificate"] != certificate or
+            baseline_summary["measured_record_probes"] != 7_415_319 or
+            baseline_summary["measured_target_process_cpu_ns"] !=
+            int(baseline_raw["timing_ns"]["target_process_cpu"])):
+        raise ValueError("full-capacity same-binary baseline differs")
     return {"status": "PASS", "tests": 8, "screen_runs": 4,
             "reference_probes": probes[0], "candidate_probes": probes[1],
             "full_reference_probes": audit_summary["reference_record_probes"],
             "full_candidate_probes": audit_summary["candidate_record_probes"],
+            "full_reference_process_cpu_ns": baseline_summary["measured_target_process_cpu_ns"],
+            "full_candidate_process_cpu_ns": audit_summary["candidate_target_process_cpu_ns"],
             "tier1_workload_id": tier["workload_id"]}
 
 
