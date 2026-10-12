@@ -47,10 +47,13 @@ The independent uniform first-pair model prices relation supply more directly.
 For each uniform nonidentity query, select a fixed first x-pair independently
 of the target, and scan its four signed complements. Each complement can
 match at most `B(B+1)/2` unordered signed-base second-pair sums. The union
-bound makes the four-sign hit probability at most `2^-62.778` on the N131
-subgroup. Under repeated independent queries, obtaining `K` hits requires
-at least `2^87.356` expected complete scans, or **`2^123.289` batch
-multiplication calls** with Q1505's formula. Q1502's formula prices the same
+bound makes the chance of any match at most `2^-62.778` on the N131
+subgroup. Linearity gives the same ceiling for the expected number of
+signed-complement/unordered-pair matches per scan, including scans with
+multiple raw x-key hits. Supplying `K` expected match opportunities under
+repeated independent queries requires at least `2^87.356` complete scans,
+or **`2^123.289` batch multiplication calls** with Q1505's formula.
+Q1502's formula prices the same
 model at `2^123.774`; Q1505 improves it by 0.485 bits. Rank novelty,
 first-pair selection, matrix work, target handling, inversion internals, and
 replay are not charged. A target-guided first-pair method changes this input
