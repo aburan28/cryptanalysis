@@ -1,13 +1,13 @@
 # E-1 sparse28 root-directory capacity result
 
-The sparse28 exact root directory reduced full-key probes from **69,190,310
-to 7,415,319** on the frozen N83 one-target, 29.9-million-state workload.
-In an A–B–B–A local panel, target-process CPU medians were **45.440 s for
-sparse26** and **35.591 s for sparse28**; sparse28 was lower in both adjacent
-pairs. The root table grew by **37,748,736 bytes (36 MiB)**. All four runs
-completed under the 5,500 MiB RSS cap with the same exact behavior and
-`state_cap_no_relation` status. This is an exploratory CPU result pending a
-qualifying Tier 1 cloud-instance or Tier 0 host-isolation receipt.
+The sparse28 exact root directory achieved a **1.144× Tier 1 instance-scoped
+target-stage speedup** over sparse26 on the frozen N83 one-target,
+29.9-million-state workload. Eight alternating pairs on one GitHub-hosted
+Linux instance were all exact and valid; the paired bootstrap 95% interval
+was **[1.123, 1.215]**. Full-key probes fell from **69,190,310 to
+7,415,319**. The root table grew by **37,748,736 bytes (36 MiB)**, and
+both arms stayed below the 5,500 MiB RSS cap with the same first-witness
+behavior and `state_cap_no_relation` bounded-stage status.
 
 This is proposal `Q2026101132`, curve `EC1N83Ckb1h876c2921cb64`, workload
 `63dd0929cf33`, and source SHA-256
@@ -83,6 +83,35 @@ source, and freezes the benchmark runner's expected fields and result. It
 also hashes an allocation receipt whose `provider` and `instance_id` match
 the supplied arguments. A dry-run manifest passed the Tier 1 runner's input
 contract; this establishes the replay wiring, not a timing result.
+
+### Measured Tier 1 panel
+
+The [raw Linux receipt](tier1_github_38187970079/results/summary.json) comes
+from [GitHub Actions run 38187970079](https://github.com/aburan28/cryptanalysis/actions/runs/38187970079)
+on instance `gh-38187970079-1-paired-stage` (`ubuntu-24.04`, x86-64). The
+frozen one-target workload `63dd0929cf33` uses the same public point, one
+pinned exposed CPU, exact binary, and 300-second arm cap for both modes.
+The native online interval starts after index construction and the lookup
+sample; it ends after target query preparation, partner generation, exact
+lookup, and native relation checks. The table shows medians across eight
+arms of each mode; phase medians are displayed independently.
+
+| Mode | Target online wall (s) | Target process CPU (s) | Query prep (s) | Partner generation (s) | Partner check (s) | Maximum native RSS (bytes) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| sparse26 reference | 64.430 | 64.422 | 4.039 | 21.599 | 38.623 | 5,280,362,496 |
+| sparse28 candidate | 56.469 | 56.462 | 4.044 | 21.534 | 30.557 | 5,308,678,144 |
+
+The median of the **eight paired** reference/candidate ratios is **1.144**;
+its bootstrap 95% interval is **[1.123, 1.215]**, with every pair above 1.
+The native phase costs and residual sum to each online interval. All 16 raw
+outputs matched their frozen arm records, including operation counts and
+first-witness lookup samples. The cgroup recorded zero CPU throttles and
+zero memory failures during measured arms. The runner marked
+`speedup_claim_eligible=true` for this Tier 1 bounded-stage comparison.
+The [independent verifier](verify_tier1_receipt.py) replays the raw hashes,
+exact fields, phase sums, pair order, allocation, memory and noise counters,
+and paired confidence interval. Reusable index construction is recorded in
+the raw results outside this target-stage interval.
 
 The [GitHub-hosted Linux workflow](../../../.github/workflows/n83-e1-sparse28-tier1.yml)
 now runs this frozen comparison on a fresh Tier 1 instance and preserves its
