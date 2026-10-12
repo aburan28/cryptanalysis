@@ -2331,6 +2331,10 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 58 {
+        std::sync::LazyLock::force(&U256_BETA_CANONICAL);
+        return warm_format(30) + SOLINAS_UNIT_CONSTANT_BYTES;
+    }
     if format == 57 {
         return warm_format(56);
     }
@@ -2728,6 +2732,41 @@ fn evaluate_u256_gauge(
     (result.affine_hex_binary_inverse(), gauge_products)
 }
 
+// The sector table is unchanged; only its single accumulator uses XYZZ.
+fn evaluate_u256_gauge_xyzz(
+    choices: &[(usize, usize)], windows: &[Box<[U256Affine]>],
+) -> (String, usize) {
+    assert_eq!(choices.len(), windows.len());
+    let mut result = U256XYZZ::identity();
+    let mut gauge = None;
+    let mut gauge_products = 0usize;
+    for power in [1usize, 2, 0] {
+        if !choices.iter().any(|&(orbit, code)| orbit != 0 && code / 2 == power) {
+            continue;
+        }
+        if let Some(previous) = gauge {
+            let delta = (previous + 3 - power) % 3;
+            if delta != 0 && !result.is_identity() {
+                result = result.rotate_power_solinas(delta);
+                gauge_products += 1;
+            }
+        }
+        gauge = Some(power);
+        for (index, &(orbit_id, unit_code)) in choices.iter().enumerate() {
+            if orbit_id == 0 || unit_code / 2 != power { continue; }
+            result = result.add_mixed(windows[index][orbit_id].unit_solinas(unit_code & 1));
+        }
+    }
+    if let Some(power) = gauge {
+        if power != 0 && !result.is_identity() {
+            result = result.rotate_power_solinas(power);
+            gauge_products += 1;
+        }
+    }
+    assert!(gauge_products <= 2);
+    (result.affine_hex_binary_inverse(), gauge_products)
+}
+
 pub(super) fn multiply_u256_gauge(
     scalar_words: [u64; 4],
 ) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
@@ -2787,6 +2826,25 @@ pub(super) fn multiply_u256_sector(
     scalar_words: [u64; 4],
 ) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
     multiply_u256_sector_with(scalar_words, &WIDTHS, &SECTOR_U256_TABLES)
+}
+
+pub(super) fn multiply_u256_sector_xyzz(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*SECTOR_U256_TABLES;
+    let (choices, nonidentity) = u256_sector_choices(representative);
+    let (point, gauge_products) = evaluate_u256_gauge_xyzz(&choices, &tables.windows);
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES,
+     fallback, corner, gauge_products)
 }
 
 pub(super) fn multiply_u256_sector15(
@@ -4782,6 +4840,32 @@ mod tests {
         println!("sector_panel_cases={} retained_reference={} retained_candidate={} counts_hex={}",
                  scalars.len(), old.retained_bytes, new.retained_bytes,
                  hex::encode(per_scalar_counts));
+    }
+
+    #[test]
+    fn sector_xyzz_replays_full_panel_and_independent_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-sector-digit-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_sector(words);
+            let candidate = multiply_u256_sector_xyzz(words);
+            assert_eq!((&candidate.0, candidate.1, candidate.2, candidate.4,
+                        candidate.5, candidate.6),
+                       (&reference.0, reference.1, reference.2, reference.4,
+                        reference.5, reference.6),
+                       "full scalar and point record {index}");
+            assert_eq!(candidate.3, 64_314_208, "retained table and constants {index}");
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
     }
 
     #[test]
