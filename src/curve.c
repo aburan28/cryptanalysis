@@ -19,7 +19,6 @@
 #include "curve_internal.h"
 #include "dlog_internal.h"
 #include "ec_tau_internal.h"
-#include "curve_internal.h"
 
 #include <math.h>
 
@@ -241,7 +240,7 @@ ca_status ca_curve_group(ca_group *g, uint64_t p, uint64_t a, uint64_t b, uint64
 
 /* ---- GLV endomorphism-accelerated rho --------------------------------- */
 
-uint32_t ca_ec_j0_coord_canonicalize(const ca_group *g, ca_elem *Y)
+static uint32_t ca_ec_j0_coord_canonicalize(const ca_group *g, ca_elem *Y)
 {
     if (!g || !Y || g->endo_kind != 1 || g->aut_order != 6 || Y->w[2]) return 0;
     /* In the sixfold j=0 orbit, x takes three beta rotations and y
