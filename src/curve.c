@@ -343,6 +343,10 @@ typedef struct glv_ctx {
     const ca_tau4_joint_plane_precomp *joint_plane;
     int free_gauge;
     int quotient_restart;
+#ifdef CA_J0_TAU_RHO_WIDTH4
+    ca_tau4_precomp base_pre, target_pre;
+    int pre_ready;
+#endif
     ca_curve_startup_stats *startup;
 } glv_ctx;
 
@@ -413,13 +417,6 @@ static int glv_startup_combination(const glv_ctx *c, ca_elem *out,
     }
     return 1;
 }
-
-static int glv_restart(const glv_ctx *c, glv_walk *w, ca_rng *rng, uint64_t *ops)
-#ifdef CA_J0_TAU_RHO_WIDTH4
-    ca_tau4_precomp base_pre, target_pre;
-    int pre_ready;
-#endif
-} glv_ctx;
 
 #ifdef CA_J0_TAU_RHO_WIDTH4
 #    define GLV_BASE_PRE(c)   ((c)->pre_ready ? &(c)->base_pre : NULL)
