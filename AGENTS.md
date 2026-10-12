@@ -13,6 +13,40 @@ record which graphs were checked and why they remain current. Distinguish
 proposals and extrapolations from proved or measured results; keep the
 candidate, curve-identity, measurement, and Sage rules below in force.
 
+## Papers
+
+Manuscripts generated from this repository's results live under `papers/`,
+one directory per paper, and nowhere else. The layout is the same in
+`aburan28/cryptanalysis`, `aburan28/crypto`, `aburan28/crypto-autoresearcher`
+and `aburan28/ml-cryptanalysis`:
+
+- `papers/README.md` is the index: one row per paper (directory, title,
+  status). Add a row when adding a paper; never add a paper outside `papers/`.
+- `papers/paper.mk` is the shared build. A paper's `Makefile` sets `TEX`,
+  `SECTIONS` and `BIB` and includes it; the targets are `make`, `make check`,
+  `make arxiv`, `make eprint`, `make deanonymize` and `make clean`.
+- `papers/.gitignore` ignores LaTeX auxiliaries and submission bundles. The
+  built PDF is committed next to its sources and rebuilt whenever a cited
+  number, conclusion or figure changes.
+- `papers/AUTHORS.example` is the author-block template. Sources stay
+  anonymized (`\author{Anonymous}`); `make deanonymize` restores the authors
+  from an untracked `AUTHORS` file.
+- Each paper directory holds the root `.tex` (or the `.md` of a draft that is
+  not typeset yet), its sections and bibliography, `README.md` (status banner,
+  what it says, what it does not say, how to build, reproduction pointers, and
+  the checklist owed before submission), `abstract.txt` (title, keywords,
+  category) and the PDF.
+- Claims follow the repository's evidence rules: every number cites a
+  committed artefact in this repository or a sibling (prefix the path with
+  `crypto:`, `cryptanalysis:` or `crypto-autoresearcher:`); a stage
+  diagnostic is never reported as a speedup; every end-to-end row has
+  verified answers; each change is classed as advance, engineering,
+  relabelling or accounting. A draft is not submitted, posted or cleared for
+  either until its README says so, and its README names the novelty audit
+  and the measurements still owed.
+- `make check` must pass (references and citations resolved, no LaTeX errors,
+  no overfull boxes) before a PDF is recommitted.
+
 For small-prime or pinned GF(2^83) elliptic-curve surface searches, quartic
 subgroup transfers, genus-2+ Jacobian transfers, hyperelliptic covers, Mumford
 arithmetic, gluing or polarization candidates, or Frobenius compatibility
@@ -120,7 +154,8 @@ named, fully charged, verified toy-curve runs. It holds the calibrated `rps` uni
 candidate/workload manifests, `history.csv`, and the CI baseline gate. Record a new
 baseline there when a change is intended. Archive factor bases (record, point set,
 digests) with [fb-archive](experiments/fb-archive/README.md); a recipe-only
-archive keeps `B` null. Archive a sweep over many curves with
+archive keeps `B` null. The archive is append-only (`appendonly.py`, CI `fb-refs`): never
+remove or rewrite an archived row or file; a correction is a new entry. Archive a sweep over many curves with
 `experiments/fb-archive/sweeps.py` (recipe only: curves, bases, recorded count files). CI (`fb-refs`) fails when a committed result cites a
 `factor_base_sha256` or point-set digest (`point_set_sha256`,
 `enumerated_set_sha256`, `base_digest`) that is neither archived (directly or through
@@ -507,9 +542,9 @@ still run on ordinary hosts when labeled accordingly.
 ## Local Sage runs
 
 **Required rule:** Agents must launch all new and resumed local Sage jobs
-through this repository's `sage` launcher, which selects our accepted
-optimized build. This includes jobs they write, run, or configure for later
-execution:
+through a checked launcher for the accepted optimized build. This includes
+jobs they write, run, or configure for later execution. On the primary local
+workspace, use its existing repository launcher:
 
 ```sh
 # From this repository:
@@ -520,17 +555,33 @@ execution:
 /Volumes/SSD990/cryptanalysis/sage -python /absolute/path/to/job.py
 ```
 
+For a source checkout without that workspace launcher, build the pinned
+stack as described in `docs/SAGE_RELEASE.md`, then use:
+
+```sh
+python3 scripts/sage_release.py run --sage /path/to/built/sage -- -python /absolute/path/to/job.py
+```
+
+This release launcher checks `scripts/sage-release-manifest.json` and the
+imported module paths. If using a compiled overlay, use its `run-overlay`
+command so the archive is checked before use. Rebuild overlays after the
+release manifest changes; do not reuse binaries with an older source stamp.
+
 This applies to commands written by agents, shell scripts, and Python
 subprocesses. Use the absolute repository launcher in subprocess argument
 lists; do not rely on a scheduler's PATH or a system `python3` to select Sage.
-The launcher verifies the accepted source and native binaries against
+The primary workspace launcher verifies the accepted source and native
+binaries against
 `experiments/sage-binary-arithmetic/runtime-current.json` before starting each
 job, and gives child commands named `sage` the same checked launcher on PATH.
 If verification fails, fix the installation before running the job; do not
 bypass the check or fall back to another installation.
 
-For measured runs, save `./sage --runtime-info` output alongside the results
-before starting the workload. Keep this startup check outside the arithmetic
+For measured runs on the primary workspace, save `./sage --runtime-info`
+output alongside the results
+before starting the workload. For other builds, retain the release manifest
+and compatibility receipt identifying the actual imported modules and native
+binaries. Keep this startup check outside the arithmetic
 or single-target online timing interval. The output records the actual
 imported modules, manifest hash, installation receipt, and native dispatch.
 Restart existing Python/Sage processes after an accepted build changes so
@@ -539,7 +590,8 @@ they load its new modules.
 Import the installed `sage.schemes.elliptic_curves` modules for ordinary
 local work. Eligible scalar operations use the installed acceleration
 automatically; independent point batches can use the public `binary_batch`
-APIs documented in `experiments/sage-binary-arithmetic/README.md`.
+APIs documented in the installed module, `docs/SAGE_RELEASE.md`, and
+`experiments/sage-binary-arithmetic/README.md`.
 When running the hardware experiment harness against the accepted build,
 set `SAGE_BINARY_USE_INSTALLED=1`; its default loader selects a development
 prototype. Prototype loaders and `SAGE_BINARY_CANDIDATE`,
@@ -579,3 +631,10 @@ Correctness passes do not establish speedups: require matched full-operation
 benchmarks on each claimed device, including conversion and transfer costs,
 before enabling device-specific automatic routing or making performance
 claims. Keep unmeasured backends opt-in.
+
+## Cross-repository curve identity in comparisons
+
+For new curve comparisons and UI exports, follow [docs/curve-identities.md](docs/curve-identities.md)
+and `tools/curve_identity.py`. Reuse EC1 aliases and full curve UIDs across IC and
+Pollard rho; keep factor-base/isogeny candidate identities separate. Preserve
+immutable historical names and never infer exact identity from field degree alone.

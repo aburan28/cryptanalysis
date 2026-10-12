@@ -37,7 +37,7 @@ records, measurement boundaries, and checked Sage launcher.
   `experiments/volcano-ic/figures/`, and any affected paper or report figures.
   Update their canonical data or drawing source and regenerate rendered files
   in the same change as the underlying finding. Refresh a paper PDF when its
-  cited conclusion or figure changes, following `paper/README.md`.
+  cited conclusion or figure changes, following `papers/README.md`.
 - Check `experiments/ic-candidate-catalog/curves.yaml` and the associated
   isogeny-route records before adding or connecting curves. Preserve immutable
   curve IDs and ordered routes. A proposed neighbor or conductor guess is not
