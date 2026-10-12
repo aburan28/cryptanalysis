@@ -103,3 +103,7 @@ objective and evaluates each active row set through a maximum-matching
 atlas. A broader priority review is needed before an academic novelty
 claim. The next empirical step is the complete paired online panel on
 an isolated physical CPU.
+
+The subsequent [graph-aware representative selector](GRAPH_AWARE_COVER_RESULT.md)
+uses these same pair tables and matching atlas while ranking each of
+the nine lattice representatives by its matched point cost.
