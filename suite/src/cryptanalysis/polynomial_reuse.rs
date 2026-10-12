@@ -4,12 +4,13 @@
 use super::{
     algebra_cache::{self, Layer},
     koblitz_groebner::*,
-    pq_groebner_f2::{F2BoolMono, F2BoolPoly},
+    pq_groebner_f2::{read_columns, F2BoolMono, F2BoolPoly, MonoColumns},
 };
 use crate::binary_ecc::F2mElement;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(from = "TemplateFields")]
 pub struct DecompositionTemplate {
     pub n: u32,
     pub n_vars: usize,
@@ -24,6 +25,142 @@ pub struct DecompositionTemplate {
     /// the shared cache keys on the full inputs already.
     #[serde(skip)]
     source: Option<TemplateSource>,
+    /// `constant` and `coefficients` as bitsets, derived from them when
+    /// the template is built or deserialised (see [`LastLink`]).  Not
+    /// serialised; a template without it (its polynomials are not
+    /// canonical, or not one per equation for every bit) instantiates by
+    /// a chain of additions, to the same equations.
+    #[serde(skip)]
+    last_link: Option<LastLink>,
+}
+
+/// The fields a [`DecompositionTemplate`] serialises, which is also what
+/// it deserialises through: a template read back from the shared cache
+/// derives its [`LastLink`] once, as `build` does, rather than adding
+/// polynomials for every target it instantiates.  The encoding is the
+/// derived one either way.
+#[derive(Deserialize)]
+struct TemplateFields {
+    n: u32,
+    n_vars: usize,
+    ell: usize,
+    m: usize,
+    prefix: Vec<F2BoolPoly>,
+    constant: Vec<F2BoolPoly>,
+    coefficients: Vec<Vec<F2BoolPoly>>,
+}
+
+impl From<TemplateFields> for DecompositionTemplate {
+    fn from(f: TemplateFields) -> Self {
+        let last_link = LastLink::new(&f.constant, &f.coefficients);
+        Self {
+            n: f.n,
+            n_vars: f.n_vars,
+            ell: f.ell,
+            m: f.m,
+            prefix: f.prefix,
+            constant: f.constant,
+            coefficients: f.coefficients,
+            source: None,
+            last_link,
+        }
+    }
+}
+
+/// The last link's equations over one column set each (see
+/// [`MonoColumns`]).
+///
+/// Instantiating adds, to each of the `n` constant polynomials, the
+/// coefficients of the target's set bits — about `n/2` polynomials an
+/// equation, drawn from the same few monomials.  A chain of
+/// [`F2BoolPoly::add`]s re-merged the running sum once per addend, 84 %
+/// of the instructions of instantiating at `n = 23`, `m = 2` (perfbench
+/// `pdp/instantiate_m2_n23`); over the union of the monomials an equation
+/// can hold, the sum is a few word XORs per addend, read back once in
+/// canonical order.
+#[derive(Clone, Debug)]
+struct LastLink {
+    /// Every monomial of equation `j`'s constant and coefficients, in
+    /// canonical order, at `monomials[starts[j]..starts[j + 1]]`: the
+    /// columns of its words.  Only the masks of the [`MonoColumns`] that
+    /// placed the terms are kept: reading back looks nothing up, and the
+    /// lookup keys would triple what the columns hold.  The algebra cache
+    /// charges a template its encoded length and holds a decoded copy,
+    /// and without the keys the copy stays below the charge: at `n = 15`,
+    /// `m = 3`, `ℓ = 5` (perfbench `pdp/instantiate_m3_n15`) its
+    /// polynomials hold 36 kB and these bitsets 16 kB against 64 kB of
+    /// JSON, where column sets with their keys would hold at least 39 kB
+    /// (at `n = 23`, `m = 2`, `ℓ = 11`: 317 kB and 41 kB against 579 kB).
+    monomials: Vec<u64>,
+    starts: Vec<usize>,
+    /// Equation `j` occupies words `offsets[j]..offsets[j + 1]` of a row.
+    offsets: Vec<usize>,
+    /// The constant polynomials, as one row.
+    constant: Vec<u64>,
+    /// `coefficients[k]`: target bit `k`'s coefficients, as one row.
+    coefficients: Vec<Vec<u64>>,
+}
+
+impl LastLink {
+    /// `None` unless every polynomial is canonical and every target bit
+    /// has one coefficient per equation: the chain of additions is the
+    /// reference, and it is only a set sum on canonical lists.
+    fn new(constant: &[F2BoolPoly], coefficients: &[Vec<F2BoolPoly>]) -> Option<Self> {
+        let eqs = constant.len();
+        if coefficients.iter().any(|c| c.len() != eqs)
+            || !constant
+                .iter()
+                .chain(coefficients.iter().flatten())
+                .all(F2BoolPoly::is_canonical)
+        {
+            return None;
+        }
+        let columns: Vec<MonoColumns> = (0..eqs)
+            .map(|j| {
+                let polys = std::iter::once(&constant[j]).chain(coefficients.iter().map(|c| &c[j]));
+                MonoColumns::new(polys.flat_map(|p| p.terms.iter().map(|t| t.mask)).collect())
+            })
+            .collect();
+        let mut offsets = vec![0];
+        for c in &columns {
+            offsets.push(offsets[offsets.len() - 1] + c.words());
+        }
+        let row = |polys: &[F2BoolPoly]| {
+            let mut row = vec![0u64; offsets[eqs]];
+            for (j, p) in polys.iter().enumerate() {
+                columns[j].toggle(&mut row[offsets[j]..offsets[j + 1]], p)?;
+            }
+            Some(row)
+        };
+        let constant = row(constant)?;
+        let coefficients = coefficients
+            .iter()
+            .map(|c| row(c))
+            .collect::<Option<Vec<_>>>()?;
+        let mut monomials = Vec::with_capacity(columns.iter().map(|c| c.masks().len()).sum());
+        let mut starts = vec![0];
+        for c in &columns {
+            monomials.extend_from_slice(c.masks());
+            starts.push(monomials.len());
+        }
+        Some(Self {
+            monomials,
+            starts,
+            offsets,
+            constant,
+            coefficients,
+        })
+    }
+
+    /// Whether `constant` and `coefficients` still have the shape these
+    /// bitsets were derived from: as many equations, as many target bits,
+    /// and one coefficient per equation for every bit.
+    fn fits(&self, constant: &[F2BoolPoly], coefficients: &[Vec<F2BoolPoly>]) -> bool {
+        let eqs = self.offsets.len() - 1;
+        constant.len() == eqs
+            && coefficients.len() == self.coefficients.len()
+            && coefficients.iter().all(|c| c.len() == eqs)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -70,12 +207,13 @@ impl DecompositionTemplate {
         let a = x.add(y).square(st);
         let c = x.mul(y, st);
         let constant = c.square(st).add(&SymElement::constant(b, n, n_vars)).coords;
-        let coefficients = (0..n)
+        let coefficients: Vec<Vec<F2BoolPoly>> = (0..n)
             .map(|k| {
                 let bit = SymElement::constant(&F2mElement::from_bit_positions(&[k], n), n, n_vars);
                 a.mul(&bit.square(st), st).add(&c.mul(&bit, st)).coords
             })
             .collect();
+        let last_link = LastLink::new(&constant, &coefficients);
         Some(Self {
             n,
             n_vars,
@@ -84,6 +222,7 @@ impl DecompositionTemplate {
             prefix,
             constant,
             coefficients,
+            last_link,
             source: Some(TemplateSource {
                 basis: basis.iter().map(|e| e.raw_bits().to_vec()).collect(),
                 b: b.raw_bits().to_vec(),
@@ -108,16 +247,30 @@ impl DecompositionTemplate {
                     && s.reduced == st.reduced
             })
     }
+    /// The system for target abscissa `x_r`: the prefix, then each
+    /// constant plus the coefficients of `x_r`'s set bits.
+    ///
+    /// The sums go through the bitsets derived from `constant` and
+    /// `coefficients` when the template was built or deserialised, which
+    /// makes those fields read-only in effect: a template whose
+    /// polynomials are edited in place must be built again.  An edit that
+    /// changes their shape (adds or drops an equation, a target bit or
+    /// one bit's coefficient) no longer fits the bitsets and takes the
+    /// chain of additions; debug builds check every instantiation against
+    /// that chain.
     pub fn instantiate(&self, x_r: &F2mElement) -> DecompositionSystem {
         let bits = x_r.raw_bits().first().copied().unwrap_or(0);
-        let mut last = self.constant.clone();
-        for k in 0..self.n as usize {
-            if bits & (1u64 << k) != 0 {
-                for (p, c) in last.iter_mut().zip(&self.coefficients[k]) {
-                    *p = p.add(c);
-                }
+        let last = match &self.last_link {
+            Some(link) if link.fits(&self.constant, &self.coefficients) => {
+                let last = self.instantiate_link(link, bits);
+                debug_assert!(
+                    last == self.instantiate_by_adds(bits),
+                    "template fields changed after their bitsets were derived"
+                );
+                last
             }
-        }
+            _ => self.instantiate_by_adds(bits),
+        };
         let mut equations = self.prefix.clone();
         equations.extend(last);
         DecompositionSystem {
@@ -127,6 +280,42 @@ impl DecompositionTemplate {
             m: self.m,
         }
     }
+
+    fn instantiate_link(&self, link: &LastLink, bits: u64) -> Vec<F2BoolPoly> {
+        let mut row = link.constant.clone();
+        for k in 0..self.n as usize {
+            if bits & (1u64 << k) != 0 {
+                for (w, c) in row.iter_mut().zip(&link.coefficients[k]) {
+                    *w ^= c;
+                }
+            }
+        }
+        link.starts
+            .windows(2)
+            .zip(link.offsets.windows(2))
+            .zip(&self.constant)
+            .map(|((cols, words), p)| {
+                read_columns(
+                    &link.monomials[cols[0]..cols[1]],
+                    &row[words[0]..words[1]],
+                    p.n_vars,
+                )
+            })
+            .collect()
+    }
+
+    fn instantiate_by_adds(&self, bits: u64) -> Vec<F2BoolPoly> {
+        let mut last = self.constant.clone();
+        for k in 0..self.n as usize {
+            if bits & (1u64 << k) != 0 {
+                for (p, c) in last.iter_mut().zip(&self.coefficients[k]) {
+                    *p = p.add(c);
+                }
+            }
+        }
+        last
+    }
+
     /// Experimental: keep target bits as additional Boolean variables. These are
     /// not invertible parameters in a rational-function coefficient field.
     pub fn parameterized_generators(&self) -> Option<Vec<F2BoolPoly>> {
@@ -363,6 +552,123 @@ mod tests {
                 );
             }
         }
+    }
+    /// The bitset sums against the chain of additions they replace, over
+    /// every target of the small fields and a spread of the larger ones.
+    /// A deserialised template derives the same bitsets, from the same
+    /// encoding.
+    #[test]
+    fn last_link_bitsets_match_the_chain_of_adds() {
+        use crate::cryptanalysis::koblitz_index_calculus::{
+            build_frobenius_factor_base, KoblitzCurve,
+        };
+        let mut x = 0x1ab5_e7c0_ffee_0001u64;
+        let mut next = move || {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            x
+        };
+        for (a, n, m) in [
+            (0u8, 9u32, 2usize),
+            (0, 9, 3),
+            (1, 17, 2),
+            (0, 13, 3),
+            (1, 23, 2),
+        ] {
+            let kc = KoblitzCurve::new(a, n).unwrap();
+            let fb = build_frobenius_factor_base(&kc, 0).unwrap();
+            let st = FieldStructure::new(kc.n, &kc.curve.irreducible);
+            let t = DecompositionTemplate::build(&fb.subspace_basis, &kc.curve.b, m, &st).unwrap();
+            let link = t
+                .last_link
+                .as_ref()
+                .expect("a built template has its bitsets");
+            let json = serde_json::to_vec(&t).unwrap();
+            let back: DecompositionTemplate = serde_json::from_slice(&json).unwrap();
+            let back_link = back
+                .last_link
+                .as_ref()
+                .expect("a deserialised template derives its bitsets");
+            assert_eq!(serde_json::to_vec(&back).unwrap(), json);
+            let targets: Vec<u64> = if n <= 9 {
+                (0..1u64 << n).collect()
+            } else {
+                (0..300).map(|_| next() & ((1u64 << n) - 1)).collect()
+            };
+            for r in targets {
+                let x_r = F2mElement::from_bit_positions(
+                    &(0..n).filter(|k| r >> k & 1 == 1).collect::<Vec<_>>(),
+                    n,
+                );
+                let chain = t.instantiate_by_adds(r);
+                assert_eq!(
+                    t.instantiate_link(link, r),
+                    chain,
+                    "K_{a}/2^{n} m={m} r={r}"
+                );
+                assert_eq!(back.instantiate_link(back_link, r), chain);
+                let equations = t.instantiate(&x_r).equations;
+                assert_eq!(equations[t.prefix.len()..], chain[..]);
+                assert_eq!(back.instantiate(&x_r).equations, equations);
+            }
+        }
+    }
+
+    /// Templates the bitsets do not cover take the chain of additions, as
+    /// every template did before them: one deserialised with a polynomial
+    /// that is not canonical (the chain is not a set sum there), and ones
+    /// whose shape changed after they were built — an equation cut, one
+    /// added, and one bit's coefficient cut.
+    #[test]
+    fn templates_without_matching_bitsets_take_the_chain_of_adds() {
+        let st = field();
+        let t = DecompositionTemplate::build(&[fe(1), fe(2)], &fe(1), 2, &st).unwrap();
+        let mut raw = t.clone();
+        let (k, j) = (0..raw.coefficients.len())
+            .flat_map(|k| (0..raw.constant.len()).map(move |j| (k, j)))
+            .find(|&(k, j)| raw.coefficients[k][j].terms.len() >= 2)
+            .expect("a coefficient with two terms");
+        raw.coefficients[k][j].terms.reverse();
+        let raw: DecompositionTemplate =
+            serde_json::from_slice(&serde_json::to_vec(&raw).unwrap()).unwrap();
+        assert!(raw.last_link.is_none());
+        let mut cut = t.clone();
+        cut.constant.pop();
+        let mut grown = t.clone();
+        grown.constant.push(F2BoolPoly::one(t.n_vars));
+        let mut short_bit = t.clone();
+        short_bit.coefficients[1].pop();
+        for tpl in [&cut, &grown, &short_bit] {
+            let link = tpl.last_link.as_ref().expect("cloned with its bitsets");
+            assert!(!link.fits(&tpl.constant, &tpl.coefficients));
+        }
+        for r in 0..1u64 << st.n {
+            for tpl in [&raw, &cut, &grown, &short_bit] {
+                let equations = tpl.instantiate(&fe(r)).equations;
+                assert_eq!(
+                    equations[tpl.prefix.len()..],
+                    tpl.instantiate_by_adds(r)[..]
+                );
+            }
+            assert_eq!(
+                cut.instantiate(&fe(r)).equations[..],
+                t.instantiate(&fe(r)).equations[..t.prefix.len() + t.constant.len() - 1]
+            );
+        }
+    }
+
+    /// Debug builds check each instantiation against the chain of
+    /// additions, so a polynomial edited in place after the bitsets were
+    /// derived is caught there.
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "template fields changed")]
+    fn fields_edited_in_place_fail_debug_builds() {
+        let st = field();
+        let mut t = DecompositionTemplate::build(&[fe(1), fe(2)], &fe(1), 2, &st).unwrap();
+        t.constant[0] = t.constant[0].add(&F2BoolPoly::one(t.n_vars));
+        t.instantiate(&fe(0));
     }
     #[test]
     fn target_symbolization_matches_every_specialization() {

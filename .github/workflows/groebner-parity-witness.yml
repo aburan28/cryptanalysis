@@ -1,0 +1,30 @@
+name: Groebner parity witness
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  portable:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Build and verify parity witness
+        env:
+          CXX: clang++
+        run: python experiments/groebner-perf-20260924/round107/run_validation.py --output groebner-parity-witness-evidence
+      - name: Retain successes and failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: groebner-parity-witness-${{ matrix.os }}
+          path: groebner-parity-witness-evidence
+          if-no-files-found: error

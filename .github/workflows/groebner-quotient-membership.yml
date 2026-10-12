@@ -1,0 +1,30 @@
+name: Groebner quotient membership
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  portable:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Build and verify quotient membership
+        env:
+          CXX: clang++
+        run: python experiments/groebner-perf-20260924/round105/run_validation.py --output groebner-quotient-membership-evidence
+      - name: Retain successes and failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: groebner-quotient-membership-${{ matrix.os }}
+          path: groebner-quotient-membership-evidence
+          if-no-files-found: error
