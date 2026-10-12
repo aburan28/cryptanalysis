@@ -254,7 +254,7 @@ struct ArithmeticOrbitAtlas {
 
 impl ArithmeticOrbitAtlas {
     fn new(width: u8) -> Self {
-        assert!((9..=10).contains(&width));
+        assert!((8..=10).contains(&width));
         let base = 1usize << width;
         let (q, r) = (base / 3, base % 3);
         let mut digits = Vec::with_capacity((base * base + 8) / 6);
@@ -330,7 +330,7 @@ impl ArithmeticOrbitAtlas {
 }
 
 fn formula_digit_residue(width: u8, ra: usize, rb: usize) -> ((i32, i32), usize, usize) {
-    assert!((9..=10).contains(&width));
+    assert!((8..=10).contains(&width));
     let base = 1i32 << width;
     let mask = base - 1;
     let (a, b) = (ra as i32, rb as i32);
@@ -360,6 +360,54 @@ fn formula_digit_residue(width: u8, ra: usize, rb: usize) -> ((i32, i32), usize,
 fn formula_digit_word(width: u8, a: Signed192, b: Signed192) -> ((i32, i32), usize, usize) {
     formula_digit_residue(width, a.rem_euclid_power_of_two(width),
                           b.rem_euclid_power_of_two(width))
+}
+
+fn sector_canonical_digit(width: u8, a: usize, b: usize) -> (i16, i16) {
+    let base = 1usize << width;
+    let (q, r) = (base / 3, base % 3);
+    let (da, db) = if a == 0 {
+        if b <= q { (0, b as i32) } else { (-(base as i32), b as i32) }
+    } else if b <= q - a {
+        (a as i32, b as i32)
+    } else if b <= 2 * q + r - 1 - a {
+        (a as i32 - base as i32, b as i32)
+    } else {
+        (a as i32, b as i32 - base as i32)
+    };
+    (i16::try_from(da).unwrap(), i16::try_from(db).unwrap())
+}
+
+fn sector_digit_residue(width: u8, ra: usize, rb: usize) -> ((i32, i32), usize, usize) {
+    assert!((8..=10).contains(&width));
+    let base = 1i32 << width;
+    let mask = base - 1;
+    let (a, b) = (ra as i32, rb as i32);
+    let rotated = [
+        (a, b),
+        ((a + 3 * b) & mask, (-a - 2 * b) & mask),
+        ((-2 * a - 3 * b) & mask, (a + b) & mask),
+    ];
+    let mut best = ((usize::MAX, usize::MAX), usize::MAX);
+    for (power, &(x, y)) in rotated.iter().enumerate() {
+        for sign in 0..2 {
+            let image = if sign == 0 { (x, y) }
+                        else { ((-x) & mask, (-y) & mask) };
+            let inverse_code = 2 * ((3 - power) % 3) + sign;
+            best = best.min(((image.0 as usize, image.1 as usize), inverse_code));
+        }
+    }
+    let (canonical, unit_code) = best;
+    let orbit_id = ArithmeticOrbitAtlas::rank(width, canonical.0, canonical.1);
+    let canonical_digit = sector_canonical_digit(width, canonical.0, canonical.1);
+    let digit = unit_images((i32::from(canonical_digit.0),
+                             i32::from(canonical_digit.1)))[unit_code];
+    debug_assert_eq!((digit.0 & mask, digit.1 & mask), (a, b));
+    (digit, orbit_id, unit_code)
+}
+
+fn sector_digit_word(width: u8, a: Signed192, b: Signed192) -> ((i32, i32), usize, usize) {
+    sector_digit_residue(width, a.rem_euclid_power_of_two(width),
+                         b.rem_euclid_power_of_two(width))
 }
 
 fn affine_multiples(base: Jacobian, max_abs: usize) -> Vec<Jacobian> {
@@ -728,14 +776,18 @@ struct FormulaU256Tables {
 
 impl FormulaU256Tables {
     fn new() -> Self {
+        Self::with_widths(&WIDTHS)
+    }
+
+    fn with_widths(widths: &[u8]) -> Self {
         let temporary_atlases: [Option<ArithmeticOrbitAtlas>; 3] =
             std::array::from_fn(|index| {
                 let width = 8 + index as u8;
-                WIDTHS.contains(&width).then(|| ArithmeticOrbitAtlas::new(width))
+                widths.contains(&width).then(|| ArithmeticOrbitAtlas::new(width))
             });
-        let mut windows = Vec::with_capacity(WIDTHS.len());
+        let mut windows = Vec::with_capacity(widths.len());
         let mut base = Jacobian::generator();
-        for &width in &WIDTHS {
+        for &width in widths {
             let atlas = temporary_atlases[usize::from(width - 8)].as_ref().unwrap();
             windows.push(build_u256_window(&atlas.digits, base));
             for _ in 0..width { base = base.double(); }
@@ -751,6 +803,12 @@ impl FormulaU256Tables {
 
 static FORMULA_U256_TABLES: LazyLock<FormulaU256Tables> =
     LazyLock::new(FormulaU256Tables::new);
+static SECTOR_U256_TABLES: LazyLock<FormulaU256Tables> =
+    LazyLock::new(FormulaU256Tables::new);
+static SECTOR15_U256_TABLES: LazyLock<FormulaU256Tables> =
+    LazyLock::new(|| FormulaU256Tables::with_widths(&WIDTHS15));
+static SECTOR16_U256_TABLES: LazyLock<FormulaU256Tables> =
+    LazyLock::new(|| FormulaU256Tables::with_widths(&WIDTHS16));
 
 struct Radix13Tables {
     atlas: OrbitAtlas,
@@ -1031,6 +1089,19 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 31 || format == 32 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return if format == 31 { SECTOR15_U256_TABLES.retained_bytes }
+               else { SECTOR16_U256_TABLES.retained_bytes };
+    }
+    if format == 30 {
+        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+        std::sync::LazyLock::force(&U256_BETA_UNITS);
+        return SECTOR_U256_TABLES.retained_bytes;
+    }
     if format == 29 {
         std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
         std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
@@ -1241,9 +1312,34 @@ fn u256_formula_choices(
     (choices, nonidentity)
 }
 
+fn u256_sector_choices_with<const N: usize>(
+    representative: (Signed192, Signed192),
+    widths: &[u8; N],
+) -> ([(usize, usize); N], usize) {
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize); N];
+    let mut nonidentity = 0usize;
+    for (index, &width) in widths.iter().enumerate() {
+        let (digit, orbit_id, unit_code) = sector_digit_word(width, a, b);
+        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+        choices[index] = (orbit_id, unit_code);
+        nonidentity += usize::from(orbit_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "sector recoding did not terminate");
+    (choices, nonidentity)
+}
+
+fn u256_sector_choices(
+    representative: (Signed192, Signed192),
+) -> ([(usize, usize); 14], usize) {
+    u256_sector_choices_with(representative, &WIDTHS)
+}
+
 fn evaluate_u256_gauge(
-    choices: &[(usize, usize); 14], windows: &[Box<[U256Affine]>],
+    choices: &[(usize, usize)], windows: &[Box<[U256Affine]>],
 ) -> (String, usize) {
+    assert_eq!(choices.len(), windows.len());
     let mut result = U256Jacobian::identity();
     let mut gauge = None;
     let mut gauge_products = 0usize;
@@ -1324,6 +1420,41 @@ pub(super) fn multiply_u256_formula(
         super::hexagonal_certified_fixed_choice_words(residue.0);
     let tables = &*FORMULA_U256_TABLES;
     let (choices, nonidentity) = u256_formula_choices(representative);
+    let (point, gauge_products) = evaluate_u256_gauge(&choices, &tables.windows);
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes, fallback, corner, gauge_products)
+}
+
+pub(super) fn multiply_u256_sector(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    multiply_u256_sector_with(scalar_words, &WIDTHS, &SECTOR_U256_TABLES)
+}
+
+pub(super) fn multiply_u256_sector15(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    multiply_u256_sector_with(scalar_words, &WIDTHS15, &SECTOR15_U256_TABLES)
+}
+
+pub(super) fn multiply_u256_sector16(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    multiply_u256_sector_with(scalar_words, &WIDTHS16, &SECTOR16_U256_TABLES)
+}
+
+fn multiply_u256_sector_with<const N: usize>(
+    scalar_words: [u64; 4], widths: &[u8; N], tables: &FormulaU256Tables,
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let (choices, nonidentity) = u256_sector_choices_with(representative, widths);
     let (point, gauge_products) = evaluate_u256_gauge(&choices, &tables.windows);
     (point, representative, nonidentity.saturating_sub(1),
      tables.retained_bytes, fallback, corner, gauge_products)
@@ -2061,6 +2192,82 @@ mod tests {
     }
 
     #[test]
+    fn canonical_sector_matches_every_u14_residue() {
+        for width in [9u8, 10] {
+            let base = 1usize << width;
+            for ra in 0..base {
+                for rb in 0..base {
+                    assert_eq!(sector_digit_residue(width, ra, rb),
+                               formula_digit_residue(width, ra, rb),
+                               "width {width} residue ({ra},{rb})");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn canonical_sector_matches_every_radix256_residue() {
+        let reference = OrbitAtlas::new(8);
+        let arithmetic = ArithmeticOrbitAtlas::new(8);
+        assert_eq!(reference.digits.len(), 10_924);
+        assert_eq!(&*reference.digits, &*arithmetic.digits);
+        for ra in 0..256 {
+            for rb in 0..256 {
+                assert_eq!(sector_digit_residue(8, ra, rb),
+                           reference.digit_residue(ra, rb),
+                           "radix256 residue ({ra},{rb})");
+            }
+        }
+    }
+
+    #[test]
+    fn cache_sized_tables_match_independent_group_sums() {
+        for (widths, tables, expected_slots, expected_bytes) in [
+            (&WIDTHS15[..], &*SECTOR15_U256_TABLES, 458_772, 29_361_680),
+            (&WIDTHS16[..], &*SECTOR16_U256_TABLES, 207_552, 13_283_616),
+        ] {
+            assert_eq!(tables.windows.len(), widths.len());
+            assert_eq!(tables.retained_bytes, expected_bytes);
+            let mut base = Jacobian::generator();
+            let mut checked = 0usize;
+            for (window, &width) in widths.iter().enumerate() {
+                let atlas = ArithmeticOrbitAtlas::new(width);
+                let tau_base = base.tau();
+                let max_a = atlas.digits.iter().map(|d| d.0.unsigned_abs() as usize)
+                    .max().unwrap();
+                let max_b = atlas.digits.iter().map(|d| d.1.unsigned_abs() as usize)
+                    .max().unwrap();
+                let a_points = binary_multiples(base, max_a);
+                let b_projective = binary_multiples(tau_base, max_b);
+                let mut b_points = vec![Jacobian::identity()];
+                b_points.extend(batch_to_affine(&b_projective[1..]));
+                let expected = atlas.digits.iter().skip(1).map(|&(a, b)| {
+                    let first = if a < 0 { a_points[a.unsigned_abs() as usize].neg() }
+                                else { a_points[a as usize] };
+                    let second = if b < 0 { b_points[b.unsigned_abs() as usize].neg() }
+                                 else { b_points[b as usize] };
+                    if first.is_identity() { second }
+                    else if second.is_identity() { first }
+                    else { first.add_mixed(second) }
+                }).collect::<Vec<_>>();
+                let expected = batch_to_affine(&expected);
+                assert_eq!(tables.windows[window].len(), atlas.digits.len());
+                for (orbit, point) in expected.iter().enumerate() {
+                    let stored = tables.windows[window][orbit + 1];
+                    assert_eq!(stored.x.0, super::super::hybrid_pair_mont(point.x).0,
+                               "window {window} orbit {} x", orbit + 1);
+                    assert_eq!(stored.y.0, super::super::hybrid_pair_mont(point.y).0,
+                               "window {window} orbit {} y", orbit + 1);
+                    checked += 1;
+                }
+                checked += 1;
+                for _ in 0..width { base = base.double(); }
+            }
+            assert_eq!(checked, expected_slots);
+        }
+    }
+
+    #[test]
     fn u256_table_points_and_unit_images_match_eisenstein_field() {
         let compact = &*TABLES;
         let converted = &*U256_TABLES;
@@ -2366,6 +2573,117 @@ mod tests {
         println!("formula_panel_cases={} retained_reference={} retained_candidate={} counts_hex={}",
                  scalars.len(), old.retained_bytes, new.retained_bytes,
                  hex::encode(per_scalar_counts));
+    }
+
+    #[test]
+    fn u256_sector_digit_matches_new_holdout_and_point_table() {
+        let old = &*FORMULA_U256_TABLES;
+        let new = &*SECTOR_U256_TABLES;
+        assert_eq!(old.retained_bytes, 64_314_112);
+        assert_eq!(new.retained_bytes, old.retained_bytes);
+        for (window, (left, right)) in old.windows.iter().zip(&new.windows).enumerate() {
+            assert_eq!(left.len(), right.len(), "window size {window}");
+            for (index, (a, b)) in left.iter().zip(right).enumerate() {
+                assert_eq!(a.x.0, b.x.0, "window {window} point {index} x");
+                assert_eq!(a.y.0, b.y.0, "window {window} point {index} y");
+            }
+        }
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-sector-digit-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let mut per_scalar_counts = Vec::with_capacity(2 * scalars.len());
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_formula(words);
+            let candidate = multiply_u256_sector(words);
+            assert_eq!(reference.0, candidate.0, "point {index}");
+            assert_eq!(reference.1, candidate.1, "representative {index}");
+            assert_eq!((reference.2, reference.3, reference.4, reference.5, reference.6),
+                       (candidate.2, candidate.3, candidate.4, candidate.5, candidate.6),
+                       "scalar accounting {index}");
+            assert_eq!(u256_formula_choices(reference.1),
+                       u256_sector_choices(candidate.1),
+                       "all fourteen choices {index}");
+            per_scalar_counts.push(reference.6 as u8);
+            per_scalar_counts.push(candidate.6 as u8);
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+        println!("sector_panel_cases={} retained_reference={} retained_candidate={} counts_hex={}",
+                 scalars.len(), old.retained_bytes, new.retained_bytes,
+                 hex::encode(per_scalar_counts));
+    }
+
+    #[test]
+    fn cache_sized_sector_formats_match_fresh_panel() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-cache-window-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let atlases = [OrbitAtlas::new(8), OrbitAtlas::new(9), OrbitAtlas::new(10)];
+        let reference_choices = |representative: (Signed192, Signed192), widths: &[u8]| {
+            let (mut a, mut b) = representative;
+            let mut choices = Vec::with_capacity(widths.len());
+            for &width in widths {
+                let (digit, orbit, unit) = atlases[usize::from(width - 8)].digit_word(a, b);
+                choices.push((orbit, unit));
+                a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+                b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+            }
+            assert!(a.is_zero() && b.is_zero());
+            choices
+        };
+        let mut counts = Vec::with_capacity(6 * scalars.len());
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let u14 = multiply_u256_sector(words);
+            let u15 = multiply_u256_sector15(words);
+            let u16 = multiply_u256_sector16(words);
+            assert_eq!(u14.3, 64_314_112);
+            for (label, candidate, widths, bytes) in [
+                ("U14", &u14, &WIDTHS[..], 64_314_112),
+                ("U15", &u15, &WIDTHS15[..], 29_361_680),
+                ("U16", &u16, &WIDTHS16[..], 13_283_616),
+            ] {
+                assert_eq!(candidate.0, u14.0, "{label} point {index}");
+                assert_eq!(candidate.1, u14.1, "{label} representative {index}");
+                assert_eq!((candidate.4, candidate.5), (u14.4, u14.5),
+                           "{label} scalar selector {index}");
+                assert_eq!(candidate.3, bytes, "{label} retained bytes {index}");
+                let choices = reference_choices(candidate.1, widths);
+                let actual = if widths.len() == 14 {
+                    u256_sector_choices(candidate.1).0.to_vec()
+                } else if widths.len() == 15 {
+                    u256_sector_choices_with(candidate.1, &WIDTHS15).0.to_vec()
+                } else {
+                    u256_sector_choices_with(candidate.1, &WIDTHS16).0.to_vec()
+                };
+                assert_eq!(actual, choices, "{label} choices {index}");
+                assert_eq!(candidate.2,
+                           choices.iter().filter(|&&(orbit, _)| orbit != 0)
+                               .count().saturating_sub(1),
+                           "{label} additions {index}");
+                assert!(candidate.6 <= 2, "{label} gauge products {index}");
+                counts.extend([candidate.2 as u8, candidate.6 as u8]);
+            }
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(u14.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+        println!("cache_panel_cases={} bytes_u14={} bytes_u15={} bytes_u16={} counts_hex={}",
+                 scalars.len(), SECTOR_U256_TABLES.retained_bytes,
+                 SECTOR15_U256_TABLES.retained_bytes,
+                 SECTOR16_U256_TABLES.retained_bytes, hex::encode(counts));
     }
 
     #[test]
