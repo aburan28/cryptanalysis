@@ -1,0 +1,26 @@
+{
+  "proposal_id": "Q1459",
+  "candidate_id": null,
+  "run_id": null,
+  "isogeny": "none",
+  "predecessor": "Q1458 direct-input width preflight",
+  "source_workload": "Q1419 frozen balanced-S3 XCNF partial-pinning controls",
+  "cells": ["n53_full_lock", "n53_free_mids", "n83_full_lock", "n83_free_mids"],
+  "encoding": "Tseitin chain for each CNF clause longer than four literals; XOR rows and original variable IDs unchanged; new variables allocated in clause order",
+  "upstream_solver": {
+    "repository": "https://github.com/mtrimoska/WDSat",
+    "commit": "61c6ff3f49445af2729274819edb27b85a89efc1",
+    "license": "GPL-3.0",
+    "source_policy": "separate pinned checkout; dynamic quadratic undo-list replacement; stderr phase markers; no vendored source",
+    "variants": ["plain", "xor_gauss"]
+  },
+  "limits": {
+    "wall_seconds_per_cell": 60,
+    "address_space_mib_per_cell": null,
+    "memory_limit_note": "macOS host rejects RLIMIT_AS and blocks ps sampling; report observed child maxrss; no memory cap is claimed",
+    "host_isolation": "none; timings exploratory"
+  },
+  "gate": "verify original archived satisfying assignment extends to transformed formula; verify new WDSat full-lock SAT model against both transformed and original formulas before free-mids",
+  "complete_solve_work_log2": null,
+  "degree131_challenge_gap_bits": null
+}

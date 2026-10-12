@@ -1,0 +1,57 @@
+name: Elliptic-curve surface tools
+
+on:
+  pull_request:
+    paths:
+      - 'tools/ecdlp-surfaces/**'
+      - 'docs/ecdlp-surfaces/**'
+      - 'research/ecdlp_surfaces_n83_20261012/**'
+      - '.github/workflows/ecdlp-surfaces.yml'
+  push:
+    paths:
+      - 'tools/ecdlp-surfaces/**'
+      - 'docs/ecdlp-surfaces/**'
+      - 'research/ecdlp_surfaces_n83_20261012/**'
+      - '.github/workflows/ecdlp-surfaces.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/ecdlp-surfaces
+            docs/ecdlp-surfaces
+            research/ecdlp_surfaces_n83_20261012
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: tools/ecdlp-surfaces/check.sh
+      - name: Native identity certificates
+        working-directory: docs/ecdlp-surfaces/certificates
+        run: |
+          cargo fmt --all -- --check
+          cargo test --release --locked
+          cargo clippy --locked --all-targets -- -D warnings
+          surface_certificate_dir=$(mktemp -d)
+          trap 'rm -rf -- "$surface_certificate_dir"' EXIT
+          cargo run --release --locked -- "$surface_certificate_dir"
+          for surface_certificate in embedding_identity quadric_determinant identity_replay curve_record; do
+            cmp "../evidence/$surface_certificate.json" "$surface_certificate_dir/$surface_certificate.json"
+          done
+          cargo run --release --offline --locked --manifest-path ../../../tools/ecdlp-surfaces/Cargo.toml \
+            --bin binary_surface_check -- --a both --output "$surface_certificate_dir/n83.json"
+          cargo run --release --locked --bin binary_identities -- \
+            "$surface_certificate_dir/n83.json" "$surface_certificate_dir/binary"
+          for binary_certificate in binary_embedding binary_polar_determinant binary_normal_form \
+            binary_counting_substitution frobenius_difference frobenius_product identity_replay \
+            curve_record_a0 curve_record_a1; do
+            cmp "../../../research/ecdlp_surfaces_n83_20261012/runs/run-20261012T0331Z/identities/$binary_certificate.json" \
+              "$surface_certificate_dir/binary/$binary_certificate.json"
+          done

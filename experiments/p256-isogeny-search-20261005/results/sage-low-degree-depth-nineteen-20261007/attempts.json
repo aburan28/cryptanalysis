@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "attempts": [
+    {
+      "attempt_id": "depth-19-frozen-command-default-workdir",
+      "command": "docker exec p256-classgroup-default taskset -c 2 sage -python scripts/extend_sage_low_degree.py --input results/sage-low-degree-depth-seventeen-20261006/candidates-delta.json --ells 3,5,11,13 --target-depth 19 --max-new-nodes 2000 --output results/sage-low-degree-depth-nineteen-20261007/candidates-delta.json",
+      "exit_code": 2,
+      "failure": "python3: can't open file '/repo/scripts/extend_sage_low_degree.py': [Errno 2] No such file or directory",
+      "generated_candidates": 0,
+      "interpretation": "Pre-execution path failure: the frozen command omitted the experiment working directory. Inputs, parameters, and selection rules were unchanged for the corrected run.",
+      "status": "failed_preserved"
+    },
+    {
+      "attempt_id": "depth-19-corrected-workdir",
+      "command": "docker exec --workdir /repo/experiments/p256-isogeny-search-20261005 p256-classgroup-default taskset -c 2 sage -python scripts/extend_sage_low_degree.py --input results/sage-low-degree-depth-seventeen-20261006/candidates-delta.json --ells 3,5,11,13 --target-depth 19 --max-new-nodes 2000 --output results/sage-low-degree-depth-nineteen-20261007/candidates-delta.json",
+      "elapsed_seconds": 249.9312720419839,
+      "exit_code": 0,
+      "generated_candidates": 560,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "candidate-model-audit-verify-before-write",
+      "command": "python scripts/audit_candidate_models.py --candidates results/sage-low-degree-depth-nineteen-20261007/candidates-delta.json --output results/sage-low-degree-depth-nineteen-20261007/candidate-model-audit.json --verify",
+      "exit_code": 1,
+      "failure": "FileNotFoundError: candidate-model-audit.json did not yet exist",
+      "interpretation": "Invocation-order error only. The artifact was then generated and an identical verify-only replay passed.",
+      "status": "failed_preserved"
+    },
+    {
+      "attempt_id": "native-screen-frozen-relative-paths",
+      "command": "taskset -c 0 python3 scripts/run_native_screen.py --binary ../../suite/target/release/examples/p256_isogeny_native_bench --candidates results/sage-low-degree-depth-nineteen-20261007/candidates-delta.json --block-size 6 --seconds 0.5 --rotations 1 --warmup-seconds 0.05 --output-dir results/sage-low-degree-depth-nineteen-20261007/native-screen",
+      "exit_code": 1,
+      "failure": "FileNotFoundError: /workspace/cryptanalysis/results/sage-low-degree-depth-nineteen-20261007/candidates-delta.json",
+      "generated_benchmark_blocks": 0,
+      "interpretation": "Pre-benchmark path-resolution failure. The runner resolves binary and candidate inputs relative to the repository root; the corrected run changed only those path spellings.",
+      "status": "failed_preserved"
+    },
+    {
+      "attempt_id": "native-holdout-frozen-relative-paths",
+      "command": "taskset -c 0 python3 scripts/run_native_holdout.py --binary ../../suite/target/release/examples/p256_isogeny_native_bench --candidates results/sage-low-degree-depth-nineteen-20261007/candidates-delta.json --screening results/sage-low-degree-depth-nineteen-20261007/native-screen/screening-summary.json --seconds 2 --trials 30 --warmup-seconds 0.2 --output results/sage-low-degree-depth-nineteen-20261007/holdout.json",
+      "exit_code": 1,
+      "failure": "FileNotFoundError: /workspace/cryptanalysis/results/sage-low-degree-depth-nineteen-20261007/native-screen/screening-summary.json",
+      "generated_holdout_trials": 0,
+      "interpretation": "Pre-benchmark path-resolution failure. The corrected run changed only repository-relative path spellings and retained all seven prospectively selected candidates.",
+      "status": "failed_preserved"
+    },
+    {
+      "attempt_id": "holdout-summary-probe-wrong-trial-field",
+      "command": "read-only Python holdout summary probe",
+      "exit_code": 1,
+      "failure": "KeyError: 'trials'",
+      "interpretation": "Post-run reporting probe used a nonexistent convenience field. The artifact stores the frozen count in benchmark_design.trials_per_candidate and the 30-element rate arrays; the corrected read-only replay verified all 240 curve-trials.",
+      "mathematical_evidence": false,
+      "status": "failed_preserved"
+    },
+    {
+      "attempt_id": "first-depth-19-verifier-path-resolution",
+      "command": "python scripts/verify_sage_low_degree_depth_nineteen.py",
+      "exit_code": 1,
+      "failure": "FileNotFoundError: /workspace/cryptanalysis/results/sage-low-degree-depth-seventeen-20261006/candidates-delta.json",
+      "interpretation": "The independent verifier initially treated an experiment-relative results path as repository-relative. Resolution now prefers the experiment root and then falls back to the repository root.",
+      "mathematical_evidence": false,
+      "status": "failed_preserved"
+    }
+  ]
+}
