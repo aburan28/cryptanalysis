@@ -14,6 +14,7 @@ const WIDTHS16: [u8; 16] = [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9];
 const FRONTIER16_WIDTHS: [u8; 16] = [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9];
 const FRONTIER15_BUDGET_WIDTHS: [u8; 15] = [8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9];
 const SOLINAS_UNIT_CONSTANT_BYTES: usize = 3 * size_of::<super::U256>();
+const GAUGE_PLAN_COUNT: usize = 680; // triples of nonnegative counts with sum at most 14
 const FRONTIER17_WIDTHS: [u8; 17] = [7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7];
 const FRONTIER18_WIDTHS: [u8; 18] = [7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 7];
 const FRONTIER19_WIDTHS: [u8; 19] = [6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 6];
@@ -2575,6 +2576,10 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 72 {
+        LazyLock::force(&GAUGE_TREE_PLANS);
+        return warm_format(71) + size_of::<[GaugeTreePlan; GAUGE_PLAN_COUNT]>();
+    }
     if format == 71 {
         return warm_format(69);
     }
@@ -3174,6 +3179,152 @@ fn evaluate_u256_gauge_tree<const KARATSUBA: bool>(
     (point.affine_hex_binary_inverse(), gauge_products, last.product_depth)
 }
 
+#[derive(Clone, Copy)]
+struct GaugeTreeStep { i: u8, j: u8, gauge: u8 }
+
+#[derive(Clone, Copy)]
+struct GaugeTreePlan {
+    steps: [GaugeTreeStep; 13],
+    len: u8,
+    rotations: u8,
+    product_depth: u8,
+}
+
+const EMPTY_GAUGE_STEP: GaugeTreeStep = GaugeTreeStep { i: 0, j: 0, gauge: 0 };
+const EMPTY_GAUGE_PLAN: GaugeTreePlan = GaugeTreePlan {
+    steps: [EMPTY_GAUGE_STEP; 13], len: 0, rotations: 0, product_depth: 0,
+};
+
+#[derive(Clone, Copy)]
+struct GaugeTreeShape { gauge: usize, product_depth: usize, affine: bool }
+
+fn gauge_plan_index(counts: [usize; 3]) -> usize {
+    let [a, b, c] = counts;
+    assert!(a + b + c <= 14);
+    let remaining = 17 - a;
+    let preceding = GAUGE_PLAN_COUNT
+        - remaining * (remaining - 1) * (remaining - 2) / 6;
+    let index = preceding + b * (15 - a) - b * b.saturating_sub(1) / 2 + c;
+    assert!(index < GAUGE_PLAN_COUNT);
+    index
+}
+
+fn gauge_shape_join_cost(a: GaugeTreeShape, b: GaugeTreeShape,
+                         gauge: usize) -> (usize, usize) {
+    let ra = usize::from(a.gauge != gauge);
+    let rb = usize::from(b.gauge != gauge);
+    let products = if a.affine && b.affine { 6 }
+                   else if a.affine || b.affine { 10 } else { 14 };
+    (a.product_depth.saturating_add(ra).max(b.product_depth.saturating_add(rb)) + products,
+     products + ra + rb)
+}
+
+fn build_gauge_tree_plan(counts: [usize; 3]) -> GaugeTreePlan {
+    let mut plan = EMPTY_GAUGE_PLAN;
+    let empty = GaugeTreeShape { gauge: 0, product_depth: 0, affine: false };
+    let mut nodes = [empty; 14];
+    let mut count = 0;
+    for (gauge, &number) in counts.iter().enumerate() {
+        for _ in 0..number {
+            nodes[count] = GaugeTreeShape { gauge, product_depth: 0, affine: true };
+            count += 1;
+        }
+    }
+    if count == 0 { return plan; }
+    while count > 1 {
+        let mut best = None;
+        for i in 0..count {
+            for j in i + 1..count {
+                for gauge in [nodes[i].gauge, nodes[j].gauge] {
+                    let (depth, work) = gauge_shape_join_cost(nodes[i], nodes[j], gauge);
+                    let candidate = (depth, work, gauge, i, j);
+                    if best.is_none_or(|old| candidate < old) { best = Some(candidate); }
+                }
+            }
+        }
+        let (depth, _, gauge, i, j) = best.expect("two or more nodes");
+        plan.steps[plan.len as usize] = GaugeTreeStep {
+            i: i as u8, j: j as u8, gauge: gauge as u8,
+        };
+        plan.len += 1;
+        plan.rotations += u8::from(nodes[i].gauge != gauge)
+                        + u8::from(nodes[j].gauge != gauge);
+        for slot in j..count - 1 { nodes[slot] = nodes[slot + 1]; }
+        count -= 1;
+        for slot in i..count - 1 { nodes[slot] = nodes[slot + 1]; }
+        count -= 1;
+        nodes[count] = GaugeTreeShape { gauge, product_depth: depth, affine: false };
+        count += 1;
+    }
+    plan.rotations += u8::from(nodes[0].gauge != 0);
+    plan.product_depth = (nodes[0].product_depth + usize::from(nodes[0].gauge != 0)) as u8;
+    plan
+}
+
+static GAUGE_TREE_PLANS: LazyLock<Box<[GaugeTreePlan; GAUGE_PLAN_COUNT]>> =
+    LazyLock::new(|| {
+        let mut plans = Box::new([EMPTY_GAUGE_PLAN; GAUGE_PLAN_COUNT]);
+        for a in 0..=14 {
+            for b in 0..=14 - a {
+                for c in 0..=14 - a - b {
+                    let counts = [a, b, c];
+                    plans[gauge_plan_index(counts)] = build_gauge_tree_plan(counts);
+                }
+            }
+        }
+        plans
+    });
+
+fn evaluate_u256_gauge_tree_cached(
+    choices: &[(usize, usize)], windows: &[Box<[U256Affine]>],
+) -> (String, usize, usize) {
+    assert_eq!(choices.len(), windows.len());
+    assert!(choices.len() <= 14);
+    let mut counts = [0usize; 3];
+    for &(orbit, code) in choices {
+        if orbit != 0 { counts[code / 2] += 1; }
+    }
+    let plan = &GAUGE_TREE_PLANS[gauge_plan_index(counts)];
+    let mut next = [0, counts[0], counts[0] + counts[1]];
+    let empty = GaugeTreeNode {
+        point: GaugeTreePoint::Projective(U256XYZZCanonical::<true>::identity()),
+        gauge: 0, product_depth: 0,
+    };
+    let mut nodes = [empty; 14];
+    let mut count = counts.iter().sum::<usize>();
+    if count == 0 { return ("identity".to_owned(), 0, 0); }
+    for (index, &(orbit, code)) in choices.iter().enumerate() {
+        if orbit == 0 { continue; }
+        let gauge = code / 2;
+        let slot = next[gauge];
+        next[gauge] += 1;
+        nodes[slot] = GaugeTreeNode {
+            point: GaugeTreePoint::Affine(windows[index][orbit].unit_solinas(code & 1)),
+            gauge, product_depth: 0,
+        };
+    }
+    for step in plan.steps.iter().take(plan.len as usize) {
+        let (i, j, gauge) = (step.i as usize, step.j as usize, step.gauge as usize);
+        debug_assert!(i < j && j < count);
+        let joined = gauge_tree_join(nodes[i], nodes[j], gauge);
+        for slot in j..count - 1 { nodes[slot] = nodes[slot + 1]; }
+        count -= 1;
+        for slot in i..count - 1 { nodes[slot] = nodes[slot + 1]; }
+        count -= 1;
+        nodes[count] = joined;
+        count += 1;
+    }
+    assert_eq!(count, 1);
+    let last = nodes[0].rotate_to(0);
+    debug_assert_eq!(last.product_depth, plan.product_depth as usize);
+    let point = match last.point {
+        GaugeTreePoint::Affine(p) => U256XYZZCanonical::<true>::from_affine(p),
+        GaugeTreePoint::Projective(p) => p,
+    };
+    (point.affine_hex_binary_inverse(),
+     plan.rotations as usize, plan.product_depth as usize)
+}
+
 pub(super) fn multiply_u256_gauge(
     scalar_words: [u64; 4],
 ) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
@@ -3303,6 +3454,27 @@ pub(super) fn multiply_u256_sector_gauge_tree(
         evaluate_u256_gauge_tree::<true>(&choices, &tables.windows);
     (point, representative, nonidentity.saturating_sub(1),
      tables.retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES,
+     fallback, corner, gauge_products)
+}
+
+pub(super) fn multiply_u256_sector_gauge_tree_cached(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*SECTOR_U256_CANONICAL_TABLES;
+    let (choices, nonidentity) = u256_sector_choices(representative);
+    let (point, gauge_products, _) =
+        evaluate_u256_gauge_tree_cached(&choices, &tables.windows);
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES
+         + size_of::<[GaugeTreePlan; GAUGE_PLAN_COUNT]>(),
      fallback, corner, gauge_products)
 }
 
@@ -5523,6 +5695,84 @@ mod tests {
         println!("gauge_tree_cases={} rotations={} serial_rotations={} tree_field_products={} serial_field_products={} product_depth={}",
                  scalars.len(), total_rotations, serial_rotations,
                  tree_products, serial_products, total_depth);
+    }
+
+    #[test]
+    fn cached_gauge_plans_cover_every_feasible_count() {
+        let mut seen = [false; GAUGE_PLAN_COUNT];
+        for a in 0..=14 {
+            for b in 0..=14 - a {
+                for c in 0..=14 - a - b {
+                    let counts = [a, b, c];
+                    let index = gauge_plan_index(counts);
+                    assert!(!seen[index], "duplicate gauge-count index {counts:?}");
+                    seen[index] = true;
+                    let plan = &GAUGE_TREE_PLANS[index];
+                    assert_eq!(plan.len as usize, (a + b + c).saturating_sub(1));
+                    assert!(plan.product_depth <= 50);
+                }
+            }
+        }
+        assert!(seen.iter().all(|&used| used));
+        assert_eq!(size_of::<[GaugeTreePlan; GAUGE_PLAN_COUNT]>(), 28_560);
+    }
+
+    #[test]
+    fn cached_gauge_plans_match_dynamic_tree_for_all_counts() {
+        let windows = &SECTOR_U256_CANONICAL_TABLES.windows;
+        let mut checked = 0usize;
+        for a in 0..=14 {
+            for b in 0..=14 - a {
+                for c in 0..=14 - a - b {
+                    let mut choices = [(0usize, 0usize); 14];
+                    for item in choices.iter_mut().take(a) { *item = (1, 0); }
+                    for item in choices.iter_mut().skip(a).take(b) { *item = (1, 2); }
+                    for item in choices.iter_mut().skip(a + b).take(c) { *item = (1, 4); }
+                    let dynamic = evaluate_u256_gauge_tree::<true>(&choices, windows);
+                    let cached = evaluate_u256_gauge_tree_cached(&choices, windows);
+                    assert_eq!(cached, dynamic, "gauge counts ({a}, {b}, {c})");
+                    checked += 1;
+                }
+            }
+        }
+        assert_eq!(checked, GAUGE_PLAN_COUNT);
+    }
+
+    #[test]
+    fn cached_gauge_tree_replays_full_panel_and_independent_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-sector-digit-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let mut total_rotations = 0usize;
+        let mut total_depth = 0usize;
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let original = multiply_u256_sector_gauge_tree(words);
+            let cached = multiply_u256_sector_gauge_tree_cached(words);
+            assert_eq!((&cached.0, cached.1, cached.2, cached.4, cached.5, cached.6),
+                       (&original.0, original.1, original.2, original.4, original.5, original.6),
+                       "complete cached scalar record {index}");
+            assert_eq!(cached.3, 64_342_768, "table, constants, and plans {index}");
+            let (choices, _) = u256_sector_choices(cached.1);
+            let (point, rotations, depth) = evaluate_u256_gauge_tree_cached(
+                &choices, &SECTOR_U256_CANONICAL_TABLES.windows);
+            assert_eq!(point, cached.0, "cached point {index}");
+            assert_eq!(rotations, cached.6, "cached rotations {index}");
+            assert!(depth <= 50, "cached depth {index}: {depth}");
+            total_rotations += rotations;
+            total_depth += depth;
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(cached.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+        println!("cached_gauge_cases={} rotations={} product_depth={} retained_bytes={}",
+                 scalars.len(), total_rotations, total_depth,
+                 warm_format(72));
     }
 
     #[test]
