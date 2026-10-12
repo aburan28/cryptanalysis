@@ -55,11 +55,20 @@ negative diagnostic; the sequential local runs do not qualify as a controlled
 wall-time comparison. The probe reduction therefore has no measured full-capacity
 CPU win in this local check.
 
-The full-capacity Tier 1 replay uses the same frozen target with alternating
-paired orders, complete raw results, instance and cgroup receipts, and the
-repository's Tier 1 promotion gate. The GitHub-hosted Linux workflow on this
-branch supplies a fresh instance; the active RunPod container is occupied by
-a separate solver.
+The [Tier 1 Linux replay](tier1_github_38187700042/results/summary.json)
+completed eight alternating exact pairs on a fresh GitHub-hosted
+`ubuntu-24.04` instance (`gh-38187700042-1-paired-stage`). The median
+target-stage wall times were 42.469 s for sparse28 and 42.729 s for the
+sidecar. Its paired reference/candidate ratio was **0.992**, with a paired
+bootstrap 95% interval of **[0.988, 1.001]**. All 16 raw runs verified the
+same first-witness and target-stage certificate. No observed cgroup throttling
+or memory failures occurred; peak native RSS across arms was 5,363,326,976
+bytes under the frozen 5,500 MiB cap. The Tier 1 speedup gate returned
+`speedup_claim_eligible=false`. The [independent receipt verifier](verify_tier1_receipt.py)
+replays raw-result hashes, parity, phase sums, resource counters, pair order,
+and the bootstrap interval. The exact probe reduction remains a structural
+improvement with a measured extra memory cost; the sidecar did not improve
+target-stage time in this panel.
 
 ## Reproduction
 
