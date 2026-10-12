@@ -115,13 +115,14 @@ def main():
                  experiment / "make_tier1_manifest.py", tier_path,
                  experiment / "native_packed_index.rs", experiment / "Cargo.toml",
                  experiment / "Cargo.lock", experiment / "screen.py",
-                 experiment / "verify_screen.py",
+                 experiment / "verify_screen.py", experiment / "full_audit.py",
                  screen / "protocol.json", screen / "summary.json", parent_path,
                  experiment / "test_record.json", experiment / "test.stdout.txt",
                  experiment / "test.stderr.txt",
                  base / "restore_crypto_source.py", base / "verify.py",
                  stage, bridge, reps, reference]
     artifacts += sorted(screen.glob("run_*"))
+    artifacts += sorted((experiment / "full_audit_local").glob("*"))
     artifacts += sorted(path for path in (base / "crypto_source_snapshot").rglob("*")
                         if path.is_file())
     if any(not path.is_file() for path in artifacts):

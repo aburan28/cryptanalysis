@@ -32,11 +32,23 @@ and bounded-stage status.
 | 4 | split | 2,995 | 1.999 | 125 |
 
 The screen establishes exact behavior and a lower record-probe count. Mac CPU
-and wall measurements here are exploratory. The full-capacity Tier 1 replay
-must use the frozen 29,900,000-state one-target input, alternating paired
-orders, complete raw results, host and cgroup receipts, and the repository's
-Tier 1 promotion gate. The active RunPod container is occupied by a separate
-solver, so this replay awaits an idle instance.
+and wall measurements here are exploratory.
+
+The [full-capacity local audit](full_audit_local/summary.json) completed the
+29,900,000-state one-target stage and matched the frozen reference on every
+correctness field, including the first-witness sample and operation counts.
+The sidecar reduced exact record probes from 7,415,319 to 6,068,644 (18.2%).
+It allocated 67,108,864 sidecar bytes and 1,342,675,968 total table bytes;
+peak RSS was 3,191,373,824 bytes. The candidate's target process CPU was
+39.261 s and its target-stage wall interval was 453.082 s on the contended
+Mac. The [raw result](full_audit_local/raw.json),
+[runner](full_audit.py), and [receipt](full_audit_local/record.json) preserve
+the source/input hashes and phase accounting.
+
+The full-capacity Tier 1 replay uses the same frozen target with alternating
+paired orders, complete raw results, instance and cgroup receipts, and the
+repository's Tier 1 promotion gate. The active RunPod container is occupied
+by a separate solver, so this replay awaits an idle instance.
 
 ## Reproduction
 

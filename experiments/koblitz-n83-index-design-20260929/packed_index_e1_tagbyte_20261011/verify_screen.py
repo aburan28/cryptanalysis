@@ -93,8 +93,48 @@ def verify():
             (tier["reference_mode"], tier["candidate_mode"]) !=
             (MODES[0], MODES[1])):
         raise ValueError("Tier 1 certificate differs")
+    audit = HERE / "full_audit_local"
+    audit_protocol_path = audit / "protocol.json"
+    audit_raw_path = audit / "raw.json"
+    audit_protocol = load(audit_protocol_path)
+    audit_record = load(audit / "record.json")
+    audit_raw = load(audit_raw_path)
+    audit_summary = load(audit / "summary.json")
+    if (audit_protocol["source_sha256"] != source or
+            audit_protocol["cargo_manifest_sha256"] != cargo or
+            audit_protocol["cargo_lock_sha256"] != digest(HERE / "Cargo.lock") or
+            audit_protocol["runner_sha256"] != digest(HERE / "full_audit.py") or
+            audit_protocol["reference_sha256"] != digest(BASE / "run_2_sparse28.json") or
+            audit_protocol["workload_id"] != tier["workload_id"] or
+            audit_record["status"] != "COMPLETED" or
+            audit_record["exit_code"] != 0 or
+            audit_record["protocol_sha256"] != digest(audit_protocol_path) or
+            audit_record["raw_sha256"] != digest(audit_raw_path) or
+            audit_raw["native_source_sha256"] != source or
+            audit_raw["cargo_manifest_sha256"] != cargo or
+            audit_raw["index_mode"] != MODES[1] or
+            audit_raw["peak_rss_bytes"] > 5500 * (1 << 20) or
+            any(audit_raw[field] != full[field] for field in PAIR_FIELDS)):
+        raise ValueError("full-capacity audit receipt or parity differs")
+    phase_ns = sum(int(audit_raw["timing_ns"][name]) for name in
+                   ("target_query_preparation", "target_partner_generation",
+                    "target_partner_check"))
+    if (audit_summary["status"] != "PASS" or
+            audit_summary["protocol_sha256"] != digest(audit_protocol_path) or
+            audit_summary["raw_sha256"] != digest(audit_raw_path) or
+            audit_summary["pair_certificate"] != certificate or
+            audit_summary["reference_record_probes"] != 7_415_319 or
+            audit_summary["candidate_record_probes"] != 6_068_644 or
+            audit_summary["candidate_tag_byte_allocated_bytes"] != 67_108_864 or
+            audit_summary["candidate_target_process_cpu_ns"] !=
+            int(audit_raw["timing_ns"]["target_process_cpu"]) or
+            audit_summary["candidate_phase_residual_ns"] !=
+            int(audit_raw["timing_ns"]["target_pdp_and_native_check"]) - phase_ns):
+        raise ValueError("full-capacity summary differs")
     return {"status": "PASS", "tests": 8, "screen_runs": 4,
             "reference_probes": probes[0], "candidate_probes": probes[1],
+            "full_reference_probes": audit_summary["reference_record_probes"],
+            "full_candidate_probes": audit_summary["candidate_record_probes"],
             "tier1_workload_id": tier["workload_id"]}
 
 
