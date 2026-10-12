@@ -1363,59 +1363,1155 @@ The [cell table and next gate](q1419_partial_pin/README.md) preserve every
 failure, formula, log, named `PS1` stage and source hash. The complete
 degree-131 work exponent remains unknown.
 
+### Q1420 N53/N83 external exact-S3 root propagation
+
+The [pre-registered Q1420 protocol](q1420_root_theory/protocol.json) replaces
+both pair-intermediate S3 Boolean circuits with exact external field-root
+clauses. Its [six-cell archive](q1420_root_theory/verification.json) verifies
+the known-witness `full_lock` and `free_mids` controls at both N53 and N83.
+Those four SAT cells reuse two archived relations. The two unpinned ordinary
+targets each reach the external 60-second cap with no model or verified
+relation. The N53 ordinary solver's peak child RSS was 1.445 GB and the N83
+ordinary solver's was 166 MB on this unisolated Darwin host. Their callback
+operation counts are unknown because the external timeout kills the process
+before it prints them. The [Q1420 result table](q1420_root_theory/README.md)
+and ledger preserve the full per-cell costs and raw artifacts. This method
+passes the fixed-leaf mechanism check but does not establish ordinary N83
+yield, a solve-growth fit, or a complete \(2^x\) cost.
+
+### Q1421 work-counted root-theory decision-policy comparison
+
+The [pre-registered Q1421 protocol](q1421_work_counted/protocol.json) reuses
+the exact Q1420 CNFs and ordinary public targets under CaDiCaL default and
+leaf-first decisions. Its [eight-cell archive](q1421_work_counted/verification.json)
+verifies all four fixed-leaf controls. All four unpinned ordinary cells reach
+the synchronous 60-second wall cap without a model. Unlike Q1420, every
+capped solver returns conflicts, decisions, pair assignments, exact-root and
+field-operation counts. N83 default reaches only 2 distinct pair assignments
+in 365,794 conflicts; leaf-first reaches 5,167 in 21,900 conflicts, but no
+ordinary relation. At N53, default reaches 31,532 pair assignments and
+leaf-first 62, again without a relation. The [Q1421 result table](q1421_work_counted/README.md)
+preserves all field calls, exploratory walls, and memory. Both ordinary
+variants are censored; neither a solve-growth fit nor a complete degree-131
+\(2^x\) follows.
+
+### Q1422 exact rational-leaf gate
+
+The [pre-registered Q1422 protocol](q1422_leaf_lift_gate/protocol.json)
+adds the sound raw-x condition \(\operatorname{Tr}(x+x^{-1})=0\) to
+Q1421's leaf-first external-root solver. Checked Sage and native code agree
+on sampled sparse/full-range x values and all archived witness leaves at
+both degrees. The [four-cell archive](q1422_leaf_lift_gate/verification.json)
+verifies both known-witness controls. Its ordinary N53 and N83 cells reject
+58 of 109 and 2,622 of 5,269 completed leaf values respectively, yet both
+reach the 60-second wall cap without a model. N83 pair-root calls fall from
+5,167 in matched Q1421 to 2,645, while conflicts remain about 22,000.
+The [Q1422 result table](q1422_leaf_lift_gate/README.md) retains all field
+calls, memory, and censored outcomes. Curve-lift feasibility alone does not
+supply an ordinary relation or a complete degree-131 \(2^x\).
+
+### Q1423 target-coupled final S3 roots
+
+The [pre-registered Q1423 protocol](q1423_target_coupled/protocol.json)
+adds sound exact roots for the last S3 link once the first pair
+intermediate and the public target-preimage selector are assigned. Both
+known-witness controls verify. The [four-cell archive](q1423_target_coupled/verification.json)
+records no ordinary N53 or N83 relation at the 60-second caps. Pair-first
+search makes 62,269 and 66,824 distinct pair assignments respectively,
+but the target-coupled final-root rule activates only once per ordinary
+query. The [Q1423 result table](q1423_target_coupled/README.md) retains
+field operations, conflicts, exploratory walls, and memory. The new rule
+is sound, but this search order reaches it too late to constrain the
+ordinary queries. A complete degree-131 `2^x` remains unknown.
+
+### Q1424 early-target decision orders
+
+The [pre-registered Q1424 protocol](q1424_early_target/protocol.json)
+compares two decision orders that choose the public target selector before
+leaf-pair search. Its [eight-cell archive](q1424_early_target/verification.json)
+verifies all four known-witness controls. All four ordinary N53/N83 cells
+still hit the 60-second wall cap without a relation. The new per-pair
+counters show `target_first` spends the cap on pair 1 (58,514 and 65,289
+root calls), while `target_mid_first` spends it on pair 0 (225,790 and
+135,141 root calls). The final target-coupled root rule activates once in
+each ordinary cell. The [Q1424 result table](q1424_early_target/README.md)
+retains field operations, memory, and every censored outcome. Moving SAT
+decisions alone does not solve the pair-feasibility problem or support a
+complete degree-131 `2^x`.
+The ledger also verifies exact curve, base digest, and target agreement with
+the prior pair-table stages: Q1301 found a relation on the N53 target, while
+Q1400's fixed N83 rectangle had no hit. Their workloads and resource limits
+differ, so neither gives a controlled wall-time speedup for Q1424.
+
+### Q1425 exact reverse pair roots
+
+The [pre-registered Q1425 protocol](q1425_reverse_pair/protocol.json) adds
+exact symmetric `S3` partner roots once a pair intermediate and one leaf are
+fixed. The [eight-cell archive](q1425_reverse_pair/verification.json)
+verifies all four controls with the partner leaves freed. All four ordinary
+N53/N83 cells still hit the 60-second cap without a relation. Complete pair
+root evaluations fall to 0–21 per ordinary cell, but reverse-root calls rise
+to 562,424–1,008,552, and every ordinary reverse candidate examined is
+rejected by the sparse weight bound. The [Q1425 result table](q1425_reverse_pair/README.md)
+summarizes the caps; the ledger and receipts retain exact operation counts,
+memory, and paired Q1424 identities. The
+degree-131 complete `2^x` remains unknown.
+
+An [exact sparse-pair support screen](q1425_reverse_pair/pair_support_screen.json)
+counts at most `2M²` possible pair-intermediate x coordinates for `M`
+nonzero sparse x choices, because each ordered pair has at most two `S3`
+roots. On the exact N131 W≤6 base, an independently uniform field
+intermediate therefore needs at least `2^64.78` logical trials in
+expectation to land in *any* sparse-pair support. This is a conditional
+uniform-sampling lower bound, not a cost bound for target-guided
+intermediates or a complete ECDLP projection.
+
+### Q1426 symbolic second-pair equations
+
+The [frozen Q1426 protocol](q1426_symbolic_pair/protocol.json) inserts all
+factored binary equations for `S3(leaf2, leaf3, mid1)=0` into the SAT
+formula before decisions. It retains Q1425's exact reverse-root propagator
+and uses the same ordinary targets, exact bases, and 60-second caps. The
+[four-cell archive](q1426_symbolic_pair/verification.json) verifies both
+freed-partner controls, with one independently replayed relation each.
+Neither ordinary N53 nor ordinary N83 found a relation before its cap.
+The N53 ordinary cell made 1,080,547 reverse partner calls, and the N83
+cell made 485,107; every reverse candidate was rejected by the sparse
+weight rule. The [Q1426 result table](q1426_symbolic_pair/README.md) and
+work ledger retain the raw field-operation and memory counts. The symbolic
+equation alone did not change the decisive rejection pattern. These
+censored cells leave the degree-131 complete `2^x` unknown.
+
+### Q1427 interleaved target-conditioned partner bits
+
+The [frozen Q1427 protocol](q1427_interleaved_pair/protocol.json) keeps
+Q1426's exact symbolic and external root constraints but alternates bits
+of the two second-pair leaves after the target and intermediates are
+constrained. Its [four-cell verification](q1427_interleaved_pair/verification.json)
+independently replays both freed-partner controls. Both ordinary N53/N83
+cells still hit the 60-second cap without a relation. Within that cap,
+reverse partner calls fell to 135,226 at N53 and 71,988 at N83, factors
+of 7.99 and 6.74 fewer than Q1426. Every reverse candidate still failed
+the sparse weight rule. The [Q1427 result table](q1427_interleaved_pair/README.md)
+and work ledger retain exact field-operation and memory counts. This
+decision-order improvement is a stage diagnostic; natural yield and the
+complete degree-131 `2^x` remain unknown.
+
+### Q1428 partial-pair bilinear-span screen
+
+The [Q1428 protocol](q1428_bilinear_span/protocol.json) tests a sound
+linear-span necessary condition derived from the exact fixed-intermediate
+`S3(a,b,m)` equation. Its [result](q1428_bilinear_span/result.json) shows
+rank deficiency and correct rejections on synthetic N53/N83 partial
+leaves; exhaustive N3/N5 checks validate the algebra and soundness.
+However, the frozen sampling law has already fixed each leaf's full
+weight allowance when rank first drops. The cardinality constraints would
+then fix the remaining bits, so this screen does **not** establish early
+solver pruning. It is neither an ordinary-query measurement nor a
+degree-131 work estimate. The next test must leave weight capacity and
+compare its rejection benefit with exact completion enumeration.
+
+### Q1429 unsaturated partial-pair screen
+
+The [frozen Q1429 protocol](q1429_unsaturated_span/protocol.json) leaves
+one or two one bits available on each partial leaf and compares Q1428's
+sound span condition with exact sparse completion and reverse `S3` roots.
+Its [268-sample result](q1429_unsaturated_span/result.json) includes the
+exact N53/N83 fields and an N131 W≤6 structural screen tied to Q1413's
+exact base identity. At N131 with 32 free bits and two remaining one bits,
+all four synthetic samples were rejected by the span test; an exact
+enumeration would have made 529 reverse-root calls per sample. The filter
+tested 1,024 bilinear columns per sample, a different work unit. No exact
+pair occurred in any uniform-intermediate sample. These are not ordinary
+queries, and the next gate is whether target-conditioned solver trails
+actually reach such unsaturated states. The degree-131 complete `2^x`
+remains unknown.
+
+### Q1430 actual target-conditioned partial-pair trail
+
+The [frozen Q1430 protocol](q1430_partial_trail/protocol.json) adds
+observation-only counters to Q1427 on its exact N53/N83 ordinary targets.
+Both known-witness controls verify, and both ordinary cells still hit the
+60-second cap without a relation. The actual search reached 207,522 N53 and
+81,765 N83 notification events with both second-pair leaves partial, one or
+two weight units available on each, and at most 14/20 free bits respectively.
+These are event counts, not distinct-state counts. The first 16 saved
+distinct states per ordinary cell were all rejected by the independently
+replayed sound span test. The [result table](q1430_partial_trail/README.md)
+and [post-run audit](q1430_partial_trail/audit_verification.json) retain
+the exact identities and failure rows. A typo in the frozen verifier was
+repaired only in a separate audit; the solver, protocol, and receipts remain
+unchanged. Reachability and selected-state rejection do not show net solver
+savings, natural relation yield, or a complete N131 `2^x`.
+
+### Q1431 guarded partial-span propagator
+
+The [frozen Q1431 protocol](q1431_guarded_span/protocol.json) adds a sound
+span rejection clause guarded by every fixed bit of the second pair and its
+fixed intermediate. Its [112-case native/Sage validation](q1431_guarded_span/span_validation.json)
+matches the independent span oracle and retains verified witness completions.
+The [four-cell verification](q1431_guarded_span/verification.json) replays
+both known-witness controls and sampled ordinary rejections. Both ordinary
+N53/N83 searches still cap at 60 seconds without a relation. The filter
+uses 67,632,400 and 53,520,040 field multiplications at N53/N83 while
+reducing reverse pair-1 calls to 12,020 and 19,354. Total field
+multiplications rise to 68,182,727 and 54,467,127, compared with matched
+Q1430's 4,764,022 and 3,676,888 within the same cap. The search paths
+differ, so these are charged stage diagnostics, not a wall-time speedup or
+a relation-cost measurement. The [result table](q1431_guarded_span/README.md)
+and ledger retain failures, operation counts, and claim limits. Complete
+N131 `2^x` remains unknown.
+
+### Q1432 exact span-coefficient cache
+
+The [frozen Q1432 protocol](q1432_coefficient_cache/protocol.json) keeps
+Q1431's rejection and clause semantics while reusing pair-basis products,
+intermediate-keyed bilinear columns, and lazily computed linear columns.
+The [112-case native/Sage validation](q1432_coefficient_cache/cache_validation.json)
+matches the independent oracle and retains verified witnesses. Both controls
+verify; both ordinary N53/N83 searches still reach the 60-second cap without
+a relation. Total field multiplications fall to 1,457,636/1,296,699,
+including 905,700/349,603 filter multiplications and cache construction,
+from Q1431's 68,182,727/54,467,127. Retained cache payload lower bounds
+are 2.21/4.56 MB; the receipts also preserve peak RSS. The [result table](q1432_coefficient_cache/README.md)
+and [archive verification](q1432_coefficient_cache/verification.json) retain
+all four cells. These are different censored search prefixes on an unisolated
+host; no cost per useful relation, natural yield, or complete N131 `2^x`
+can be inferred.
+
+### Q1433 longer cached-solver ordinary queries
+
+The [frozen Q1433 protocol](q1433_long_cached/protocol.json) runs the exact
+Q1432 binary and public targets under 300-second/five-million-conflict caps.
+Both known-witness controls independently verify. Both ordinary N53/N83
+targets again reach the wall cap with zero relations: N53 records 903,175
+decisions and 4,753,049 field multiplications; N83 records 677,658
+decisions and 4,490,849 multiplications. Peak RSS reaches 1.56/2.22 GB.
+The [result table](q1433_long_cached/README.md) and [archive verification](q1433_long_cached/verification.json)
+retain the censored rows and exact factor-base identities. They are lower
+bounds for those attempts, not solved-query costs or a natural-yield sample.
+The complete N131 `2^x` remains unknown.
+
+### Q1434 exact sparse-tail membership
+
+The [frozen Q1434 protocol](q1434_exact_tail/protocol.json) adds an exact
+weight-one completion check after Q1432's cached span screen. The
+[60-case native/Sage validation](q1434_exact_tail/tail_validation.json)
+matches direct `S3` enumeration and preserves verified witnesses. Both
+known-witness controls verify. On ordinary N53/N83 queries, the new check
+rejects 42,903/3,180 span-accepted states with no actual completion, but
+both queries still hit the 60-second cap without a relation. Total charged
+field multiplications are 2,036,720/1,372,405 on these different censored
+prefixes. The [result table](q1434_exact_tail/README.md) and
+[archive verification](q1434_exact_tail/verification.json) retain all four
+cells, exact factor-base identities, raw operation counts and memory. No
+ordinary solved-query cost or complete N131 `2^x` follows.
+
+### Q1435 bounded one/two-weight completion
+
+The [frozen Q1435 protocol](q1435_bounded_tail/protocol.json) extends the
+exact completion check to one or two remaining weight units per leaf, with
+a 4,096-candidate-pair cap. The [103-case native/Sage validation](q1435_bounded_tail/tail_validation.json)
+covers all four slack patterns and preserves verified witnesses. Both
+known-witness controls verify. On ordinary N53/N83 queries, the gate checks
+328,408/3,067 span-accepted states and rejects every checked completion
+domain. It tests 110,100,907/1,405,528 candidate pairs and charges
+354,587,110/4,152,415 expansion XORs in addition to field arithmetic.
+Both queries again reach the 60-second cap with zero relations. The
+[result table](q1435_bounded_tail/README.md) and [archive verification](q1435_bounded_tail/verification.json)
+preserve skipped domains, raw work and memory. All N53 2/2 domains exceed
+the cap. No ordinary solved-query cost or complete N131 `2^x` follows.
+
+### Q1436 one-sided affine sparse-pair feasibility
+
+The [frozen Q1436 protocol](q1436_affine_pair/protocol.json) solves the
+second leaf's free bits as an exact GF(2) linear system for each allowed
+completion of the first leaf, using the fixed target-linked intermediate.
+It preserves consistent rank-deficient systems as unknown. The [49-case
+native/Sage validation](q1436_affine_pair/affine_validation.json) retains
+all nine known witnesses, and the [archive verifier](q1436_affine_pair/verification.json)
+independently replays sampled ordinary zero claims. Both controls return
+verified relations. Ordinary N53/N83 searches cap at 60 seconds with zero
+relations, after soundly rejecting 395,906/75,525 partial domains with
+18/24 free bits per leaf. They charge 1,335,395,670/571,525,667 affine
+XORs and still complete only one first pair each. The first v1 control had
+a malformed JSON report and is [archived separately](q1436_affine_pair/failed_v1/README.md);
+the v2 protocol was frozen before these four runs. The [result table](q1436_affine_pair/README.md)
+and ledger preserve operations, memory, failures, and claim limits. No
+successful ordinary-query cost or complete N131 `2^x` follows.
+
+### Q1437 N131 W≤7 frontier sample
+
+The [frozen Q1437 screen](q1437_weight7_frontier/README.md) samples 100,000
+distinct weight-seven Frobenius x-orbits on the exact N131 curve. It finds
+50,213 rational orbits, all with nonidentity fourfold projection and no
+projected-key collision *within the sample*. An independent Sage group-law
+replay passes on 32 controls. Conditional on no unsampled or cross-weight
+projection collisions, the W≤7 base would have about 118.64 billion usable
+points and 452.81 million folded columns. Its average unordered distinct
+four-point subsets per uniform target would be about 12,128, versus 0.11335
+for the exact W≤6 base. The optimistic `4K²` sparse-matrix proxy is
+`2^59.51` logical row actions, only 1.49 bits below `2^61` before
+modular arithmetic, relation collection, decomposition, and descent.
+
+This is a conditional geometry screen, not actual W≤7 `B` or `K`, a measured
+ordinary-query yield, or a complete solve projection. The [ledger](work_ledger.json)
+retains actual W≤7 counts and N131 `2^x` as null. A larger base may make
+relations more plentiful, but the compact solver still needs a target-
+conditioned pair witness method and calibrated complete-work accounting.
+
+### Q1438 exact denser N53/N83 bases and solver panel
+
+The [Q1438 frozen panel](q1438_dense_base/README.md) enumerates the exact
+N53 W≤4 and N83 W≤6 projected bases and reruns Q1436's native compact-S3
+solver on the archived targets with the same decision policy and caps.
+N53 has `B=324,042`, `K=3,057`, digest `9e12afb51aaf…`; N83 has
+`B=408,131,750`, `K=2,458,625`, digest `c1ee6d106493…`. The old sets
+are checked as exact prefixes, and four old-weight control/ordinary formulas
+match Q1426 byte for byte. Both known-witness controls independently verify.
+Both unpinned ordinary queries reach the 60-second cap without a relation;
+each completes only one first-pair root call. The N53 public point is known
+representable even on its old subset, so that censored N53 outcome directly
+shows the current search failing to find an existing decomposition within
+the cap. N83's particular target representability remains unproved. The
+base change increases the uniform-target four-subset counting mean by about
+30,000-fold at both degrees, but gives no measured successful-query cost or
+degree-131 complete-work exponent. The [ledger](work_ledger.json) retains
+the failed attempts and null claim fields.
+
+### Q1439 fixed-leaf three-summand reduction
+
+The [frozen Q1439 experiment](q1439_fixed_leaf/README.md) fixes one usable
+raw factor-base leaf independently of each ordinary public target, subtracts
+it from every raw cofactor preimage, and searches the remaining three leaves
+with two compact factored S3 links. The exact Q1438 N53 W≤4 and N83 W≤6
+bases, their B/K counts and digests, and the archived public targets are
+preserved. The selected ordinary anchors and all adjusted targets are bound
+in the protocol before execution. Both planted controls return independently
+replayed four-point relations. The unpinned ordinary N53 and N83 cells each
+reach the 60-second external cap with zero relations. A small-field check
+covers every triple for the selected anchors at N3/N5, with exceptional
+identity states counted separately.
+
+A fixed anchor can miss a four-point solution, so these censored ordinary
+runs cannot separate coverage from solver cost. The known N53 four-point
+relation does not establish that the independent Q1439 anchor belongs to a
+relation. The results therefore leave ordinary useful-row yield, successful
+three-leaf cost, and complete N131 `2^x` unknown. Q1440 checks the
+witness-informed anchor diagnostic below.
+
+### Q1440 witness-informed anchor, other three leaves free
+
+The [Q1440 frozen gate](q1440_witness_anchor/README.md) uses Q1439's exact
+bases and two-S3 formula with an anchor from a known relation. N53 uses the
+archived ordinary public point but reveals its known first leaf; N83 uses an
+archived planted point. The remaining three leaves are unpinned. At each
+degree, one cell pins the archived adjusted-target selector and one leaves it
+free. Q1439's verified control model satisfies all four Q1440 XCNFs and
+replays to the public point, proving that every cell is satisfiable.
+
+Neither N53 cell finds a relation before 1,000,001/1,000,002 conflicts;
+N83's two cells reach their 60-second wall caps with no relation. This shows
+that Q1439's ordinary failures cannot be attributed solely to choosing an
+anchor with no representation: this particular three-leaf SAT search also
+stalls when a witness exists. These are witness-informed diagnostics, not
+natural-yield or successful-cost measurements. The complete N131 `2^x`
+remains unknown. The next solver gate remains a target-conditioned method
+that obtains witnesses for both sparse pairs before a full pair assignment.
+
+### Q1441 N131 full-base-scan budget screen
+
+The [Q1441 frozen screen](q1441_full_scan_budget/README.md) puts a declared
+abstract work unit on a solver that traverses every usable factor-base point
+for each relation query. On the exact W≤6 base, Q1414's uniform-marginal
+95%-rank floor requires at least 209,828,278 queries. One full scan per
+query already costs `2^60.256` actions at one action per point; two actions
+per point exceed `2^61` before matrix, descent, or verification. On the
+conditional Q1437 W≤7 base, a one-row-per-query solver needs at least
+`ceil(K)` queries, and one full scan per query costs about `2^65.542`
+actions at the sample center. The result holds across Q1437's conditional
+Wilson endpoints under the same no-collision assumption.
+
+This excludes those specified full-scan families in the named abstract unit;
+it does not measure a decomposition, calibrate a field operation, or bound a
+compressed or multirow solver. Q1441 leaves complete N131 `2^x` null and
+strengthens the need for a target-conditioned witness method that avoids a
+base traversal on every query.
+
+### Q1442 conditional selected-W7 base-size screen
+
+The [Q1442 frozen model](q1442_selected_base_screen/README.md) tests a
+deterministically selectable *partial* W7 orbit family as a future N131 base
+design. Under its unverified Poisson coverage, collision-free orbit, and
+one-novel-row-per-covered-query assumptions, a selected base around 11.969
+billion points and 45.683 million folded columns minimizes the model's
+one-action full-scan total near `2^59.407`. Its all-other-costs-zero budget
+allows only about 3.017 abstract actions per scanned point. The full W7
+sample center requires `2^65.542` in the same optimistic model.
+
+The selected base has **not** been enumerated: actual B, K, and its set
+digest remain null. The model is neither measured ordinary yield nor a
+field-operation or complete-solve projection. It narrows a possible future
+base choice while the joint target-conditioned four-point solver remains the
+decisive missing measurement.
+
+### Q1443 residual-pair support bound
+
+The [Q1443 exact-family screen](q1443_residual_pair_bound/README.md) corrects
+the next-method requirement. At Q1442's conditional selected-W7 size, a
+uniform N131 target's residual after a target-independent first pair lies in
+the factor-base pair-sum support with probability at most `2^-63.043`. Even
+with a free exact residual-pair oracle, 95% chance of one relation needs at
+least `2^62.969` individually tested first pairs in the screen's abstract
+trial unit. For the exact W≤6 base, the corresponding necessary count is
+`2^64.704`. Under a one-row-per-trial policy, the 95%-rank trial bounds are
+far higher. These statements apply to the declared uniform-target,
+target-oblivious-first-pair family; they do not bound a joint target-guided
+search or compressed batch-pair method.
+
+Thus an isolated fixed-residual pair oracle can calibrate a kernel, but
+cannot by itself provide a plausible complete `2^x` below `2^61`. The
+next solver must couple both sparse pairs to the public target *before*
+enumerating first-pair candidates. Q1443 still records no ordinary N83
+relation, no complete-solve exponent, and no challenge permission.
+
+### Q1444 sound WDSat adapter diagnostic
+
+The [Q1444 adapter stage](q1444_wdsat_adapter/README.md) checked a dedicated
+XOR-aware SAT solver against four archived compact chained-`S3` formulas on
+the exact Q1438 N53/N83 bases. A direct input would silently drop CNF clauses
+longer than four in this upstream solver. Q1444 uses audited shared-prefix OR
+gates to preserve every clause and XOR row, fixes its ignored unit-propagation
+failure, and independently checks known-witness models. The frozen binary
+and formula hashes are in its protocol. Both known-satisfiable controls and
+both ordinary cells reached the 60-second cap without a model. The ordinary
+N53/N83 branch-counter checkpoint lower bounds are 917,504 and 524,288;
+these are search-node diagnostics, not field operations or successful solve
+costs. The Q1444 method keeps one witness or independent anchor fixed and
+does not change the joint ordinary-query search pattern. It therefore does
+not pass the target-conditioned four-point witness gate or support a complete
+N131 projection.
+
+### Q1445 pair-table control on the exact dense bases
+
+The [Q1445 matched-input control](q1445_matched_pair_table/README.md) runs
+the signed-Frobenius four-point pair table on Q1438's exact W≤4 N53 and
+W≤6 N83 bases and the same ordinary public targets as Q1444. Its frozen
+N53 cell builds 500,000 target-independent pair samples, then finds one
+independently verified four-distinct-column ordinary relation after 54,545
+target-dependent pair samples. The query interval is 6.748 exploratory
+seconds; table preparation is a separate 43.188 seconds. The N83 cell
+builds 10,000 pair samples and stops after 10,000 target-dependent samples
+with zero key hits and no relation. Its table and query intervals are 9.582
+and 10.032 exploratory seconds. Q1445's N83 sampler draws from the complete
+exact base by uniform sparse-x rejection, not from a smaller cached subset.
+
+This provides the previously missing matched-base pair-table comparator,
+but no N83 successful solve, population relation yield, novel-row rate, or
+N53-to-N83 successful-cost fit. The N53 relation is one stage witness; the
+pair-table method remains subject to Q1443's target-oblivious-first-pair
+bound. Q1445 keeps `candidate_id: null`, complete N131 `2^x: null`, and the
+challenge gate closed.
+
+### Q1446 target-linked span checks on both pairs
+
+The [Q1446 frozen solver](q1446_joint_pair_span/README.md) fixes the
+target-linked pair intermediates, interleaves decisions across all four
+leaves, and applies Q1432's sound cached sparse-pair span check to both
+partial pairs. Its exact Q1438 N53/N83 known-witness controls pass; a
+separate partially pinned N53 control invokes both pair filters while
+preserving the witness. This is a changed search order on the same dense
+bases and ordinary public targets as Q1445, still using a compact chained
+`S3` rather than expanded `S5`.
+
+Both unpinned ordinary cells reach the 60-second native cap without a
+relation. N53 performs 265,256/4,612 span checks on pairs 0/1; N83 performs
+56,491/5,509. The independent audit replays sampled rejection claims from
+both pairs. Neither cell completes a pair or activates more than one
+target-linked final root. The new filter therefore reaches both partial
+pairs but does not solve the intermediate-choice bottleneck. These censored
+rows provide operation and memory diagnostics, not a successful-cost or
+natural-yield measurement. The complete N131 `2^x` remains null and the
+challenge gate stays closed.
+
+### Q1447 uniform-midpoint support screen
+
+The [Q1447 analytic screen](q1447_midpoint_support/README.md) tests a
+tempting repair to Q1446: restart with uniformly sampled first-pair
+intermediate x coordinates. On the exact N131 W≤6 base, at most
+`2^-67.778` of raw x choices can be first-pair sums, even after allowing
+repeated leaves and giving all later search a free oracle. For any fixed
+public target, 95% success therefore needs at least `2^67.704`
+abstract midpoint trials under this random-choice policy. The conditional
+selected W7 size still needs `2^65.969`. The pinned N53/N83 bounds are
+`2^18.314` and `2^27.717` trials. These are support bounds, not solver
+timings or calibrated field operations. They exclude uniform restarts as
+the next N131 method; target-guided joint search remains outside the bound.
+No complete N131 `2^x` has been measured.
+
+### Q1448 torsion-symmetrized five-input SAT stage
+
+The [Q1448 frozen stage](q1448_torsion_phi5/README.md) applies the
+published characteristic-two, two-torsion symmetrized polynomial to four
+sparse leaves and every archived raw target preimage. It keeps the exact
+Q1438 N53 W≤4 and N83 W≤6 factor bases, curves, public targets, and
+workload IDs. The compact invariant circuit directly couples all five x
+coordinates, without sampling a pair midpoint or expanding ordinary `S5`.
+Independent pinned controls pass on both curves.
+
+The ordinary N53 formula has 184,858 variables and 695,821 clauses;
+N83 has 451,997 variables and 1,650,799 clauses. CaDiCaL reaches its
+60-second wall cap on both without a model or verified relation. N53 is
+known satisfiable from an archived ordinary witness, so its censored run
+exposes solver cost rather than a missing decomposition. The measured
+solver intervals are 60.115 and 60.205 seconds, with 193,838 and 37,648
+conflicts respectively. The runner's larger inclusive intervals include
+CNF archive compression and are not headline one-target IC times. These
+are exploratory stage diagnostics on an unisolated CPU. They do not give
+a natural relation rate, successful N53-to-N83 solve growth, or a complete
+N131 `2^x`.
+
+### Q1449 native-XOR representation of the phi5 stage
+
+The [Q1449 frozen stage](q1449_phi5_native_xor/README.md) keeps Q1448's
+exact ordinary N53/N83 queries and compact field circuit, but passes its
+XOR equations directly to CryptoMiniSat. Fully pinned controls replay as
+verified relations at both degrees. The ordinary XCNFs have 62,428 /
+150,707 variables and 2,226 / 3,486 native XOR rows at N53 / N83,
+respectively. Both ordinary processes reach the external 65-second
+safeguard without a model or relation. Their target-dependent stage
+intervals are 65.850 / 65.874 seconds on an unisolated host.
+
+The logs explain why native XOR alone did not test the intended field
+linear algebra: CryptoMiniSat used **zero** Gaussian matrices. Its
+default 1,000-column limit rejects even the small N53 53×2,809 and N83
+83×6,889 multiplication components. Final exact operation counters are
+missing because the external safeguard terminated each process; last
+restart conflict counts are only rounded partial progress. Q1449 does
+not measure natural yield or a successful-solve growth rate. The
+complete N131 `2^x` remains null.
+
+### Q1450 bounded Gaussian matrices in the phi5 stage
+
+The [Q1450 frozen stage](q1450_phi5_gauss/README.md) retains Q1449's
+exact XCNFs and ordinary targets but admits up to eight Gaussian
+matrices of at most 512 rows and 8,192 columns. Partially pinned
+controls verify matrix activation. The ordinary N53 and N83 solver
+logs report six and five active matrices, respectively; N53 also logs
+Gaussian propagation and conflicts. Both cells still reach the
+external 65-second safeguard without a model or verified relation.
+The target-dependent stage intervals are 66.272 and 67.278 seconds
+on an unisolated host. This establishes that local multiplication
+matrix activation alone does not solve the ordinary query within the
+frozen cap. Natural relation yield, a successful solve trend, and the
+complete N131 `2^x` remain unknown.
+
+### Q1451 fixed public-target preimage in the phi5 stage
+
+The [Q1451 frozen stage](q1451_phi5_fixed_target/README.md) substitutes
+ordinary raw target preimage index 0 as a field constant before building
+the phi5 circuit. The N53 and N83 formulas use about 19% fewer AND gates
+than Q1450 and pass fully pinned relation controls. The ordinary cells
+activate five Gaussian matrices each, but both reach the external
+65-second safeguard without a model or verified relation. Q1451 screens
+one of 428 N53 preimages and one of four N83 preimages; a timeout on
+one slice says nothing about whole-target relation yield. Its
+target-dependent stage intervals are 66.001 and 68.361 seconds on an
+unisolated host. The successful-solve growth rate and complete N131
+`2^x` remain unknown.
+
+### Q1452 known-satisfiable N53 target preimage
+
+The [Q1452 frozen stage](q1452_known_satisfiable_phi5/README.md) keeps
+Q1451's exact N53 ordinary target and solver but selects raw preimage
+201, whose four-point witness is archived and group-verified. All four
+leaves remain unpinned in the ordinary run. Five Gaussian matrices
+activate and the solver reaches about 369K rounded conflicts before
+the 65-second external safeguard, without a model. The target-dependent
+stage interval is 65.263 seconds; child CPU is 50.491 seconds on this
+unisolated host. A valid relation exists in this selected slice, so
+constant-target substitution alone has not produced a successful
+ordinary decomposition under the frozen cap. The cost of a successful
+decomposition and complete N131 `2^x` remain unknown.
+
+### Q1453 division-free projective phi5 circuit
+
+The [Q1453 frozen stage](q1453_projective_phi5/README.md) clears the
+four leaf-inverse denominators algebraically and evaluates the same
+five-input phi invariant from sparse x coordinates. The identity is
+checked on random tuples and archived witnesses at N53/N83; pinned SAT
+controls replay exact group relations. The projective circuit has about
+70% more AND gates than the inverse-constrained baseline. Both ordinary
+cells reach the 65-second external safeguard without a model: N53 on
+its known-satisfiable preimage 201, N83 on ordinary preimage 0. The
+charged stage intervals are 65.276 and 67.119 seconds on an unisolated
+host. The complete N131 `2^x` remains unknown.
+
+### Q1454 measured N53 conflict-cap search
+
+The [Q1454 frozen stage](q1454_phi5_conflict_cap/README.md) gives
+Q1452's byte-identical, known-satisfiable N53 ordinary XCNF enough
+wall time to reach its one-million-conflict cap. CryptoMiniSat exits
+`INDETERMINATE` after exactly 1,000,002 conflicts and 1,367,589
+decisions without a model. The target-dependent stage wall interval is
+136.863 seconds on an unisolated host. A supplementary audit explains
+the native exit code 15 while preserving the frozen runner's raw
+`solver_error` label. This is a lower bound on this solver's search
+prefix in SAT conflict units, not a successful decomposition cost or
+a degree-131 field-operation estimate. The complete `2^x` remains
+unknown.
+
+### Q1455 bounded joint pair-output join
+
+The [Q1455 frozen stage](q1455_joint_tail/README.md) implements an exact
+target-conditioned join over both sparse-pair output sets while their `S3`
+intermediates remain unfixed. Exhaustive N3 and archived N53/N83 controls
+pass; the native propagator independently replays verified four-point
+relations from both partially freed witnesses. Its five-cell archive audit
+also checks sampled no-chain clauses against the separate Python join.
+The N53 known-satisfiable slice and full ordinary N53/N83 cells all reach
+their 60-second solver cap without a relation. Their 325, 333, and 421
+observed partial states respectively all exceed the frozen pair-domain cap,
+so the joint rule performs zero ordinary feasibility checks. This is a
+specific eligibility bottleneck, not a measured successful-solve cost.
+
+### Q1456 exact joint-domain profile
+
+The [Q1456 frozen diagnostic](q1456_joint_domain_profile/README.md)
+replays Q1455's same N53 known-satisfiable and full ordinary N53/N83
+inputs for 15 seconds while recording every distinct partial state with
+unfixed intermediates. An independent audit recomputes all completion
+counts. The smallest larger-pair domains are 1,300 on both N53 inputs and
+3,081 on N83. A cap of 4,096 would admit 6, 6, and 1 states respectively
+in those recorded prefixes; Q1455's smaller caps admit none. This gives
+a concrete next solver variant, with no successful decomposition or N131
+work exponent yet.
+
+### Q1457 bounded joint join at cap 4,096
+
+The [Q1457 frozen stage](q1457_joint_cap4096/README.md) changes only the
+pair-candidate cap on Q1455's same binary and archived inputs. Its two
+partially freed witness controls still return independently verified group
+relations. The unpinned known-satisfiable N53 slice and full ordinary
+N53/N83 targets all reach the 60-second solver cap with no model. The exact
+joint rule fires 2, 2, and 1 times respectively, and every retained
+`no_chain` rejection is independently replayed. The full ordinary N53
+native interval spends 708,027 field multiplications, 4,315,076 squares,
+and 50,976 inversions, but this is a censored search prefix, not a
+successful-decomposition cost. Most partial states still exceed the cap:
+405/407, 298/300, and 403/404. The complete N131 `2^x` remains unknown.
+
+### Q1458 batched S3 root inversions
+
+The [Q1458 frozen stage](q1458_batch_roots/README.md) retains Q1457's
+exact inputs, cap, decision policy, and resource limits while batching
+the joint rule's S3 inversions. Deterministic N53/N83 root panels match
+every serial root; both archived partial-witness controls return verified
+group relations. A paired archive audit confirms Q1457 and Q1458 made
+the same exact joint checks on the same retained rejection states. On
+the N53 ordinary states, joint-rule inversions fall from 18,953 to 12
+and field squares from 1,729,118 to 744,186. On N83 they fall from
+12,168 to 6 inversions and 1,676,142 to 678,858 squares. All three
+unpinned cells still hit the 60-second cap without a relation, so this
+is a measured arithmetic improvement on censored prefixes, not a
+successful-decomposition cost or a controlled wall-time speedup.
+
+### Q1459 exact leaf-lift admission screen
+
+The [Q1459 frozen diagnostic](q1459_leaf_lift_screen/README.md) applies
+the exact nonzero-x curve-lift test to each manageable sparse leaf domain
+before forming pair candidate products. An independent native field
+implementation checks every distinct x in the screened domains. On the
+archived Q1456 partial states, the unchanged 4,096 pair cap admits
+6→6 N53 known-satisfiable states, 6→6 N53 ordinary states, and 1→2 N83
+ordinary states after filtering. The new N83 admission reduces each pair
+product from `79²=6,241` to `39²=1,521`. This is a sound but narrow
+eligibility gain, not a solver run or a measured relation.
+
+### Q1460 fixed-state target-x support screen
+
+The [Q1460 frozen diagnostic](q1460_fixed_state_support/README.md)
+enumerates the exact pair-intermediate `S3` x sets on every Q1459
+cap-admitted archived state. A fixed state with at most 4,096 completed
+leaf pairs on each side can support no more than `2^27` raw target x
+values. The observed maximum is 3,385,202 for N53 raw states (781,250
+after lift filtering) and 4,626,882 for N83 raw or lift-filtered states.
+Independent Sage replay matches the native midpoint counts on one N53
+and one N83 state. These are **fixed-state** x-only coverage bounds, not
+ordinary-query success probabilities or an adaptive target-guided solver
+lower bound. No new relation, successful-decomposition cost, or N131
+complete-work exponent follows.
+The [post-result exact-set audit](q1460_fixed_state_support/overlap_result.json)
+also finds that Q1459's newly admitted N83 state has the same two
+midpoint sets as an already admitted raw state. It adds no new x-only
+target support in that archived prefix, although earlier propagation on
+a changed solver trail remains unmeasured.
+
+### Q1461 sparse-sum inversion and Q1462 ordinary SAT integration
+
+The [Q1461 exact kernel](q1461_sparse_sum_inverse/README.md) fixes one
+nonzero `S3` midpoint, enumerates sparse leaf XOR sums, and recovers all
+compatible leaf pairs by binary linear algebra. It recovers a planted pair
+at N53 and N83 and matches direct enumeration on 16 archived ordinary
+partial states per degree. Those 32 states contain no pair. Its exact
+primitive counts are a fixed-midpoint stage diagnostic, not work per
+successful decomposition.
+
+The [Q1462 frozen solver](q1462_sparse_sum_sat/README.md) installs this
+rule in Q1446's target-linked mids-first SAT search under a 100,000-sum
+cap. It reaches actual ordinary states with 67,677 N53 and 249,719 N83
+direct pair completions, beyond the older 4,096-pair admission cap.
+Across the frozen 60-second ordinary cells, it checks 2,070 N53 and 1,357
+N83 partial pairs; every exact check rejects and neither cell recovers a
+relation. Forty-eight retained rejections agree with independent direct
+pair enumeration. The matched Q1445 pair table found one verified N53
+relation on the same target and base, with a different query law and
+preparation cost; its N83 cell also found none. These outcomes supply no
+successful N83 cost, natural rank yield, or complete N131 `2^x`.
+
+## Prior solver gate
+
+The next goal is **one independently verified four-point relation from the
+unfixed, known-satisfiable N53 preimage 201**, with exact primitive counts
+and a charged target-dependent stage interval. Q1452 and Q1454 could not
+recover that unpinned witness through the phi5/XCNF route. Q1455's joint
+rule never fired on unpinned inputs at its original cap. Q1457 activates
+the rule at N53/N83 but reaches only two N53 and one N83 joint checks in
+60 seconds, without a relation. Its N53 ordinary run spends over 4.3
+million native field squares in that censored interval. Another blind cap
+increase is not an adequate solver strategy. Q1458 removes nearly all
+joint-rule inversions on those same states but still recovers no unpinned
+relation, so arithmetic-only tuning also leaves the main gap.
+Q1459 shows that exact single-leaf curve-lift filtering adds only one
+admitted N83 state in the archived prefixes and none at N53.
+Q1460 bounds each admitted fixed state's raw-target x support and
+quantifies why bounded admission alone is a limited search mechanism;
+the target-dependent SAT trail prevents interpreting that bound as a
+natural relation-yield estimate.
+Q1461 makes larger fixed-midpoint checks exact, and Q1462 runs thousands
+of them on ordinary N53/N83 queries, but every check rejects and both
+cells remain censored. Q1456's large-domain counts leave midpoints free;
+they cannot be used as Q1461 fixed-midpoint admissions. The next algorithm
+must couple many possible midpoint values to the public target instead of
+spending a full search prefix on one fixed midpoint at a time.
+
+The [Q1463 free-midpoint rank screen](q1463_free_midpoint_rank/README.md)
+tests a direct linear-span route on the archived Q1456 partial states.
+Both pair-product coefficient spans have full field rank in all 65 state
+rows. The exact reachable midpoint sets in all 13 states within a
+4,096-pair cap also have full affine rank on both sides; independent Sage
+replays the smallest N53 and N83 cases. This rules out an unrestricted
+monomial-span rejection on those prefixes and any proper affine container
+for their bounded midpoint sets. It does not rule out a weight-aware
+nonlinear joint rule or measure a new ordinary relation.
+
+The [Q1464 wide exact join](q1464_joint_cap250k/README.md) raises only
+Q1458's pair-candidate cap to 250,000. It activates four N53 and two N83
+target-linked checks within the same 60-second native limit, versus two
+and one at cap 4,096. All checks reject their partial state; the three
+unpinned cells remain censored without a relation. A separate
+post-result serial-root audit independently confirms zero x-only chains
+in the first wide N53 and N83 ordinary rejection states, with 67,677 and
+249,719 pair candidates per side. The larger cap improves exact-state
+coverage but still supplies neither a successful N83 decomposition nor a
+natural useful-row rate.
+
+A concrete successor should process **large partial pair-output domains**
+without enumerating every pair combination. First derive and independently
+verify a sound target-conditioned necessary condition on partial leaves,
+then incorporate it as an incremental propagation or branching rule. Freeze
+the same N53 selected-preimage and full ordinary N53/N83 workloads, preserve
+all failures, and compare root calls and verified relations in a common
+accounting unit. If the N53 known-satisfiable slice is recovered, proceed
+to enough ordinary queries to measure natural yield and rank; a single
+control relation does not estimate those rates. Q1447 excludes uniformly
+restarting first-pair midpoints under the declared bases, and Q1416's pure
+pair-index model costs roughly `2^89.36` logical actions at N131; neither
+is a lower bound on target-guided algebraic search. The challenge stays
+closed until the complete N131 solve can be charged below `2^61`.
+
+Freeze the stage before ordinary queries. The first measurable gate is the
+unpinned archived N53 ordinary target, which Q1301 already proved
+representable. The second is an independently verified ordinary relation on
+the exact Q1438 N83 W≤6 base, with a pre-registered fresh-target panel if
+the fixed N83 target has no representation. Keep the older Q1325 W≤5 base as
+a separately labeled factor-base comparison. Preserve failed queries, raw
+operations, memory, and matched pair-table receipts.
+
+For work planning, Q1414's exact-base uniform-query model allows less than
+`2^33.36` abstract work units per query under a `2^61` total cap **even
+when every other phase costs zero**. This is a necessary affordability
+ceiling for that model, not a measured point-decomposition cost or a
+complete solve projection. The new method needs a measured natural yield
+and a calibrated N53/N83 cost trend before any degree-131 `2^x` is credible.
+
+Only after the N83 gate passes should a fresh ordinary-query panel measure
+verified useful-row yield, novel rank per query, and charged cost per useful
+row. Calibrate field arithmetic, conversion, hashing and point work into a
+declared common unit; add exact-base construction, relation collection, final
+matrix build/solve, target descent, and scalar replay. Keep the complete
+\(2^x\) unknown until every term is measured or bounded. Dispatch the
+challenge only if the complete degree-131 projection is credibly below
+\(2^{61}\).
+
+### Q1467 density-matched four-point solver gate
+
+[Q1467](q1467_density_bridge/README.md) selects an exact N53 factor base
+with 2,756 usable subgroup points and 26 folded columns. Its four-summand
+counting upper bound is 0.11447 per uniform target, within 0.0142 bits of
+the exact N131 W≤6 reference bound of 0.11335. The exact N83 W≤4 base has
+1,934,066 usable points, 11,651 columns, and counting upper bound 0.24113.
+These are relation-supply bounds, not measured solver success rates.
+
+Six frozen compact chained-\(S_3\) cells were run with the same Q1466 native
+solver and a 60-second cap. Fully pinned planted controls independently
+verify at both degrees. Both unpinned known-representable controls and both
+ordinary queries reach the cap without a model. The N53 unpinned and ordinary
+cells each make 49 exact no-chain checks; the N83 cells each make one. The
+archive audit preserves the first replay-wrapper failure and verifies the
+corrected revision-2 receipts. The current solver under this cap does not
+meet the first successful-unpinned-decomposition gate. No natural useful-row
+rate, matched pair-table result, successful N83 cost, or complete N131 `2^x`
+is available. The challenge remains closed.
+
+### Q1468 exact N53 pair-sum oracle
+
+[Q1468](q1468_n53_pair_oracle/README.md) tests `PDP4mitm` on the same exact
+N53 base and public targets as Q1467. A full table contains all 3,651,700
+cross-column pair sums. It independently verifies a four-distinct-column
+relation for Q1467's unpinned planted target, while exhaustive lookup finds
+no four-distinct-column sum for Q1467's ordinary target. The latter result
+means that one SAT timeout cannot be interpreted as a successful-solver cost;
+the planted timeout still demonstrates solver failure on a known-solution
+input. The two single-target pair-table query phases take 1.958 and 4.334
+seconds on an unisolated host, with table setup charged separately. One
+ordinary target supplies no natural yield rate or rank trend. N83 and the
+complete N131 `2^x` remain unresolved.
+
+### Q1469 ordinary N53 yield and rank panel
+
+[Q1469](q1469_n53_yield_panel/README.md) runs that same exact pair oracle
+on 128 new seeded ordinary N53 subgroup targets, building a fresh complete
+3,651,700-pair table for each. It finds and independently replays 13
+four-distinct-column relations, proves 115 absences by complete scan, and
+obtains 13 novel rows among 26 folded columns. The observed relation yield
+is 10.156% (model-based Wilson 95% interval 6.032%–16.602%). Including all
+failed queries, the target-query work per early novel row is 163.740 million
+field multiplications, 33.151 million squarings, and 7,999 inversions; fresh
+table preparation is charged separately. Wall times are exploratory.
+
+On the exact N131 W≤6 base, this **complete-table** design requires
+21,514,403,416,657,745,244 pair entries (`2^64.222`) before a target query,
+above a `2^61` entry-materialization cap. This does not bound compact
+target-guided methods. N83 successful ordinary work and natural yield,
+late-rank behavior, final matrix work, target descent, and scalar replay
+remain unknown, so the complete N131 `2^x` and challenge gate remain open
+questions.
+
+### Q1470 extended N83 known-solution control
+
+[Q1470](q1470_n83_long_control/README.md) reruns Q1467's exact
+known-representable N83 unpinned CNF with a 600-second native wall cap. It
+again stops without a model, after 159,108 SAT conflicts and one exact
+joint-chain check. Its field primitive calls are identical to the earlier
+60-second run even though conflicts and peak memory rise substantially.
+Thus field calls alone miss the dominant SAT search work in this hybrid
+solver. The result is a censored correctness control, not a natural N83
+relation yield or successful decomposition cost. The complete N131 `2^x`
+remains unknown.
+
+### Q1471 wider exact-join cap at N83
+
+[Q1471](q1471_n83_wide_join/README.md) raises the exact joint-pair
+admission cap fourfold on Q1467's matched N83 known-solution and ordinary
+targets. It admits three exact checks in each run, compared with one at the
+old cap, but both reach a 120-second wall cap without a verified relation.
+The widened check costs 19.87 million / 19.07 million field
+multiplications, respectively, and hundreds of partial states still exceed
+the new cap. No N83 successful-solve cost, natural useful-row yield, or
+complete N131 `2^x` follows.
+
+### Q1472 exact SAT propagation meter
+
+[Q1472](q1472_sat_work_meter/README.md) adds only CaDiCaL's exact
+propagation counter to the native chained-\(S_3\) solver and reruns all six
+matched Q1467 N53/N83 cells. Both pinned controls independently verify;
+the four unpinned and ordinary cells censor again. The ordinary N53/N83
+queries make 297,449,277 / 315,503,020 SAT propagations before their
+60-second caps, alongside separately recorded field primitive calls.
+These are censored-stage operation counts in different units. They do not
+measure successful unpinned N83 work or produce a complete N131 `2^x`.
+
+### Q1473 warm-table N53 rank completion comparator
+
+[Q1473](q1473_n53_rank_collection/README.md) reuses one complete exact
+pair table across 256 fresh ordinary N53 targets on Q1467's same
+2,756-point, 26-column base. It independently verifies 24 relations and
+232 complete absences. The new panel adds 14 novel rows to 12 retained
+Q1469 rows after a predeclared representable holdout is excluded; combined
+rank reaches 26/26 after new query 152. All 26 base logs and the holdout
+scalar independently replay. Measured native collection through rank 26,
+charging all failed queries and the actual table setup policy across both
+panels, uses 7,010,486,808 N53 field multiplications, 1,430,692,806
+squarings, and 567,369 inversions. These are separate primitive-call units,
+not a calibrated total-operation exponent. The run is a secondary
+pair-table comparator. Its N131 complete-table setup still exceeds
+`2^61` entries, and it supplies no successful N83 compact-solver cost or
+complete N131 `2^x`.
+
+### Q1474 matched positive N53 compact-S3 control
+
+[Q1474](q1474_n53_positive_compact/README.md) tests Q1472's native
+chained-\(S_3\) solver on the same seeded ordinary N53 public point that
+Q1469's pair-table oracle decomposed. The point was chosen for this control
+after its four-point witness was known. The exact curve is
+`EC1N53Ckb1hf77aab617904`, with 2,756 actual base points and 26 folded
+columns. The `PS1N53Ckb1fb2756PDP4hybridhb641481db49c` stage ID names
+the compact solver; there is no complete `IC1` candidate.
+
+The pinned witness independently verifies. With free leaves, both the one
+known raw-preimage case and the full 428-preimage public-target case reach
+their 60-second caps without a relation. Their exact censored prefixes are
+288,547,216 and 274,677,429 SAT propagations, respectively, with field
+primitive counts and failures archived separately. This tests solver search
+on a provably representable point, but neither prefix measures a successful
+unpinning cost or supports a natural-yield or N131 `2^x` estimate.
+
+### Q1475 ordered-leaf compact-S3 comparison
+
+[Q1475](q1475_ordered_leaves/README.md) enforces a strict numeric order on
+the four raw leaf x values in the same chained-\(S_3\) CNFs. Both sorted
+pinned controls verify at N53 and N83. The N53 known-representable full
+public-target coset and the N83 known-representable unpinned control, along
+with one matched ordinary query per degree, all reach their 60-second caps
+without a relation. On the matched positive N53 point, eligible exact joins
+rise from 49 to 213 and field multiplication calls fall from 16,857,549 to
+12,090,373 during the capped interval. The N83 free-leaf cells still admit
+only one exact join each. These are censored stage diagnostics; successful
+compact decomposition cost, N83 natural yield, and a complete N131 `2^x`
+remain unknown.
+
+### Q1476 trace-syndrome compact-S3 comparison
+
+[Q1476](q1476_trace_syndrome/README.md) adds the rational-point trace
+homomorphism as three exact parity constraints to Q1475's ordered CNFs,
+with the target-preimage selector gating the final equation. Independent
+Frobenius-trace and group-law checks pass at N53 and N83; both pinned SAT
+models verify. All four free-leaf cases, including the N53 and N83
+known-representable controls and both ordinary queries, again reach the
+60-second cap without a relation. On the N83 matched inputs the exact
+pair-root and target-join counts remain unchanged at one join each.
+The new one-bit target constraint does not measure successful decomposition
+work, N83 natural yield, or a complete N131 `2^x`; the challenge gate stays
+closed.
+
+### Q1479 target-conditioned partial midpoint domains
+
+[Q1479](q1479_target_mid_domain/README.md) adds a guarded necessary domain
+constraint between an unfinished first pair and the second `S3` midpoint,
+using the same six Q1476 inputs and exact N53/N83 curve and base records.
+Exhaustive `F_8` guard checks pass and both pinned four-point controls
+independently verify. The known-representable unpinned and ordinary cells at
+both degrees still censor at the 60-second cap with zero verified relations.
+The N53 free-leaf cells spend roughly fourteen million `S3` root calls each
+and fill the two-million-entry cache; the N83 ordinary cell emits 1,599
+guarded midpoint implications but no exact joint check or relation. These
+fixed-cap counts do not measure successful N83 decomposition work, natural
+yield/rank, or the complete N131 `2^x`.
+
+### Q1480 midpoint-conditioned pair feasibility on dense bases
+
+[Q1480](q1480_conditioned_join/README.md) tests Q1438's exact N53 W≤4 and
+N83 W≤6 production bases on their archived free-partner controls and
+ordinary targets. It replaces Q1479's broad pair-root join with direct
+`S3` feasibility checks against a fixed target-linked midpoint, capped at
+16,384 pair completions per side. An exhaustive small-field guard check
+passes, both supplementary pinned controls pass, and both Q1438
+free-partner controls return independently verified public relations. The
+ordinary N53 and N83 cells again censor at 60 seconds with no relation.
+N83 makes 35,598 conditioned checks and 69,847,082 direct right-pair `S3`
+evaluations, with no supported right midpoint in those tested states. This
+is a costed failed search on the production base, not a successful N83
+solve, natural-yield estimate, or complete N131 `2^x`.
+
+### Q1481 exact Frobenius window-orbit bases
+
+[Q1481](q1481_window_orbit_base/README.md) enumerates a different
+Frobenius-stable base on the same exact N53 and N83 curves: the union of
+cyclic normal-basis coordinate windows. The nominal dimensions are 14 and
+23, but the subgroup-usable counts come from exact projection: N53 has
+`B=430,360`, `K=4,060`; N83 has `B=348,006,384`, `K=2,096,424`. The
+packed projected-key sets and sampled independent group-law checks pass the
+archive audit. These bases are comparable in size to Q1438 W≤4/W≤6, with
+a different membership constraint for a future compact-S3 solver test.
+N131 dimension 27 remains a `Q` design with actual `B`/`K` unknown. Q1481
+does not measure an ordinary relation or complete `2^x`.
+
+### Q1482 compact-S3 search on the exact window bases
+
+[Q1482](q1482_window_s3/README.md) uses the exact Q1481 bases and Q1480
+native solver against the same Q1438 ordinary public targets. Its four
+leaf constraints are exact cyclic-window clauses; the native theory uses
+the loose weight-`d` superset bound. Both pinned planted N53/N83 controls
+independently verify. Both unpinned planted controls and both ordinary
+queries reach the 60-second cap with no relation. The N83 ordinary prefix
+uses 317,569,291 field multiplications and 79,366,320 direct right `S3`
+evaluations, with no right support. This changed-base stage is a negative
+solver result, not successful ordinary work or a complete N131 projection.
+
+### Q1483 fixed-window compact-S3 search
+
+[Q1483](q1483_fixed_window_s3/README.md) fixes the start-zero cyclic window
+for all four leaves on the same exact Q1481 bases and Q1482 public targets.
+Both pinned controls independently verify. The first N53 unpinned planted
+attempt lost its solver output to a disk-full infrastructure error; its
+separately frozen R2 and the N83 unpinned planted cell both reach the 60-second
+cap without a relation. Both ordinary cells also censor. The N83 ordinary
+prefix performs 83,755,008 direct right-pair `S3` evaluations and finds no
+support. This is a restricted orientation slice, not full-base relation
+yield. Successful N83 decomposition cost, novel rank, and complete N131
+`2^x` remain unknown.
+
+### Q1485 target-coupled pair-domain intersection
+
+[Q1485](q1485_coupled_domains/README.md) retains Q1482's exact N53/N83
+window-orbit bases, public targets, and six byte-identical inputs. Its
+native solver intersects a target-conditioned left second-midpoint domain
+with the exact right-pair domain before committing the midpoint. The
+small-field domain check and both pinned public-point controls pass. Both
+unpinned planted and both ordinary cells censor at 60 seconds with no
+relation. The N83 ordinary prefix rejects 2,240 empty pair-domain
+intersections, but incurs 8,570,128 `S3` root calls, 119,998,624 field
+multiplications, 763,105,558 squarings, and 4,482 inversions. Q1485
+therefore does not supply a successful decomposition cost, natural yield,
+rank, or a complete N131 work exponent.
+
+### Q1486 exact cyclic-window pair-domain search
+
+[Q1486](q1486_window_aware_pair/README.md) exposes the window-selector
+variables already present in Q1482's byte-identical six CNFs. A small-field
+check exhausts partial window completions and both pinned N53/N83 public
+relations verify. Both unpinned planted and both ordinary cells censor at
+60 seconds. The N83 ordinary prefix still makes 8,456,687 `S3` root calls,
+118,442,341 field multiplications, 752,979,922 squarings and 4,130
+inversions, with zero supported midpoint intersections. This exact local
+restriction does not measure successful PDP work or N131 complete `2^x`.
+The post-run [fixed-left coverage diagnostic](q1486_window_aware_pair/coverage_diagnostic.json)
+shows that each ordinary run built only one left domain. Under a stated
+independent uniform `x`-root model, the observed right-pair prefixes have
+expected-intersection scales below `2^-16.16` at N53 and `2^-46.91` at
+N83, even counting two roots per pair. SAT choices are target-dependent,
+so those scales are neither probability bounds nor measured relation yield.
+
+### Q1487 inverse S3 partner support
+
+[Q1487](q1487_inverse_partner/README.md) replaces bounded pair-product
+enumeration with exact inverse-`S3` partner tests. It keeps Q1482's six
+CNFs, Q1486's selector maps, and Q1481's exact N53/N83 bases. Exhaustive
+small-field and native direct-scan controls pass, and both pinned public
+relations replay. The two unpinned planted and two ordinary cells all
+censor at 60 seconds. N83 ordinary performs 20,470 inverse checks and
+5,845,120 actual `S3` root evaluations with **zero right-pair supports**.
+The selected right domains still cover too little of a fixed midpoint's
+possible preimages. Q1487 does not measure cost per successful relation,
+natural yield, rank, or N131 complete `2^x`.
+
+### Q1488 matched Q1481 pair-table control
+
+[Q1488](q1488_window_pair_table/README.md) runs Q1445's signed-Frobenius
+pair-table rule on Q1481's **exact same** N53/N83 bases and Q1482 public
+targets used by Q1487. It reconstructed all 430,360 N53 points from the
+4,060 archived projected x keys and validated full-base N83 sampling.
+The N53 ordinary query independently verifies one four-distinct-column
+relation after 500,000 target-independent table pairs and 184,366 query
+pairs. Q1487 censored on that same target. N83 uses 10,000 table and
+10,000 query pairs and finds no key hit. The Q1488 archive preserves
+operation counts and separate setup/query costs; one N53 success is not a
+natural-yield estimate, and N83 successful cost remains unknown.
+
+### Q1490 ordinary relation witness bridge
+
+[Q1490](q1490_ordinary_witness_bridge/README.md) reconstructs Q1488's
+verified N53 ordinary relation as four exact Q1481 raw cyclic-window
+points. Their raw sum is preimage 141 of Q1482's 428 frozen target
+preimages, and all three chained `S3` equations hold. The first frozen
+attempt preserved a packed-point-key versus x-only-key preflight failure;
+the separately frozen R2 conversion passes. This is a known-witness
+correctness control, not an unpinned solve or a cost observation.
+
+### Q1491 exact ordinary CNF witness
+
+[Q1491](q1491_ordinary_cnf_witness/README.md) appends 327 unit clauses
+for Q1490's witness to Q1482's byte-identical ordinary N53 CNF body.
+The frozen native solver returns SAT, and independent model replay verifies
+the same public four-point relation at target preimage 141. This confirms
+that the actual CNF accepts a known ordinary relation. Its pinned solver
+time is a correctness diagnostic, not successful unpinned PDP work.
+
+### Q1492 ordinary partial-pin diagnostic
+
+[Q1492](q1492_ordinary_partial_pin/README.md) keeps Q1482's exact ordinary
+N53 CNF and all four leaves free while pinning the known target preimage,
+either midpoint, or both midpoints from Q1490. All four cells censor at
+60 seconds with no verified relation. The target-only cell makes 143
+million direct right-`S3` evaluations; midpoint-pin cells make about
+14.4 million root calls while rebuilding left-pair domains. The
+fully pinned Q1491 SAT model remains a correctness witness, so these
+cells measure only capped search prefixes.
+
+### Q1493 Frobenius-swept first-window search
+
+[Q1493](q1493_frobenius_window_sweep/README.md) fixes only the first raw
+leaf's window to start zero and sweeps all Frobenius rotations of each
+ordinary public target. The full sweep preserves mathematical coverage
+of Q1481's Frobenius-stable base; Q1490's known N53 witness maps into
+rotation 44 and passes the rotation preflight. The native solver censors
+on that positive cell at 60 seconds. A separately frozen, post-search
+control pins the known witness into the rotation-44 CNF; the native solver
+returns SAT, and inverse-Frobenius replay verifies the ordinary relation.
+This establishes that the rotated encoding accepts the witness, without
+measuring unpinned solve cost. All 53 N53 and 83 N83 rotations
+then censor at their frozen 5-second caps with zero verified relations.
+The independent audit preserves the operation vectors and charged stage
+intervals. This is a bounded search failure, not a successful PDP cost
+or an N131 work exponent.
+
+### Q1494 full native-XOR window S3
+
+[Q1494](q1494_full_xor_window_s3/README.md) adds the missing first-pair
+`S3` link to Q1493's exact window-base formula and gives all three links
+to CryptoMiniSat as native XOR rows. Its pinned N53 ordinary rotation-44
+control returns SAT and replays the public relation. With the witness
+pins removed, that known-satisfiable cell reaches the frozen 60-second
+cap without a model; the ordinary N53 and N83 rotation-zero cells also
+censor. The N53 formula has 795 XOR rows, and N83 has 1,245. The audit
+preserves exact conflicts and raw rounded propagation displays. This
+tests one solver representation on three bounded cells, not a full
+target-orbit sweep or successful decomposition cost. N83 yield, novel
+rank, and complete N131 `2^x` remain unknown. The N53 logs show zero
+active Gaussian matrices; N83 later uses one small matrix, while its
+large field-product components exceed the default column limit.
+
 ## Next goal
 
-The next experiment should couple the existing exact S3 field-root oracle
-to **free-leaf search as an external propagator**. When a leaf pair becomes
-fixed, compute its zero or two pair-intermediate roots in the field and
-constrain the solver. Q1319 already encoded those roots as Boolean circuits,
-and Q1327/Q1328 already enumerated a native pair index; the proposed hybrid
-must avoid both circuit expansion and a complete `K²n` table. First recover
-Q1419's frozen N53/N83 `free_mids` controls, then an unpinned ordinary N53
-relation, then an unpinned ordinary N83 relation on exact Q1325 W≤5. Preserve
-all failed queries, operation counts, memory and independent group-law
-replays. The N83 result is the first decisive method gate; a fresh ordinary
-query panel must then measure useful-row yield and novel rank per query.
-Compare against Q1319, the native root index, and the pair-table on matched
-inputs. Q1419 does not establish that this hybrid will scale; the gate tests
-that hypothesis.
-
-For the existing m=4 path, an ordinary N83 four-point relation on the exact
-Q1325 base still requires a search that avoids both the full \(K^2n\) index
-and Q1331's fixed two-million-state support limit. Q1329 has now
-validated the native S3 search on an unpinned, known-satisfiable N83 target;
-Q1401 has independently validated the quotient-pair search on the exact
-Q1325 base with a planted public target. Q1403's ordered implicit-base
-SAT formula still cannot recover its unpinned known-satisfiable control
-within 60 seconds or the ordinary target within 120 seconds. Q1404 removes
-the projection circuits yet also cannot recover its unpinned planted or
-ordinary target within the frozen caps. Q1408's balanced tree reaches the
-same one-million-conflict cap on the ordinary target, with no relation.
-Q1410 reaches that cap without recovering an independently known ordinary
-N53 relation, so the next design needs a different search mechanism.
-Q1412's leaf-ordering control also preserves the known relation but reaches
-the ordinary N53 conflict cap without a model.
-Q1415 activates XOR Gaussian matrices on the exact Q1410 N53 ordinary
-formula but reaches its 120-second cap without a model. A new mechanism
-should first recover an unpinned ordinary N53 relation, then an ordinary
-N83 relation on the exact Q1325 base, with failed attempts and field API
-work charged to the query.
-Q1400's ordinary no-hit and tiny fixed-rectangle support bound leave
-ordinary relation yield unmeasured.
-Run frozen ordinary single-target workloads under identical operation and
-memory limits, retaining all zero-yield cells and independently verifying
-any relations.
-The design needs measurable useful-row yield and novel rank per query,
-including failed attempts. Merely increasing the current sampled index cap
-cannot justify extrapolation to its 2.9-trillion-state N83 full index.
-
-Use the exact Q1413 N131 W≤5 and W≤6 bases to calibrate inversion,
-multiplication, conversion, hashing, and point costs in a common operation
-unit. Add base construction, relation collection, final matrix rank and
-solve, target descent, and scalar replay to a complete \(2^x\) ledger.
-Keep \(x\) unknown until every required term is measured or bounded. A
-challenge run is justified only if the **complete** fitted cost is
-credibly below \(2^{61}\).
+Test a **fully coupled four-leaf search** that leaves both internal
+midpoints existential while it reasons about many cyclic windows at once.
+Q1485 through Q1487 all choose or constrain a narrow midpoint slice and
+find no unpinned relation; Q1493's Frobenius sweep and Q1494's full native
+XOR circuit also censor. Pre-register a compact
+symbolic support method, check it against direct enumeration on small
+fields, and reuse the exact Q1481/Q1482 N53/N83 curves, bases, public
+points and limits. The first gate is to recover Q1490's known-satisfiable
+ordinary N53 relation with every leaf, midpoint and target selector free.
+Then independently verify a fully unpinned known-representable N83 control,
+followed by an ordinary N83 relation, without constructing the full pair
+table. Only after those gates should a frozen ordinary-query panel estimate
+useful yield and novel rank. Count failed attempts, SAT propagation,
+field arithmetic, memory, and target-dependent wall intervals alongside
+Q1482/Q1483/Q1485/Q1486/Q1487/Q1488/Q1493/Q1494. If only controls pass, retain
+N83 ordinary cost and N131 complete work as unknown. A complete N131 `2^x`
+also requires its exact usable base, relation collection, final matrix
+solve, target descent, and independent scalar replay.
 
 ## Reproduction
 
@@ -1472,6 +2568,22 @@ python3 experiments/compact-s3-m4-20261003/derive_q1400_primitive_calls.py --che
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_q1415_stage_comparison.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1413_q1416_archive.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_frozen_artifacts.py
+python3 experiments/compact-s3-m4-20261003/q1461_sparse_sum_inverse/build.py --check
+python3 experiments/compact-s3-m4-20261003/q1461_sparse_sum_inverse/prepare_inputs.py --check
+python3 experiments/compact-s3-m4-20261003/q1461_sparse_sum_inverse/freeze_protocol.py --check
+python3 experiments/compact-s3-m4-20261003/q1461_sparse_sum_inverse/run.py --check
+python3 experiments/compact-s3-m4-20261003/q1462_sparse_sum_sat/build.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1462_sparse_sum_sat/validate_controls.py --check
+python3 experiments/compact-s3-m4-20261003/q1462_sparse_sum_sat/freeze_protocol.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1462_sparse_sum_sat/verify_archive.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1490_ordinary_witness_bridge/freeze_recovery.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1490_ordinary_witness_bridge/bridge_v2.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1491_ordinary_cnf_witness/freeze_protocol.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1491_ordinary_cnf_witness/run.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1492_ordinary_partial_pin/freeze_protocol.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1492_ordinary_partial_pin/run_partial.py --cell target_only --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1493_frobenius_window_sweep/run.py --preflight --check
+python3 experiments/compact-s3-m4-20261003/q1493_frobenius_window_sweep/audit.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```
 

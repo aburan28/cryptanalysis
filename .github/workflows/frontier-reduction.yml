@@ -1,0 +1,39 @@
+name: Cached leading terms and reduction experiments
+on:
+  # Retired 2026-10-11: this gate guards a study that has been quiet for 7+ days, and its
+  # push/pull_request triggers were fanning out across the account's shared runners. Run it
+  # on demand, or restore its push/pull_request triggers from git history to bring it back.
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: frontier-reduction-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  proof:
+    name: Cached reduction traces (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, cxx: g++}
+          - {os: macos-latest, cxx: clang++}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      CXX: ${{ matrix.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build original, ablations, caches and UBSan trap variants
+        run: python experiments/groebner-perf-20260924/round13/build.py
+      - name: Exact trace, independent oracle and boundary checks
+        run: python -m unittest discover -s experiments/groebner-perf-20260924/round13 -p 'test_*.py' -v
+      - name: Historical source integrity checks
+        run: python experiments/groebner-perf-20260924/test_measured_source.py
+      - name: Audit frozen paired measurements
+        run: python experiments/groebner-perf-20260924/round13/verify_evidence.py

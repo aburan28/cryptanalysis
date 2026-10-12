@@ -1,15 +1,21 @@
 """Contract tests for the host-independent parts of the benchmark runner."""
 
+import contextlib
 import importlib.util
 import copy
+import fcntl
 import json
 import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
+import threading
 import unittest
 
 
 SOURCE = Path(__file__).resolve().parents[1] / "scripts" / "isolated_bench.py"
+GENERATOR = SOURCE.with_name("make_j0_isolated_manifest.py")
 SPEC = importlib.util.spec_from_file_location("isolated_bench", SOURCE)
 bench = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(bench)
@@ -63,6 +69,16 @@ class IsolatedBenchTests(unittest.TestCase):
                                    "reference": [str(binary)],
                                    "candidate": [str(binary)]}]}
             bench.require_manifest(manifest)
+            manifest["metric_field"] = "prep_ms"
+            with self.assertRaises(ValueError):
+                bench.require_manifest(manifest)
+            manifest["measurement_kind"] = "table_preparation"
+            bench.require_manifest(manifest)
+            manifest["metric_field"] = "../prep_ms"
+            with self.assertRaises(ValueError):
+                bench.require_manifest(manifest)
+            manifest.pop("metric_field")
+            manifest.pop("measurement_kind")
             manifest["cases"][0]["candidate"].append("7")
             with self.assertRaises(ValueError):
                 bench.require_manifest(manifest)
@@ -84,6 +100,9 @@ class IsolatedBenchTests(unittest.TestCase):
         fields = bench.output_fields("setup\ncurve=c online_ms=12.5 verified=1 target_x=9\ndone")
         self.assertEqual(fields["online_ms"], "12.5")
         self.assertEqual(fields["target_x"], "9")
+        prep = bench.output_fields("setup\ncurve=c prep_ms=4.5 verified=1\ndone",
+                                   "prep_ms")
+        self.assertEqual(prep["prep_ms"], "4.5")
 
     def test_provisioning_key_is_not_in_benchmark_environment(self):
         previous = os.environ.get("RUNPOD_API_KEY")
@@ -131,6 +150,62 @@ class IsolatedBenchTests(unittest.TestCase):
             self.assertFalse(marker.exists())
             self.assertFalse((root / "results" / "a" / "runs.jsonl").exists())
 
+    def test_shared_job_lock_waits_for_other_launcher(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            root = Path(dirname)
+            lock_path = root / "experiment-runs.lock"
+            db = bench.database(root)
+            db.execute("INSERT INTO jobs(id,status,created_ns,manifest) VALUES(?,?,?,?)",
+                       ("a", "queued", 1, "{}"))
+            db.close()
+            entered = threading.Event()
+            started = threading.Event()
+            original_execute = bench.execute
+            original_host_lock = bench.HOST_LOCK_PATH
+            original_job_slot = bench.job_slot
+
+            def fake_execute(_manifest, _output):
+                started.set()
+                return {"status": "rejected"}
+
+            @contextlib.contextmanager
+            def observed_job_slot(path):
+                entered.set()
+                with original_job_slot(path):
+                    yield
+
+            bench.execute = fake_execute
+            bench.job_slot = observed_job_slot
+            bench.HOST_LOCK_PATH = root / "host.lock"
+            worker = threading.Thread(target=bench.serve,
+                                      args=(root,),
+                                      kwargs={"once": True, "shared_job_lock": lock_path})
+            try:
+                with lock_path.open("a+") as other_launcher:
+                    fcntl.flock(other_launcher, fcntl.LOCK_EX)
+                    worker.start()
+                    self.assertTrue(entered.wait(2))
+                    worker.join(0.2)
+                    self.assertTrue(worker.is_alive())
+                    self.assertFalse(started.is_set())
+                    check = bench.database(root)
+                    self.assertEqual(check.execute("SELECT status FROM jobs WHERE id='a'")
+                                     .fetchone()[0], "queued")
+                    check.close()
+                worker.join(2)
+                self.assertFalse(worker.is_alive())
+                self.assertTrue(started.is_set())
+                check = bench.database(root)
+                self.assertEqual(check.execute("SELECT status FROM jobs WHERE id='a'")
+                                 .fetchone()[0], "rejected")
+                check.close()
+            finally:
+                if worker.ident is not None:
+                    worker.join(2)
+                bench.execute = original_execute
+                bench.HOST_LOCK_PATH = original_host_lock
+                bench.job_slot = original_job_slot
+
     def test_shared_wrong_target_or_answer_cannot_produce_speedup(self):
         with tempfile.TemporaryDirectory() as dirname:
             root = Path(dirname)
@@ -170,8 +245,59 @@ class IsolatedBenchTests(unittest.TestCase):
                         self.assertEqual(pair["status"], "invalid")
                         self.assertIn("target_x" if wrong == "target" else "expected_result",
                                       pair["issues"][0])
+                manifest["metric_field"] = "prep_ms"
+                manifest["measurement_kind"] = "table_preparation"
+                def fake_prep_run(argv, _manifest, _cpus, _nodes, _cgroup, _folder,
+                                  serial):
+                    reference = argv[-1] == "reference"
+                    return {"serial": serial, "status": "valid", "issues": [],
+                            "online_ms": None,
+                            "metric_ms": 3.0 if reference else 1.0,
+                            "fields": {"target_x": "1", "scalar": "7"}}
+                bench.one_run = fake_prep_run
+                summary = bench.execute(manifest, root / "preparation")
+                self.assertEqual(summary["paired_speedup"], 3.0)
+                self.assertEqual(summary["metric_field"], "prep_ms")
+                self.assertEqual(summary["measurement_kind"], "table_preparation")
             finally:
                 bench.preflight, bench.one_run = original_preflight, original_run
+
+    def test_j0_manifest_passes_only_public_target_to_solver(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            root = Path(dirname)
+            binary = root / "fixture"
+            binary.write_text(
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "assert sys.argv[1] == '--print-target'\n"
+                "print('curve=' + sys.argv[2] + ' p=2305843009213693951 b=5 '"
+                "'order=51131959441 base_x=1 base_y=2 '"
+                "'target_x=987654321 target_y=123456789 '"
+                "'fixture_scalar=' + sys.argv[3])\n")
+            binary.chmod(0o755)
+            for name in ("CMakeLists.txt", "src/curve.c", "src/ec_tau.c",
+                         "experiments/prime-j0-tau-20260930/large-rho-20261002/bench_rho_large.c",
+                         "scripts/make_j0_isolated_manifest.py", "scripts/isolated_bench.py"):
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("fixture\n")
+            output = root / "panel.json"
+            subprocess.run(
+                [sys.executable, str(GENERATOR), "--reference", str(binary),
+                 "--candidate", str(binary), "--workdir", str(root),
+                 "--cgroup", "/sys/fs/cgroup/benchmark-isolated",
+                 "--cpus", "4-5", "--execution-cpu", "4", "--mem-nodes", "0",
+                 "--targets-36", "1", "--targets-37", "0", "--targets-46", "0",
+                 "--output", str(output)],
+                check=True, capture_output=True, text=True)
+            manifest = json.loads(output.read_text())
+            bench.require_manifest(manifest)
+            case = manifest["cases"][0]
+            self.assertEqual(case["expected_fields"]["target_x"], "987654321")
+            self.assertEqual(case["reference"], case["candidate"])
+            self.assertEqual(case["reference"][1:4],
+                             ["--public-target", "j0-36", "1"])
+            self.assertNotIn(case["expected_result"], case["reference"])
 
 
 if __name__ == "__main__":

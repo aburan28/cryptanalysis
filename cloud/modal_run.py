@@ -32,6 +32,7 @@ MODAL_TOKEN_SECRET, or a profile from `modal token set`.
 import argparse
 import calendar
 import io
+import inspect
 import json
 import os
 import shlex
@@ -70,6 +71,12 @@ def modal():
     return module
 
 
+def image_path(kind):
+    """PATH inside the cpu and cuda images (Modal's env() does not expand $PATH)."""
+    cuda = "/usr/local/nvidia/bin:/usr/local/cuda/bin:" if kind == "cuda" else ""
+    return "/opt/cargo/bin:/opt/msolve/bin:" + cuda + SYSTEM_PATH
+
+
 def image_for(kind, apt=(), pip=()):
     m = modal()
     if kind == "sage":
@@ -79,13 +86,12 @@ def image_for(kind, apt=(), pip=()):
     else:
         cuda = kind == "cuda"
         base = "nvidia/cuda:12.8.1-devel-ubuntu24.04" if cuda else "ubuntu:24.04"
-        path = "/opt/cargo/bin:/opt/msolve/bin:" + (
-            "/usr/local/nvidia/bin:/usr/local/cuda/bin:" if cuda else "") + SYSTEM_PATH
         image = (m.Image.from_registry(base, add_python="3.12")
                  .entrypoint([])
                  .env({"DEBIAN_FRONTEND": "noninteractive", "TZ": "Etc/UTC"})
                  .apt_install(*APT)
-                 .env({"CARGO_HOME": "/opt/cargo", "RUSTUP_HOME": "/opt/rustup", "PATH": path})
+                 .env({"CARGO_HOME": "/opt/cargo", "RUSTUP_HOME": "/opt/rustup",
+                       "PATH": image_path(kind)})
                  .run_commands(
                      "curl -fsSL https://sh.rustup.rs | sh -s -- -y -q --profile minimal "
                      "--default-toolchain stable -c clippy -c rustfmt --no-modify-path",
@@ -199,6 +205,29 @@ def exit_code(statuses, returncodes):
     return 0
 
 
+def create_tagged_sandbox(module, *args, tags, **kwargs):
+    """Support SDKs that set tags after creation, without leaving an orphan."""
+    if "tags" in inspect.signature(module.Sandbox.create).parameters:
+        return module.Sandbox.create(*args, tags=tags, **kwargs)
+    if not hasattr(module.Sandbox, "set_tags"):
+        raise RuntimeError("Modal SDK has neither constructor tags nor Sandbox.set_tags")
+    sandbox = module.Sandbox.create(*args, **kwargs)
+    try:
+        sandbox.set_tags(tags)
+    except BaseException:
+        # Allocation succeeded. Stop it if the follow-up metadata call fails.
+        sandbox.terminate()
+        raise
+    return sandbox
+
+
+def detach_sandbox(sandbox):
+    """Older SDK sandboxes already outlive their creating client process."""
+    detach = getattr(sandbox, "detach", None)
+    if detach is not None:
+        detach()
+
+
 def cmd_run(args):
     m = modal()
     command = shlex.join(args.command) if len(args.command) > 1 else args.command[0]
@@ -231,7 +260,7 @@ def cmd_run(args):
     sandboxes = []
     with m.enable_output():
         for shard in range(args.shards):
-            sandboxes.append(m.Sandbox.create(
+            sandboxes.append(create_tagged_sandbox(m,
                 "bash", "-c", runner, app=app, image=image, cpu=cpu, memory=int(memory * 1024),
                 gpu=gpu, timeout=timeout, volumes={MOUNT: vol}, secrets=secrets, workdir="/",
                 env=shard_env(job, shard, args.shards, command, args.out, args.changed, extra,
@@ -242,7 +271,7 @@ def cmd_run(args):
 
     if args.detach:
         for sb in sandboxes:
-            sb.detach()
+            detach_sandbox(sb)
         me = "cloud/modal_run.py"
         print(f"started {job}\n  {me} status {job}\n  {me} logs {job} -f\n"
               f"  {me} fetch {job}   (once it finishes)\n  {me} kill {job}")

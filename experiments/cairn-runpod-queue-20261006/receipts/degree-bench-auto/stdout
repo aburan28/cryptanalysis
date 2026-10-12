@@ -1,0 +1,26 @@
+== job degree-bench-auto shard 0/1 on d5c72e734296 at 2026-10-06T21:36:06Z
+== 32 CPUs (AMD EPYC 9354 32-Core Processor), 124 GiB, GPU: NVIDIA GeForce RTX 5090
+== $ cd suite && cargo build --release --locked --example f4_degree_bench 2>&1 | tail -n 1 && ./target/release/examples/f4_degree_bench --max-degree 5 --out ../experiments/cairn-runpod-queue-20261006/outputs/degree-auto
+    Finished `release` profile [optimized] target(s) in 0.04s
+| system | vars | D | rows | cols | rank | refuted | pinned | dense s | sparse s | fast s | fast+F5 s | F5 skipped | F5 speedup |
+|:-------|-----:|--:|-----:|-----:|-----:|:-------:|-------:|--------:|---------:|-------:|----------:|-----------:|-----------:|
+| K_0/2^9 m=2 | 12 | 2 | 9 | 49 | 9 | true | 0 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0 | 7.63x |
+| K_0/2^9 m=2 | 12 | 3 | 117 | 259 | 117 | true | 0 | 0.0001 | 0.0003 | 0.0001 | 0.0000 | 0 | 1.86x |
+| K_0/2^9 m=2 | 12 | 4 | 711 | 764 | 623 | true | 0 | 0.0016 | 0.0099 | 0.0005 | 0.0004 | 39 | 1.29x |
+| K_0/2^9 m=2 | 12 | 5 | 2691 | 1574 | 1478 | true | 0 | 0.0138 | 0.1434 | 0.0060 | 0.0040 | 495 | 1.49x |
+| K_0/2^9 m=3 | 27 | 3 | 261 | 1672 | 260 | false | 1 | 0.0007 | 0.0010 | 0.0001 | 0.0001 | 0 | 1.17x |
+| K_0/2^9 m=3 | 27 | 4 | 3663 | 15180 | 3588 | false | 1 | 0.0719 | 0.0458 | 0.0077 | 0.2826 | 0 | 0.03x |
+| K_0/2^9 m=3 | 27 | 5 | 33147 | 87118 | 31069 | false | 1 | — | 4.1145 | 0.2578 | 0.2667 | 0 | 0.97x |
+| K_1/2^11 m=2 | 20 | 2 | 11 | 121 | 10 | false | 0 | 0.0000 | 0.0001 | 0.0000 | 0.0000 | 0 | 2.06x |
+| K_1/2^11 m=2 | 20 | 3 | 231 | 1111 | 210 | false | 0 | 0.0006 | 0.0020 | 0.0002 | 0.0001 | 0 | 1.20x |
+| K_1/2^11 m=2 | 20 | 4 | 2321 | 5776 | 2055 | false | 0 | 0.0385 | 0.2031 | 0.0048 | 0.0041 | 54 | 1.16x |
+| K_1/2^11 m=2 | 20 | 5 | 14861 | 21196 | 12091 | false | 0 | 0.7251 | 21.1828 | 0.0819 | 0.0610 | 0 | 1.34x |
+| K_0/2^13 m=2 | 24 | 2 | 13 | 169 | 13 | true | 0 | 0.0000 | 0.0001 | 0.0000 | 0.0000 | 0 | 1.79x |
+| K_0/2^13 m=2 | 24 | 3 | 325 | 1885 | 325 | true | 0 | 0.0012 | 0.0053 | 0.0003 | 0.0003 | 0 | 1.05x |
+| K_0/2^13 m=2 | 24 | 4 | 3913 | 11961 | 3821 | true | 0 | 0.1196 | 0.8475 | 0.0195 | 0.0169 | 80 | 1.15x |
+| K_0/2^13 m=2 | 24 | 5 | 30225 | 53871 | 27250 | true | 0 | 3.5538 | 163.0473 | 0.2274 | 0.2249 | 0 | 1.01x |
+
+All paths agree on refutation, pinned variables and rank (asserted).
+Wrote ../experiments/cairn-runpod-queue-20261006/outputs/degree-auto/f4_degree.json
+== exit 0 after 195.9 s
+== returning 1 files
