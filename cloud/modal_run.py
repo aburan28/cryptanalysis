@@ -70,6 +70,12 @@ def modal():
     return module
 
 
+def image_path(kind):
+    """PATH inside the cpu and cuda images (Modal's env() does not expand $PATH)."""
+    cuda = "/usr/local/nvidia/bin:/usr/local/cuda/bin:" if kind == "cuda" else ""
+    return "/opt/cargo/bin:/opt/msolve/bin:" + cuda + SYSTEM_PATH
+
+
 def image_for(kind, apt=(), pip=()):
     m = modal()
     if kind == "sage":
@@ -79,13 +85,12 @@ def image_for(kind, apt=(), pip=()):
     else:
         cuda = kind == "cuda"
         base = "nvidia/cuda:12.8.1-devel-ubuntu24.04" if cuda else "ubuntu:24.04"
-        path = "/opt/cargo/bin:/opt/msolve/bin:" + (
-            "/usr/local/nvidia/bin:/usr/local/cuda/bin:" if cuda else "") + SYSTEM_PATH
         image = (m.Image.from_registry(base, add_python="3.12")
                  .entrypoint([])
                  .env({"DEBIAN_FRONTEND": "noninteractive", "TZ": "Etc/UTC"})
                  .apt_install(*APT)
-                 .env({"CARGO_HOME": "/opt/cargo", "RUSTUP_HOME": "/opt/rustup", "PATH": path})
+                 .env({"CARGO_HOME": "/opt/cargo", "RUSTUP_HOME": "/opt/rustup",
+                       "PATH": image_path(kind)})
                  .run_commands(
                      "curl -fsSL https://sh.rustup.rs | sh -s -- -y -q --profile minimal "
                      "--default-toolchain stable -c clippy -c rustfmt --no-modify-path",

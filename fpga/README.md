@@ -194,14 +194,20 @@ not automated: it happens once, and it is worth a person watching.
 
 The library's [distributed protocol and coordinator](../docs/COORDINATOR.md)
 schedule work for groups of order below 2⁶⁴ — that is the library's own
-limit, and ECC2K-130 is a 131-bit field. So these are *not* wired together,
-and pretending otherwise would mean a control plane that cannot represent
-the campaign it is scheduling. What
-they share is the shape: a replayable unit identified by a seed, a fixed-width
-record with no framing, verification before anything enters a corpus, and a
-merge that is the only place a collision becomes an answer. `ec2k walk`
-produces 32-byte records for the same reason `ca dist-walk` does, and an agent
-that drove a board instead of a CPU would report them the same way.
+limit, and ECC2K-130 is a 131-bit field. The generic coordinator is not
+wired to this campaign: a control plane that cannot represent a 131-bit
+field must not pretend to schedule it. The campaign's storage and status
+path is a separate
+[ECC2K-130 use-case integration](../usecases/ecc2k130/README.md): the same
+32-byte seed/orbit records are written as immutable, content-addressed S3
+objects, queued by reference in a durable Redis Stream, and indexed in RDS.
+
+What the two protocols share is the shape: a replayable unit identified by
+a seed, a fixed-width record with no framing, verification before anything
+enters an index, and a merge that is the only place a collision becomes an
+answer. `ec2k walk` produces 32-byte records for the same reason
+`ca dist-walk` does, and an agent that drove a board instead of a CPU would
+report them the same way.
 
 ## What is not here
 

@@ -74,6 +74,19 @@ want_fail() {
   fi
 }
 
+# Malformed options must fail before any solver work starts.
+want_bad() {
+  local expect=$1
+  shift
+  checks=$((checks + 1))
+  local out rc=0
+  out=$("$CA" "$@" 2>&1) || rc=$?
+  if [ "$rc" -ne 2 ] || [[ "$out" != *"$expect"* ]]; then
+    printf 'FAIL (wanted exit 2 and %s, got %d) %s\n  %s\n' "$expect" "$rc" "$*" "$out" >&2
+    fail=$((fail + 1))
+  fi
+}
+
 # ── information ─────────────────────────────────────────────────────────────
 want '"version"' version
 want '"cuda_compiled"' gpu-info
@@ -170,6 +183,8 @@ want '"x":123456' rho "${ZP[@]}" --g 858101 \
   --seed 1
 want_fail bsgs --alg rho "${ZP[@]}" --g 858101 --h 123456
 want_fail rho --curve unknown
+want_fail rho --curve ecc2k130 --backend unknown
+want_fail rho --curve ecc2k130 --backend metal --kat fixture
 want '"x":123456' solve --alg gpu-rho "${ZP[@]}" --g 858101 \
   --h "$("$CA" group exp "${ZP[@]}" --elem 858101 --k 123456 | sed 's/.*"\([0-9]*\)".*/\1/')" \
   --seed 1
@@ -201,6 +216,12 @@ want '"endomorphism":"j0"' solve --alg glv "${CJ0[@]}" --g "$GJ0" --h "$HJ0" --s
 
 # ── index calculus ──────────────────────────────────────────────────────────
 want '"status":"ok"' ic --p 1099511627791 --g 3 --h 123456789 --threads 2
+want '"x":69,"check":3' ic --p 101 --g 2 --h 3 --method rexp --B 13 --seed 1 --threads 1
+want_bad '--method must be lsieve or rexp' ic --p 101 --g 2 --h 3 --method unknown
+want_bad 'option requires a value' ic --p 101 --g 2 --h 3 --method
+want_bad 'option value exceeds uint32 range' ic --p 101 --g 2 --h 3 --B 4294967296
+want_bad 'option value must be nonnegative' ic --p -101 --g 2 --h 3
+want_bad 'option value is not a valid uint64 integer' ic --p 18446744073709551616 --g 2 --h 3
 
 # ── Cheon's attack ──────────────────────────────────────────────────────────
 # Cheon needs a *prime* group order, so work in the prime-order subgroup:
