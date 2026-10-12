@@ -95,6 +95,12 @@ and native identity certificates. Run `tools/ecdlp-surfaces/check.sh` to validat
 the crate and replay its examples. The [n=83 report](research/ecdlp_surfaces_n83_20261012/reports/run-20261012T0331Z/REPORT.md)
 records the binary checks and includes an inspected PDF.
 
+For genus-2 and higher Jacobian transfers, use the
+[`ecdlp-surfaces` skill](.agents/skills/ecdlp-surfaces/SKILL.md) and its
+[higher-genus reference](.agents/skills/ecdlp-surfaces/references/higher-genus.md)
+for the existing cover/arithmetic tools, native pullback APIs, and construction
+and subgroup-validation requirements.
+
 ## Build
 
 Local Sage experiments use the optimized workspace build through `./sage`:

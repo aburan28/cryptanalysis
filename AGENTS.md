@@ -14,7 +14,9 @@ proposals and extrapolations from proved or measured results; keep the
 candidate, curve-identity, measurement, and Sage rules below in force.
 
 For small-prime or pinned GF(2^83) elliptic-curve surface searches, quartic
-subgroup transfers, or abelian-surface Frobenius compatibility checks, use
+subgroup transfers, genus-2+ Jacobian transfers, hyperelliptic covers, Mumford
+arithmetic, gluing or polarization candidates, or Frobenius compatibility
+checks, use
 [ecdlp-surfaces](.agents/skills/ecdlp-surfaces/SKILL.md) for tool selection,
 commands, and interpretation limits.
 
