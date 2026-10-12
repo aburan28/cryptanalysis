@@ -67,6 +67,30 @@ passed the locked normalized control and recorded
 width-15/16 follow-ups test whether larger bases raise natural solution
 density enough to change this bounded solver outcome.
 
+The follow-ups retain the same public workload:
+[width 14](../n83-geometric-m5-normalized14-20261012/README.md),
+[widths 15 and 16](../n83-geometric-m5-normalized15-16-20261012/README.md),
+a [fixed relative-power width-16 slice](../n83-geometric-m5-fixedpowers16-20261012/README.md),
+and an [aligned-power width-16 slice](../n83-geometric-m5-zeropowers16-20261012/README.md).
+
+| Proposal | Base width | Folded `K` | Usable `B` | Five-subset first moment | AND gates | Ordinary target at 600 s |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Q2026101243, free powers | 13 | 4,125 | 684,750 | 518.851 | 76,858 | `bounded_unknown` |
+| Q2026101244, free powers | 14 | 8,261 | 1,371,326 | 16,714.350 | 76,941 | `bounded_unknown` |
+| Q2026101245, free powers | 15 | 16,376 | 2,718,416 | 511,643.070 | 77,024 | `bounded_unknown` |
+| Q2026101245, free powers | 16 | 32,648 | 5,419,568 | 16,114,307.725 | 77,107 | `bounded_unknown` |
+| Q2026101246, fixed relative powers | 16 | 32,648 | 5,419,568 | 16,114,307.725 | 54,545 | `bounded_unknown` |
+| Q2026101247, aligned powers | 16 | 32,648 | 5,419,568 | 16,114,307.725 | 52,719 | `bounded_unknown` |
+
+The first moment is an exact uniform-target combinatorial diagnostic for
+the complete base, not the solution count of a restricted power slice.
+All six ordinary attempts retained their `external_timeout` rows. Their
+locked relation controls and independent Sage replays passed; the
+ordinary-target statuses remain bounded by the 600-second solver interval.
+CPU wall times on this shared host are exploratory. A separate
+[canonical-x lookup](../n83-orbit-key-x-20261012/README.md) reduces the
+target-independent base setup path and materializes its checked output.
+
 From a fresh checkout, the checked Sage launcher is required for local
 Sage work:
 
