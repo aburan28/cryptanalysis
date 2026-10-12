@@ -14,6 +14,7 @@ const WIDTHS16: [u8; 16] = [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9];
 const FRONTIER16_WIDTHS: [u8; 16] = [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9];
 const FRONTIER15_BUDGET_WIDTHS: [u8; 15] = [8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9];
 const SOLINAS_UNIT_CONSTANT_BYTES: usize = 3 * size_of::<super::U256>();
+const GAUGE_PLAN_COUNT: usize = 680; // triples of nonnegative counts with sum at most 14
 const FRONTIER17_WIDTHS: [u8; 17] = [7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7];
 const FRONTIER18_WIDTHS: [u8; 18] = [7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 7];
 const FRONTIER19_WIDTHS: [u8; 19] = [6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 6];
@@ -892,6 +893,135 @@ impl U256XYZZ {
     }
 }
 
+// A separate XYZZ accumulator for canonical residues. Its affine inputs are
+// built in the same representation, so every general field product can use
+// the secp256k1 pseudo-Mersenne reduction without Montgomery conversions.
+#[derive(Clone, Copy)]
+struct U256XYZZCanonical<const KARATSUBA: bool> {
+    x: super::U256,
+    y: super::U256,
+    zz: super::U256,
+    zzz: super::U256,
+}
+
+impl<const KARATSUBA: bool> U256XYZZCanonical<KARATSUBA> {
+    fn identity() -> Self {
+        Self { x: super::U256::ZERO, y: super::U256::ONE,
+               zz: super::U256::ZERO, zzz: super::U256::ZERO }
+    }
+
+    fn from_affine(point: U256Affine) -> Self {
+        Self { x: point.x, y: point.y,
+               zz: super::U256::ONE, zzz: super::U256::ONE }
+    }
+
+    fn is_identity(self) -> bool {
+        bool::from(self.zz.ct_is_zero())
+    }
+
+    fn rotate_power(self, power: usize) -> Self {
+        assert!(power < 3);
+        if power == 0 || self.is_identity() { return self; }
+        Self { x: u256_mul_solinas_with::<KARATSUBA>(self.x, U256_BETA_CANONICAL[power]), ..self }
+    }
+
+    fn add_mixed(self, q: U256Affine) -> Self {
+        if self.is_identity() { return Self::from_affine(q); }
+        let u2 = u256_mul_solinas_with::<KARATSUBA>(q.x, self.zz);
+        let s2 = u256_mul_solinas_with::<KARATSUBA>(q.y, self.zzz);
+        let p = u256_sub(u2, self.x);
+        let r = u256_sub(s2, self.y);
+        if bool::from(p.ct_is_zero()) {
+            return if bool::from(r.ct_is_zero()) { self.double() }
+                   else { Self::identity() };
+        }
+        let pp = u256_square_solinas_with::<KARATSUBA>(p);
+        let ppp = u256_mul_solinas_with::<KARATSUBA>(p, pp);
+        let qx = u256_mul_solinas_with::<KARATSUBA>(self.x, pp);
+        let rx = u256_sub(u256_sub(u256_square_solinas_with::<KARATSUBA>(r), ppp), u256_add(qx, qx));
+        let ry = u256_sub(u256_mul_solinas_with::<KARATSUBA>(r, u256_sub(qx, rx)),
+                          u256_mul_solinas_with::<KARATSUBA>(self.y, ppp));
+        let rzz = u256_mul_solinas_with::<KARATSUBA>(self.zz, pp);
+        let rzzz = u256_mul_solinas_with::<KARATSUBA>(self.zzz, ppp);
+        Self { x: rx, y: ry, zz: rzz, zzz: rzzz }
+    }
+
+    // Both inputs have Z=1. Keeping the output in XYZZ costs four products
+    // and two squares, rather than the general mixed-addition formula.
+    fn add_affine_pair(a: U256Affine, b: U256Affine) -> Self {
+        let p = u256_sub(b.x, a.x);
+        let r = u256_sub(b.y, a.y);
+        if bool::from(p.ct_is_zero()) {
+            return if bool::from(r.ct_is_zero()) { Self::from_affine(a).double() }
+                   else { Self::identity() };
+        }
+        let pp = u256_square_solinas_with::<KARATSUBA>(p);
+        let ppp = u256_mul_solinas_with::<KARATSUBA>(p, pp);
+        let axpp = u256_mul_solinas_with::<KARATSUBA>(a.x, pp);
+        let x = u256_sub(u256_sub(u256_square_solinas_with::<KARATSUBA>(r), ppp),
+                         u256_add(axpp, axpp));
+        let y = u256_sub(u256_mul_solinas_with::<KARATSUBA>(r, u256_sub(axpp, x)),
+                         u256_mul_solinas_with::<KARATSUBA>(a.y, ppp));
+        Self { x, y, zz: pp, zzz: ppp }
+    }
+
+    fn add_xyzz(self, q: Self) -> Self {
+        if self.is_identity() { return q; }
+        if q.is_identity() { return self; }
+        let u1 = u256_mul_solinas_with::<KARATSUBA>(self.x, q.zz);
+        let u2 = u256_mul_solinas_with::<KARATSUBA>(q.x, self.zz);
+        let s1 = u256_mul_solinas_with::<KARATSUBA>(self.y, q.zzz);
+        let s2 = u256_mul_solinas_with::<KARATSUBA>(q.y, self.zzz);
+        let h = u256_sub(u2, u1);
+        let r = u256_sub(s2, s1);
+        if bool::from(h.ct_is_zero()) {
+            return if bool::from(r.ct_is_zero()) { self.double() }
+                   else { Self::identity() };
+        }
+        let hh = u256_square_solinas_with::<KARATSUBA>(h);
+        let hhh = u256_mul_solinas_with::<KARATSUBA>(h, hh);
+        let v = u256_mul_solinas_with::<KARATSUBA>(u1, hh);
+        let x = u256_sub(u256_sub(u256_square_solinas_with::<KARATSUBA>(r), hhh),
+                         u256_add(v, v));
+        let y = u256_sub(u256_mul_solinas_with::<KARATSUBA>(r, u256_sub(v, x)),
+                         u256_mul_solinas_with::<KARATSUBA>(s1, hhh));
+        let zz = u256_mul_solinas_with::<KARATSUBA>(
+            u256_mul_solinas_with::<KARATSUBA>(self.zz, q.zz), hh);
+        let zzz = u256_mul_solinas_with::<KARATSUBA>(
+            u256_mul_solinas_with::<KARATSUBA>(self.zzz, q.zzz), hhh);
+        Self { x, y, zz, zzz }
+    }
+
+    fn double(self) -> Self {
+        if self.is_identity() || bool::from(self.y.ct_is_zero()) {
+            return Self::identity();
+        }
+        let u = u256_add(self.y, self.y);
+        let v = u256_square_solinas_with::<KARATSUBA>(u);
+        let w = u256_mul_solinas_with::<KARATSUBA>(u, v);
+        let s = u256_mul_solinas_with::<KARATSUBA>(self.x, v);
+        let xx = u256_square_solinas_with::<KARATSUBA>(self.x);
+        let m = u256_add(u256_add(xx, xx), xx);
+        let rx = u256_sub(u256_square_solinas_with::<KARATSUBA>(m), u256_add(s, s));
+        let ry = u256_sub(u256_mul_solinas_with::<KARATSUBA>(m, u256_sub(s, rx)),
+                          u256_mul_solinas_with::<KARATSUBA>(w, self.y));
+        let rzz = u256_mul_solinas_with::<KARATSUBA>(v, self.zz);
+        let rzzz = u256_mul_solinas_with::<KARATSUBA>(w, self.zzz);
+        Self { x: rx, y: ry, zz: rzz, zzz: rzzz }
+    }
+
+    fn affine_hex_binary_inverse(self) -> String {
+        if self.is_identity() { return "identity".to_owned(); }
+        let ctx = &super::HYBRID_FIELD.0;
+        let inv_zzz = super::hybrid_binary_invert_raw(self.zzz, ctx);
+        let inv_z = u256_mul_solinas_with::<KARATSUBA>(self.zz, inv_zzz);
+        let inv_zz = u256_square_solinas_with::<KARATSUBA>(inv_z);
+        let x = u256_mul_solinas_with::<KARATSUBA>(self.x, inv_zz);
+        let y = u256_mul_solinas_with::<KARATSUBA>(self.y, inv_zzz);
+        format!("{}:{}", hex::encode(x.to_bytes_be()), hex::encode(y.to_bytes_be()))
+    }
+}
+
 fn u256_add(a: super::U256, b: super::U256) -> super::U256 {
     a.add_mod(&b, &super::HYBRID_FIELD.0.n)
 }
@@ -908,9 +1038,89 @@ fn u256_mul(a: super::U256, b: super::U256) -> super::U256 {
 // back into the low half. Inputs and result are canonical field residues.
 // The first fold leaves at most one high bit; after any second overflow the
 // low half is below c, so the third fixed fold cannot overflow.
-fn u256_mul_const_solinas(value: super::U256, constant: super::U256) -> super::U256 {
+// Add or subtract a shifted limb vector with a fixed-length carry chain.
+// The sign is encoded as a mask, so field values do not select a branch.
+fn add_shifted_signed<const N: usize>(
+    out: &mut [u64; N], shift: usize, words: &[u64], negative: bool,
+) {
+    let mask = 0u64.wrapping_sub(negative as u64);
+    let mut carry = negative as u128;
+    for index in shift..N {
+        let word = if index - shift < words.len() { words[index - shift] } else { 0 };
+        let sum = out[index] as u128 + (word ^ mask) as u128 + carry;
+        out[index] = sum as u64;
+        carry = sum >> 64;
+    }
+    debug_assert_eq!(carry, negative as u128);
+}
+
+fn abs_diff_u64(left: u64, right: u64) -> (u64, bool) {
+    let (difference, negative) = left.overflowing_sub(right);
+    let mask = 0u64.wrapping_sub(negative as u64);
+    ((difference ^ mask).wrapping_sub(mask), negative)
+}
+
+fn abs_diff_u128(left: u128, right: u128) -> (u128, bool) {
+    let (difference, negative) = left.overflowing_sub(right);
+    let mask = 0u128.wrapping_sub(negative as u128);
+    ((difference ^ mask).wrapping_sub(mask), negative)
+}
+
+// (a0+B*a1)(b0+B*b1), B=2^64. The middle coefficient uses
+// a0*b0 + a1*b1 + (a1-a0)(b0-b1): three 64-by-64 products total.
+fn mul_u128_karatsuba(left: u128, right: u128) -> [u64; 4] {
+    let (a0, a1) = (left as u64, (left >> 64) as u64);
+    let (b0, b1) = (right as u64, (right >> 64) as u64);
+    let p0 = a0 as u128 * b0 as u128;
+    let p2 = a1 as u128 * b1 as u128;
+    let (da, na) = abs_diff_u64(a1, a0);
+    let (db, nb) = abs_diff_u64(b0, b1);
+    let difference = da as u128 * db as u128;
+    let mut out = [0u64; 5];
+    let words = |value: u128| [value as u64, (value >> 64) as u64];
+    add_shifted_signed(&mut out, 0, &words(p0), false);
+    add_shifted_signed(&mut out, 2, &words(p2), false);
+    add_shifted_signed(&mut out, 1, &words(p0), false);
+    add_shifted_signed(&mut out, 1, &words(p2), false);
+    add_shifted_signed(&mut out, 1, &words(difference), na ^ nb);
+    debug_assert_eq!(out[4], 0);
+    [out[0], out[1], out[2], out[3]]
+}
+
+// Apply the same identity with B=2^128. Each of the three 128-bit
+// subproducts uses three 64-by-64 products, for nine in total.
+fn u256_mul_wide_karatsuba(left: super::U256, right: super::U256)
+    -> (super::U256, super::U256) {
+    let half = |words: &[u64; 4], offset: usize| {
+        words[offset] as u128 | ((words[offset + 1] as u128) << 64)
+    };
+    let (a0, a1) = (half(&left.0, 0), half(&left.0, 2));
+    let (b0, b1) = (half(&right.0, 0), half(&right.0, 2));
+    let p0 = mul_u128_karatsuba(a0, b0);
+    let p2 = mul_u128_karatsuba(a1, b1);
+    let (da, na) = abs_diff_u128(a1, a0);
+    let (db, nb) = abs_diff_u128(b0, b1);
+    let difference = mul_u128_karatsuba(da, db);
+    let mut out = [0u64; 9];
+    add_shifted_signed(&mut out, 0, &p0, false);
+    add_shifted_signed(&mut out, 4, &p2, false);
+    add_shifted_signed(&mut out, 2, &p0, false);
+    add_shifted_signed(&mut out, 2, &p2, false);
+    add_shifted_signed(&mut out, 2, &difference, na ^ nb);
+    debug_assert_eq!(out[8], 0);
+    (super::Uint([out[0], out[1], out[2], out[3]]),
+     super::Uint([out[4], out[5], out[6], out[7]]))
+}
+
+fn u256_mul_solinas_with<const KARATSUBA: bool>(
+    value: super::U256, constant: super::U256,
+) -> super::U256 {
     const C: u128 = (1u128 << 32) + 977;
-    let (low, high) = super::U256::mul_wide(&value, &constant);
+    let (low, high) = if KARATSUBA {
+        u256_mul_wide_karatsuba(value, constant)
+    } else {
+        super::U256::mul_wide(&value, &constant)
+    };
     let mut limbs = [0u64; 5];
     let mut carry = 0u128;
     for index in 0..4 {
@@ -936,6 +1146,22 @@ fn u256_mul_const_solinas(value: super::U256, constant: super::U256) -> super::U
     let result = super::Uint([limbs[0], limbs[1], limbs[2], limbs[3]]);
     let (reduced, borrow) = super::U256::sbb(&result, &super::HYBRID_FIELD.0.n);
     super::U256::cmov(&result, &reduced, subtle::Choice::from((borrow ^ 1) as u8))
+}
+
+fn u256_mul_solinas(value: super::U256, constant: super::U256) -> super::U256 {
+    u256_mul_solinas_with::<false>(value, constant)
+}
+
+fn u256_mul_const_solinas(value: super::U256, constant: super::U256) -> super::U256 {
+    u256_mul_solinas(value, constant)
+}
+
+fn u256_square_solinas_with<const KARATSUBA: bool>(value: super::U256) -> super::U256 {
+    u256_mul_solinas_with::<KARATSUBA>(value, value)
+}
+
+fn u256_square_solinas(value: super::U256) -> super::U256 {
+    u256_square_solinas_with::<false>(value)
 }
 
 fn u256_square(a: super::U256) -> super::U256 {
@@ -1125,13 +1351,26 @@ struct U256Tables {
 }
 
 fn build_u256_window(digits: &[(i16, i16)], base: Jacobian) -> Box<[U256Affine]> {
+    build_u256_window_encoded(digits, base, false)
+}
+
+fn build_u256_window_encoded(
+    digits: &[(i16, i16)], base: Jacobian, canonical: bool,
+) -> Box<[U256Affine]> {
     build_window(digits, base).iter().enumerate().map(|(index, &packed)| {
         if index == 0 {
             U256Affine { x: super::U256::ZERO, y: super::U256::ZERO }
         } else {
             let point = packed.into_affine();
-            U256Affine { x: super::hybrid_pair_mont(point.x),
-                         y: super::hybrid_pair_mont(point.y) }
+            let x = super::hybrid_pair_mont(point.x);
+            let y = super::hybrid_pair_mont(point.y);
+            if canonical {
+                let ctx = &super::HYBRID_FIELD.0;
+                U256Affine { x: ctx.from_montgomery(&x),
+                             y: ctx.from_montgomery(&y) }
+            } else {
+                U256Affine { x, y }
+            }
         }
     }).collect::<Vec<_>>().into_boxed_slice()
 }
@@ -1222,6 +1461,10 @@ impl FormulaU256Tables {
     }
 
     fn with_widths(widths: &[u8]) -> Self {
+        Self::with_widths_encoded(widths, false)
+    }
+
+    fn with_widths_encoded(widths: &[u8], canonical: bool) -> Self {
         let temporary_atlases: [Option<ArithmeticOrbitAtlas>; 3] =
             std::array::from_fn(|index| {
                 let width = 8 + index as u8;
@@ -1231,7 +1474,7 @@ impl FormulaU256Tables {
         let mut base = Jacobian::generator();
         for &width in widths {
             let atlas = temporary_atlases[usize::from(width - 8)].as_ref().unwrap();
-            windows.push(build_u256_window(&atlas.digits, base));
+            windows.push(build_u256_window_encoded(&atlas.digits, base, canonical));
             for _ in 0..width { base = base.double(); }
         }
         let entries = windows.iter().map(|row| row.len()).sum::<usize>();
@@ -1247,6 +1490,8 @@ static FORMULA_U256_TABLES: LazyLock<FormulaU256Tables> =
     LazyLock::new(FormulaU256Tables::new);
 static SECTOR_U256_TABLES: LazyLock<FormulaU256Tables> =
     LazyLock::new(FormulaU256Tables::new);
+static SECTOR_U256_CANONICAL_TABLES: LazyLock<FormulaU256Tables> =
+    LazyLock::new(|| FormulaU256Tables::with_widths_encoded(&WIDTHS, true));
 static SECTOR15_U256_TABLES: LazyLock<FormulaU256Tables> =
     LazyLock::new(|| FormulaU256Tables::with_widths(&WIDTHS15));
 static SECTOR16_U256_TABLES: LazyLock<FormulaU256Tables> =
@@ -2331,6 +2576,28 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 73 {
+        LazyLock::force(&PARETO_GAUGE_PLANS);
+        return warm_format(71) + size_of::<[GaugeTreePlan; GAUGE_PLAN_COUNT]>();
+    }
+    if format == 72 {
+        LazyLock::force(&GAUGE_TREE_PLANS);
+        return warm_format(71) + size_of::<[GaugeTreePlan; GAUGE_PLAN_COUNT]>();
+    }
+    if format == 71 {
+        return warm_format(69);
+    }
+    if format == 70 {
+        return warm_format(69);
+    }
+    if format == 69 {
+        std::sync::LazyLock::force(&U256_BETA_CANONICAL);
+        return SECTOR_U256_CANONICAL_TABLES.retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES;
+    }
+    if format == 68 {
+        std::sync::LazyLock::force(&U256_BETA_CANONICAL);
+        return warm_format(30) + SOLINAS_UNIT_CONSTANT_BYTES;
+    }
     if format == 57 {
         return warm_format(56);
     }
@@ -2728,6 +2995,383 @@ fn evaluate_u256_gauge(
     (result.affine_hex_binary_inverse(), gauge_products)
 }
 
+// The sector table is unchanged; only its single accumulator uses XYZZ.
+fn evaluate_u256_gauge_xyzz(
+    choices: &[(usize, usize)], windows: &[Box<[U256Affine]>],
+) -> (String, usize) {
+    assert_eq!(choices.len(), windows.len());
+    let mut result = U256XYZZ::identity();
+    let mut gauge = None;
+    let mut gauge_products = 0usize;
+    for power in [1usize, 2, 0] {
+        if !choices.iter().any(|&(orbit, code)| orbit != 0 && code / 2 == power) {
+            continue;
+        }
+        if let Some(previous) = gauge {
+            let delta = (previous + 3 - power) % 3;
+            if delta != 0 && !result.is_identity() {
+                result = result.rotate_power_solinas(delta);
+                gauge_products += 1;
+            }
+        }
+        gauge = Some(power);
+        for (index, &(orbit_id, unit_code)) in choices.iter().enumerate() {
+            if orbit_id == 0 || unit_code / 2 != power { continue; }
+            result = result.add_mixed(windows[index][orbit_id].unit_solinas(unit_code & 1));
+        }
+    }
+    if let Some(power) = gauge {
+        if power != 0 && !result.is_identity() {
+            result = result.rotate_power_solinas(power);
+            gauge_products += 1;
+        }
+    }
+    assert!(gauge_products <= 2);
+    (result.affine_hex_binary_inverse(), gauge_products)
+}
+
+fn evaluate_u256_gauge_xyzz_canonical<const KARATSUBA: bool>(
+    choices: &[(usize, usize)], windows: &[Box<[U256Affine]>],
+) -> (String, usize) {
+    assert_eq!(choices.len(), windows.len());
+    let mut result = U256XYZZCanonical::<KARATSUBA>::identity();
+    let mut gauge = None;
+    let mut gauge_products = 0usize;
+    for power in [1usize, 2, 0] {
+        if !choices.iter().any(|&(orbit, code)| orbit != 0 && code / 2 == power) {
+            continue;
+        }
+        if let Some(previous) = gauge {
+            let delta = (previous + 3 - power) % 3;
+            if delta != 0 && !result.is_identity() {
+                result = result.rotate_power(delta);
+                gauge_products += 1;
+            }
+        }
+        gauge = Some(power);
+        for (index, &(orbit_id, unit_code)) in choices.iter().enumerate() {
+            if orbit_id == 0 || unit_code / 2 != power { continue; }
+            result = result.add_mixed(windows[index][orbit_id].unit_solinas(unit_code & 1));
+        }
+    }
+    if let Some(power) = gauge {
+        if power != 0 && !result.is_identity() {
+            result = result.rotate_power(power);
+            gauge_products += 1;
+        }
+    }
+    assert!(gauge_products <= 2);
+    (result.affine_hex_binary_inverse(), gauge_products)
+}
+
+#[derive(Clone, Copy)]
+enum GaugeTreePoint<const KARATSUBA: bool> {
+    Affine(U256Affine),
+    Projective(U256XYZZCanonical<KARATSUBA>),
+}
+
+#[derive(Clone, Copy)]
+struct GaugeTreeNode<const KARATSUBA: bool> {
+    point: GaugeTreePoint<KARATSUBA>,
+    gauge: usize,
+    product_depth: usize,
+}
+
+impl<const KARATSUBA: bool> GaugeTreeNode<KARATSUBA> {
+    fn rotate_to(mut self, gauge: usize) -> Self {
+        let delta = (self.gauge + 3 - gauge) % 3;
+        if delta != 0 {
+            self.point = match self.point {
+                GaugeTreePoint::Affine(p) =>
+                    GaugeTreePoint::Affine(p.unit_solinas(2 * delta)),
+                GaugeTreePoint::Projective(p) =>
+                    GaugeTreePoint::Projective(p.rotate_power(delta)),
+            };
+            self.gauge = gauge;
+            self.product_depth += 1;
+        }
+        self
+    }
+}
+
+fn gauge_tree_join_cost<const KARATSUBA: bool>(
+    a: GaugeTreeNode<KARATSUBA>, b: GaugeTreeNode<KARATSUBA>, gauge: usize,
+) -> (usize, usize) {
+    let rotation_a = usize::from(a.gauge != gauge);
+    let rotation_b = usize::from(b.gauge != gauge);
+    let products = match (a.point, b.point) {
+        (GaugeTreePoint::Affine(_), GaugeTreePoint::Affine(_)) => 6,
+        (GaugeTreePoint::Affine(_), GaugeTreePoint::Projective(_)) |
+        (GaugeTreePoint::Projective(_), GaugeTreePoint::Affine(_)) => 10,
+        _ => 14,
+    };
+    (a.product_depth.saturating_add(rotation_a)
+        .max(b.product_depth.saturating_add(rotation_b)) + products,
+     products + rotation_a + rotation_b)
+}
+
+fn gauge_tree_join<const KARATSUBA: bool>(
+    a: GaugeTreeNode<KARATSUBA>, b: GaugeTreeNode<KARATSUBA>, gauge: usize,
+) -> GaugeTreeNode<KARATSUBA> {
+    let (depth, _) = gauge_tree_join_cost(a, b, gauge);
+    let a = a.rotate_to(gauge);
+    let b = b.rotate_to(gauge);
+    let point = match (a.point, b.point) {
+        (GaugeTreePoint::Affine(p), GaugeTreePoint::Affine(q)) =>
+            U256XYZZCanonical::<KARATSUBA>::add_affine_pair(p, q),
+        (GaugeTreePoint::Projective(p), GaugeTreePoint::Affine(q)) => p.add_mixed(q),
+        (GaugeTreePoint::Affine(p), GaugeTreePoint::Projective(q)) => q.add_mixed(p),
+        (GaugeTreePoint::Projective(p), GaugeTreePoint::Projective(q)) => p.add_xyzz(q),
+    };
+    GaugeTreeNode { point: GaugeTreePoint::Projective(point),
+                    gauge, product_depth: depth }
+}
+
+// A fixed-base scalar is a sum of selected affine table points. Keep the
+// endomorphism gauge attached to each subtree, and join the two subtrees
+// with the shortest predicted product dependency at each step.
+fn evaluate_u256_gauge_tree<const KARATSUBA: bool>(
+    choices: &[(usize, usize)], windows: &[Box<[U256Affine]>],
+) -> (String, usize, usize) {
+    assert_eq!(choices.len(), windows.len());
+    assert!(choices.len() <= 14);
+    let empty = GaugeTreeNode {
+        point: GaugeTreePoint::Projective(U256XYZZCanonical::<KARATSUBA>::identity()),
+        gauge: 0, product_depth: 0,
+    };
+    let mut nodes = [empty; 14];
+    let mut count = 0usize;
+    for (index, &(orbit_id, unit_code)) in choices.iter().enumerate() {
+        if orbit_id == 0 { continue; }
+        nodes[count] = GaugeTreeNode {
+            point: GaugeTreePoint::Affine(windows[index][orbit_id].unit_solinas(unit_code & 1)),
+            gauge: unit_code / 2, product_depth: 0,
+        };
+        count += 1;
+    }
+    if count == 0 { return ("identity".to_owned(), 0, 0); }
+    let mut gauge_products = 0;
+    while count > 1 {
+        let mut best = None;
+        for i in 0..count {
+            for j in i + 1..count {
+                for gauge in [nodes[i].gauge, nodes[j].gauge] {
+                    let (depth, work) = gauge_tree_join_cost(nodes[i], nodes[j], gauge);
+                    let candidate = (depth, work, gauge, i, j);
+                    if best.is_none_or(|old| candidate < old) { best = Some(candidate); }
+                }
+            }
+        }
+        let (_, _, gauge, i, j) = best.expect("two or more nodes");
+        gauge_products += usize::from(nodes[i].gauge != gauge)
+                        + usize::from(nodes[j].gauge != gauge);
+        let joined = gauge_tree_join(nodes[i], nodes[j], gauge);
+        for slot in j..count - 1 { nodes[slot] = nodes[slot + 1]; }
+        count -= 1;
+        for slot in i..count - 1 { nodes[slot] = nodes[slot + 1]; }
+        count -= 1;
+        nodes[count] = joined;
+        count += 1;
+    }
+    let last = nodes[0];
+    gauge_products += usize::from(last.gauge != 0);
+    let last = last.rotate_to(0);
+    let point = match last.point {
+        GaugeTreePoint::Affine(p) => U256XYZZCanonical::<KARATSUBA>::from_affine(p),
+        GaugeTreePoint::Projective(p) => p,
+    };
+    (point.affine_hex_binary_inverse(), gauge_products, last.product_depth)
+}
+
+#[derive(Clone, Copy)]
+struct GaugeTreeStep { i: u8, j: u8, gauge: u8 }
+
+#[derive(Clone, Copy)]
+struct GaugeTreePlan {
+    steps: [GaugeTreeStep; 13],
+    len: u8,
+    rotations: u8,
+    product_depth: u8,
+}
+
+const EMPTY_GAUGE_STEP: GaugeTreeStep = GaugeTreeStep { i: 0, j: 0, gauge: 0 };
+const EMPTY_GAUGE_PLAN: GaugeTreePlan = GaugeTreePlan {
+    steps: [EMPTY_GAUGE_STEP; 13], len: 0, rotations: 0, product_depth: 0,
+};
+
+#[derive(Clone, Copy)]
+struct GaugeTreeShape { gauge: usize, product_depth: usize, affine: bool }
+
+fn gauge_plan_index(counts: [usize; 3]) -> usize {
+    let [a, b, c] = counts;
+    assert!(a + b + c <= 14);
+    let remaining = 17 - a;
+    let preceding = GAUGE_PLAN_COUNT
+        - remaining * (remaining - 1) * (remaining - 2) / 6;
+    let index = preceding + b * (15 - a) - b * b.saturating_sub(1) / 2 + c;
+    assert!(index < GAUGE_PLAN_COUNT);
+    index
+}
+
+fn gauge_shape_join_cost(a: GaugeTreeShape, b: GaugeTreeShape,
+                         gauge: usize) -> (usize, usize) {
+    let ra = usize::from(a.gauge != gauge);
+    let rb = usize::from(b.gauge != gauge);
+    let products = if a.affine && b.affine { 6 }
+                   else if a.affine || b.affine { 10 } else { 14 };
+    (a.product_depth.saturating_add(ra).max(b.product_depth.saturating_add(rb)) + products,
+     products + ra + rb)
+}
+
+fn build_gauge_tree_plan(counts: [usize; 3]) -> GaugeTreePlan {
+    let mut plan = EMPTY_GAUGE_PLAN;
+    let empty = GaugeTreeShape { gauge: 0, product_depth: 0, affine: false };
+    let mut nodes = [empty; 14];
+    let mut count = 0;
+    for (gauge, &number) in counts.iter().enumerate() {
+        for _ in 0..number {
+            nodes[count] = GaugeTreeShape { gauge, product_depth: 0, affine: true };
+            count += 1;
+        }
+    }
+    if count == 0 { return plan; }
+    while count > 1 {
+        let mut best = None;
+        for i in 0..count {
+            for j in i + 1..count {
+                for gauge in [nodes[i].gauge, nodes[j].gauge] {
+                    let (depth, work) = gauge_shape_join_cost(nodes[i], nodes[j], gauge);
+                    let candidate = (depth, work, gauge, i, j);
+                    if best.is_none_or(|old| candidate < old) { best = Some(candidate); }
+                }
+            }
+        }
+        let (depth, _, gauge, i, j) = best.expect("two or more nodes");
+        plan.steps[plan.len as usize] = GaugeTreeStep {
+            i: i as u8, j: j as u8, gauge: gauge as u8,
+        };
+        plan.len += 1;
+        plan.rotations += u8::from(nodes[i].gauge != gauge)
+                        + u8::from(nodes[j].gauge != gauge);
+        for slot in j..count - 1 { nodes[slot] = nodes[slot + 1]; }
+        count -= 1;
+        for slot in i..count - 1 { nodes[slot] = nodes[slot + 1]; }
+        count -= 1;
+        nodes[count] = GaugeTreeShape { gauge, product_depth: depth, affine: false };
+        count += 1;
+    }
+    plan.rotations += u8::from(nodes[0].gauge != 0);
+    plan.product_depth = (nodes[0].product_depth + usize::from(nodes[0].gauge != 0)) as u8;
+    plan
+}
+
+static GAUGE_TREE_PLANS: LazyLock<Box<[GaugeTreePlan; GAUGE_PLAN_COUNT]>> =
+    LazyLock::new(|| {
+        let mut plans = Box::new([EMPTY_GAUGE_PLAN; GAUGE_PLAN_COUNT]);
+        for a in 0..=14 {
+            for b in 0..=14 - a {
+                for c in 0..=14 - a - b {
+                    let counts = [a, b, c];
+                    plans[gauge_plan_index(counts)] = build_gauge_tree_plan(counts);
+                }
+            }
+        }
+        plans
+    });
+
+// Exact work/depth Pareto plans are generated by plans.py. Each 42-byte
+// record has 13 three-byte join slots followed by length, rotations, depth.
+const PARETO_GAUGE_PLAN_DATA: &[u8] = include_bytes!(
+    "../../../../prime-j0-pareto-tree-20261012/plans.bin"
+);
+
+static PARETO_GAUGE_PLANS: LazyLock<Box<[GaugeTreePlan; GAUGE_PLAN_COUNT]>> =
+    LazyLock::new(|| {
+        assert_eq!(PARETO_GAUGE_PLAN_DATA.len(), GAUGE_PLAN_COUNT * 42);
+        let mut plans = Box::new([EMPTY_GAUGE_PLAN; GAUGE_PLAN_COUNT]);
+        for (plan, bytes) in plans.iter_mut().zip(PARETO_GAUGE_PLAN_DATA.chunks_exact(42)) {
+            for slot in 0..13 {
+                let offset = 3 * slot;
+                plan.steps[slot] = GaugeTreeStep {
+                    i: bytes[offset], j: bytes[offset + 1], gauge: bytes[offset + 2],
+                };
+            }
+            plan.len = bytes[39];
+            plan.rotations = bytes[40];
+            plan.product_depth = bytes[41];
+            assert!(plan.len <= 13);
+        }
+        plans
+    });
+
+fn evaluate_u256_gauge_tree_with_plans(
+    choices: &[(usize, usize)], windows: &[Box<[U256Affine]>],
+    plans: &[GaugeTreePlan; GAUGE_PLAN_COUNT],
+) -> (String, usize, usize) {
+    assert_eq!(choices.len(), windows.len());
+    assert!(choices.len() <= 14);
+    let mut counts = [0usize; 3];
+    for &(orbit, code) in choices {
+        if orbit != 0 { counts[code / 2] += 1; }
+    }
+    let plan = &plans[gauge_plan_index(counts)];
+    let mut next = [0, counts[0], counts[0] + counts[1]];
+    let empty = GaugeTreeNode {
+        point: GaugeTreePoint::Projective(U256XYZZCanonical::<true>::identity()),
+        gauge: 0, product_depth: 0,
+    };
+    let mut nodes = [empty; 14];
+    let mut count = counts.iter().sum::<usize>();
+    if count == 0 { return ("identity".to_owned(), 0, 0); }
+    for (index, &(orbit, code)) in choices.iter().enumerate() {
+        if orbit == 0 { continue; }
+        let gauge = code / 2;
+        let slot = next[gauge];
+        next[gauge] += 1;
+        nodes[slot] = GaugeTreeNode {
+            point: GaugeTreePoint::Affine(windows[index][orbit].unit_solinas(code & 1)),
+            gauge, product_depth: 0,
+        };
+    }
+    let mut observed_rotations = 0usize;
+    for step in plan.steps.iter().take(plan.len as usize) {
+        let (i, j, gauge) = (step.i as usize, step.j as usize, step.gauge as usize);
+        debug_assert!(i < j && j < count);
+        observed_rotations += usize::from(nodes[i].gauge != gauge)
+                            + usize::from(nodes[j].gauge != gauge);
+        let joined = gauge_tree_join(nodes[i], nodes[j], gauge);
+        for slot in j..count - 1 { nodes[slot] = nodes[slot + 1]; }
+        count -= 1;
+        for slot in i..count - 1 { nodes[slot] = nodes[slot + 1]; }
+        count -= 1;
+        nodes[count] = joined;
+        count += 1;
+    }
+    assert_eq!(count, 1);
+    observed_rotations += usize::from(nodes[0].gauge != 0);
+    debug_assert_eq!(observed_rotations, plan.rotations as usize);
+    let last = nodes[0].rotate_to(0);
+    debug_assert_eq!(last.product_depth, plan.product_depth as usize);
+    let point = match last.point {
+        GaugeTreePoint::Affine(p) => U256XYZZCanonical::<true>::from_affine(p),
+        GaugeTreePoint::Projective(p) => p,
+    };
+    (point.affine_hex_binary_inverse(),
+     plan.rotations as usize, plan.product_depth as usize)
+}
+
+fn evaluate_u256_gauge_tree_cached(
+    choices: &[(usize, usize)], windows: &[Box<[U256Affine]>],
+) -> (String, usize, usize) {
+    evaluate_u256_gauge_tree_with_plans(choices, windows, &GAUGE_TREE_PLANS)
+}
+
+fn evaluate_u256_gauge_tree_pareto(
+    choices: &[(usize, usize)], windows: &[Box<[U256Affine]>],
+) -> (String, usize, usize) {
+    evaluate_u256_gauge_tree_with_plans(choices, windows, &PARETO_GAUGE_PLANS)
+}
+
 pub(super) fn multiply_u256_gauge(
     scalar_words: [u64; 4],
 ) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
@@ -2787,6 +3431,119 @@ pub(super) fn multiply_u256_sector(
     scalar_words: [u64; 4],
 ) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
     multiply_u256_sector_with(scalar_words, &WIDTHS, &SECTOR_U256_TABLES)
+}
+
+pub(super) fn multiply_u256_sector_xyzz(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*SECTOR_U256_TABLES;
+    let (choices, nonidentity) = u256_sector_choices(representative);
+    let (point, gauge_products) = evaluate_u256_gauge_xyzz(&choices, &tables.windows);
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES,
+     fallback, corner, gauge_products)
+}
+
+fn multiply_u256_sector_xyzz_canonical_with<const KARATSUBA: bool>(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*SECTOR_U256_CANONICAL_TABLES;
+    let (choices, nonidentity) = u256_sector_choices(representative);
+    let (point, gauge_products) =
+        evaluate_u256_gauge_xyzz_canonical::<KARATSUBA>(&choices, &tables.windows);
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES,
+     fallback, corner, gauge_products)
+}
+
+pub(super) fn multiply_u256_sector_xyzz_canonical(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    multiply_u256_sector_xyzz_canonical_with::<false>(scalar_words)
+}
+
+pub(super) fn multiply_u256_sector_xyzz_karatsuba(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    multiply_u256_sector_xyzz_canonical_with::<true>(scalar_words)
+}
+
+pub(super) fn multiply_u256_sector_gauge_tree(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*SECTOR_U256_CANONICAL_TABLES;
+    let (choices, nonidentity) = u256_sector_choices(representative);
+    let (point, gauge_products, _) =
+        evaluate_u256_gauge_tree::<true>(&choices, &tables.windows);
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES,
+     fallback, corner, gauge_products)
+}
+
+pub(super) fn multiply_u256_sector_gauge_tree_cached(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*SECTOR_U256_CANONICAL_TABLES;
+    let (choices, nonidentity) = u256_sector_choices(representative);
+    let (point, gauge_products, _) =
+        evaluate_u256_gauge_tree_cached(&choices, &tables.windows);
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES
+         + size_of::<[GaugeTreePlan; GAUGE_PLAN_COUNT]>(),
+     fallback, corner, gauge_products)
+}
+
+pub(super) fn multiply_u256_sector_gauge_tree_pareto(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*SECTOR_U256_CANONICAL_TABLES;
+    let (choices, nonidentity) = u256_sector_choices(representative);
+    let (point, gauge_products, _) =
+        evaluate_u256_gauge_tree_pareto(&choices, &tables.windows);
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES
+         + size_of::<[GaugeTreePlan; GAUGE_PLAN_COUNT]>(),
+     fallback, corner, gauge_products)
 }
 
 pub(super) fn multiply_u256_sector15(
@@ -4782,6 +5539,372 @@ mod tests {
         println!("sector_panel_cases={} retained_reference={} retained_candidate={} counts_hex={}",
                  scalars.len(), old.retained_bytes, new.retained_bytes,
                  hex::encode(per_scalar_counts));
+    }
+
+    #[test]
+    fn sector_xyzz_replays_full_panel_and_independent_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-sector-digit-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_sector(words);
+            let candidate = multiply_u256_sector_xyzz(words);
+            assert_eq!((&candidate.0, candidate.1, candidate.2, candidate.4,
+                        candidate.5, candidate.6),
+                       (&reference.0, reference.1, reference.2, reference.4,
+                        reference.5, reference.6),
+                       "full scalar and point record {index}");
+            assert_eq!(candidate.3, 64_314_208, "retained table and constants {index}");
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+    }
+
+    #[test]
+    fn canonical_solinas_general_products_match_independent_modular_arithmetic() {
+        let p = &super::super::HYBRID_FIELD.0.n;
+        let (p_minus_one, borrow) = super::super::U256::sbb(p, &super::super::U256::ONE);
+        assert_eq!(borrow, 0);
+        let (p_minus_two, borrow) = super::super::U256::sbb(
+            &p_minus_one, &super::super::U256::ONE);
+        assert_eq!(borrow, 0);
+        let edges = [super::super::U256::ZERO, super::super::U256::ONE,
+                     super::super::Uint([2, 0, 0, 0]), p_minus_two, p_minus_one];
+        let check = |a: super::super::U256, b: super::super::U256| {
+            let actual = u256_mul_solinas(a, b);
+            let expected = super::super::U256::from_biguint(
+                &((a.to_biguint() * b.to_biguint()) % p.to_biguint()));
+            assert_eq!(actual.0, expected.0);
+            assert!(bool::from(actual.ct_lt(p)));
+            let square_expected = super::super::U256::from_biguint(
+                &((a.to_biguint() * a.to_biguint()) % p.to_biguint()));
+            assert_eq!(u256_square_solinas(a).0, square_expected.0);
+        };
+        for &a in &edges { for &b in &edges { check(a, b); } }
+        let mut state = 0x6d54_8e3a_f112_98b7u64;
+        for _ in 0..10_000 {
+            let mut words = [[0u64; 4]; 2];
+            for value in &mut words {
+                for limb in value {
+                    state ^= state << 13;
+                    state ^= state >> 7;
+                    state ^= state << 17;
+                    *limb = state;
+                }
+            }
+            let canonical = |words| {
+                let value = super::super::Uint(words);
+                if bool::from(value.ct_lt(p)) { value }
+                else { super::super::U256::sbb(&value, p).0 }
+            };
+            check(canonical(words[0]), canonical(words[1]));
+        }
+    }
+
+    #[test]
+    fn canonical_solinas_xyzz_replays_full_panel_and_independent_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-sector-digit-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_sector_xyzz(words);
+            let candidate = multiply_u256_sector_xyzz_canonical(words);
+            assert_eq!((&candidate.0, candidate.1, candidate.2, candidate.3,
+                        candidate.4, candidate.5, candidate.6),
+                       (&reference.0, reference.1, reference.2, reference.3,
+                        reference.4, reference.5, reference.6),
+                       "complete scalar and point record {index}");
+            assert_eq!(candidate.3, 64_314_208, "retained table and constants {index}");
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+    }
+
+    #[test]
+    fn karatsuba_wide_and_field_products_match_independent_arithmetic() {
+        let p = &super::super::HYBRID_FIELD.0.n;
+        let edges = [super::super::U256::ZERO, super::super::U256::ONE,
+                     super::super::Uint([u64::MAX, 0, 0, 0]),
+                     super::super::Uint([u64::MAX, u64::MAX, 0, 0]),
+                     super::super::Uint([0, 0, 1, 0]),
+                     super::super::Uint([u64::MAX; 4])];
+        let check = |a: super::super::U256, b: super::super::U256| {
+            let (low, high) = u256_mul_wide_karatsuba(a, b);
+            let full = low.to_biguint() + (high.to_biguint() << 256);
+            assert_eq!(full, a.to_biguint() * b.to_biguint());
+            let canonical = |value: super::super::U256| {
+                if bool::from(value.ct_lt(p)) { value }
+                else { super::super::U256::sbb(&value, p).0 }
+            };
+            let (a, b) = (canonical(a), canonical(b));
+            let expected = super::super::U256::from_biguint(
+                &((a.to_biguint() * b.to_biguint()) % p.to_biguint()));
+            assert_eq!(u256_mul_solinas_with::<true>(a, b).0, expected.0);
+            assert_eq!(u256_mul_solinas_with::<true>(a, b).0,
+                       u256_mul_solinas(a, b).0);
+            let square = super::super::U256::from_biguint(
+                &((a.to_biguint() * a.to_biguint()) % p.to_biguint()));
+            assert_eq!(u256_square_solinas_with::<true>(a).0, square.0);
+        };
+        for &a in &edges { for &b in &edges { check(a, b); } }
+        let mut state = 0x8c21_33f6_04de_aa71u64;
+        for _ in 0..10_000 {
+            let mut values = [[0u64; 4]; 2];
+            for words in &mut values {
+                for limb in words {
+                    state ^= state << 13;
+                    state ^= state >> 7;
+                    state ^= state << 17;
+                    *limb = state;
+                }
+            }
+            check(super::super::Uint(values[0]), super::super::Uint(values[1]));
+        }
+    }
+
+    #[test]
+    fn karatsuba_xyzz_replays_full_panel_and_independent_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-sector-digit-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_sector_xyzz_canonical(words);
+            let candidate = multiply_u256_sector_xyzz_karatsuba(words);
+            assert_eq!((&candidate.0, candidate.1, candidate.2, candidate.3,
+                        candidate.4, candidate.5, candidate.6),
+                       (&reference.0, reference.1, reference.2, reference.3,
+                        reference.4, reference.5, reference.6),
+                       "complete scalar and point record {index}");
+            assert_eq!(candidate.3, 64_314_208, "retained table and constants {index}");
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+    }
+
+    #[test]
+    fn gauge_tree_pair_formulas_match_existing_point_addition() {
+        let table = &*SECTOR_U256_CANONICAL_TABLES;
+        let a = table.windows[0][1];
+        let b = table.windows[1][1];
+        let inverse = U256Affine { x: a.x, y: u256_sub(super::super::U256::ZERO, a.y) };
+        for (left, right) in [(a, b), (a, a), (a, inverse)] {
+            let reference = U256XYZZCanonical::<true>::from_affine(left).add_mixed(right);
+            let pair = U256XYZZCanonical::<true>::add_affine_pair(left, right);
+            assert_eq!(pair.affine_hex_binary_inverse(),
+                       reference.affine_hex_binary_inverse());
+            let merged = U256XYZZCanonical::<true>::from_affine(left)
+                .add_xyzz(U256XYZZCanonical::<true>::from_affine(right));
+            assert_eq!(merged.affine_hex_binary_inverse(),
+                       reference.affine_hex_binary_inverse());
+        }
+    }
+
+    #[test]
+    fn gauge_tree_replays_full_panel_and_independent_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-sector-digit-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let mut total_rotations = 0usize;
+        let mut serial_rotations = 0usize;
+        let mut tree_products = 0usize;
+        let mut serial_products = 0usize;
+        let mut total_depth = 0usize;
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_sector_xyzz_karatsuba(words);
+            let candidate = multiply_u256_sector_gauge_tree(words);
+            assert_eq!((&candidate.0, candidate.1, candidate.2, candidate.3,
+                        candidate.4, candidate.5),
+                       (&reference.0, reference.1, reference.2, reference.3,
+                        reference.4, reference.5), "scalar and point record {index}");
+            let (choices, _) = u256_sector_choices(candidate.1);
+            let (point, rotations, depth) = evaluate_u256_gauge_tree::<true>(
+                &choices, &SECTOR_U256_CANONICAL_TABLES.windows);
+            assert_eq!(point, candidate.0, "tree point {index}");
+            assert_eq!(rotations, candidate.6, "rotations {index}");
+            let active_terms = candidate.2 + 1;
+            assert!(active_terms >= 2, "panel scalar has at least two terms {index}");
+            assert!(depth <= 50, "product depth {index}: {depth}");
+            total_rotations += rotations;
+            serial_rotations += reference.6;
+            tree_products += 10 * active_terms - 14 + rotations;
+            serial_products += 10 * candidate.2 + reference.6;
+            total_depth += depth;
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+        println!("gauge_tree_cases={} rotations={} serial_rotations={} tree_field_products={} serial_field_products={} product_depth={}",
+                 scalars.len(), total_rotations, serial_rotations,
+                 tree_products, serial_products, total_depth);
+    }
+
+    #[test]
+    fn cached_gauge_plans_cover_every_feasible_count() {
+        let mut seen = [false; GAUGE_PLAN_COUNT];
+        for a in 0..=14 {
+            for b in 0..=14 - a {
+                for c in 0..=14 - a - b {
+                    let counts = [a, b, c];
+                    let index = gauge_plan_index(counts);
+                    assert!(!seen[index], "duplicate gauge-count index {counts:?}");
+                    seen[index] = true;
+                    let plan = &GAUGE_TREE_PLANS[index];
+                    assert_eq!(plan.len as usize, (a + b + c).saturating_sub(1));
+                    assert!(plan.product_depth <= 50);
+                }
+            }
+        }
+        assert!(seen.iter().all(|&used| used));
+        assert_eq!(size_of::<[GaugeTreePlan; GAUGE_PLAN_COUNT]>(), 28_560);
+    }
+
+    #[test]
+    fn cached_gauge_plans_match_dynamic_tree_for_all_counts() {
+        let windows = &SECTOR_U256_CANONICAL_TABLES.windows;
+        let mut checked = 0usize;
+        for a in 0..=14 {
+            for b in 0..=14 - a {
+                for c in 0..=14 - a - b {
+                    let mut choices = [(0usize, 0usize); 14];
+                    for item in choices.iter_mut().take(a) { *item = (1, 0); }
+                    for item in choices.iter_mut().skip(a).take(b) { *item = (1, 2); }
+                    for item in choices.iter_mut().skip(a + b).take(c) { *item = (1, 4); }
+                    let dynamic = evaluate_u256_gauge_tree::<true>(&choices, windows);
+                    let cached = evaluate_u256_gauge_tree_cached(&choices, windows);
+                    assert_eq!(cached, dynamic, "gauge counts ({a}, {b}, {c})");
+                    checked += 1;
+                }
+            }
+        }
+        assert_eq!(checked, GAUGE_PLAN_COUNT);
+    }
+
+    #[test]
+    fn cached_gauge_tree_replays_full_panel_and_independent_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-sector-digit-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let mut total_rotations = 0usize;
+        let mut total_depth = 0usize;
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let original = multiply_u256_sector_gauge_tree(words);
+            let cached = multiply_u256_sector_gauge_tree_cached(words);
+            assert_eq!((&cached.0, cached.1, cached.2, cached.4, cached.5, cached.6),
+                       (&original.0, original.1, original.2, original.4, original.5, original.6),
+                       "complete cached scalar record {index}");
+            assert_eq!(cached.3, 64_342_768, "table, constants, and plans {index}");
+            let (choices, _) = u256_sector_choices(cached.1);
+            let (point, rotations, depth) = evaluate_u256_gauge_tree_cached(
+                &choices, &SECTOR_U256_CANONICAL_TABLES.windows);
+            assert_eq!(point, cached.0, "cached point {index}");
+            assert_eq!(rotations, cached.6, "cached rotations {index}");
+            assert!(depth <= 50, "cached depth {index}: {depth}");
+            total_rotations += rotations;
+            total_depth += depth;
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(cached.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+        println!("cached_gauge_cases={} rotations={} product_depth={} retained_bytes={}",
+                 scalars.len(), total_rotations, total_depth,
+                 warm_format(72));
+    }
+
+    #[test]
+    fn pareto_gauge_plans_cover_every_count_and_preserve_points() {
+        let windows = &SECTOR_U256_CANONICAL_TABLES.windows;
+        let mut checked = 0usize;
+        for a in 0..=14 {
+            for b in 0..=14 - a {
+                for c in 0..=14 - a - b {
+                    let counts = [a, b, c];
+                    let mut choices = [(0usize, 0usize); 14];
+                    for item in choices.iter_mut().take(a) { *item = (1, 0); }
+                    for item in choices.iter_mut().skip(a).take(b) { *item = (1, 2); }
+                    for item in choices.iter_mut().skip(a + b).take(c) { *item = (1, 4); }
+                    let cached = evaluate_u256_gauge_tree_cached(&choices, windows);
+                    let pareto = evaluate_u256_gauge_tree_pareto(&choices, windows);
+                    assert_eq!(pareto.0, cached.0, "gauge counts {counts:?}");
+                    assert!(pareto.1 <= cached.1, "rotations {counts:?}");
+                    assert!(pareto.2 <= cached.2, "depth {counts:?}");
+                    assert_eq!(PARETO_GAUGE_PLANS[gauge_plan_index(counts)].len as usize,
+                               (a + b + c).saturating_sub(1));
+                    checked += 1;
+                }
+            }
+        }
+        assert_eq!(checked, GAUGE_PLAN_COUNT);
+        assert_eq!(PARETO_GAUGE_PLAN_DATA.len(), 28_560);
+    }
+
+    #[test]
+    fn pareto_gauge_tree_replays_full_panel_and_independent_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-sector-digit-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let mut rotations = 0usize;
+        let mut products = 0usize;
+        let mut depth = 0usize;
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let cached = multiply_u256_sector_gauge_tree_cached(words);
+            let pareto = multiply_u256_sector_gauge_tree_pareto(words);
+            assert_eq!((&pareto.0, pareto.1, pareto.2, pareto.3, pareto.4, pareto.5),
+                       (&cached.0, cached.1, cached.2, cached.3, cached.4, cached.5),
+                       "complete scalar record {index}");
+            let (choices, _) = u256_sector_choices(pareto.1);
+            let (_, actual_rotations, actual_depth) = evaluate_u256_gauge_tree_pareto(
+                &choices, &SECTOR_U256_CANONICAL_TABLES.windows);
+            assert_eq!(actual_rotations, pareto.6, "rotations {index}");
+            rotations += actual_rotations;
+            products += 10 * (pareto.2 + 1) - 14 + actual_rotations;
+            depth += actual_depth;
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(pareto.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+        assert_eq!((rotations, products, depth), (10_082, 526_168, 200_505));
+        assert_eq!(warm_format(73), 64_342_768);
+        println!("pareto_gauge_cases={} rotations={} field_products={} product_depth={} retained_bytes={}",
+                 scalars.len(), rotations, products, depth, warm_format(73));
     }
 
     #[test]

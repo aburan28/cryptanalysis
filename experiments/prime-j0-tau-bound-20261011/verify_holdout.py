@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""Independently check every tau-only path and the input disjointness."""
+
+from collections import Counter
+from hashlib import sha256
+import importlib.util
+import json
+from pathlib import Path
+import struct
+
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+PARENT = ROOT / "prime-j0-orbit-swap-20261011/verify_holdout.py"
+SPEC = importlib.util.spec_from_file_location("tau_bound_verify_parent", PARENT)
+parent = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(parent)
+reference = parent.reference
+BASE = ROOT / "prime-j0-orbit-swap-20261011/cover-swapped-rho0.bin"
+TAU = HERE / "cover-tau-exact.bin"
+
+
+def digest(raw):
+    return sha256(raw).hexdigest()
+
+
+def seeds_from_cover(path, expected_count, expected_mask):
+    raw = path.read_bytes()
+    magic, radix, classes, count, mask = struct.unpack_from("<4sIIII", raw)
+    assert (magic, radix, classes, count, mask) == \
+        (b"LP21", 1024, 174_764, expected_count, expected_mask)
+    offset = 20 + 4 * classes
+    assert len(raw) == offset + 4 * count
+    return list(struct.iter_unpack("<hh", raw[offset:]))
+
+
+def main():
+    input_raw = (HERE / "holdout-inputs.json").read_bytes()
+    inputs = json.loads(input_raw)
+    screen = json.loads((HERE / "holdout-screen.json").read_bytes())
+    path_raw = (HERE / "holdout-paths.jsonl").read_bytes()
+    assert digest(input_raw) == screen["input_sha256"]
+    assert digest(path_raw) == screen["certificate_sha256"]
+    assert digest(BASE.read_bytes()) == screen["swapped_cover_sha256"]
+    assert digest(TAU.read_bytes()) == screen["tau_cover_sha256"] == \
+        inputs["cover_sha256"]
+    for name, expected in inputs["candidate_source_sha256"].items():
+        assert digest((HERE / name).read_bytes()) == expected, name
+    scalars = [int(value, 16) for value in inputs["scalars_hex"]]
+    assert len(scalars) == inputs["count"] == screen["cases"] == 4096
+    assert digest(b"".join(value.to_bytes(32, "big") for value in scalars)) == \
+        inputs["scalar_sha256"]
+    reduced = {value % reference.N for value in scalars}
+    assert len(reduced) == len(scalars)
+    for name, expected in inputs["prior_panel_sha256"].items():
+        prior_raw = (ROOT / name).read_bytes()
+        assert digest(prior_raw) == expected, name
+        prior = {int(value, 16) % reference.N for value in
+                 json.loads(prior_raw)["scalars_hex"]}
+        assert reduced.isdisjoint(prior), name
+    reference.verify_eigenvalue()
+    seeds = {"swapped": seeds_from_cover(BASE, 67_338, 15),
+             "tau_exact": seeds_from_cover(TAU, 73_417, 7)}
+    lines = path_raw.splitlines()
+    assert len(lines) == len(scalars)
+    counts = {name: Counter() for name in seeds}
+    point_hash = sha256()
+    for index, (scalar, line) in enumerate(zip(scalars, lines)):
+        entry = json.loads(line)
+        assert entry["index"] == index
+        for name in seeds:
+            path = entry[name]
+            if name == "tau_exact":
+                assert all(int(row[3]) < 3 for row in path["digits"])
+            rho, nonzero, terminal_norm = parent.check_path(
+                path, seeds[name], scalar)
+            counts[name]["active_rho"] += rho != 0
+            counts[name]["rho_terms"] += rho
+            counts[name]["nonzero_full_window"] += nonzero
+            counts[name]["tau2_terms"] += sum(
+                int(row[2]) != 0 and int(row[3]) == 2
+                for row in path["digits"])
+            counts[name]["max_terminal_norm"] = max(
+                counts[name]["max_terminal_norm"], terminal_norm)
+        if index < 128:
+            point = reference.group_mul(
+                scalar % reference.N, (reference.GX, reference.GY))
+            assert point is not None
+            for coordinate in point:
+                point_hash.update(coordinate.to_bytes(32, "big"))
+    assert dict(counts["swapped"]) == screen["swapped"]
+    assert dict(counts["tau_exact"]) == screen["tau_exact"]
+    assert counts["tau_exact"]["rho_terms"] == 0
+    result = {"schema": 1, "status": "passed", "cases": len(lines),
+              "swapped": dict(sorted(counts["swapped"].items())),
+              "tau_exact": dict(sorted(counts["tau_exact"].items())),
+              "binary_point_samples": 128,
+              "binary_point_stream_sha256": point_hash.hexdigest(),
+              "certificate_sha256": digest(path_raw),
+              "verifier_sha256": digest(Path(__file__).read_bytes()),
+              "reference_sha256": digest(PARENT.read_bytes())}
+    (HERE / "holdout-check.json").write_text(
+        json.dumps(result, indent=2, sort_keys=True) + "\n")
+    print(json.dumps({"status": "passed", "cases": len(lines),
+                      "swapped": result["swapped"],
+                      "tau_exact": result["tau_exact"]}, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

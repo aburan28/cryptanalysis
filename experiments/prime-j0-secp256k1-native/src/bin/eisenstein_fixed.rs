@@ -144,7 +144,7 @@ fn binary_mod_half(value: U256, modulus: &U256) -> U256 {
     }
 }
 
-fn hybrid_binary_invert(value: U256, ctx: &MontgomeryContext<4>) -> U256 {
+fn hybrid_binary_invert_raw(value: U256, ctx: &MontgomeryContext<4>) -> U256 {
     assert!(!bool::from(value.ct_is_zero()), "cannot invert zero field element");
     assert!(bool::from(value.ct_lt(&ctx.n)), "noncanonical inverse input");
     let (mut u, mut v) = (value, ctx.n);
@@ -152,10 +152,10 @@ fn hybrid_binary_invert(value: U256, ctx: &MontgomeryContext<4>) -> U256 {
     let mut steps = 0usize;
     loop {
         if bool::from(u.ct_eq_full(&U256::ONE)) {
-            return ctx.mont_mul(&x_u, &BINARY_INVERSE_R3);
+            return x_u;
         }
         if bool::from(v.ct_eq_full(&U256::ONE)) {
-            return ctx.mont_mul(&x_v, &BINARY_INVERSE_R3);
+            return x_v;
         }
         assert!(!bool::from(u.ct_is_zero()) && !bool::from(v.ct_is_zero()),
                 "noninvertible field element");
@@ -175,6 +175,10 @@ fn hybrid_binary_invert(value: U256, ctx: &MontgomeryContext<4>) -> U256 {
         }
         steps += 1;
     }
+}
+
+fn hybrid_binary_invert(value: U256, ctx: &MontgomeryContext<4>) -> U256 {
+    ctx.mont_mul(&hybrid_binary_invert_raw(value, ctx), &BINARY_INVERSE_R3)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -3577,10 +3581,10 @@ fn check_generator_case(
     let preparation_start = Instant::now();
     LazyLock::force(&SCALAR_LATTICE);
     LazyLock::force(&DECODE_CONSTANTS);
-    if (123..=157).contains(&unit_orbit_format) {
+    if (123..=173).contains(&unit_orbit_format) {
         LazyLock::force(&HYBRID_FIELD);
     }
-    if (124..=157).contains(&unit_orbit_format) {
+    if (124..=168).contains(&unit_orbit_format) {
         LazyLock::force(&BINARY_INVERSE_R3);
     }
     let retained_bytes = if unit_orbit_format != 0 {
@@ -3626,11 +3630,35 @@ fn check_generator_case(
         LazyLock::force(&GLV_COMB10_POINTS);
     }
     let scalar = scalar_from_hex(scalar_hex);
-    let scalar_words = (125..=157).contains(&unit_orbit_format)
+    let scalar_words = (125..=173).contains(&unit_orbit_format)
         .then(|| scalar_words_256(&scalar)).flatten();
     let preparation_ms = preparation_start.elapsed().as_secs_f64() * 1000.0;
     let start = Instant::now();
-    let actual = if unit_orbit_format == 157 {
+    let actual = if unit_orbit_format == 173 {
+        unit_orbit_windows::multiply_u256_sector_gauge_tree_pareto(
+            scalar_words.expect("Pareto gauge tree requires unsigned 256-bit scalar")
+        ).0
+    } else if unit_orbit_format == 172 {
+        unit_orbit_windows::multiply_u256_sector_gauge_tree_cached(
+            scalar_words.expect("cached gauge tree requires unsigned 256-bit scalar")
+        ).0
+    } else if unit_orbit_format == 171 {
+        unit_orbit_windows::multiply_u256_sector_gauge_tree(
+            scalar_words.expect("gauge tree requires unsigned 256-bit scalar")
+        ).0
+    } else if unit_orbit_format == 170 {
+        unit_orbit_windows::multiply_u256_sector_xyzz_karatsuba(
+            scalar_words.expect("Karatsuba sector XYZZ requires unsigned 256-bit scalar")
+        ).0
+    } else if unit_orbit_format == 169 {
+        unit_orbit_windows::multiply_u256_sector_xyzz_canonical(
+            scalar_words.expect("canonical sector XYZZ requires unsigned 256-bit scalar")
+        ).0
+    } else if unit_orbit_format == 168 {
+        unit_orbit_windows::multiply_u256_sector_xyzz(
+            scalar_words.expect("sector XYZZ requires unsigned 256-bit scalar")
+        ).0
+    } else if unit_orbit_format == 157 {
         unit_orbit_windows::multiply_u256_tau_frontier15_budget_affine_solinas_gauge_xyzz_tau(
             scalar_words.expect("tau frontier15 gauge requires unsigned 256-bit scalar")
         ).0
@@ -3810,7 +3838,19 @@ fn check_generator_case(
     };
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if unit_orbit_format == 157 {
+    let mode = if unit_orbit_format == 173 {
+        "unit_orbit_u256_sector14_xyzz_gauge_pareto_solinas_fixed"
+    } else if unit_orbit_format == 172 {
+        "unit_orbit_u256_sector14_xyzz_gauge_plan_solinas_fixed"
+    } else if unit_orbit_format == 171 {
+        "unit_orbit_u256_sector14_xyzz_gauge_tree_solinas_fixed"
+    } else if unit_orbit_format == 170 {
+        "unit_orbit_u256_sector14_xyzz_karatsuba_solinas_fixed"
+    } else if unit_orbit_format == 169 {
+        "unit_orbit_u256_sector14_xyzz_canonical_solinas_fixed"
+    } else if unit_orbit_format == 168 {
+        "unit_orbit_u256_sector14_xyzz_fixed"
+    } else if unit_orbit_format == 157 {
         "unit_orbit_u256_tau_frontier15_budget_affine_solinas_gauge_xyzz_tau_fixed"
     } else if unit_orbit_format == 156 {
         "unit_orbit_u256_tau_frontier15_budget_affine_solinas_xyzz_tau_fixed"
@@ -4008,6 +4048,8 @@ fn main() {
             || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-formula")
             || args[0].starts_with("--check-scalar-unit-orbit-u256-sector")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-sector")
+            || args[0].starts_with("--check-scalar-unit-orbit-u256-sector14-xyzz")
+            || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-sector14-xyzz")
             || args[0].starts_with("--check-scalar-unit-orbit-u256-tau-frontier15-budget-affine-solinas-gauge-xyzz-tau")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-tau-frontier15-budget-affine-solinas-gauge-xyzz-tau")
             || args[0].starts_with("--check-scalar-unit-orbit-u256-tau-frontier15-budget-affine-solinas-xyzz-tau")
@@ -4058,7 +4100,19 @@ fn main() {
             || args[0].starts_with("--benchmark-scalar-unit-orbit-radix943"))
         && args[0].ends_with("-fixed-fixture")
     {
-        let format = if args[0].contains("unit-orbit-u256-tau-frontier15-budget-affine-solinas-gauge-xyzz-tau-fixed-fixture") {
+        let format = if args[0].contains("unit-orbit-u256-sector14-xyzz-gauge-pareto-solinas-fixed-fixture") {
+            173
+        } else if args[0].contains("unit-orbit-u256-sector14-xyzz-gauge-plan-solinas-fixed-fixture") {
+            172
+        } else if args[0].contains("unit-orbit-u256-sector14-xyzz-gauge-tree-solinas-fixed-fixture") {
+            171
+        } else if args[0].contains("unit-orbit-u256-sector14-xyzz-karatsuba-solinas-fixed-fixture") {
+            170
+        } else if args[0].contains("unit-orbit-u256-sector14-xyzz-canonical-solinas-fixed-fixture") {
+            169
+        } else if args[0].contains("unit-orbit-u256-sector14-xyzz-fixed-fixture") {
+            168
+        } else if args[0].contains("unit-orbit-u256-tau-frontier15-budget-affine-solinas-gauge-xyzz-tau-fixed-fixture") {
             157
         } else if args[0].contains("unit-orbit-u256-tau-frontier15-budget-affine-solinas-xyzz-tau-fixed-fixture") {
             156
@@ -4386,7 +4440,19 @@ fn main() {
             args[0].contains("w6-comb13-hex9-radius2"),
             args[0].contains("w6-comb13-hex9-graph33"),
             args[0].contains("w6-comb13-hex9-graphaware33"),
-            if args[0].contains("unit-orbit-u256-tau-frontier15-budget-affine-solinas-gauge-xyzz-tau") {
+            if args[0].contains("unit-orbit-u256-sector14-xyzz-gauge-pareto-solinas") {
+                173
+            } else if args[0].contains("unit-orbit-u256-sector14-xyzz-gauge-plan-solinas") {
+                172
+            } else if args[0].contains("unit-orbit-u256-sector14-xyzz-gauge-tree-solinas") {
+                171
+            } else if args[0].contains("unit-orbit-u256-sector14-xyzz-karatsuba-solinas") {
+                170
+            } else if args[0].contains("unit-orbit-u256-sector14-xyzz-canonical-solinas") {
+                169
+            } else if args[0].contains("unit-orbit-u256-sector14-xyzz") {
+                168
+            } else if args[0].contains("unit-orbit-u256-tau-frontier15-budget-affine-solinas-gauge-xyzz-tau") {
                 157
             } else if args[0].contains("unit-orbit-u256-tau-frontier15-budget-affine-solinas-xyzz-tau") {
                 156
