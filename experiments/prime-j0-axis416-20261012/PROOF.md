@@ -23,8 +23,9 @@ enumerating the terminal lattice. The algebraic scalar map from the
 Eisenstein pair to the subgroup sends addition to point addition, and the
 recorded unit code to its curve endomorphism. `DigitCover.lean` proves the
 integer reconstruction and subgroup congruence. The Lean development
-formalizes the pair-level sector and factorization; an independent curve
-point replay is the next implementation gate.
+formalizes the pair-level sector and factorization. The disjoint
+512-scalar holdout independently checks the curve-level point bridge and
+scalar replay for the implementation; native replay remains the next gate.
 
 | Result | Lean declaration | Exact status |
 | --- | --- | --- |

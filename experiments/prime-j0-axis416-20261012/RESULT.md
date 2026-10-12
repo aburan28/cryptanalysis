@@ -23,7 +23,24 @@ count is `13×28,844=374,972`; the two axis tables contain 35,164 and
 23,442 points. The complete retained native footprint and complete
 operation cost remain to be measured after native implementation.
 
-The [proof map](PROOF.md), [search receipt](search.json), and
-[design receipt](design.json) retain the bound, exact census, source
-hashes, residue audit, and per-scalar reconstruction. A disjoint holdout
-point replay and isolated-host timing remain the next validation gates.
+The design and Lean sources were frozen in commit `bbda8011a`. The
+independent replay source was frozen in `b5dcf48f3` before drawing the
+replacement seed-20261012417 holdout. That panel is disjoint from the
+4,096 design scalars, the listed prior holdouts, and the retained
+unqualified seed-20261012416 draw.
+
+| Disjoint holdout measure | Radix 569 top-ball | Radix 416 two-axis |
+| --- | ---: | ---: |
+| Scalar and public-point cases | 512 | 512 |
+| Selected terms | 7,168 | 7,680 |
+| Independently verified final points | — | **512 / 512** |
+
+The point-stream SHA-256 is
+`0c1273d82e3f810444bd004a0fe16115d620115cb2f2538f85b6a6c46dd6ac82`.
+Each terminal pair is separately reconstructed from two unit-rotated
+axis terms, and an independent affine group law sums all selected points
+against the fixture's public point. The [proof map](PROOF.md),
+[search receipt](search.json), [design receipt](design.json), and
+[holdout receipt](holdout-replay.json) retain the bounds, exact census,
+source/input hashes, residue audit, and per-case checks. Native replay,
+complete retained memory, and isolated-host timing remain the next gates.
