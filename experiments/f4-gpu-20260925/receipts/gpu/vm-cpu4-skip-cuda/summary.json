@@ -1,0 +1,256 @@
+{
+  "checks": [
+    {
+      "check": "stage ladder verdicts equal the committed receipts",
+      "detail": "",
+      "ok": true
+    },
+    {
+      "check": "f4_batch_bench k1-n23: every mode decided identically, every replayed decision matched the host kernel",
+      "detail": "exit 0",
+      "ok": true
+    },
+    {
+      "check": "f4_batch_bench k0-n23: every mode decided identically, every replayed decision matched the host kernel",
+      "detail": "exit 0",
+      "ok": true
+    },
+    {
+      "check": "e2e batch 64: every backend verified the same logarithm with the same trials, relations and reductions",
+      "detail": "",
+      "ok": true
+    },
+    {
+      "check": "e2e batch 1024: every backend verified the same logarithm with the same trials, relations and reductions",
+      "detail": "",
+      "ok": true
+    }
+  ],
+  "failures": 0,
+  "finished_unix": 1790324688.660183,
+  "host": {
+    "cgroup_cpu_max": "",
+    "cpu_model": "Intel(R) Xeon(R) Processor",
+    "cpus": 4,
+    "cpus_schedulable": 4,
+    "gpus": "",
+    "hostname": "cursor",
+    "kernel": "6.12.94+",
+    "memory_kb": "16398384",
+    "omp_num_threads_env": null,
+    "rayon_num_threads_env": "4"
+  },
+  "started_unix": 1790324502.965112,
+  "steps": {
+    "batch": {
+      "k0-n23": {
+        "cmd": [
+          "/tmp/jr/work/suite/target/release/examples/f4_batch_bench",
+          "--degree",
+          "23",
+          "--curve-a",
+          "0",
+          "--targets",
+          "1024",
+          "--modes",
+          "rayon,lockstep:cpu",
+          "--replay-cap",
+          "200000",
+          "--replay-batch",
+          "16384",
+          "--out",
+          "../experiments/f4-gpu-20260925/receipts/gpu/vm-cpu4-skip-cuda/batch/k0-n23"
+        ],
+        "exit": 0,
+        "log": "batch-k0-n23.txt",
+        "modes": {
+          "lockstep:cpu": {
+            "decider": "cpu",
+            "requests": 757061,
+            "rounds": 1144,
+            "setup_seconds": 7.31e-07,
+            "wall_seconds": 17.599610547
+          },
+          "rayon": {
+            "decider": null,
+            "requests": 0,
+            "rounds": 0,
+            "setup_seconds": 1.06e-07,
+            "wall_seconds": 15.178297157
+          }
+        },
+        "rayon_threads": 4,
+        "replay": {
+          "cpu": {
+            "decider": "cpu",
+            "decisions_per_second": 53438.81267157895,
+            "setup_seconds": 1.37e-06
+          },
+          "host-1-thread": {
+            "decider": null,
+            "decisions_per_second": 13565.095752500949,
+            "setup_seconds": 5e-08
+          }
+        },
+        "wall_seconds": 73.68956935499955
+      },
+      "k1-n23": {
+        "cmd": [
+          "/tmp/jr/work/suite/target/release/examples/f4_batch_bench",
+          "--degree",
+          "23",
+          "--curve-a",
+          "1",
+          "--targets",
+          "1024",
+          "--modes",
+          "rayon,lockstep:cpu",
+          "--replay-cap",
+          "200000",
+          "--replay-batch",
+          "16384",
+          "--out",
+          "../experiments/f4-gpu-20260925/receipts/gpu/vm-cpu4-skip-cuda/batch/k1-n23"
+        ],
+        "exit": 0,
+        "log": "batch-k1-n23.txt",
+        "modes": {
+          "lockstep:cpu": {
+            "decider": "cpu",
+            "requests": 764236,
+            "rounds": 1024,
+            "setup_seconds": 7.94e-07,
+            "wall_seconds": 18.165952636
+          },
+          "rayon": {
+            "decider": null,
+            "requests": 0,
+            "rounds": 0,
+            "setup_seconds": 1.29e-07,
+            "wall_seconds": 16.179320566
+          }
+        },
+        "rayon_threads": 4,
+        "replay": {
+          "cpu": {
+            "decider": "cpu",
+            "decisions_per_second": 54450.924592109186,
+            "setup_seconds": 9.51e-07
+          },
+          "host-1-thread": {
+            "decider": null,
+            "decisions_per_second": 14006.379313447494,
+            "setup_seconds": 1.75e-07
+          }
+        },
+        "wall_seconds": 75.35588308800288
+      }
+    },
+    "e2e": {
+      "batch1024-cores": {
+        "exit": 0,
+        "f4_batch": {
+          "backend": null,
+          "decide_seconds": 0.0,
+          "f5": true,
+          "kernel": "Fast",
+          "requests": 0,
+          "rounds": 0,
+          "setup_seconds": 7.59e-07
+        },
+        "f4_reductions": 378367,
+        "process_cpu_seconds": 60.465551000000005,
+        "process_wall_seconds": 15.56453911599965,
+        "recovered": "53",
+        "relation_collection_seconds": 15.555166737,
+        "relations": 407,
+        "status": "complete",
+        "trials": 1024,
+        "verified": true
+      },
+      "batch1024-cpu": {
+        "exit": 0,
+        "f4_batch": {
+          "backend": "cpu",
+          "decide_seconds": 13.454595019,
+          "f5": true,
+          "kernel": "Fast",
+          "requests": 756733,
+          "rounds": 1024,
+          "setup_seconds": 3.058e-06
+        },
+        "f4_reductions": 378367,
+        "process_cpu_seconds": 63.396618,
+        "process_wall_seconds": 17.845560827001464,
+        "recovered": "53",
+        "relation_collection_seconds": 17.831087072,
+        "relations": 407,
+        "status": "complete",
+        "trials": 1024,
+        "verified": true
+      },
+      "batch64-cores": {
+        "exit": 0,
+        "f4_batch": {
+          "backend": null,
+          "decide_seconds": 0.0,
+          "f5": true,
+          "kernel": "Fast",
+          "requests": 0,
+          "rounds": 0,
+          "setup_seconds": 8.8e-08
+        },
+        "f4_reductions": 23351,
+        "process_cpu_seconds": 3.719506,
+        "process_wall_seconds": 0.9847419570032798,
+        "recovered": "53",
+        "relation_collection_seconds": 0.975091673,
+        "relations": 27,
+        "status": "complete",
+        "trials": 64,
+        "verified": true
+      },
+      "batch64-cpu": {
+        "exit": 0,
+        "f4_batch": {
+          "backend": "cpu",
+          "decide_seconds": 0.882465146,
+          "f5": true,
+          "kernel": "Fast",
+          "requests": 46702,
+          "rounds": 1024,
+          "setup_seconds": 1.351e-06
+        },
+        "f4_reductions": 23351,
+        "process_cpu_seconds": 4.162269,
+        "process_wall_seconds": 1.1912232169997878,
+        "recovered": "53",
+        "relation_collection_seconds": 1.182893115,
+        "relations": 27,
+        "status": "complete",
+        "trials": 64,
+        "verified": true
+      }
+    },
+    "stage": {
+      "cmd": [
+        "/tmp/jr/work/suite/target/release/examples/groebner_stage_bench",
+        "--label",
+        "gpu-host",
+        "--out",
+        "../experiments/f4-gpu-20260925/receipts/gpu/vm-cpu4-skip-cuda/stage"
+      ],
+      "exit": 0,
+      "log": "stage.txt",
+      "wall_seconds": 1.0608609029986837,
+      "wall_seconds_by_rung": {
+        "K_0/2^13 m=2": 0.076502203,
+        "K_0/2^9 m=2": 0.010691943,
+        "K_0/2^9 m=3": 0.025074132,
+        "K_1/2^15 m=2": 0.001972724,
+        "K_1/2^17 m=2": 0.138285908,
+        "K_1/2^23 m=2": 0.795082575
+      }
+    }
+  }
+}

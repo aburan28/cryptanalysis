@@ -30,6 +30,15 @@ python3 -m pytest -q .
   of the JSON content and of the point set.
 - `large/`: archives above `--max-git-bytes` (1 MiB) get `storage` `s3`. They
   are git-ignored and must be uploaded; `verify` skips them when absent.
+- An explicit `--chunk-bytes 33554432` stores an oversized archive as bounded
+  Git parts with `storage` `git-chunks`. A `.chunks.json` manifest and ordered
+  `.part-0000`, `.part-0001`, ... files retain the original compressed bytes.
+  The index's byte count and file SHA-256 still identify the complete compressed
+  payload. Each part has its own size and digest; verification checks those,
+  reassembly, content, record, point-set digest, and point count. Missing or
+  altered parts fail verification. The current format supports at most 1 GiB
+  per complete payload, 80 MiB per part, and 4,096 parts. Plain gzip/xz and the
+  default S3 behavior are unchanged. The upload command includes all parts.
 
 The [n83 known-log orbit archive](bases/EC1N83Ckb1h876c2921cb64/knownlogorbit-s831043-7056f3b1f520.json.gz)
 uses `ic-factor-base-orbit-archive/1` and has `points_included` set to
