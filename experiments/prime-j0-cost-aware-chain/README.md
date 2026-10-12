@@ -182,3 +182,10 @@ panel verifies the same outputs and curve operation counts, but requires
 39,368 and 267,910 recodes plus many integer τ steps. It remains opt-in;
 the paired executable still includes the reference recipe arrays, and no
 isolated CPU speed or standalone memory saving has been measured.
+
+The [one-word orbit graph format](PACKED_ORBIT_GRAPH.md) stores each verified
+predecessor recipe in 32 bits. Its eight-point panel matches all 32,768
+generic outputs and both arms' operations while cutting recipe data nearly
+in half: 78,744→39,426 bytes and 717,360→358,734 bytes. The paired binary
+contains both formats; controlled CPU and standalone memory gains are
+unmeasured.

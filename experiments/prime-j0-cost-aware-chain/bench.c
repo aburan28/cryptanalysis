@@ -88,7 +88,8 @@ static int select_mode(const char *name)
                                   "fused-hot-steer-gated2-batch128",
                                   "tapered-residue-orbit-batch128",
                                   "tapered-residue-graph-batch128",
-                                  "tapered-residue-implicit-batch128"};
+                                  "tapered-residue-implicit-batch128",
+                                  "tapered-residue-packed-batch128"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -108,7 +109,7 @@ int main(int argc, char **argv)
                 "fused-hot-adapt2-batch128|fused-hot-gated-batch128|"
                 "fused-hot-steer-batch128|fused-hot-steer-gated2-batch128|"
                 "tapered-residue-orbit-batch128|tapered-residue-graph-batch128|"
-                "tapered-residue-implicit-batch128 "
+                "tapered-residue-implicit-batch128|tapered-residue-packed-batch128 "
                 "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
@@ -124,9 +125,10 @@ int main(int argc, char **argv)
     int gated = mode == 16;
     int steer = mode == 17;
     int gated2_steer = mode == 18;
-    int tapered = mode >= 19 && mode <= 21;
+    int tapered = mode >= 19 && mode <= 22;
     int graph = mode == 20;
     int implicit = mode == 21;
+    int packed = mode == 22;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
     size_t block_size = mode >= 7 && mode <= 10 ? (size_t[]){32, 128, 512, 4096}[mode - 7] : 1;
     uint64_t scalars[SCALARS], input_digest;
@@ -163,6 +165,7 @@ int main(int argc, char **argv)
     uint64_t prep_triples = 0;
     uint64_t prep_layer_inversions = 0;
     uint64_t prep_adds = 0, prep_rotations = 0;
+    uint64_t prep_slot_lookups = 0;
     size_t prep_temp_heap_bytes =
         global_builder ? CA_TAU_POS_Q * 2 * 9 * (3 * sizeof(uint64_t) + sizeof(uint64_t)) : 0;
     size_t fused_entries = hot ? 2048 : orbit ? 4933 : 29593;
@@ -188,6 +191,10 @@ int main(int argc, char **argv)
                     ? ca_ec_tau_wide_prepare_implicit(&group, &point, wide_schedule, &wide_pre,
                                                       &prep_triples, &prep_adds, &prep_rotations,
                                                       &prep_layer_inversions, &derived)
+                    : packed
+                    ? ca_ec_tau_wide_prepare_packed(&group, &point, wide_schedule, &wide_pre,
+                                                    &prep_triples, &prep_adds, &prep_rotations,
+                                                    &prep_layer_inversions, &prep_slot_lookups)
                 : graph ? ca_ec_tau_wide_prepare_graph(&group, &point, wide_schedule, &wide_pre,
                                                        &prep_triples, &prep_adds, &prep_rotations,
                                                        &prep_layer_inversions)
@@ -250,7 +257,9 @@ int main(int argc, char **argv)
     size_t static_map_bytes = tapered                 ? ca_ec_tau_wide_static_bytes(wide_schedule)
                               : steer || gated2_steer ? ca_ec_tau8_steer_static_bytes()
                                                       : 0;
-    size_t recipe_bytes = graph ? ca_ec_tau_wide_graph_recipe_bytes(wide_schedule) : 0;
+    size_t recipe_bytes = packed  ? ca_ec_tau_wide_packed_recipe_bytes(wide_schedule)
+                          : graph ? ca_ec_tau_wide_graph_recipe_bytes(wide_schedule)
+                                  : 0;
     size_t online_scratch_bytes = fused || tapered          ? 128 * 32
                                   : mode >= 7 && mode <= 10 ? block_size * 32
                                                             : 0;
@@ -344,7 +353,7 @@ int main(int argc, char **argv)
            " point_entries=%zu point_table_bytes=%zu"
            " triples=%" PRIu64 " adds=%" PRIu64 " rotations=%" PRIu64 " output_inversions=%" PRIu64
            " fallbacks=%" PRIu64 " second_recodes=%" PRIu64 " steered_blocks=%" PRIu64
-           " static_map_bytes=%zu recipe_bytes=%zu descriptor_bytes=%zu"
+           " static_map_bytes=%zu recipe_bytes=%zu descriptor_bytes=%zu prep_slot_lookups=%" PRIu64
            " prep_recode_calls=%" PRIu64 " prep_digit_slots_scanned=%" PRIu64
            " prep_integer_tau_steps=%" PRIu64 " prep_parent_index_lookups=%" PRIu64
            " prep_exact_parent_checks=%" PRIu64 " online_scratch_bytes=%zu"
@@ -354,6 +363,7 @@ int main(int argc, char **argv)
            prep_rotations, prep_layer_inversions, prep_bytes, prep_temp_heap_bytes, prep_repeats,
            point_entries, point_table_bytes, triples, adds, rotations, output_inversions, fallbacks,
            second_recodes, steered_blocks, static_map_bytes, recipe_bytes, descriptor_bytes,
+           prep_slot_lookups,
            derived.recode_calls, derived.digit_slots_scanned, derived.integer_tau_steps,
            derived.parent_index_lookups, derived.exact_parent_checks, online_scratch_bytes);
     return 0;
