@@ -1,6 +1,6 @@
 ---
 name: ecdlp-surfaces
-description: Run and interpret the Rust elliptic-curve surface tools. Use for small-prime quadric-pencil searches, quartic-model ECDLP subgroup transfers, or necessary Frobenius-factor checks for candidate abelian surfaces, and when the user names surface_search, transfer_check, or frobenius_filter.
+description: Run and interpret the Rust elliptic-curve surface tools. Use for small-prime quadric-pencil searches, quartic-model ECDLP subgroup transfers, pinned GF(2^83) Koblitz a=0/a=1 checks, or necessary Frobenius-factor checks for candidate abelian surfaces. Also use when the user names surface_search, transfer_check, binary_surface_check, or frobenius_filter.
 ---
 
 # Elliptic-curve surface tools
@@ -12,11 +12,13 @@ description: Run and interpret the Rust elliptic-curve surface tools. Use for sm
 | Find surfaces containing an elliptic curve in another model | `surface_search` | Enumerates the finite quadric pencil through the explicit quartic embedding and classifies smooth and split members. |
 | Check whether that representation preserves a supplied ECDLP subgroup | `transfer_check` | Checks prime order, actual cyclic-subgroup membership, inverse round trips, and preservation of the generator's order. |
 | Check a proposed abelian surface's Frobenius compatibility | `frobenius_filter` | Tests necessary polynomial conditions for an elliptic factor; it supplies no homomorphism or subgroup certificate. |
+| Check the repository's n=83 binary Koblitz variants | `binary_surface_check` | Uses the pinned GF(2^83) basis and subgroups, classifies the binary pencil analytically, verifies quartic transfers, and checks the same/opposite products. |
 
 Use this skill when the user requests these operations or names a CLI above.
 The implemented transfer is the fixed quartic-model embedding, not a search
 over arbitrary maps. General high-genus models, deformation searches, extension
-fields, and cryptographic-size point arithmetic need other implementations.
+fields beyond the pinned binary fixtures, and general cryptographic-curve
+arithmetic need other implementations.
 Keep any broader requested task open and state the precise implementation gap.
 
 ## Prepare the input
@@ -27,10 +29,13 @@ Keep any broader requested task open and state the precise implementation gap.
 2. Read its `AGENTS.md` and the [CLI README](../../../tools/ecdlp-surfaces/README.md).
    Use Rust 1.70 or newer. The main crate is dependency-free and has its own
    workspace; use `--manifest-path` as below to select it explicitly.
-3. For point operations, require a nonsingular short Weierstrass model
+3. For the odd-prime point operations, require a nonsingular short Weierstrass model
    `y^2 = x^3 + a*x + b` over a prime field with `3 < p <= 10,000`.
    A general genus-one curve first needs an elliptic-curve model with a chosen
    rational origin; this tool does not perform that conversion.
+   For a binary n=83 request, use the dedicated section below. In binary-curve
+   notation n or m is the extension degree; GF(2^83) and F_83 are different
+   inputs. Clarify ambiguous field notation before selecting a CLI.
 4. For a supplied transfer, record the exact field, `a`, `b`, prime subgroup
    order `r`, generator `P`, and target `Q`. Use `x,y` for affine points and `O`
    for the origin. Coordinates are reduced modulo `p`. An unknown scalar is
@@ -87,6 +92,50 @@ and a separate output file. Each CLI accepts `--help`; omitting `--output`
 prints JSON to stdout. Malformed or invalid inputs exit with status 2. A valid
 but incompatible polynomial exits successfully with
 `passes_necessary_conditions: false`; inspect the JSON, not only the exit code.
+
+## Run the n=83 binary checks
+
+For `y^2+xy=x^3+a*x^2+1` over GF(2^83), use the pinned presets:
+
+```sh
+cargo run --release --offline --locked \
+  --manifest-path tools/ecdlp-surfaces/Cargo.toml --bin binary_surface_check -- \
+  --degree 83 --a both --output "$surface_run_dir/n83.json"
+```
+
+Select `--a 0` or `--a 1` when only one is requested. The exact basis is
+`z^83+z^45+z^2+z+1`; generators, r and cofactors are fixed by the cited fixtures.
+Default Q is the public known-answer 37P. To check a supplied public Q, select
+one variant and add `--q-point 0xX,0xY` or `O`; omit `--scalar` if the log is
+unknown. Scalars are nonnegative u128 integers. Confirm that the caller's
+basis, model, subgroup and generator match before running. A different basis
+or generator needs an explicit verified conversion; do not reinterpret masks.
+
+Require modulus irreducibility, `rP=O`, `rQ=O`, a nonidentity P, and the round-trip
+checks to pass. The known group order `r*h` and `gcd(r,h)=1` supply a unique
+order-r subgroup using the cited prime r, so this path avoids subgroup
+enumeration. The a=0 primality proof is reused from an existing Sage receipt;
+the output reports a=1's additional deterministic u64 check separately.
+
+The binary pencil uses `Q1=WZ+X^2` and
+`Q2=Y^2+XY+XZ+aWZ+W^2`. Smooth members have `lambda != a`; split members have
+`Tr(lambda+1/(lambda+a)^2)=0`. Counts are derived algebraically, with small-field
+exhaustive controls, not a scan of 2^83 parameters. The group law on quadrics
+remains confined to the curve image. Inclusion into the same curve's `E x E`
+preserves the ambient group law, as does inclusion into the matching factor of
+the mixed `E_0 x E_1`. The opposite product is rejected over this
+field because its Frobenius quadratic is coprime to the source's and its point
+order lacks the source prime.
+
+Frobenius characteristic polynomials have integer coefficients: preserve their
+trace signs when comparing a=0 and a=1. Large exact integers are JSON decimal
+strings; field elements are hexadecimal masks. The general `frobenius_filter`
+still has its documented u64/i128 limits. The binary command handles these
+specific product tests and does not construct arbitrary surface maps.
+
+The [n=83 protocol](../../../research/ecdlp_surfaces_n83_20261012/PROTOCOL.md)
+records the scope. The archived a=1 benchmark uses another polynomial basis;
+its points and curve identity are kept separate from these presets.
 
 ## Interpret the output
 

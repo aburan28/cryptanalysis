@@ -1,7 +1,8 @@
 # Elliptic-curve surface searches in Rust
 
-A dependency-free Rust project with three command-line tools for the finite-field
-quadric-pencil search and subgroup-transfer checks. Requires Rust 1.70 or newer.
+A dependency-free Rust project with four command-line tools for quadric-pencil
+classification and subgroup-transfer checks. It supports small odd-prime
+fields and the two pinned Koblitz fixtures over GF(2^83). Requires Rust 1.70 or newer.
 
 Agents can invoke `$ecdlp-surfaces` or read the
 [ecdlp-surfaces skill](../../.agents/skills/ecdlp-surfaces/SKILL.md) for when to
@@ -107,21 +108,74 @@ cargo run --release --offline --bin frobenius_filter -- \
   --q 101 --trace=-7 --coeffs 0,202,0,10201
 ```
 
+## 4. Check the binary n=83 Koblitz fixtures
+
+From the repository root:
+
+```sh
+cargo run --release --offline --locked \
+  --manifest-path tools/ecdlp-surfaces/Cargo.toml --bin binary_surface_check -- \
+  --degree 83 --a both --output /tmp/n83-surfaces.json
+```
+
+Use `--a 0` or `--a 1` for one variant. The field is GF(2^83), represented by
+`z^83+z^45+z^2+z+1`, and the source is `y^2+xy=x^3+a*x^2+1`. Generators,
+subgroup orders, and cofactors are pinned to the cited repository fixtures.
+Default targets are public demonstrations `Q=37P`. With a supplied
+`--q-point 0xX,0xY` or `O`, select one variant and omit `--scalar` when the log
+is unknown. Decimal coordinates also work; masks must fit the recorded basis.
+
+The modulus is checked by Rabin's irreducibility criterion. The curve order
+comes from the Koblitz Frobenius recurrence and is checked against `r*h`.
+The existing Sage proof receipt supplies primality for the wide a=0 order;
+a=1 also receives a fresh deterministic u64 check. The output distinguishes
+reused proof evidence from checks performed in the current run.
+
+In characteristic two the embedding still uses `[1:x:y:x^2]`, but its pencil is
+
+```text
+Q1 = WZ + X^2
+Q2 = Y^2 + XY + XZ + aWZ + W^2
+S_lambda = Q2 + lambda*Q1
+```
+
+Smooth finite members have `lambda != a`. Such a member is split exactly when
+`Tr(lambda+1/(lambda+a)^2)=0`. There are `2^83-1` smooth finite members, and
+`(#E-2)/2` of them are split. These are algebraic counts, not a scan of the
+field. The finite member `lambda=a` and the member at infinity are singular.
+
+The checker verifies subgroup membership without enumeration using the cited
+prime r, `#E=r*h`, and `gcd(r,h)=1`. It checks round trips over the Frobenius
+orbits, projective scaling, transported addition, and a surface-only rejection
+control. It describes inclusion into `E x E` and into the mixed `E_0 x E_1`,
+using the matching component in each case, and rejects the opposite
+product `E_(1-a) x E_(1-a)` over the same field: the Frobenius factors differ
+and the source prime does not divide the target elliptic order.
+
+Large exact integers are JSON decimal strings; field elements are hexadecimal
+coefficient masks. The separate general `frobenius_filter` retains its u64/i128
+limits and is not run at q=2^83. The binary CLI has fixed n=83 presets; it is
+not a general binary-curve or arbitrary abelian-surface-map constructor.
+
+The [n=83 study protocol](../../research/ecdlp_surfaces_n83_20261012/PROTOCOL.md)
+binds the source fixtures and verification scope.
+
 ## Repository checks
 
 Run `./check.sh` from this directory or from the repository root. It checks
-formatting, release tests, Clippy, all three binaries, and byte-for-byte
+formatting, release tests, Clippy, all four binaries, and byte-for-byte
 reproduction of their committed examples. CI runs the same checks.
 The [integration report](../../docs/ecdlp-surfaces/REPORT.md) contains the
 explanatory diagram, PDF, exact inputs, and evidence boundaries.
 
 ## Scope and verification
 
-Point arithmetic and enumeration support prime fields 3 < p <= 10,000.
+The odd-prime point arithmetic and enumeration support 3 < p <= 10,000.
 This matches the small-field Python prototype. Arithmetic uses u64/u128;
 the polynomial filter uses checked i128 arithmetic and q <= i64::MAX.
-These are mathematical demonstration tools, with variable-time arithmetic.
-They are not an implementation for cryptographic-size fields or secret-key use.
+The binary checker uses bounded u128 arithmetic for the pinned n=83 fixtures.
+These are mathematical demonstration tools with variable-time arithmetic;
+general cryptographic-curve and secret-key implementations are not supplied.
 Equivalent embeddings preserve the same ECDLP; no faster solver is supplied.
 
 Tests cover the independently checked default scalar multiple, identity and

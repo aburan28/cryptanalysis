@@ -32,3 +32,27 @@ building their larger libraries. EC1 bytes follow `docs/curve-identities.md`.
 The curve record identifies a public known-answer fixture, not an IC candidate,
 factor base, new isogeny route, or measured solver result. No catalog or
 performance-state promotion is made by this package.
+
+## Characteristic-two identities and records
+
+Given a run from `binary_surface_check`, generate its integer-lift certificates
+and exact n=83 curve records in a fresh directory:
+
+```sh
+cargo run --release --locked --bin binary_identities -- \
+  /tmp/n83-surfaces.json /tmp/n83-identity-evidence
+```
+
+The four binary identities cover the embedding, alternating polar determinant,
+cleared-denominator normal form, and point-count substitution. Each is expanded
+exactly over the integers before issuance. Signs reduce modulo 2; the normal
+form includes an explicit `2bcus` correction, which vanishes in characteristic
+two. Two further identities give the difference and product of the same-q
+Frobenius quadratics; both remain integer identities without reduction modulo 2.
+
+The existing v1 checker still evaluates over `2^61-1`; it has not been changed
+to claim evaluation over GF(2^83). Each record has 32 statement-derived points
+and 32 additional points, evaluated on one host. No formal or second-host proof
+is claimed. Curve records bind the exact polynomial basis and generator, using
+explicit hexadecimal field elements and decimal-string large integer metadata.
+Archived differently encoded curve identities are not silently reused.

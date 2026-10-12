@@ -3,6 +3,7 @@
 //! A containing quadric has the elliptic group law only on the embedded curve.
 //! These constructions do not establish an ECDLP speedup.
 
+pub mod binary;
 pub mod cli;
 pub mod curve;
 pub mod frobenius;

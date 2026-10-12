@@ -1,7 +1,7 @@
 use ecdlp_surfaces::curve::{Curve, Point};
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
 use std::path::PathBuf;
+use surface_evidence::exact_polynomial::expand;
 use surface_evidence::hash::sha256::sha256;
 use surface_evidence::identity_certificate::{
     check_with_extra, issue, Expr, IdentityStatement, Verdict,
@@ -95,51 +95,6 @@ fn determinant_statement() -> IdentityStatement {
                 v("b"),
             ]),
         ]),
-    }
-}
-
-// Independent exact coefficient comparison over Z, separate from the
-// upstream certificate evaluator's finite-field point checks.
-type Polynomial = BTreeMap<Vec<u32>, i128>;
-fn expand(expr: &Expr, variables: &[String]) -> Polynomial {
-    let zero = vec![0; variables.len()];
-    match expr {
-        Expr::Const(value) => BTreeMap::from([(zero, i128::from(*value))]),
-        Expr::Var(name) => {
-            let mut exponents = zero;
-            exponents[variables.iter().position(|v| v == name).unwrap()] = 1;
-            BTreeMap::from([(exponents, 1)])
-        }
-        Expr::Neg(inner) => expand(inner, variables)
-            .into_iter()
-            .map(|(powers, coefficient)| (powers, -coefficient))
-            .collect(),
-        Expr::Add(terms) => {
-            let mut sum = BTreeMap::new();
-            for term in terms {
-                for (powers, coefficient) in expand(term, variables) {
-                    *sum.entry(powers).or_insert(0) += coefficient;
-                }
-            }
-            sum.retain(|_, coefficient| *coefficient != 0);
-            sum
-        }
-        Expr::Mul(terms) => {
-            let mut product = BTreeMap::from([(zero, 1)]);
-            for term in terms {
-                let factor = expand(term, variables);
-                let mut next = BTreeMap::new();
-                for (a, ac) in &product {
-                    for (b, bc) in &factor {
-                        let powers = a.iter().zip(b).map(|(x, y)| x + y).collect();
-                        *next.entry(powers).or_insert(0) += ac * bc;
-                    }
-                }
-                next.retain(|_, coefficient| *coefficient != 0);
-                product = next;
-            }
-            product
-        }
     }
 }
 

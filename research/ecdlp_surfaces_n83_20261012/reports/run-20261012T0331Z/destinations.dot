@@ -1,0 +1,22 @@
+digraph destinations {
+  graph [rankdir=LR, bgcolor="white", pad=0.2, nodesep=0.30, ranksep=0.55,
+    label="GF(2^83), z^83+z^45+z^2+z+1\nPublic known-answer Q=37P; no solver advantage established", labelloc=t, fontname="DejaVu Sans", fontsize=11];
+  node [shape=box, style="rounded,filled", fillcolor="#f2f5fa", color="#40526c", fontname="DejaVu Sans", fontsize=10, margin="0.12,0.09"];
+  edge [fontname="DejaVu Sans", fontsize=9, arrowsize=0.7, color="#237752"];
+  e0 [label="E_0\nEC1N83Ckb0h252dacc102a4"];
+  e1 [label="E_1\nEC1N83Ckb1h1f579d351b52"];
+  i0 [label="Quartic image of E_0\nLaw on the curve image\nContaining quadric has no ambient law", fillcolor="#e8f0ff"];
+  i1 [label="Quartic image of E_1\nLaw on the curve image\nContaining quadric has no ambient law", fillcolor="#e8f0ff"];
+  a00 [label="E_0 x E_0\nComponentwise group law", fillcolor="#e7f4eb"];
+  a11 [label="E_1 x E_1\nComponentwise group law", fillcolor="#e7f4eb"];
+  a01 [label="E_0 x E_1\nEach source uses its matching factor\nComponentwise group law", fillcolor="#e7f4eb"];
+  { rank=same; e0; e1; }
+  e0 -> i0 [label="explicit inverse"];
+  e1 -> i1 [label="explicit inverse"];
+  e0 -> a00 [label="(P,O)"];
+  e1 -> a11 [label="(P,O)"];
+  e0 -> a01 [label="(P,O)"];
+  e1 -> a01 [label="(O,P)"];
+  e0 -> a11 [label="rejected: factor/order", color="#ba4141", fontcolor="#a13232", style=dashed];
+  e1 -> a00 [label="rejected: factor/order", color="#ba4141", fontcolor="#a13232", style=dashed];
+}

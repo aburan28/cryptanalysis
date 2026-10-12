@@ -13,8 +13,8 @@ record which graphs were checked and why they remain current. Distinguish
 proposals and extrapolations from proved or measured results; keep the
 candidate, curve-identity, measurement, and Sage rules below in force.
 
-For small-prime elliptic-curve surface searches, quartic subgroup transfers, or
-abelian-surface Frobenius compatibility checks, use
+For small-prime or pinned GF(2^83) elliptic-curve surface searches, quartic
+subgroup transfers, or abelian-surface Frobenius compatibility checks, use
 [ecdlp-surfaces](.agents/skills/ecdlp-surfaces/SKILL.md) for tool selection,
 commands, and interpretation limits.
 
