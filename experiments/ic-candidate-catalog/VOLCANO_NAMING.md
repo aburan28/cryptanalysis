@@ -68,13 +68,19 @@ require `ell != 2`. The catalog's proposed degree-2 search can remain an
 isogeny search, but a degree-2 edge receives `p` and **no** `V2L...` or
 up/down/horizontal claim. It must record separability separately; `p` only
 states that the degree equals the field characteristic. The degree-3 search
-has an exact no-kernel result over `GF(2^131)`.
-
-The maximal-order source has conductor 1, hence `V263L0`; the verified
-degree-263 descent in `isogeny_routes.json` has an explicit map, kernel, and
-subgroup-transport certificate. Its codomain has conductor 263 and lies at
-`V263L1`. The target curve ID is `EC1N131Cbinh833014327b07`, and the
-ordered walk ID is `IW1E263d1hadee4e69fa3d`.
+has [an exact no-kernel proof](../koblitz-polynomial-w-pair-20260925/ecc2k130_small_isogeny_gate.json),
+so it cannot produce a rational edge over `GF(2^131)`. The source
+endomorphism-order conductor is proved to be 1: its Frobenius polynomial
+`X²+X+2` has fundamental discriminant `-7`. Thus the source lies at
+`V263L0`. The [first-new-kernel calculation](../koblitz-polynomial-w-pair-20260925/ecc2k130_first_new_isogeny_degree.json)
+shows two horizontal degree-263 kernels and 262 extension-only descending
+kernels. Their codomains have conductor 263 and lie at `V263L1`, by the
+ordinary volcano theorem. One exact target curve, forward map, dual,
+kernel certificate, and subgroup transport are retained in the
+[route manifest](../koblitz-polynomial-w-pair-20260925/ecc2k130_degree263_route_manifest.json).
+Its target curve ID is `EC1N131Cbinh833014327b07`, and the verified
+ordered walk ID is `IW1E263d1hadee4e69fa3d`. The other 261 descending
+directions are mathematical possibilities without constructed endpoints.
 
 The [pinned conductor profile](volcano_profiles_20261008.json) is imported
 from `crypto` at commit `014fce0c24eaa3b5d4ac490667f29bbe5cfd1f85`.
