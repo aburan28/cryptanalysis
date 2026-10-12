@@ -72,7 +72,8 @@ CA_API ca_status ca_curve_solve(const ca_group *g, const ca_elem *base, const ca
                                 uint64_t seed, uint64_t *x, ca_curve_info *info, ca_stats *st);
 
 /* Explicit research startup backend for one-target GLV rho. The default API
- * above retains generic multiplier construction. In paired2 mode,
+ * above retains its configured scalar and walk backends. Both explicit modes
+ * use the legacy GLV walk with generic-reference budgeting. In paired2 mode,
  * ca_stats.group_ops remains the exact generic-reference budget count used
  * by the rho cap; physical startup work is recorded separately below. */
 typedef enum ca_curve_startup_mode {

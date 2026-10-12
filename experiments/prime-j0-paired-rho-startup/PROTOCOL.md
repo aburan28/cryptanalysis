@@ -8,8 +8,11 @@ table points and walk restarts? Compare it with the existing generic
 startup on the **same single public target point and frozen rho seed**.
 This is an exact-solver integration gate, not a CPU speedup claim.
 
-Add an explicit opt-in API. The default `ca_curve_solve` remains the
-reference. Unsupported curves must return `CA_ERR_UNSUPPORTED` for the
+Add an explicit opt-in API. The default `ca_curve_solve` retains its
+configured scalar and walk backends. The explicit `CA_CURVE_STARTUP_GENERIC`
+mode is the reference for paired2; both explicit modes use the legacy GLV
+walk and generic-reference budget below, independently of those defaults.
+Unsupported curves must return `CA_ERR_UNSUPPORTED` for the
 opt-in mode; they must not silently run the default path. The `P,Q`
 subgroup checks already made by `ca_curve_solve` precede both variants.
 The candidate prepares the common 18-point table once after the target is
