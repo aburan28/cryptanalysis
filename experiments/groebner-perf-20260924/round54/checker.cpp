@@ -1,0 +1,1140 @@
+// Independent certificate checker. Reconstruct feature-major coefficient
+// tables from the original input; never read producer rows, pivots or tables.
+#include "abi.h"
+#include "../round47/transform.h"
+#include "../round48/multiplier.h"
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <mutex>
+#include <stdexcept>
+#include <type_traits>
+#include <variant>
+#include <vector>
+
+namespace
+{
+thread_local PreparationStats preparation_stats{};
+thread_local PartialReservationStats reservation_stats{};
+#ifdef CHECKER_RESERVATION_TEST_BUDGET
+thread_local uint64_t test_partial_budget = PARTIAL_CHECK_WORK_BUDGET;
+#endif
+thread_local PartialCheckStats partial_stats{};
+thread_local SymmetryCheckStats symmetry_stats{};
+thread_local TransformCheckStats transform_stats{};
+thread_local IdentityCheckStats identity_stats{};
+thread_local PartialLocalityStats locality_stats{};
+struct LocalityTotals {
+    ~LocalityTotals()
+    {
+        // Reuse the existing exact counter, including charged failure exits,
+        // instead of adding another counter store to every parity operation.
+        if (locality_stats.mode)
+            locality_stats.cached_loads += partial_stats.witness_parities;
+        else
+            locality_stats.table_loads += partial_stats.witness_parities;
+    }
+};
+struct PartialTimer {
+    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+    ~PartialTimer()
+    {
+        partial_stats.seconds +=
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    }
+};
+struct AffineSpace {
+    std::array<uint32_t, 11> rows{};
+    std::array<uint32_t, 10> pivots{}, free_columns{};
+    uint32_t rank = 0, free_count = 0;
+    bool inconsistent = false;
+};
+static uint64_t partial_budget()
+{
+#ifdef CHECKER_RESERVATION_TEST_BUDGET
+    return test_partial_budget;
+#else
+    return PARTIAL_CHECK_WORK_BUDGET;
+#endif
+}
+static void partial_charge()
+{
+    if (partial_stats.work >= partial_budget())
+        throw std::length_error("partial affine checker work budget");
+    ++partial_stats.work;
+}
+
+// The reserved instantiation is used only after the entire row fits the
+// remaining work budget. Local counters cannot alias a coefficient table.
+// Flush on every exit, including a malformed witness or audit exception.
+template <bool Reserved> struct RowCharges {
+    uint64_t charged = 0, completed = 0;
+    bool finished = false;
+    void charge()
+    {
+        if constexpr (Reserved)
+            ++charged;
+        else
+            partial_charge();
+    }
+    void parity()
+    {
+        if constexpr (Reserved)
+            ++completed;
+        else
+            ++partial_stats.witness_parities;
+    }
+    ~RowCharges()
+    {
+        if constexpr (Reserved) {
+            partial_stats.work += charged;
+            partial_stats.witness_parities += completed;
+            ++reservation_stats.flushes;
+            reservation_stats.exception_flushes += !finished;
+            reservation_stats.charged_words += charged;
+            reservation_stats.parity_words += completed;
+        }
+    }
+};
+
+struct PreparedInput {
+    uint32_t width = 0, count = 0;
+    std::vector<uint64_t> masks, coefficients;
+    bool symmetry_allowed = false;
+    SymmetryCheckStats symmetry{};
+    TransformCheckStats transform{};
+    PreparationStats accounting{};
+};
+struct Checker {
+    uint32_t x, y, equations, limbs, branches;
+    std::vector<uint32_t> monomials, index;
+    std::variant<std::vector<uint32_t>, std::vector<uint64_t>> coefficients;
+    // Optional target-independent storage. Failure preserves the complete path.
+    std::vector<uint32_t> record_offsets;
+    std::vector<unsigned char> reuse;
+    bool symmetry_requested = true;
+    uint32_t transform_mode = 0, identity_mode = 0;
+    bool partial_local = true;
+    bool partial_reserved = true;
+#ifdef CHECKER_RESERVATION_TEST_BUDGET
+    uint64_t partial_budget_test = PARTIAL_CHECK_WORK_BUDGET;
+#endif
+    bool preparation_ready = false;
+    uint64_t generation = 0;
+    PreparedInput prepared;
+    independent_identity::Layout identity_layout;
+    std::mutex mutex;
+    Checker(uint32_t a, uint32_t b, uint32_t e)
+        : x(a), y(b), equations(e), limbs((e + 63) / 64), branches(1u << a),
+          index(1u << b, UINT32_MAX), identity_layout(b)
+    {
+        // Numeric monomial order differs from the producer's singles/pairs.
+        for (uint32_t m = 0; m < (1u << y); ++m)
+            if (__builtin_popcount(m) <= 2) {
+                index[m] = uint32_t(monomials.size());
+                monomials.push_back(m);
+            }
+        uint64_t words = uint64_t(monomials.size()) * limbs * branches;
+        if (words * (e <= 32 ? 4 : 8) > TABLE_BYTES_LIMIT)
+            throw std::length_error("checker table exceeds 64 MiB");
+        if (e <= 32)
+            coefficients = std::vector<uint32_t>(words);
+        else
+            coefficients = std::vector<uint64_t>(words);
+        if (!(x & 1u) && uint64_t(branches) * 5 <= SYMMETRY_CHECK_AUX_BYTES) {
+            try {
+                record_offsets.resize(branches);
+                reuse.resize(branches);
+            } catch (const std::bad_alloc &) {
+                std::vector<uint32_t>().swap(record_offsets);
+                std::vector<unsigned char>().swap(reuse);
+            }
+        }
+    }
+};
+
+static uint64_t mask_at(const void *masks, uint32_t width, uint32_t i)
+{
+    return width == 32 ? static_cast<const uint32_t *>(masks)[i]
+                       : static_cast<const uint64_t *>(masks)[i];
+}
+static void validate(const Checker &w, const void *masks, uint32_t width, const uint64_t *c,
+                     uint32_t count)
+{
+    if ((width != 32 && width != 64) || count > TERM_LIMIT || (count && (!masks || !c)))
+        throw std::invalid_argument("packed extents");
+    for (uint32_t t = 0; t < count; ++t) {
+        if (mask_at(masks, width, t) >> (w.x + w.y))
+            throw std::invalid_argument("mask outside ring");
+        if (w.equations % 64 && c[size_t(t) * w.limbs + w.limbs - 1] >> (w.equations % 64))
+            throw std::invalid_argument("coefficient outside equations");
+    }
+}
+
+// This guard checks original ANF coefficients before specialization, using
+// only this checker's freshly decoded table. No producer symmetry assertion
+// or producer data structure is consulted. Duplicate input monomials have
+// already canceled by XOR in the independent scatter.
+static bool symmetry_charge(uint64_t amount = 1)
+{
+    if (amount > SYMMETRY_CHECK_WORK_BUDGET - symmetry_stats.work) {
+        symmetry_stats.budget_fallback = 1;
+        return false;
+    }
+    symmetry_stats.work += amount;
+    return true;
+}
+static uint32_t swapped(const Checker &w, uint32_t branch)
+{
+    const uint32_t half = w.x / 2, mask = (1u << half) - 1;
+    return ((branch & mask) << half) | (branch >> half);
+}
+struct SymmetryTimer {
+    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+    ~SymmetryTimer()
+    {
+        symmetry_stats.guard_seconds +=
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    }
+};
+template <typename Coefficient>
+static bool prepare_symmetry_input(Checker &w, const std::vector<Coefficient> &coefficients,
+                                   const void *masks, uint32_t width,
+                                   const uint64_t *input_coefficients, uint32_t count)
+{
+    symmetry_stats.requested = w.symmetry_requested;
+    symmetry_stats.workspace_bytes =
+        uint64_t(w.record_offsets.size()) * sizeof(uint32_t) + w.reuse.size();
+    if (!w.symmetry_requested) return false;
+    if (w.x & 1u) {
+        symmetry_stats.shape_fallback = 1;
+        return false;
+    }
+    if (w.record_offsets.size() != w.branches || w.reuse.size() != w.branches) {
+        symmetry_stats.workspace_fallback = 1;
+        return false;
+    }
+    SymmetryTimer timer;
+    // A mismatch has a nonzero coefficient on at least one side. Every
+    // nonzero aggregate coefficient has at least one nonzero original term,
+    // so visiting the input support is sufficient, even with duplicates,
+    // cancellations, unsorted terms, or an absent swapped monomial.
+    for (uint32_t t = 0; t < count; ++t) {
+        if (!symmetry_charge()) return false;
+        ++symmetry_stats.guard_terms;
+        bool nonzero = false;
+        for (uint32_t limb = 0; limb < w.limbs; ++limb)
+            nonzero |= input_coefficients[size_t(t) * w.limbs + limb] != 0;
+        if (!nonzero) continue;
+        const uint64_t mask = mask_at(masks, width, t);
+        const uint32_t a = uint32_t(mask & (w.branches - 1)), b = swapped(w, a);
+        if (a == b) continue;
+        ++symmetry_stats.guard_pairs;
+        const uint32_t feature = w.index[mask >> w.x];
+        for (uint32_t limb = 0; limb < w.limbs; ++limb) {
+            if (!symmetry_charge()) return false;
+            ++symmetry_stats.guard_coefficients;
+            const auto *values =
+                coefficients.data() + (size_t(feature) * w.limbs + limb) * w.branches;
+            if (values[a] != values[b]) {
+                symmetry_stats.asymmetric_fallback = 1;
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static bool prepare_symmetry_proof(Checker &w, const uint64_t *proof, uint64_t prefix_words,
+                                   uint64_t entry_words, uint64_t proof_words)
+{
+    SymmetryTimer timer;
+    if (!symmetry_charge(uint64_t(w.branches) * 2)) return false;
+    std::fill(w.record_offsets.begin(), w.record_offsets.end(), UINT32_MAX);
+    std::fill(w.reuse.begin(), w.reuse.end(), 0);
+    for (uint64_t offset = prefix_words; offset < proof_words; offset += entry_words) {
+        if (!symmetry_charge()) return false;
+        // Proof word limit is far below UINT32_MAX. Shape/order/padding was
+        // validated before this function, including absence of overlaps.
+        w.record_offsets[proof[offset] & ~PARTIAL_AFFINE_RECORD] = uint32_t(offset);
+    }
+    auto kind = [&](uint32_t branch) {
+        if (proof[size_t(branch) * w.limbs] || (w.limbs == 2 && proof[size_t(branch) * 2 + 1]))
+            return 1;
+        const auto offset = w.record_offsets[branch];
+        if (offset == UINT32_MAX) return 0;
+        return (proof[offset] & PARTIAL_AFFINE_RECORD) ? 3 : 2;
+    };
+    uint64_t representatives = 0;
+    for (uint32_t a = 0; a < w.branches; ++a) {
+        const uint32_t b = swapped(w, a);
+        if (a >= b) continue;
+        if (!symmetry_charge()) return false;
+        ++symmetry_stats.proof_pairs;
+        const int ka = kind(a), kb = kind(b);
+        bool equal = ka == kb;
+        if (equal && ka) {
+            const uint64_t oa = ka == 1 ? uint64_t(a) * w.limbs : w.record_offsets[a] + 1u;
+            const uint64_t ob = ka == 1 ? uint64_t(b) * w.limbs : w.record_offsets[b] + 1u;
+            const uint64_t words = ka == 1 ? w.limbs : entry_words - 1;
+            for (uint64_t j = 0; j < words; ++j) {
+                if (!symmetry_charge()) return false;
+                ++symmetry_stats.proof_words;
+                if (proof[oa + j] != proof[ob + j]) {
+                    equal = false;
+                    break;
+                }
+            }
+        }
+        if (!equal) {
+            ++symmetry_stats.proof_mismatches;
+            continue; // Different or absent certificates are checked in full.
+        }
+        w.reuse[a] = 2;
+        w.reuse[b] = 1;
+        ++representatives;
+    }
+    // Transactional enable: any budget failure above makes all stale or
+    // partially prepared flags inaccessible for this query.
+    symmetry_stats.representatives = representatives;
+    symmetry_stats.enabled = 1;
+    return true;
+}
+
+template <typename Coefficient>
+static int scatter_input(Checker &w, std::vector<Coefficient> &coefficients, const void *masks,
+                         uint32_t width, const uint64_t *c, uint32_t count)
+{
+    std::fill(coefficients.begin(), coefficients.end(), 0);
+    const uint64_t left_mask = (UINT64_C(1) << w.x) - 1;
+    for (uint32_t t = 0; t < count; ++t) {
+        bool nonzero = false;
+        for (uint32_t l = 0; l < w.limbs; ++l) nonzero |= c[size_t(t) * w.limbs + l] != 0;
+        if (!nonzero) continue;
+        const uint64_t mask = mask_at(masks, width, t);
+        uint32_t feature = w.index[mask >> w.x];
+        if (feature == UINT32_MAX) return 7;
+        for (uint32_t l = 0; l < w.limbs; ++l)
+            coefficients[(size_t(feature) * w.limbs + l) * w.branches + (mask & left_mask)] ^=
+                c[size_t(t) * w.limbs + l];
+    }
+    return 0;
+}
+
+static uint32_t selected_transform(const Checker &w, bool use_symmetry)
+{
+    if (w.transform_mode && (w.x & 1u)) return 0;
+    if (w.transform_mode >= 2 && !use_symmetry) return 0;
+    return w.transform_mode;
+}
+
+template <typename Coefficient>
+static int transform_input(Checker &w, std::vector<Coefficient> &coefficients, bool use_symmetry,
+                           MultiplierCheckStats &stats)
+{
+    // The symmetry guard above uses freshly scattered ORIGINAL coefficients.
+    // General axis separation needs no symmetry. Symmetric kernels require
+    // the guard to finish successfully, including all of its soft budgets.
+    const auto transform_started = std::chrono::steady_clock::now();
+    transform_stats.requested_mode = w.transform_mode;
+    uint32_t selected = w.transform_mode;
+    if (selected && (w.x & 1u)) {
+        selected = 0;
+        transform_stats.shape_fallback = 1;
+    } else if (selected >= 2 && !use_symmetry) {
+        selected = 0;
+        transform_stats.symmetry_fallback = 1;
+    }
+    transform_stats.selected_mode = selected;
+    transform_stats.slices = w.monomials.size() * w.limbs;
+    transform_stats.word_bits = 8 * sizeof(Coefficient);
+    transform_stats.full_xors = transform_stats.slices * w.x * (w.branches / 2);
+#ifdef CHECKER_TRANSFORM_AUDIT
+    // Explicit test build only. Account for the additional coefficient table
+    // and independently replay the accepted complete transform below.
+    std::vector<Coefficient> reference;
+    if (selected) {
+        reference = coefficients;
+        transform_stats.audit_bytes = reference.size() * sizeof(Coefficient);
+    }
+#endif
+    boolean_transform::Counts counts;
+    for (size_t slice = 0; slice < transform_stats.slices; ++slice) {
+        Coefficient *values = coefficients.data() + slice * w.branches;
+        if (!selected) {
+            // Preserve the accepted loop shape, including odd fixed splits.
+            for (uint32_t bit = w.branches / 2; bit; bit >>= 1)
+                for (uint32_t base = 0; base < w.branches; base += 2 * bit)
+                    for (uint32_t offset = 0; offset < bit; ++offset)
+                        values[base + bit + offset] ^= values[base + offset];
+        } else {
+            const uint32_t n = 1u << (w.x / 2);
+            if (selected == 1) {
+                boolean_transform::full(values, n, n, counts);
+            } else {
+                const uint32_t tile = selected == 2   ? 8
+                                      : selected == 3 ? 16
+                                      : selected == 4 ? 32
+                                                      : n;
+                boolean_transform::recursive_tiled(values, n, n, counts, tile);
+            }
+        }
+    }
+    transform_stats.actual_xors = selected ? counts.xors : transform_stats.full_xors;
+    transform_stats.mirror_words = counts.copies;
+    stats.transform_xors = transform_stats.actual_xors;
+#ifdef CHECKER_TRANSFORM_AUDIT
+    if (selected) {
+        for (size_t slice = 0; slice < transform_stats.slices; ++slice) {
+            Coefficient *values = reference.data() + slice * w.branches;
+            for (uint32_t bit = w.branches / 2; bit; bit >>= 1)
+                for (uint32_t base = 0; base < w.branches; base += 2 * bit)
+                    for (uint32_t offset = 0; offset < bit; ++offset)
+                        values[base + bit + offset] ^= values[base + offset];
+        }
+        transform_stats.audit_xors = transform_stats.full_xors;
+        for (size_t i = 0; i < reference.size(); ++i) {
+            ++transform_stats.audit_words;
+            if (reference[i] != coefficients[i]) return 8;
+        }
+    }
+#endif
+    transform_stats.seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - transform_started).count();
+    return 0;
+}
+
+static bool matches_prepared(const Checker &w, const void *masks, uint32_t width, const uint64_t *c,
+                             uint32_t count)
+{
+    const auto &saved = w.prepared;
+    if (width != saved.width || count != saved.count || (count && (!masks || !c))) return false;
+    for (uint32_t i = 0; i < count; ++i) {
+        ++preparation_stats.bound_words;
+        if (mask_at(masks, width, i) != saved.masks[i]) return false;
+    }
+    for (size_t i = 0; i < size_t(count) * w.limbs; ++i) {
+        ++preparation_stats.bound_words;
+        if (c[i] != saved.coefficients[i]) return false;
+    }
+    return true;
+}
+
+template <typename Coefficient>
+static int prepare_input(Checker &w, std::vector<Coefficient> &coefficients, const void *masks,
+                         uint32_t width, const uint64_t *c, uint32_t count, uint64_t &token)
+{
+    const auto started = std::chrono::steady_clock::now();
+    w.preparation_ready = false;
+    validate(w, masks, width, c, count);
+    auto &saved = w.prepared;
+    preparation_stats.table_bytes = coefficients.size() * sizeof(Coefficient);
+    saved.width = width;
+    saved.count = count;
+    saved.masks.resize(count);
+    saved.coefficients.resize(size_t(count) * w.limbs);
+    for (uint32_t i = 0; i < count; ++i) saved.masks[i] = mask_at(masks, width, i);
+    for (size_t i = 0; i < size_t(count) * w.limbs; ++i) saved.coefficients[i] = c[i];
+    preparation_stats.input_bytes = (saved.masks.size() + saved.coefficients.size()) * 8;
+    if (const int code = scatter_input(w, coefficients, masks, width, c, count)) return code;
+    symmetry_stats = {};
+    transform_stats = {};
+    saved.symmetry_allowed = prepare_symmetry_input(w, coefficients, masks, width, c, count);
+    saved.symmetry = symmetry_stats;
+    MultiplierCheckStats unused{};
+    if (const int code = transform_input(w, coefficients, saved.symmetry_allowed, unused))
+        return code;
+    saved.transform = transform_stats;
+    if (w.generation == UINT64_MAX) throw std::length_error("preparation generation exhausted");
+    token = ++w.generation;
+    w.preparation_ready = true;
+    preparation_stats.ready = 1;
+    preparation_stats.transform_xors = transform_stats.actual_xors;
+    preparation_stats.mirror_words = transform_stats.mirror_words;
+    preparation_stats.audit_words = transform_stats.audit_words;
+    preparation_stats.audit_xors = transform_stats.audit_xors;
+    preparation_stats.audit_bytes = transform_stats.audit_bytes;
+    preparation_stats.guard_work = symmetry_stats.work;
+    preparation_stats.seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+    saved.accounting = preparation_stats;
+    return 0;
+}
+
+template <typename Coefficient>
+static int check(Checker &w, std::vector<Coefficient> &coefficients, const void *masks,
+                 uint32_t width, const uint64_t *c, uint32_t count, const uint64_t *proof,
+                 uint64_t proof_words, const uint64_t *roots, uint32_t root_count,
+                 const uint64_t *terms, uint32_t term_count, const uint32_t *offsets,
+                 uint32_t row_count, MultiplierCheckStats &stats,
+                 const PreparedInput *prepared = nullptr)
+{
+    validate(w, masks, width, c, count);
+    const uint64_t prefix_words = uint64_t(w.branches) * w.limbs;
+    const uint64_t entry_words = 1 + uint64_t(w.y + 1) * w.limbs;
+    if (!proof || proof_words < prefix_words || proof_words > MULTIPLIER_PROOF_WORDS_LIMIT ||
+        (proof_words - prefix_words) % entry_words ||
+        (proof_words - prefix_words) / entry_words > w.branches || root_count > ROOT_LIMIT ||
+        term_count > TERM_LIMIT || row_count > 4096 || (root_count && !roots) ||
+        (term_count && !terms) || !offsets || offsets[0] || offsets[row_count] != term_count)
+        return 6;
+    for (uint32_t x = 0; x < w.branches; ++x)
+        if (w.equations % 64 && proof[size_t(x) * w.limbs + w.limbs - 1] >> (w.equations % 64))
+            return 6;
+    uint64_t previous_branch = 0;
+    for (uint64_t offset = prefix_words; offset < proof_words; offset += entry_words) {
+        const uint64_t branch = proof[offset] & ~PARTIAL_AFFINE_RECORD;
+        if (branch >= w.branches || (offset != prefix_words && branch <= previous_branch)) return 6;
+        previous_branch = branch;
+        // Redundant overlapping records are rejected to keep accounting exact.
+        for (uint32_t limb = 0; limb < w.limbs; ++limb)
+            if (proof[branch * w.limbs + limb]) return 6;
+        for (uint32_t slot = 0; slot <= w.y; ++slot)
+            if (w.equations % 64 &&
+                proof[offset + 1 + size_t(slot) * w.limbs + w.limbs - 1] >> (w.equations % 64))
+                return 6;
+    }
+    for (uint32_t i = 0; i < root_count; ++i)
+        if (roots[i] >> (w.x + w.y) || (i && roots[i - 1] >= roots[i])) return 2;
+    std::vector<uint64_t> leading;
+    for (uint32_t i = 0; i < row_count; ++i) {
+        if (offsets[i] >= offsets[i + 1] || offsets[i + 1] > term_count) return 1;
+        uint64_t lm = terms[offsets[i]];
+        for (uint32_t t = offsets[i]; t < offsets[i + 1]; ++t) {
+            uint64_t m = terms[t];
+            if (m >> (w.x + w.y) || (t > offsets[i] && terms[t - 1] >= m)) return 1;
+            int degree = __builtin_popcountll(m), prior = __builtin_popcountll(lm);
+            if (degree > prior || (degree == prior && m < lm)) lm = m;
+        }
+        leading.push_back(lm);
+    }
+    auto table = [&](uint32_t feature, uint32_t limb) {
+        return coefficients.data() + (size_t(feature) * w.limbs + limb) * w.branches;
+    };
+    auto affine_space = [&](uint32_t branch, const uint64_t *witnesses) {
+        AffineSpace space;
+        // Every consumed entry is overwritten from this certification's
+        // independent coefficient table before any witness uses the cache.
+        std::array<Coefficient, 112> local;
+        bool copied = false;
+        partial_stats.stack_bytes = sizeof(space);
+        ++partial_stats.records;
+        ++locality_stats.records;
+        const uint32_t row_count = w.y + 1;
+        for (uint32_t row = 0; row < row_count; ++row) {
+            partial_charge();
+            const uint64_t *u = witnesses + size_t(row) * w.limbs;
+            if (!(u[0] | (w.limbs == 2 ? u[1] : 0))) continue;
+            ++partial_stats.checked_rows;
+            if (w.partial_local && !copied) {
+                for (uint32_t feature = 0; feature < w.monomials.size(); ++feature)
+                    for (uint32_t limb = 0; limb < w.limbs; ++limb) {
+                        local[size_t(feature) * w.limbs + limb] = table(feature, limb)[branch];
+                    }
+                const uint64_t words = uint64_t(w.monomials.size()) * w.limbs;
+                locality_stats.table_loads += words;
+                locality_stats.copy_words += words;
+                copied = true;
+                ++locality_stats.copied_records;
+                locality_stats.cache_stack_bytes = sizeof(local);
+            }
+            auto evaluate_row = [&](auto reserved) {
+                RowCharges<decltype(reserved)::value> charges;
+                // The uint32 coefficient variant is constructed only for
+                // at most 32 equations, hence exactly one witness limb.
+                // Make that existing invariant visible to the reserved loop.
+                const uint32_t row_limbs =
+                    decltype(reserved)::value && sizeof(Coefficient) == 4 ? 1 : w.limbs;
+                for (uint32_t feature = 0; feature < w.monomials.size(); ++feature) {
+                    unsigned parity = 0;
+                    for (uint32_t limb = 0; limb < row_limbs; ++limb) {
+                        charges.charge();
+                        Coefficient coefficient;
+                        if (w.partial_local) {
+                            coefficient = local[size_t(feature) * row_limbs + limb];
+#ifdef CHECKER_PARTIAL_LOCALITY_AUDIT
+                            ++locality_stats.audit_words;
+                            if (coefficient != table(feature, limb)[branch]) {
+                                // This failed audit read precedes its parity.
+                                ++locality_stats.cached_loads;
+                                throw std::logic_error("partial coefficient cache mismatch");
+                            }
+#endif
+                        } else {
+                            coefficient = table(feature, limb)[branch];
+                        }
+                        parity ^= __builtin_parityll(u[limb] & coefficient);
+                        charges.parity();
+                    }
+                    if (!parity) continue;
+                    const uint32_t monomial = w.monomials[feature];
+                    if (monomial & (monomial - 1))
+                        throw std::domain_error("partial consequence is nonlinear");
+                    const uint32_t column = monomial ? 1u + uint32_t(__builtin_ctz(monomial)) : 0;
+                    space.rows[row] ^= 1u << column;
+                }
+                charges.finished = true;
+            };
+            const uint64_t words = uint64_t(w.monomials.size()) * w.limbs;
+            bool reserve = false;
+            if (w.partial_reserved) {
+                ++reservation_stats.reservation_attempts;
+                reservation_stats.max_row_words = std::max(reservation_stats.max_row_words, words);
+                reserve = words <= partial_budget() - partial_stats.work;
+                if (reserve) {
+                    ++reservation_stats.reserved_rows;
+                } else {
+                    ++reservation_stats.budget_fallbacks;
+                }
+            }
+            if (reserve)
+                evaluate_row(std::true_type{});
+            else
+                evaluate_row(std::false_type{});
+        }
+        // Recompute rank and pivots from original-equation consequences;
+        // no producer elimination state is accepted.
+        for (uint32_t column = 1; column <= w.y; ++column) {
+            uint32_t selected = space.rank;
+            for (; selected < row_count; ++selected) {
+                partial_charge();
+                if (space.rows[selected] & (1u << column)) break;
+            }
+            if (selected == row_count) continue;
+            std::swap(space.rows[selected], space.rows[space.rank]);
+            for (uint32_t row = 0; row < row_count; ++row) {
+                partial_charge();
+                if (row != space.rank && (space.rows[row] & (1u << column))) {
+                    space.rows[row] ^= space.rows[space.rank];
+                    ++partial_stats.row_xors;
+                }
+            }
+            space.pivots[space.rank++] = column - 1;
+        }
+        partial_stats.rank_sum += space.rank;
+        for (uint32_t row = 0; row < row_count; ++row) {
+            partial_charge();
+            if (space.rows[row] == 1) {
+                space.inconsistent = true;
+                ++partial_stats.inconsistent;
+                return space;
+            }
+        }
+        for (uint32_t column = 0; column < w.y; ++column) {
+            bool pivot = false;
+            for (uint32_t row = 0; row < space.rank; ++row) pivot |= space.pivots[row] == column;
+            if (!pivot) space.free_columns[space.free_count++] = column;
+        }
+        return space;
+    };
+    stats.workspace_bytes = coefficients.size() * sizeof(Coefficient);
+    stats.proof_bytes = proof_words * 8;
+    auto started = std::chrono::steady_clock::now();
+    bool use_symmetry = false;
+    if (prepared) {
+        preparation_stats.used = 1;
+        preparation_stats.discarded = 0;
+        symmetry_stats = prepared->symmetry;
+        use_symmetry = prepared->symmetry_allowed &&
+                       prepare_symmetry_proof(w, proof, prefix_words, entry_words, proof_words);
+        if (prepared->transform.selected_mode == selected_transform(w, use_symmetry)) {
+            transform_stats = prepared->transform;
+            stats.transform_xors = transform_stats.actual_xors;
+        } else {
+            // A proof-dependent soft-budget fallback can invalidate the
+            // speculative tiled route. Reconstruct the complete transform;
+            // preserve every old logical counter and account extra work.
+            ++preparation_stats.recomputed;
+            transform_stats = {};
+            if (const int code = scatter_input(w, coefficients, masks, width, c, count))
+                return code;
+            if (const int code = transform_input(w, coefficients, use_symmetry, stats)) return code;
+        }
+    } else {
+        if (const int code = scatter_input(w, coefficients, masks, width, c, count)) return code;
+        use_symmetry = prepare_symmetry_input(w, coefficients, masks, width, c, count) &&
+                       prepare_symmetry_proof(w, proof, prefix_words, entry_words, proof_words);
+        if (const int code = transform_input(w, coefficients, use_symmetry, stats)) return code;
+    }
+    auto specialized = std::chrono::steady_clock::now();
+    // This is accumulated preparation/checker work, not critical-path wall
+    // time when preparation ran concurrently. The outer query clock is primary.
+    stats.specialization = std::chrono::duration<double>(specialized - started).count() +
+                           (prepared ? prepared->accounting.seconds : 0.0);
+    // Check a polynomial identity, not a producer's rank/consistency assertion:
+    // sum_e u[e]*F_e(y) = 1. Every nonconstant coefficient must be zero.
+    for (uint32_t feature = 0; feature < w.monomials.size(); ++feature) {
+        const Coefficient *low = table(feature, 0);
+        const Coefficient *high = w.limbs == 2 ? table(feature, 1) : nullptr;
+        unsigned bad = 0;
+        for (uint32_t x = 0; x < w.branches; ++x) {
+            if (use_symmetry && w.reuse[x] == 1) {
+                symmetry_stats.avoided_constant_parities += w.limbs;
+                continue;
+            }
+            const uint64_t a = proof[size_t(x) * w.limbs], b = high ? proof[size_t(x) * 2 + 1] : 0;
+            const unsigned parity =
+                __builtin_parityll(a & low[x]) ^ (high ? __builtin_parityll(b & high[x]) : 0);
+            bad |= (parity ^ unsigned(feature == 0)) & unsigned((a | b) != 0);
+        }
+        if (bad) return 9;
+    }
+    auto contradicted = std::chrono::steady_clock::now();
+    stats.contradiction_check = std::chrono::duration<double>(contradicted - specialized).count();
+    identity_stats.mode = w.identity_mode;
+    identity_stats.layout_bytes = sizeof(w.identity_layout);
+    const auto identity_counts = w.identity_layout.counts(w.identity_mode, w.limbs);
+    const uint64_t dense_identity_parities = w.identity_layout.dense_parities(w.limbs);
+    // Independently multiply the reconstructed original equations in the
+    // Boolean quotient. Numeric monomial masks and a dense parity array do
+    // not share the producer's cubic-column layout or elimination state.
+    for (uint64_t offset = prefix_words; offset < proof_words; offset += entry_words) {
+        if (proof[offset] & PARTIAL_AFFINE_RECORD) continue;
+        const uint32_t branch = uint32_t(proof[offset]);
+        if (use_symmetry && w.reuse[branch] == 1) {
+            symmetry_stats.avoided_multiplier_parities += identity_counts.parities;
+            ++identity_stats.reused_records;
+            continue;
+        }
+        const uint64_t *witnesses = proof + offset + 1;
+        auto coefficient = [&](uint32_t f, uint32_t l) -> uint64_t { return table(f, l)[branch]; };
+        ++identity_stats.attempted_records;
+        identity_stats.dense_equivalent_parities += dense_identity_parities;
+        identity_stats.parities += identity_counts.parities;
+        identity_stats.ands += identity_counts.ands;
+        identity_stats.accumulator_xors += identity_counts.accumulator_xors;
+        identity_stats.witness_xors += identity_counts.witness_xors;
+        identity_stats.identity_xors += identity_counts.identity_xors;
+        identity_stats.table_loads += identity_counts.table_loads;
+        identity_stats.cached_loads += identity_counts.cached_loads;
+        identity_stats.copy_words += identity_counts.copy_words;
+        identity_stats.cache_stack_bytes =
+            independent_identity::Layout::copied(w.identity_mode) ? 112 * 8 : 0;
+        identity_stats.identity_stack_bytes = w.identity_mode >= 4   ? 0
+                                              : w.identity_mode == 2 ? 16 * 8
+                                                                     : 1024;
+        stats.multiplier_parities += identity_counts.parities;
+        independent_identity::CheckSink checked;
+        const bool valid = independent_identity::evaluate(w.identity_layout, w.identity_mode,
+                                                          coefficient, witnesses, w.limbs, checked);
+#ifdef CHECKER_IDENTITY_AUDIT
+        // Explicit test build: replay the accepted multiplication with numeric
+        // masks, then compare every coefficient of the candidate polynomial.
+        std::array<unsigned char, 1024> actual{}, reference{};
+        independent_identity::OutputSink output{actual.data()};
+        independent_identity::evaluate(w.identity_layout, w.identity_mode, coefficient, witnesses,
+                                       w.limbs, output);
+        for (uint32_t slot = 0; slot <= w.y; ++slot) {
+            const uint32_t multiplier = slot ? 1u << (slot - 1) : 0;
+            for (uint32_t feature = 0; feature < w.monomials.size(); ++feature) {
+                unsigned parity = 0;
+                for (uint32_t limb = 0; limb < w.limbs; ++limb)
+                    parity ^= __builtin_parityll(witnesses[size_t(slot) * w.limbs + limb] &
+                                                 table(feature, limb)[branch]);
+                reference[w.monomials[feature] | multiplier] ^= parity;
+            }
+        }
+        ++identity_stats.audit_records;
+        identity_stats.audit_parities += dense_identity_parities + identity_counts.parities;
+        bool reference_valid = reference[0] == 1;
+        for (uint32_t m = 0; m < (1u << w.y); ++m) {
+            ++identity_stats.audit_coefficients;
+            if (actual[m] != reference[m]) return 8;
+            if (m && reference[m]) reference_valid = false;
+        }
+        if (valid != reference_valid) return 8;
+#endif
+        if (!valid) return 9;
+        stats.extended_contradictions += use_symmetry && w.reuse[branch] == 2 ? 2 : 1;
+        stats.multiplier_words += entry_words - 1;
+    }
+    auto multiplied = std::chrono::steady_clock::now();
+    stats.multiplier_check = std::chrono::duration<double>(multiplied - contradicted).count();
+    uint64_t extension = prefix_words;
+    // A zero witness provides no information. Enumerate the COMPLETE original
+    // y-space for that branch, in numeric order and without lifted solutions.
+    for (uint32_t x = 0; x < w.branches; ++x) {
+        ++stats.branches;
+        const uint64_t record = extension;
+        const bool extended =
+            extension < proof_words && (proof[extension] & ~PARTIAL_AFFINE_RECORD) == x;
+        const bool partial = extended && (proof[extension] & PARTIAL_AFFINE_RECORD);
+        if (extended) extension += entry_words;
+        if (use_symmetry && w.reuse[x] == 1) {
+            ++symmetry_stats.inferred_aliases;
+            if (partial)
+                ++symmetry_stats.partial_aliases;
+            else if (extended)
+                ++symmetry_stats.multiplier_aliases;
+            else if (proof[size_t(x) * w.limbs] || (w.limbs == 2 && proof[size_t(x) * 2 + 1]))
+                ++symmetry_stats.constant_aliases;
+            else
+                ++symmetry_stats.enumerated_aliases;
+            continue;
+        }
+        const uint64_t weight = use_symmetry && w.reuse[x] == 2 ? 2 : 1;
+        if ((extended && !partial) || proof[size_t(x) * w.limbs] ||
+            (w.limbs == 2 && proof[size_t(x) * 2 + 1])) {
+            stats.contradictions += weight;
+            continue;
+        }
+        if (partial) {
+            PartialTimer timing;
+            const auto space = affine_space(x, proof + record + 1);
+            symmetry_stats.derived_partial_rank += (weight - 1) * space.rank;
+            symmetry_stats.derived_partial_inconsistent += (weight - 1) * space.inconsistent;
+            if (space.inconsistent) {
+                stats.contradictions += weight;
+                continue;
+            }
+            stats.enumerated_branches += weight;
+            for (uint32_t bits = 0; bits < (1u << space.free_count); ++bits) {
+                if (stats.assignments == BRANCH_CHECK_ENUMERATION_BUDGET) return 5;
+                partial_charge();
+                ++stats.assignments;
+                symmetry_stats.avoided_assignments += weight - 1;
+                symmetry_stats.derived_partial_assignments += weight - 1;
+                ++partial_stats.assignments;
+                uint32_t assignment = 0;
+                for (uint32_t i = 0; i < space.free_count; ++i)
+                    assignment |= ((bits >> i) & 1u) << space.free_columns[i];
+                for (uint32_t row = 0; row < space.rank; ++row) {
+                    partial_charge();
+                    const unsigned bit = (space.rows[row] & 1u) ^
+                                         __builtin_parity((space.rows[row] >> 1) & assignment);
+                    assignment |= bit << space.pivots[row];
+                }
+                std::array<uint64_t, 2> value{};
+                for (uint32_t feature = 0; feature < w.monomials.size(); ++feature) {
+                    partial_charge();
+                    if ((assignment & w.monomials[feature]) == w.monomials[feature])
+                        for (uint32_t limb = 0; limb < w.limbs; ++limb) {
+                            partial_charge();
+                            value[limb] ^= table(feature, limb)[x];
+                        }
+                }
+                if (!(value[0] | value[1])) {
+                    if (weight > ROOT_LIMIT - stats.roots) return 5;
+                    stats.roots += weight;
+                }
+            }
+            continue;
+        }
+        stats.enumerated_branches += weight;
+        for (uint32_t y = 0; y < (1u << w.y); ++y) {
+            if (stats.assignments == BRANCH_CHECK_ENUMERATION_BUDGET) return 5;
+            ++stats.assignments;
+            symmetry_stats.avoided_assignments += weight - 1;
+            std::array<uint64_t, 2> value{};
+            for (uint32_t feature = 0; feature < w.monomials.size(); ++feature)
+                if ((y & w.monomials[feature]) == w.monomials[feature])
+                    for (uint32_t l = 0; l < w.limbs; ++l) value[l] ^= table(feature, l)[x];
+            if (!(value[0] | value[1])) {
+                if (weight > ROOT_LIMIT - stats.roots) return 5;
+                stats.roots += weight;
+            }
+        }
+    }
+    auto enumerated = std::chrono::steady_clock::now();
+    stats.enumeration = std::chrono::duration<double>(enumerated - multiplied).count();
+    if (stats.roots != root_count) return 3;
+    // Exact total count plus distinct actual roots proves completeness.
+    for (uint32_t i = 0; i < root_count; ++i) {
+        std::array<uint64_t, 2> value{};
+        for (uint32_t t = 0; t < count; ++t)
+            if ((mask_at(masks, width, t) & roots[i]) == mask_at(masks, width, t))
+                for (uint32_t l = 0; l < w.limbs; ++l) value[l] ^= c[size_t(t) * w.limbs + l];
+        if (value[0] | value[1]) return 2;
+        for (uint32_t row = 0; row < row_count; ++row) {
+            bool parity = false;
+            for (uint32_t t = offsets[row]; t < offsets[row + 1]; ++t)
+                parity ^= (terms[t] & roots[i]) == terms[t];
+            if (parity) return 4;
+        }
+    }
+    auto allowed = [&](uint64_t monomial) {
+        for (auto lm : leading) {
+            if (++stats.work > BRANCH_BASIS_PROOF_BUDGET)
+                throw std::length_error("basis proof budget");
+            if ((monomial & lm) == lm) return false;
+        }
+        return true;
+    };
+    std::vector<uint64_t> staircase;
+    if (allowed(0)) staircase.push_back(0);
+    for (size_t cursor = 0; cursor < staircase.size(); ++cursor) {
+        auto m = staircase[cursor];
+        const uint32_t first = m ? 64u - uint32_t(__builtin_clzll(m)) : 0;
+        for (uint32_t j = first; j < w.x + w.y; ++j) {
+            auto child = m | (UINT64_C(1) << j);
+            if (allowed(child)) {
+                if (staircase.size() == ROOT_LIMIT) return 5;
+                staircase.push_back(child);
+            }
+        }
+    }
+    stats.standard = staircase.size();
+    if (stats.standard != stats.roots) return 4;
+    for (uint32_t i = 0; i < row_count; ++i) {
+        for (uint32_t j = 0; j < row_count; ++j)
+            if (i != j && (leading[i] & leading[j]) == leading[j]) return 4;
+        for (uint32_t t = offsets[i]; t < offsets[i + 1]; ++t)
+            if (terms[t] != leading[i])
+                for (auto lm : leading)
+                    if ((terms[t] & lm) == lm) return 4;
+    }
+    stats.basis_check =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - enumerated).count();
+    return 0;
+}
+
+} // namespace
+extern "C" uint32_t check_coefficient_bits(const void *p)
+{
+    return p ? (static_cast<const Checker *>(p)->equations <= 32 ? 32 : 64) : 0;
+}
+extern "C" uint64_t check_stats_size() { return sizeof(MultiplierCheckStats); }
+extern "C" void *check_create(uint32_t x, uint32_t y, uint32_t e)
+{
+    if (!x || x > 20 || !y || y > 10 || x + y > 30 || !e || e > 128) return nullptr;
+    try {
+        return new Checker(x, y, e);
+    } catch (...) {
+        return nullptr;
+    }
+}
+extern "C" void check_destroy(void *p) { delete static_cast<Checker *>(p); }
+static int dispatch_check(bool consume_prepared, uint64_t generation, void *p, const void *masks,
+                          uint32_t width, const uint64_t *c, uint32_t count, const uint64_t *proof,
+                          uint64_t proof_words, const uint64_t *roots, uint32_t root_count,
+                          const uint64_t *terms, uint32_t term_count, const uint32_t *offsets,
+                          uint32_t row_count, MultiplierCheckStats *stats)
+{
+    preparation_stats = {};
+    reservation_stats = {};
+    partial_stats = {};
+    symmetry_stats = {};
+    transform_stats = {};
+    identity_stats = {};
+    locality_stats = {};
+    LocalityTotals locality_totals;
+    if (!p || !stats) return 6;
+    *stats = {};
+    try {
+        auto &w = *static_cast<Checker *>(p);
+        std::lock_guard<std::mutex> guard(w.mutex);
+#ifdef CHECKER_RESERVATION_TEST_BUDGET
+        test_partial_budget = w.partial_budget_test;
+#endif
+        const bool ready = w.preparation_ready;
+        w.preparation_ready = false;
+        const PreparedInput *prepared = nullptr;
+        if (consume_prepared) {
+            if (!ready || !generation || generation != w.generation) return 6;
+            preparation_stats = w.prepared.accounting;
+            preparation_stats.ready = 0;
+            preparation_stats.discarded = 1;
+            if (!matches_prepared(w, masks, width, c, count)) return 6;
+            prepared = &w.prepared;
+        } else if (ready) {
+            preparation_stats.discarded = 1;
+        }
+        locality_stats.mode = w.partial_local;
+        reservation_stats.mode = w.partial_reserved;
+        return std::visit(
+            [&](auto &coefficients) {
+                return check(w, coefficients, masks, width, c, count, proof, proof_words, roots,
+                             root_count, terms, term_count, offsets, row_count, *stats, prepared);
+            },
+            w.coefficients);
+    } catch (const std::length_error &) {
+        return 5;
+    } catch (const std::invalid_argument &) {
+        return 6;
+    } catch (const std::domain_error &) {
+        return 9;
+    } catch (...) {
+        return 8;
+    }
+}
+extern "C" uint64_t check_partial_stats_size() { return sizeof(PartialCheckStats); }
+extern "C" const PartialCheckStats *check_last_partial_stats() { return &partial_stats; }
+extern "C" int branch_evaluate(void *p, const void *masks, uint32_t width, const uint64_t *c,
+                               uint32_t count, uint64_t assignment, uint64_t *output)
+{
+    if (!p || !output) return 6;
+    try {
+        auto &w = *static_cast<Checker *>(p);
+        std::lock_guard<std::mutex> guard(w.mutex);
+        validate(w, masks, width, c, count);
+        if (assignment >> (w.x + w.y)) return 6;
+        output[0] = output[1] = 0;
+        for (uint32_t t = 0; t < count; ++t)
+            if ((mask_at(masks, width, t) & assignment) == mask_at(masks, width, t))
+                for (uint32_t l = 0; l < w.limbs; ++l) output[l] ^= c[size_t(t) * w.limbs + l];
+        return 0;
+    } catch (const std::invalid_argument &) {
+        return 6;
+    } catch (...) {
+        return 8;
+    }
+}
+
+extern "C" uint64_t check_symmetry_stats_size() { return sizeof(SymmetryCheckStats); }
+extern "C" const SymmetryCheckStats *check_last_symmetry_stats() { return &symmetry_stats; }
+extern "C" int check_symmetry_configure(void *p, uint32_t enabled)
+{
+    if (!p || enabled > 1) return -1;
+    auto &w = *static_cast<Checker *>(p);
+    std::lock_guard<std::mutex> guard(w.mutex);
+    w.preparation_ready = false;
+    w.symmetry_requested = enabled;
+    return 0;
+}
+
+extern "C" uint64_t check_transform_stats_size() { return sizeof(TransformCheckStats); }
+extern "C" const TransformCheckStats *check_last_transform_stats() { return &transform_stats; }
+extern "C" int check_transform_configure(void *p, uint32_t mode)
+{
+    if (!p || mode > 5) return -1;
+    auto &w = *static_cast<Checker *>(p);
+    std::lock_guard<std::mutex> guard(w.mutex);
+    w.preparation_ready = false;
+    w.transform_mode = mode;
+    return 0;
+}
+
+extern "C" uint64_t check_identity_stats_size() { return sizeof(IdentityCheckStats); }
+extern "C" const IdentityCheckStats *check_last_identity_stats() { return &identity_stats; }
+extern "C" int check_identity_configure(void *p, uint32_t mode)
+{
+    if (!p || mode >= independent_identity::MODE_COUNT) return -1;
+    auto &w = *static_cast<Checker *>(p);
+    std::lock_guard<std::mutex> guard(w.mutex);
+    w.preparation_ready = false;
+    w.identity_mode = mode;
+    return 0;
+}
+
+extern "C" uint64_t check_partial_locality_stats_size() { return sizeof(PartialLocalityStats); }
+extern "C" const PartialLocalityStats *check_last_partial_locality_stats()
+{
+    return &locality_stats;
+}
+extern "C" int check_partial_locality_configure(void *p, uint32_t enabled)
+{
+    if (!p || enabled > 1) return -1;
+    auto &w = *static_cast<Checker *>(p);
+    std::lock_guard<std::mutex> guard(w.mutex);
+    w.preparation_ready = false;
+    w.partial_local = enabled;
+    return 0;
+}
+
+extern "C" int branch_check(void *p, const void *masks, uint32_t width, const uint64_t *c,
+                            uint32_t count, const uint64_t *proof, uint64_t proof_words,
+                            const uint64_t *roots, uint32_t root_count, const uint64_t *terms,
+                            uint32_t term_count, const uint32_t *offsets, uint32_t row_count,
+                            MultiplierCheckStats *stats)
+{
+    return dispatch_check(false, 0, p, masks, width, c, count, proof, proof_words, roots,
+                          root_count, terms, term_count, offsets, row_count, stats);
+}
+
+extern "C" int branch_check_prepared(uint64_t generation, void *p, const void *masks,
+                                     uint32_t width, const uint64_t *c, uint32_t count,
+                                     const uint64_t *proof, uint64_t proof_words,
+                                     const uint64_t *roots, uint32_t root_count,
+                                     const uint64_t *terms, uint32_t term_count,
+                                     const uint32_t *offsets, uint32_t row_count,
+                                     MultiplierCheckStats *stats)
+{
+    return dispatch_check(true, generation, p, masks, width, c, count, proof, proof_words, roots,
+                          root_count, terms, term_count, offsets, row_count, stats);
+}
+
+extern "C" uint64_t check_preparation_stats_size() { return sizeof(PreparationStats); }
+extern "C" const PreparationStats *check_last_preparation_stats() { return &preparation_stats; }
+extern "C" int check_prepare(void *p, const void *masks, uint32_t width, const uint64_t *c,
+                             uint32_t count, uint64_t *token)
+{
+    preparation_stats = {};
+    if (!p || !token) return 6;
+    symmetry_stats = {};
+    transform_stats = {};
+    *token = 0;
+    preparation_stats.attempted = 1;
+    const auto started = std::chrono::steady_clock::now();
+    int code = 8;
+    try {
+        auto &w = *static_cast<Checker *>(p);
+        std::lock_guard<std::mutex> guard(w.mutex);
+        w.preparation_ready = false;
+        code = std::visit(
+            [&](auto &coefficients) {
+                return prepare_input(w, coefficients, masks, width, c, count, *token);
+            },
+            w.coefficients);
+    } catch (const std::length_error &) {
+        code = 5;
+    } catch (const std::invalid_argument &) {
+        code = 6;
+    } catch (...) {
+        code = 8;
+    }
+    if (code) {
+        // Failed speculation is executed work too. Keep its original budget
+        // counters separate from any subsequent serial fallback.
+        preparation_stats.transform_xors = transform_stats.actual_xors;
+        preparation_stats.mirror_words = transform_stats.mirror_words;
+        preparation_stats.audit_words = transform_stats.audit_words;
+        preparation_stats.audit_xors = transform_stats.audit_xors;
+        preparation_stats.audit_bytes = transform_stats.audit_bytes;
+        preparation_stats.guard_work = symmetry_stats.work;
+        preparation_stats.seconds =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+    }
+    return code;
+}
+extern "C" int check_prepare_discard(void *p, uint64_t generation)
+{
+    if (!p) return -1;
+    auto &w = *static_cast<Checker *>(p);
+    std::lock_guard<std::mutex> guard(w.mutex);
+    if (!generation || generation != w.generation) return -1;
+    w.preparation_ready = false;
+    return 0;
+}
+
+extern "C" uint64_t check_partial_reservation_stats_size()
+{
+    return sizeof(PartialReservationStats);
+}
+extern "C" const PartialReservationStats *check_last_partial_reservation_stats()
+{
+    return &reservation_stats;
+}
+extern "C" int check_partial_reservation_configure(void *p, uint32_t enabled)
+{
+    if (!p || enabled > 1) return -1;
+    auto &w = *static_cast<Checker *>(p);
+    std::lock_guard<std::mutex> guard(w.mutex);
+    w.preparation_ready = false;
+    w.partial_reserved = enabled;
+    return 0;
+}
+extern "C" int check_partial_budget_test_configure(void *p, uint64_t limit)
+{
+#ifdef CHECKER_RESERVATION_TEST_BUDGET
+    if (!p || limit > PARTIAL_CHECK_WORK_BUDGET) return -1;
+    auto &w = *static_cast<Checker *>(p);
+    std::lock_guard<std::mutex> guard(w.mutex);
+    w.preparation_ready = false;
+    w.partial_budget_test = limit;
+    return 0;
+#else
+    (void)p;
+    (void)limit;
+    return -1;
+#endif
+}

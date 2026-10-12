@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "protocol_id": "p256-isogeny-search-exploratory-v1",
+  "status": "verified_exploratory_complete_one_hop_through_199",
+  "claim": "Every rational ramified or split prime degree through 199 was explicitly enumerated. Twenty-eight neighbors beyond the earlier degree-47 registry were matched-native screened; none showed a significant iteration-rate advantage.",
+  "run_completed_at": "2026-10-06T07:09:50Z",
+  "source": {
+    "pr_parent_remote_commit": "6f21dfa699aa497e4c89f2921c4a3c81157ba994",
+    "local_parent_commit": "47bd6c1a9e13cb17b13da8b2a177a22fb6f403be",
+    "manifest": "source-sage-wide-199-20261006.sha256",
+    "manifest_sha256": "dd4593505628b82dd7c91974a1d600a9168d815b8c767edc3ed6a35019426e41",
+    "method_reference": "https://github.com/wmahaney/ModularMultipoints/blob/0cddc394d55aa52a7ab3ce99ef64840832c1c37c/main.sage"
+  },
+  "runtime": {
+    "sage_image": "sagemath/sagemath:10.6",
+    "sage_image_digest": "sha256:19995db6194f4a4bab18ce9a88556fd15b9ed5e916b4504fefe618a7796ddbdb",
+    "rust_image": "rust:1.90-bookworm",
+    "rust_image_digest": "sha256:3914072ca0c3b8aad871db9169a651ccfce30cf58303e5d6f2db16d1d8a7e58f",
+    "native_release_binary_sha256": "768fb614af10bcd3990b8373194713b5406051149ea9b627c01b5e1e4f0a9e5d",
+    "host_cpu_isolation": "unverified; wall-time results are exploratory"
+  },
+  "commands": {
+    "failed_four_gib_panel": "sage -python scripts/explore_sage_degree_panel.py --ells 59,97,101,103,137,149,151,157,163,179,181,191,197,199 --pari-stack-gib 4 --output-dir results/sage-wide-depth-one-199-20261006/degrees",
+    "failed_eight_gib_retry": "sage -python scripts/explore_sage_degree_panel.py --ells 101,137,149,151,157,163,179,181,191,197,199 --pari-stack-gib 8 --output-dir results/sage-wide-depth-one-199-20261006/degrees-8g",
+    "modular_recovery": "sage -python scripts/explore_sage_modular_panel.py --ells 103,137,149,151,157,163,179,181,191,197,199 --pari-stack-gib 4 --output-dir results/sage-wide-depth-one-199-20261006/modular-degrees",
+    "assemble": "python3 scripts/assemble_sage_wide_199.py",
+    "degree_59_to_103_native_screen": "p256_isogeny_native_bench --candidates EXTENDED_REGISTRY --candidate-id EIGHT_NEW_ENDPOINTS --seconds 0.5 --trials 9 --warmup-seconds 0.05 --output results/sage-wide-depth-one-199-20261006/native-screen.json",
+    "degree_137_to_199_native_screen": "python3 scripts/run_native_screen.py --binary NATIVE_BINARY --candidates NEW_HIGH_REGISTRY --block-size 6 --seconds 0.5 --rotations 1 --warmup-seconds 0.05 --output-dir results/sage-wide-depth-one-199-20261006/native-high-screen"
+  },
+  "artifacts": {
+    "results/sage-wide-depth-one-199-20261006/degrees/degree-59.json": "4bba904382c8cd88e8c1ff5ca723e74eeaa19e69897624e456c149b05b58d6b8",
+    "results/sage-wide-depth-one-199-20261006/degrees/degree-97.json": "93c5577ff0dee085b6ec8c2622c80d1b1381b377aad6138970140f0640a73d56",
+    "results/sage-wide-depth-one-199-20261006/degrees/degree-103.json": "4694e0e796a24fe0a10d78d2483ae29ac679dd33c3516535caad0764f6ff1922",
+    "results/sage-wide-depth-one-199-20261006/degrees/panel-status.json": "717d4629c2b520f04dc4fb5c6108c564b865fd5be240cb1ebbd598f44f426746",
+    "results/sage-wide-depth-one-199-20261006/degrees-8g/degree-101.json": "9f0e24e15c07ce7f21e92236184e4b26a33acd5150b0b92eda497f0ec1443ac3",
+    "results/sage-wide-depth-one-199-20261006/degrees-8g/panel-status.json": "5234ee909c8aac7badc264961072a7b5dc749c213ab34066f798ab1db8671af6",
+    "results/sage-wide-depth-one-199-20261006/modular-degrees/degree-103.json": "6a39850721b147f22a6ad604b628db50f9da7f4416897d6206efb383964d46d2",
+    "results/sage-wide-depth-one-199-20261006/modular-degrees/degree-137.json": "ec41d2f6683027ff145bcc81fcd895973ad3a997fd26a98b468da2254d786990",
+    "results/sage-wide-depth-one-199-20261006/modular-degrees/degree-149.json": "295abad2d279312c58bdf3a40d38ec3110f7c31ffe2828ea0f85980ad1f2d681",
+    "results/sage-wide-depth-one-199-20261006/modular-degrees/degree-151.json": "4ce85887738f9cbe64c9ba9ca8127a1d1329f43d2b413457ae372923588ffaf5",
+    "results/sage-wide-depth-one-199-20261006/modular-degrees/degree-157.json": "a87e496ad71f29e0fae9cdcf44e287eb9dd5db53009b879a4e1c94eb136cea4f",
+    "results/sage-wide-depth-one-199-20261006/modular-degrees/degree-163.json": "83107b5967e90e7550510464e170c6985c1aca3e8eb1eacbbb7d7140d24e1a6b",
+    "results/sage-wide-depth-one-199-20261006/modular-degrees/degree-179.json": "4497afb913c439d0c96104a41c125ab330646495a4c582a405e481128cc83c38",
+    "results/sage-wide-depth-one-199-20261006/modular-degrees/degree-181.json": "34a2d1a60da15dc6ce3171b72d4a1c97dea5498864ce2f65b446a249f1399a0f",
+    "results/sage-wide-depth-one-199-20261006/modular-degrees/degree-191.json": "f914d66d4d88ac692653ebe6def36a5006a6da1bb1505f7a79005bb3162b0deb",
+    "results/sage-wide-depth-one-199-20261006/modular-degrees/degree-197.json": "f6c258d3d5be6b8deddebf9dfa3164555cd76cb35b29674bd2706e9bfab106e8",
+    "results/sage-wide-depth-one-199-20261006/modular-degrees/degree-199.json": "e71944db1a4ca6aefc426b0b2d640f88182795dc7060a58a67b8f60ede4160f3",
+    "results/sage-wide-depth-one-199-20261006/modular-degrees/panel-status.json": "5bbc96adb429a57d98b5b240504d0246392907a13da4a0e0fc95669a94ffca27",
+    "results/sage-wide-depth-one-199-20261006/extended-candidates.json": "0e3fa3fafae95afdd8927fa6075c10aa2b5c138a2a0a597c58cdf73977bb2e92",
+    "results/sage-wide-depth-one-199-20261006/new-high-candidates.json": "05b04d4225b7ab6edfc5e0d7d5b2b909059c3d86e95c008ef0b100bf24e1ad8d",
+    "results/sage-wide-depth-one-199-20261006/retained-union.json": "4de01bdc188931e7108cd040604f2d2261cf1f229df2c3bdcb6fbcb034575efb",
+    "results/sage-wide-depth-one-199-20261006/resource-boundary.json": "c36ad1a9ef2e14a55a420c6ccf1bf679a043200d0ee792b6a5ca660ad0d7c5e3",
+    "results/sage-wide-depth-one-199-20261006/native-screen.json": "bac83083472cf133e7cce0b0b6df7ff005e33e0b49b1fdc458f7a52306bcbea9",
+    "results/sage-wide-depth-one-199-20261006/native-high-screen/block-01.json": "c06450b316504a2563ce1747f6c5a0aad271ddd473b8aa6061ddf29b1d426de1",
+    "results/sage-wide-depth-one-199-20261006/native-high-screen/block-02.json": "ebb35a462217778e32e01664c24836c30a4bf1c8004fb8ed5b1c83e672816789",
+    "results/sage-wide-depth-one-199-20261006/native-high-screen/block-03.json": "34dea4677c72fe141a11dd1294e4923b8798540013a2d4dd42c28058f763a8bc",
+    "results/sage-wide-depth-one-199-20261006/native-high-screen/block-04.json": "4053acd4cfd434974c9e56b160cdf737af0f35f1fc91d2f2975cdd1fef3ce720",
+    "results/sage-wide-depth-one-199-20261006/native-high-screen/screening-summary.json": "767bc711cc03ff04a887f8a6137125e3ee0a064dc8e681b43a0149ba9a2391f5",
+    "results/sage-wide-depth-one-199-20261006/summary.md": "6d4bad57cc10d178260e54f0e2ae8577df00e75165fdf4c1fce1c924f65a7ca2"
+  },
+  "search": {
+    "ells": [3, 5, 11, 13, 17, 23, 29, 37, 41, 43, 47, 59, 97, 101, 103, 137, 149, 151, 157, 163, 179, 181, 191, 197, 199],
+    "one_hop_curves_including_p256": 49,
+    "combined_unique_curves_including_p256": 98,
+    "new_beyond_degree_47": 28,
+    "explicit_paths_verified": true,
+    "exceptional_automorphisms_found": false,
+    "unresolved_ells": []
+  },
+  "algorithmic_recovery": {
+    "method": "instantiated modular polynomial, simple-root first partials, normalized-codomain tangent formula, and Sage BMSS kernel recovery",
+    "degree_103_candidate_ids_curves_and_paths_match_legacy_exactly": true,
+    "recovered_ells": [137, 149, 151, 157, 163, 179, 181, 191, 197, 199],
+    "recovered_neighbors": 20,
+    "panel_wall_seconds_including_degree_103_validation": 566.9464812278748,
+    "recovered_degree_wall_seconds": 555.6357781887054,
+    "maximum_rss_kib": 299908
+  },
+  "superseded_resource_boundary": {
+    "four_gib_panel_wall_seconds": 1633.0809540748596,
+    "eight_gib_retry_wall_seconds": 2532.6649701595306,
+    "measured_failed_method_wall_seconds_total": 4165.74592423439,
+    "failed_at_full_eight_gib": [137, 149, 151],
+    "unretained_preliminary_attempts": "monolithic 1 GiB and 4 GiB attempts failed from PARI stack exhaustion; raw logs and timings were not retained"
+  },
+  "screening": {
+    "degree_59_to_103_neighbors": 8,
+    "degree_137_to_199_neighbors": 20,
+    "seconds_per_trial": 0.5,
+    "high_degree_blocks": 4,
+    "complete_position_rotations_per_block": 1,
+    "all_linear_relations_verified": true,
+    "significant_speedups_at_95_percent": 0,
+    "largest_high_degree_point_estimate": {
+      "degree": 199,
+      "paired_relative_iteration_speed": 1.0311064586776133,
+      "paired_relative_iteration_speed_95_percent_ci": [0.97213616263509, 1.0936539242042103]
+    }
+  },
+  "combined_native_coverage": {
+    "explicit_curves_including_p256": 98,
+    "non_root_curves_with_matched_native_measurement": 97,
+    "reproducible_speedups": 0
+  },
+  "cost_accounting": {
+    "discovery_and_reusable_precomputation": "555.64 seconds for the ten newly recovered degrees, plus the separately retained 4165.75-second failed-method history",
+    "per_instance_mapping": "explicit formulas retained for P and Q; the new degree-59 through degree-199 paths were not timed",
+    "per_instance_ecdlp": "all 28 neighbors beyond degree 47 received matched native rho iteration measurements",
+    "amortization": "no new end-to-end estimate because per-key mapping for the added paths was not measured"
+  },
+  "limitations": [
+    "the complete one-hop enumeration stops at rational prime degree 199",
+    "the 98-curve explicit registry is not the entire P-256 isogeny class",
+    "the CPU was not isolated and frequency stability was not independently verified",
+    "the screens measure generic rho iteration cost rather than completing a full P-256 collision",
+    "per-key mapping cost was not measured for the added degree-59 through degree-199 paths"
+  ],
+  "decision": "No candidate advances. Every rational ramified or split one-hop endpoint through degree 199 has an explicit path and native screen, with zero reproducible iteration-rate improvements across all 97 retained neighbors."
+}
