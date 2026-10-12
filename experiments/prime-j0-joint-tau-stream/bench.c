@@ -46,10 +46,12 @@ int main(int argc, char **argv)
                        strcmp(argv[1], "paired2-free-gauge") &&
                        strcmp(argv[1], "paired2-free-gauge-scored") &&
                        strcmp(argv[1], "paired5-free-gauge-scored") &&
+                       strcmp(argv[1], "paired2-free-gauge-taupair") &&
+                       strcmp(argv[1], "paired2-free-gauge-taupair-steered") &&
                        strcmp(argv[1], "paired3-free-gauge-scored") &&
                        strcmp(argv[1], "paired4-free-gauge-scored") &&
                        strcmp(argv[1], "paired2-free-gauge-square-z"))) {
-        fputs("usage: ca_joint_tau_bench generic|split|joint|orbit|hot64|paired|paired5|paired2|paired2-gauge|paired2-trellis|paired2-free-gauge|paired2-free-gauge-scored|paired3-free-gauge-scored|paired4-free-gauge-scored|paired5-free-gauge-scored|paired2-free-gauge-square-z glv-j0-32|j0-56 pairs.bin\n", stderr);
+        fputs("usage: ca_joint_tau_bench generic|split|joint|orbit|hot64|paired|paired5|paired2|paired2-gauge|paired2-trellis|paired2-free-gauge|paired2-free-gauge-scored|paired3-free-gauge-scored|paired4-free-gauge-scored|paired5-free-gauge-scored|paired2-free-gauge-taupair|paired2-free-gauge-taupair-steered|paired2-free-gauge-square-z glv-j0-32|j0-56 pairs.bin\n", stderr);
         return 2;
     }
     int large = strcmp(argv[2], "j0-56") == 0;
@@ -96,8 +98,10 @@ int main(int argc, char **argv)
                strcmp(argv[1], "paired2-free-gauge") == 0 ? 10 :
                strcmp(argv[1], "paired2-free-gauge-scored") == 0 ? 11 :
                strcmp(argv[1], "paired5-free-gauge-scored") == 0 ? 12 :
-               strcmp(argv[1], "paired3-free-gauge-scored") == 0 ? 13 :
-               strcmp(argv[1], "paired4-free-gauge-scored") == 0 ? 14 : 15;
+               strcmp(argv[1], "paired2-free-gauge-taupair") == 0 ? 13 :
+               strcmp(argv[1], "paired2-free-gauge-taupair-steered") == 0 ? 14 :
+               strcmp(argv[1], "paired3-free-gauge-scored") == 0 ? 15 :
+               strcmp(argv[1], "paired4-free-gauge-scored") == 0 ? 16 : 17;
     ca_tau4_joint_precomp pre;
     ca_tau4_orbit_precomp orbit;
     ca_tau4_hot_precomp hot;
@@ -126,14 +130,20 @@ int main(int argc, char **argv)
             ca_group_op(&g, &outputs[i], &left, &right);
         } else {
             ca_tau4_joint_counts one = {0};
-            int ok = mode == 15
+            int ok = mode == 17
                 ? ca_ec_tau4_paired_two_free_gauge_square_z_mul_profile(
                     &g, &pre, &outputs[i], pairs[i].a, pairs[i].b, &one)
-                : mode == 14
+                : mode == 16
                 ? ca_ec_tau4_paired_four_free_gauge_scored_mul_profile(
                     &g, &pre, &outputs[i], pairs[i].a, pairs[i].b, &one)
-                : mode == 13
+                : mode == 15
                 ? ca_ec_tau4_paired_three_free_gauge_scored_mul_profile(
+                    &g, &pre, &outputs[i], pairs[i].a, pairs[i].b, &one)
+                : mode == 14
+                ? ca_ec_tau4_paired_two_free_gauge_tau_pair_steered_mul_profile(
+                    &g, &pre, &outputs[i], pairs[i].a, pairs[i].b, &one)
+                : mode == 13
+                ? ca_ec_tau4_paired_two_free_gauge_tau_pair_mul_profile(
                     &g, &pre, &outputs[i], pairs[i].a, pairs[i].b, &one)
                 : mode == 12
                 ? ca_ec_tau4_paired_five_free_gauge_scored_mul_profile(
@@ -172,6 +182,8 @@ int main(int argc, char **argv)
                 return 1;
             }
             total.tau_steps += one.tau_steps;
+            total.tau_pairs += one.tau_pairs;
+            total.tau_pair_cheap_z += one.tau_pair_cheap_z;
             total.doubles += one.doubles;
             total.mixed_adds += one.mixed_adds;
             total.full_adds += one.full_adds;
@@ -221,7 +233,8 @@ int main(int argc, char **argv)
            " prep_tau=%" PRIu64 " prep_doubles=%" PRIu64
            " prep_mixed_adds=%" PRIu64 " prep_rotations=%" PRIu64
            " prep_inversions=%" PRIu64
-           " tau_steps=%" PRIu64 " doubles=%" PRIu64
+           " tau_steps=%" PRIu64 " tau_pairs=%" PRIu64
+           " tau_pair_cheap_z=%" PRIu64 " doubles=%" PRIu64
            " mixed_adds=%" PRIu64 " full_adds=%" PRIu64
            " rotations=%" PRIu64 " output_inversions=%" PRIu64
            " overlaps=%" PRIu64 " fused_hits=%" PRIu64
@@ -238,7 +251,8 @@ int main(int argc, char **argv)
            mode == 4 ? sizeof(hot) : mode == 3 ? sizeof(orbit) : sizeof(pre),
            prep_ms, online_ms, verify_ms, prep.tau_steps, prep.doubles,
            prep.mixed_adds, prep.rotations, prep.inversions,
-           total.tau_steps, total.doubles, total.mixed_adds, total.full_adds,
+           total.tau_steps, total.tau_pairs, total.tau_pair_cheap_z,
+           total.doubles, total.mixed_adds, total.full_adds,
            total.rotations, total.inversions, total.overlaps, total.fused_hits,
            total.recode_attempts, total.pair_scores, total.selected_changed,
            total.lattice_points_checked, total.gauge_selected,

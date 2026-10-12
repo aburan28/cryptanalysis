@@ -19,7 +19,6 @@
 #include "curve_internal.h"
 #include "dlog_internal.h"
 #include "ec_tau_internal.h"
-#include "curve_internal.h"
 
 #include <math.h>
 
@@ -341,7 +340,13 @@ typedef struct glv_ctx {
     uint64_t abandon;
     const ca_tau4_joint_precomp *joint_pre;
     const ca_tau4_joint_plane_precomp *joint_plane;
+    int free_gauge;
+    int tau_pair_steered;
     ca_curve_startup_stats *startup;
+#ifdef CA_J0_TAU_RHO_WIDTH4
+    ca_tau4_precomp base_pre, target_pre;
+    int pre_ready;
+#endif
 } glv_ctx;
 
 static uint64_t glv_generic_mul_budget(uint64_t scalar)
@@ -355,6 +360,22 @@ static uint64_t glv_generic_mul_budget(uint64_t scalar)
     return ops;
 }
 
+/* Audit the exact affine startup points in table order and restart order.
+ * These fields are diagnostic fingerprints, not cryptographic hashes. */
+static void glv_record_startup_point(ca_curve_startup_stats *startup,
+                                      const ca_elem *point)
+{
+    if (!startup) return;
+    uint64_t index = ++startup->startup_point_count;
+    uint64_t left = ca_mix64(UINT64_C(0x55958df12b04e7c3) ^ index ^ point->w[0]);
+    left = ca_mix64(left ^ ca_mix64(point->w[1]) ^ point->w[2]);
+    uint64_t right = ca_mix64(UINT64_C(0xa34c6f1075e2d9b8) ^
+                              (index << 1) ^ point->w[1]);
+    right = ca_mix64(right ^ ca_mix64(point->w[0]) ^ point->w[2]);
+    startup->startup_point_digest_lo = ca_mix64(startup->startup_point_digest_lo ^ left);
+    startup->startup_point_digest_hi = ca_mix64(startup->startup_point_digest_hi ^ right);
+}
+
 static void glv_account_tau_startup(ca_curve_startup_stats *startup,
                                      const ca_tau4_joint_counts *one)
 {
@@ -365,6 +386,10 @@ static void glv_account_tau_startup(ca_curve_startup_stats *startup,
     startup->eval_recode_attempts += one->recode_attempts;
     startup->eval_pair_scores += one->pair_scores;
     startup->eval_lattice_points_checked += one->lattice_points_checked;
+    startup->eval_free_gauge_transitions += one->free_gauge_transitions;
+    startup->eval_tau_pairs += one->tau_pairs;
+    startup->eval_tau_pair_cheap_z += one->tau_pair_cheap_z;
+    startup->eval_gauge_table_lookups += one->gauge_table_lookups;
 }
 
 static int glv_startup_combination(const glv_ctx *c, ca_elem *out,
@@ -377,6 +402,12 @@ static int glv_startup_combination(const glv_ctx *c, ca_elem *out,
         int ok = c->joint_plane
             ? ca_ec_tau4_paired_two_plane_mul_profile(c->g, c->joint_plane,
                                                         out, a, b, &one)
+            : c->tau_pair_steered
+            ? ca_ec_tau4_paired_two_free_gauge_tau_pair_steered_mul_profile(
+                c->g, c->joint_pre, out, a, b, &one)
+            : c->free_gauge
+            ? ca_ec_tau4_paired_two_free_gauge_mul_profile(c->g, c->joint_pre,
+                                                            out, a, b, &one)
             : ca_ec_tau4_paired_two_mul_profile(c->g, c->joint_pre,
                                                  out, a, b, &one);
         if (!ok)
@@ -394,6 +425,7 @@ static int glv_startup_combination(const glv_ctx *c, ca_elem *out,
         ca_group_op(c->g, out, &t1, &t2);
         (*ops)++;
     }
+    glv_record_startup_point(c->startup, out);
     if (c->startup) {
         c->startup->evaluation_seconds += ca_now() - start;
         c->startup->budget_equivalent_group_ops += *ops - before;
@@ -402,13 +434,6 @@ static int glv_startup_combination(const glv_ctx *c, ca_elem *out,
     }
     return 1;
 }
-
-static int glv_restart(const glv_ctx *c, glv_walk *w, ca_rng *rng, uint64_t *ops)
-#ifdef CA_J0_TAU_RHO_WIDTH4
-    ca_tau4_precomp base_pre, target_pre;
-    int pre_ready;
-#endif
-} glv_ctx;
 
 #ifdef CA_J0_TAU_RHO_WIDTH4
 #    define GLV_BASE_PRE(c)   ((c)->pre_ready ? &(c)->base_pre : NULL)
@@ -451,18 +476,13 @@ static void glv_mul(const ca_group *g, ca_elem *r, const ca_elem *a, const ca_ta
     ca_group_mul(g, r, a, k, ops);
 }
 
-static void glv_restart(const glv_ctx *c, glv_walk *w, ca_rng *rng, uint64_t *ops)
+static int glv_restart(const glv_ctx *c, glv_walk *w, ca_rng *rng, uint64_t *ops)
 {
     const ca_group *g = c->g;
     uint64_t n = g->order;
     w->a = ca_rng_below(rng, n);
     w->b = ca_rng_below(rng, n);
     if (!glv_startup_combination(c, &w->Y, w->a, w->b, 1, ops)) return 0;
-    ca_elem t1, t2;
-    glv_mul(g, &t1, &c->base, GLV_BASE_PRE(c), w->a, ops);
-    glv_mul(g, &t2, &c->target, GLV_TARGET_PRE(c), w->b, ops);
-    ca_group_op(g, &w->Y, &t1, &t2);
-    (*ops)++;
     uint32_t k = glv_class_reduce(g, &w->Y, c->m);
     if (k) {
         w->a = ca_mulmod(w->a, c->lam_pow[k], n);
@@ -476,6 +496,7 @@ static void glv_restart(const glv_ctx *c, glv_walk *w, ca_rng *rng, uint64_t *op
 static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *target,
                                uint64_t seed, uint64_t *x, ca_stats *st,
                                int paired2, int batch_table, int plane_format,
+                               int free_gauge, int tau_pair_steered,
                                ca_curve_startup_stats *startup)
 {
     double t0 = ca_now();
@@ -504,6 +525,8 @@ static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_
     c.base = *base;
     c.target = *target;
     c.startup = startup;
+    c.free_gauge = free_gauge;
+    c.tau_pair_steered = tau_pair_steered;
     c.m = g->aut_order;
     c.lam_pow[0] = 1 % n;
     for (uint32_t k = 1; k < c.m; k++)
@@ -568,16 +591,6 @@ static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_
     int have_tab = 0;
     ca_status failure = CA_ERR_NOMEM;
     if (!c.M || !c.alpha || !c.beta || !scratch || !walks || !Yn || !B) goto nomem;
-#ifdef CA_J0_TAU_RHO_WIDTH4
-    if (g->endo_kind == 1) {
-        uint64_t base_ops = 0, target_ops = 0;
-        if (ca_ec_tau4_prepare(g, base, &c.base_pre, &base_ops) &&
-            ca_ec_tau4_prepare(g, target, &c.target_pre, &target_ops)) {
-            c.pre_ready = 1;
-            ops += base_ops + target_ops;
-        }
-    }
-#endif
     for (uint32_t i = 0; i < c.r; i++) {
         c.alpha[i] = ca_rng_below(&rng, n);
         c.beta[i] = ca_rng_below(&rng, n);
@@ -593,12 +606,20 @@ static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_
         int ok = plane_format
             ? ca_ec_tau4_paired_two_plane_batch_profile(g, c.joint_plane, c.M,
                                                          c.alpha, c.beta, c.r, &batch)
+            : tau_pair_steered
+            ? ca_ec_tau4_paired_two_free_gauge_tau_pair_steered_batch_profile(
+                g, c.joint_pre, c.M, c.alpha, c.beta, c.r, &batch)
+            : free_gauge
+            ? ca_ec_tau4_paired_two_free_gauge_batch_profile(g, c.joint_pre, c.M,
+                                                              c.alpha, c.beta, c.r, &batch)
             : ca_ec_tau4_paired_two_batch_profile(g, c.joint_pre, c.M,
                                                    c.alpha, c.beta, c.r, &batch);
         if (!ok) {
             failure = CA_ERR_INTERNAL;
             goto nomem;
         }
+        for (uint32_t i = 0; i < c.r; i++)
+            glv_record_startup_point(startup, &c.M[i]);
         for (uint32_t i = 0; i < c.r; i++)
             ops += glv_generic_mul_budget(c.alpha[i]) +
                    glv_generic_mul_budget(c.beta[i]) + 1;
@@ -610,11 +631,6 @@ static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_
             startup->budget_equivalent_group_ops += ops;
             startup->evaluation_seconds += ca_now() - batch_start;
         }
-        ca_elem t1, t2;
-        glv_mul(g, &t1, base, GLV_BASE_PRE(&c), c.alpha[i], &ops);
-        glv_mul(g, &t2, target, GLV_TARGET_PRE(&c), c.beta[i], &ops);
-        ca_group_op(g, &c.M[i], &t1, &t2);
-        ops++;
     }
     double exp_dps = 1.25 * (double)sqrt_nm / (double)(1ULL << dp) + 1024;
     if (ca_htab_init(&tab, (size_t)(exp_dps < 1e8 ? exp_dps : 1e8)) != CA_OK) goto nomem;
@@ -713,10 +729,6 @@ nomem:
     return failure;
 }
 
-static ca_status curve_solve_mode(const ca_group *g, const ca_elem *base,
-                                  const ca_elem *target, uint64_t seed, uint64_t *x,
-                                  ca_curve_startup_mode mode, ca_curve_startup_stats *startup,
-                                  ca_curve_info *info, ca_stats *st)
 #ifdef CA_J0_RHO_COVARIANT_WALK
 typedef struct glv_cov_walk {
     ca_elem Y;
@@ -768,7 +780,8 @@ static ca_status glv_covariant_rho_solve(const ca_group *g, const ca_elem *base,
         *x = 0;
         return CA_OK;
     }
-    if (n < 64) return glv_rho_solve(g, base, target, seed, x, st);
+    if (n < 64)
+        return glv_rho_solve(g, base, target, seed, x, st, 0, 0, 0, 0, 0, NULL);
     glv_ctx c;
     memset(&c, 0, sizeof(c));
     c.g = g;
@@ -917,13 +930,17 @@ nomem:
 }
 #endif
 
-ca_status ca_curve_solve(const ca_group *g, const ca_elem *base, const ca_elem *target,
-                         uint64_t seed, uint64_t *x, ca_curve_info *info, ca_stats *st)
+static ca_status curve_solve_mode(const ca_group *g, const ca_elem *base,
+                                  const ca_elem *target, uint64_t seed, uint64_t *x,
+                                  ca_curve_startup_mode mode, ca_curve_startup_stats *startup,
+                                  ca_curve_info *info, ca_stats *st)
 {
     if (startup) memset(startup, 0, sizeof(*startup));
     if (mode != CA_CURVE_STARTUP_GENERIC && mode != CA_CURVE_STARTUP_TAU_PAIRED2 &&
         mode != CA_CURVE_STARTUP_TAU_PAIRED2_BATCH &&
-        mode != CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH)
+        mode != CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH &&
+        mode != CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_BATCH &&
+        mode != CA_CURVE_STARTUP_TAU_PAIRED2_TAUPAIR_STEER_BATCH)
         return CA_ERR_INVALID;
     if (mode != CA_CURVE_STARTUP_GENERIC &&
         (g->kind != CA_GROUP_EC || g->endo_kind != CA_CURVE_ENDO_J0))
@@ -941,14 +958,14 @@ ca_status ca_curve_solve(const ca_group *g, const ca_elem *base, const ca_elem *
         return glv_rho_solve(g, base, target, seed, x, st,
                              mode != CA_CURVE_STARTUP_GENERIC,
                              mode == CA_CURVE_STARTUP_TAU_PAIRED2_BATCH ||
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH ||
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_BATCH ||
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_TAUPAIR_STEER_BATCH,
                              mode == CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH,
-                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH, startup);
-    if (g->kind == CA_GROUP_EC && g->endo_kind != 0) {
-#ifdef CA_J0_RHO_COVARIANT_WALK
-        if (g->endo_kind == 1) return glv_covariant_rho_solve(g, base, target, seed, x, st);
-#endif
-        return glv_rho_solve(g, base, target, seed, x, st);
-    }
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_BATCH ||
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_TAUPAIR_STEER_BATCH,
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_TAUPAIR_STEER_BATCH,
+                             startup);
     ca_rho_params rp;
     ca_rho_params_default(&rp);
     rp.seed = seed;
