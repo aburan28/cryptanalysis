@@ -3322,6 +3322,50 @@ def main():
         "q1493_result_sha256": sha(q1493_path),
         "q1494_result_sha256": sha(q1494_path),
     }
+    q1495_dir = HERE / "q20261012_exact_rationality_filter"
+    q1495_path = q1495_dir / "result.json"
+    q1495_protocol_path = q1495_dir / "protocol.json"
+    q1495 = json.loads(q1495_path.read_text())
+    q1495_protocol = json.loads(q1495_protocol_path.read_text())
+    assert q1495["proposal_id"] == q1495_protocol["proposal_id"] == "Q1495"
+    assert q1495["candidate_id"] is None and q1495["run_id"] is None
+    assert q1495_protocol["instances"][0]["curve_id"] == (
+        "EC1N53Ckb1hf77aab617904")
+    assert q1495_protocol["instances"][1]["curve_id"] == q1494["curve_id"]
+    assert q1495["n53"]["x_masks"] == 24_857
+    assert q1495["n53"]["rational_x_masks"] == 12_031
+    assert q1495["n83"]["x_orbits"] == 373_101
+    assert q1495["n83"]["rational_x_orbits"] == 186_612
+    assert q1495["n83_pair_stage_cost"]["pairs"] == 40
+    assert q1495["n83_pair_stage_cost"]["usable_pairs"] == 8
+    assert q1495["n83_pair_stage_cost"][
+        "short_filter_field_api_entries"] == 427
+    assert q1495["n83_pair_stage_cost"][
+        "full_filter_field_api_entries"] == 5_948
+    assert q1495["complete_n83_decomposition_work_log2"] is None
+    assert q1495["complete_n131_solve_work_log2"] is None
+    ledger["q1495_exact_rationality_filter_stage"] = {
+        "proposal_id": "Q1495",
+        "candidate_id": None,
+        "point_decomposition_stage_code": "PDP4sat",
+        "instances": q1495_protocol["instances"],
+        "n53_all_nonzero_weight_at_most_3_masks_checked": q1495[
+            "n53"]["x_masks"],
+        "n53_rational_x_masks": q1495["n53"]["rational_x_masks"],
+        "n83_weight_at_most_5_x_orbits_checked": q1495["n83"]["x_orbits"],
+        "n83_rational_x_orbits": q1495["n83"]["rational_x_orbits"],
+        "n83_paired_first_pairs": 40,
+        "n83_paired_usable_first_pairs": 8,
+        "n83_short_filter_field_api_entries": 427,
+        "n83_full_filter_field_api_entries": 5_948,
+        "n83_full_over_short_field_api_ratio": q1495[
+            "n83_pair_stage_cost"]["full_over_short_field_api_ratio"],
+        "first_pair_cnf_xor_calls_changed": False,
+        "complete_n83_decomposition_work_log2": None,
+        "complete_n131_solve_work_log2": None,
+        "protocol_sha256": sha(q1495_protocol_path),
+        "result_sha256": sha(q1495_path),
+    }
     output = HERE / "work_ledger.json"
     output.write_text(json.dumps(ledger, indent=2) + "\n")
     print(json.dumps({"n53_pair_samples_log2": math.log2(samples53),
