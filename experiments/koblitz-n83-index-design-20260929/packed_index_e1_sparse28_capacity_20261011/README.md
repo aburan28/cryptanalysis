@@ -7,7 +7,7 @@ sparse26** and **35.591 s for sparse28**; sparse28 was lower in both adjacent
 pairs. The root table grew by **37,748,736 bytes (36 MiB)**. All four runs
 completed under the 5,500 MiB RSS cap with the same exact behavior and
 `state_cap_no_relation` status. This is an exploratory CPU result pending a
-physical-host isolation receipt.
+qualifying Tier 1 cloud-instance or Tier 0 host-isolation receipt.
 
 This is proposal `Q2026101132`, curve `EC1N83Ckb1h876c2921cb64`, workload
 `63dd0929cf33`, and source SHA-256
@@ -84,8 +84,11 @@ also hashes an allocation receipt whose `provider` and `instance_id` match
 the supplied arguments. A dry-run manifest passed the Tier 1 runner's input
 contract; this establishes the replay wiring, not a timing result.
 
-Run on a separate idle Linux instance from a checkout containing the merged
-Tier 1 runner. Save a JSON allocation receipt containing `provider` and
+The [GitHub-hosted Linux workflow](../../../.github/workflows/n83-e1-sparse28-tier1.yml)
+now runs this frozen comparison on a fresh Tier 1 instance and preserves its
+preflight and raw pairs. For a manual replay, run on a separate idle Linux
+instance from a checkout containing the merged Tier 1 runner. Save a JSON
+allocation receipt containing `provider` and
 `instance_id`, plus the provider's image, CPU and memory allocation, and
 creation time when available. Keep API credentials out of the receipt.
 After building the pinned binary as above, select one CPU shown by
