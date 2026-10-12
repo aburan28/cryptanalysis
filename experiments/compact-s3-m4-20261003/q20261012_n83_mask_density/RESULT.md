@@ -40,6 +40,14 @@ and therefore does not supply an independent root-rate replicate. A fresh
 mask-seed family is needed before attributing the 166-flip ranking to the
 density rather than seed variation.
 
+The subsequent [exact base audit](../q20261012_n83_pair_base_audit/RESULT.md)
+found that only eight of these 40 first pairs have both leaves in the usable
+factor base. The 249-flip group has three usable pairs, while 166 flips has
+two. For a usable-pair objective, the measured first-pair costs are 259,533
+and 379,962 combined calls per usable pair, respectively. The initial
+two-root ranking is therefore superseded for choosing a decomposition
+search setting.
+
 ## Method and records
 
 The curve is `EC1N83Ckb1h876c2921cb64`. The normal-basis weight-at-most-five

@@ -3273,6 +3273,55 @@ def main():
         "analysis_sha256": sha(q1491_path),
         "root_work_sha256": sha(q1491_root_path),
     }
+    q1492_path = HERE / "q20261012_n83_target_continuation" / "result.json"
+    q1493_path = HERE / "q20261012_n83_paired_target_roots" / "result.json"
+    q1494_path = HERE / "q20261012_n83_pair_base_audit" / "result.json"
+    q1492, q1493, q1494 = (json.loads(path.read_text()) for path in
+                            (q1492_path, q1493_path, q1494_path))
+    for proposal, stage in (("Q1492", q1492), ("Q1493", q1493),
+                            ("Q1494", q1494)):
+        assert stage["proposal_id"] == proposal
+        assert stage["candidate_id"] is None and stage["run_id"] is None
+        assert stage["curve_id"] == q1491["curve_id"]
+        assert stage["factor_base_actual_B"] == q1491[
+            "factor_base_actual_B"]
+        assert stage["factor_base_folded_columns_K"] == q1491[
+            "factor_base_folded_columns_K"]
+        assert stage["complete_n83_decomposition_work_log2"] is None
+        assert stage["complete_n131_solve_work_log2"] is None
+    assert len(q1492["rows"]) == 48
+    assert q1492["summary"]["selected"]["pairs_with_target_v_roots"] == 8
+    assert len(q1493["rows"]) == 80
+    assert len(q1494["rows"]) == 40
+    assert q1494["all_usable_match_selected_target_v_root"]
+    assert q1494["all_usable_match_holdout_target_v_root"]
+    assert sum(row["both_usable"] for row in q1494["rows"]) == 8
+    assert q1494["summary"]["249"]["both_exact_base_usable"] == 3
+    ledger["q1492_q1493_q1494_n83_usable_pair_gate"] = {
+        "proposal_ids": ["Q1492", "Q1493", "Q1494"],
+        "candidate_id": None,
+        "curve_id": q1494["curve_id"],
+        "factor_base_actual_B": q1494["factor_base_actual_B"],
+        "factor_base_folded_columns_K": q1494[
+            "factor_base_folded_columns_K"],
+        "point_decomposition_stage_code": "PDP4sat",
+        "first_pairs_audited": 40,
+        "both_exact_base_usable": 8,
+        "same_usable_pairs_continue_on_both_ordinary_targets": True,
+        "best_observed_mask_flip_count_by_usable_pair": 249,
+        "best_observed_first_pair_cnf_xor_calls_per_usable_pair": q1494[
+            "summary"]["249"][
+                "first_pair_cnf_xor_calls_per_usable_pair"],
+        "best_observed_base_filter_field_api_entries": q1494[
+            "summary"]["249"]["base_filter_field_api_entries"],
+        "target_conditional_relation_yield": None,
+        "novel_rank_per_query": None,
+        "complete_n83_decomposition_work_log2": None,
+        "complete_n131_solve_work_log2": None,
+        "q1492_result_sha256": sha(q1492_path),
+        "q1493_result_sha256": sha(q1493_path),
+        "q1494_result_sha256": sha(q1494_path),
+    }
     output = HERE / "work_ledger.json"
     output.write_text(json.dumps(ledger, indent=2) + "\n")
     print(json.dumps({"n53_pair_samples_log2": math.log2(samples53),
