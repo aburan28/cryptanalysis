@@ -1,0 +1,107 @@
+--- a/src/bin/eisenstein_fixed/unit_orbit_windows.rs
++++ b/src/bin/eisenstein_fixed/unit_orbit_windows.rs
+@@ -174,6 +174,9 @@
+     }
+ 
+     fn div_rem_radix640_fast(self) -> (Self, i32, usize) {
++        FIELD_OPS.with(|counter| {
++            let mut c = counter.get(); c.div5 += 2; counter.set(c);
++        });
+         assert!(self.limbs[2] <= 1);
+         let low_seven = self.limbs[0] & 127;
+         let y_low = (self.limbs[0] >> 7) | (self.limbs[1] << 57);
+@@ -929,22 +932,36 @@
+ }
+ 
+ fn u256_add(a: super::U256, b: super::U256) -> super::U256 {
++    FIELD_OPS.with(|counter| { let mut c = counter.get(); c.add += 1; counter.set(c); });
+     a.add_mod(&b, &super::HYBRID_FIELD.0.n)
+ }
+ 
+ fn u256_sub(a: super::U256, b: super::U256) -> super::U256 {
++    FIELD_OPS.with(|counter| { let mut c = counter.get(); c.sub += 1; counter.set(c); });
+     a.sub_mod(&b, &super::HYBRID_FIELD.0.n)
+ }
+ 
+ fn u256_mul(a: super::U256, b: super::U256) -> super::U256 {
++    FIELD_OPS.with(|counter| { let mut c = counter.get(); c.mul += 1; counter.set(c); });
+     super::HYBRID_FIELD.0.mont_mul(&a, &b)
+ }
++
++#[derive(Clone, Copy, Default)]
++struct FieldOpCounts { add: u64, sub: u64, mul: u64, square: u64, solinas: u64, div5: u64 }
++thread_local! {
++    static FIELD_OPS: std::cell::Cell<FieldOpCounts> =
++        const { std::cell::Cell::new(FieldOpCounts { add: 0, sub: 0, mul: 0,
++                                                   square: 0, solinas: 0, div5: 0 }) };
++}
++fn reset_field_ops() { FIELD_OPS.with(|counter| counter.set(FieldOpCounts::default())); }
++fn field_ops() -> FieldOpCounts { FIELD_OPS.with(|counter| counter.get()) }
+ 
+ // For p=2^256-c, c=2^32+977, fold the high half of a 512-bit product
+ // back into the low half. Inputs and result are canonical field residues.
+ // The first fold leaves at most one high bit; after any second overflow the
+ // low half is below c, so the third fixed fold cannot overflow.
+ fn u256_mul_const_solinas(value: super::U256, constant: super::U256) -> super::U256 {
++    FIELD_OPS.with(|counter| { let mut c = counter.get(); c.solinas += 1; counter.set(c); });
+     const C: u128 = (1u128 << 32) + 977;
+     let (low, high) = super::U256::mul_wide(&value, &constant);
+     let mut limbs = [0u64; 5];
+@@ -975,6 +992,7 @@
+ }
+ 
+ fn u256_square(a: super::U256) -> super::U256 {
++    FIELD_OPS.with(|counter| { let mut c = counter.get(); c.square += 1; counter.set(c); });
+     super::HYBRID_FIELD.0.mont_sqr(&a)
+ }
+ 
+@@ -5689,6 +5707,49 @@
+         println!("mixed_radix640_cases={} retained_bytes={} additions={} gauge_products={} control_additions={} control_gauge_products={}",
+                  scalars.len(), warm_format(58), additions, gauge_products,
+                  reference_additions, reference_gauge_products);
++    }
++
++    #[test]
++    fn mixed_radix640_source_operation_diagnostic() {
++        let panel: serde_json::Value = serde_json::from_str(include_str!(
++            "../../../../prime-j0-mixed-radix640-20261010/fresh-inputs.json"
++        )).unwrap();
++        let scalars = panel["scalars_hex"].as_array().unwrap();
++        assert_eq!(scalars.len(), 4096);
++        let functions: [fn([u64; 4]) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize); 2] = [
++            multiply_u256_tau_mixed_radix640_gauge_xyzz_tau,
++            multiply_u256_tau_frontier15_budget_affine_solinas_gauge_xyzz_tau,
++        ];
++        let mut totals = [FieldOpCounts::default(); 2];
++        let mut additions = [0u64; 2];
++        for (index, text) in scalars.iter().enumerate() {
++            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
++            let words = super::super::scalar_words_256(&scalar).unwrap();
++            let mut expected = None;
++            for (mode, function) in functions.iter().enumerate() {
++                reset_field_ops();
++                let result = function(words);
++                let count = field_ops();
++                if let Some(ref point) = expected { assert_eq!(&result.0, point, "point {index}"); }
++                else { expected = Some(result.0); }
++                additions[mode] += result.2 as u64;
++                totals[mode].add += count.add;
++                totals[mode].sub += count.sub;
++                totals[mode].mul += count.mul;
++                totals[mode].square += count.square;
++                totals[mode].solinas += count.solinas;
++                totals[mode].div5 += count.div5;
++            }
++        }
++        assert_eq!(additions, [53_248, 57_344]);
++        assert_eq!(totals[0].div5, 131_072);
++        assert_eq!(totals[1].div5, 0);
++        for (mode, name) in ["mixed_radix640", "frontier15_gauge"].iter().enumerate() {
++            let c = totals[mode];
++            let products = 36 * (c.mul + c.square) + 23 * c.solinas;
++            println!("mode={name} cases=4096 mixed_additions={} add={} sub={} generic_mul={} square={} solinas={} div5={} source_limb_products={}",
++                     additions[mode], c.add, c.sub, c.mul, c.square, c.solinas, c.div5, products);
++        }
+     }
+ 
+     #[test]
