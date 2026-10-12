@@ -1,0 +1,404 @@
+--- a/src/bin/eisenstein_fixed.rs
++++ b/src/bin/eisenstein_fixed.rs
+@@ -3577,10 +3577,10 @@
+     let preparation_start = Instant::now();
+     LazyLock::force(&SCALAR_LATTICE);
+     LazyLock::force(&DECODE_CONSTANTS);
+-    if (123..=158).contains(&unit_orbit_format) {
++    if (123..=159).contains(&unit_orbit_format) {
+         LazyLock::force(&HYBRID_FIELD);
+     }
+-    if (124..=158).contains(&unit_orbit_format) {
++    if (124..=159).contains(&unit_orbit_format) {
+         LazyLock::force(&BINARY_INVERSE_R3);
+     }
+     let retained_bytes = if unit_orbit_format != 0 {
+@@ -3626,11 +3626,15 @@
+         LazyLock::force(&GLV_COMB10_POINTS);
+     }
+     let scalar = scalar_from_hex(scalar_hex);
+-    let scalar_words = (125..=158).contains(&unit_orbit_format)
++    let scalar_words = (125..=159).contains(&unit_orbit_format)
+         .then(|| scalar_words_256(&scalar)).flatten();
+     let preparation_ms = preparation_start.elapsed().as_secs_f64() * 1000.0;
+     let start = Instant::now();
+-    let actual = if unit_orbit_format == 158 {
++    let actual = if unit_orbit_format == 159 {
++        unit_orbit_windows::multiply_u256_tau_asymmetric_radix944_gauge_xyzz_tau(
++            scalar_words.expect("asymmetric radix 944 requires unsigned 256-bit scalar")
++        ).0
++    } else if unit_orbit_format == 158 {
+         unit_orbit_windows::multiply_u256_tau_mixed_radix640_gauge_xyzz_tau(
+             scalar_words.expect("mixed-radix 640 requires unsigned 256-bit scalar")
+         ).0
+@@ -3814,7 +3818,9 @@
+     };
+     assert_eq!(actual, expected, "benchmark output mismatch");
+     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+-    let mode = if unit_orbit_format == 158 {
++    let mode = if unit_orbit_format == 159 {
++        "unit_orbit_u256_tau_asymmetric_radix944_gauge_xyzz_tau_fixed"
++    } else if unit_orbit_format == 158 {
+         "unit_orbit_u256_tau_mixed_radix640_gauge_xyzz_tau_fixed"
+     } else if unit_orbit_format == 157 {
+         "unit_orbit_u256_tau_frontier15_budget_affine_solinas_gauge_xyzz_tau_fixed"
+@@ -4014,6 +4020,8 @@
+             || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-formula")
+             || args[0].starts_with("--check-scalar-unit-orbit-u256-sector")
+             || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-sector")
++            || args[0].starts_with("--check-scalar-unit-orbit-u256-tau-asymmetric-radix944-gauge-xyzz-tau")
++            || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-tau-asymmetric-radix944-gauge-xyzz-tau")
+             || args[0].starts_with("--check-scalar-unit-orbit-u256-tau-mixed-radix640-gauge-xyzz-tau")
+             || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-tau-mixed-radix640-gauge-xyzz-tau")
+             || args[0].starts_with("--check-scalar-unit-orbit-u256-tau-frontier15-budget-affine-solinas-gauge-xyzz-tau")
+@@ -4066,7 +4074,9 @@
+             || args[0].starts_with("--benchmark-scalar-unit-orbit-radix943"))
+         && args[0].ends_with("-fixed-fixture")
+     {
+-        let format = if args[0].contains("unit-orbit-u256-tau-mixed-radix640-gauge-xyzz-tau-fixed-fixture") {
++        let format = if args[0].contains("unit-orbit-u256-tau-asymmetric-radix944-gauge-xyzz-tau-fixed-fixture") {
++            159
++        } else if args[0].contains("unit-orbit-u256-tau-mixed-radix640-gauge-xyzz-tau-fixed-fixture") {
+             158
+         } else if args[0].contains("unit-orbit-u256-tau-frontier15-budget-affine-solinas-gauge-xyzz-tau-fixed-fixture") {
+             157
+@@ -4307,6 +4317,8 @@
+             || args[0] == "--check-scalar-unit-orbit-u256-sector15-fixed-case"
+             || args[0] == "--benchmark-scalar-unit-orbit-u256-sector16-fixed-case"
+             || args[0] == "--check-scalar-unit-orbit-u256-sector16-fixed-case"
++            || args[0] == "--benchmark-scalar-unit-orbit-u256-tau-asymmetric-radix944-gauge-xyzz-tau-fixed-case"
++            || args[0] == "--check-scalar-unit-orbit-u256-tau-asymmetric-radix944-gauge-xyzz-tau-fixed-case"
+             || args[0] == "--benchmark-scalar-unit-orbit-u256-tau-mixed-radix640-gauge-xyzz-tau-fixed-case"
+             || args[0] == "--check-scalar-unit-orbit-u256-tau-mixed-radix640-gauge-xyzz-tau-fixed-case"
+             || args[0] == "--benchmark-scalar-unit-orbit-u256-tau-frontier15-budget-affine-solinas-gauge-xyzz-tau-fixed-case"
+@@ -4398,7 +4410,9 @@
+             args[0].contains("w6-comb13-hex9-radius2"),
+             args[0].contains("w6-comb13-hex9-graph33"),
+             args[0].contains("w6-comb13-hex9-graphaware33"),
+-            if args[0].contains("unit-orbit-u256-tau-mixed-radix640-gauge-xyzz-tau") {
++            if args[0].contains("unit-orbit-u256-tau-asymmetric-radix944-gauge-xyzz-tau") {
++                159
++            } else if args[0].contains("unit-orbit-u256-tau-mixed-radix640-gauge-xyzz-tau") {
+                 158
+             } else if args[0].contains("unit-orbit-u256-tau-frontier15-budget-affine-solinas-gauge-xyzz-tau") {
+                 157
+--- a/src/bin/eisenstein_fixed/unit_orbit_windows.rs
++++ b/src/bin/eisenstein_fixed/unit_orbit_windows.rs
+@@ -20,6 +20,12 @@
+ );
+ const RADIX640_FINAL_ATLAS: &[u8] = include_bytes!(
+     "../../../../prime-j0-mixed-radix640-20261010/atlas-r640-d391.bin"
++);
++const RADIX944_FULL_ATLAS: &[u8] = include_bytes!(
++    "../../../../prime-j0-asymmetric-r944-20261010/atlas-r944-d944.bin"
++);
++const RADIX944_FINAL_ATLAS: &[u8] = include_bytes!(
++    "../../../../prime-j0-asymmetric-r944-20261010/atlas-r944-d550.bin"
+ );
+ const SOLINAS_UNIT_CONSTANT_BYTES: usize = 3 * size_of::<super::U256>();
+ const FRONTIER17_WIDTHS: [u8; 17] = [7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7];
+@@ -201,6 +207,34 @@
+          signed_remainder.rem_euclid(640) as usize)
+     }
+ 
++    fn div_rem_radix944_fast(self) -> (Self, i32, usize) {
++        assert!(self.limbs[2] <= 1);
++        let low_four = self.limbs[0] & 15;
++        let y_low = (self.limbs[0] >> 4) | (self.limbs[1] << 60);
++        let y_high = (self.limbs[1] >> 4) | (self.limbs[2] << 60);
++        // 2^64 = 59*K+5, and 944=16*59. Both word divisions are constant.
++        const K: u64 = u64::MAX / 59;
++        let high_quotient = y_high / 59;
++        let high_remainder = y_high - 59 * high_quotient;
++        let low_quotient = y_low / 59;
++        let low_remainder = y_low - 59 * low_quotient;
++        let folded = 5 * high_remainder + low_remainder;
++        let carry = folded / 59;
++        let remainder = low_four + 16 * (folded - 59 * carry);
++        let low_word = high_remainder * K + low_quotient + carry;
++        let quotient = Self {
++            negative: self.negative && (low_word != 0 || high_quotient != 0),
++            limbs: [low_word, high_quotient, 0],
++        };
++        let signed_remainder = if self.negative {
++            -(remainder as i32)
++        } else {
++            remainder as i32
++        };
++        (quotient, signed_remainder,
++         signed_remainder.rem_euclid(944) as usize)
++    }
++
+     fn div_rem_radix13(self) -> (Self, i32, usize) {
+         self.div_rem_small_radix(RADIX13 as u64)
+     }
+@@ -1550,6 +1584,57 @@
+     }
+ }
+ 
++struct Radix944Atlas {
++    codes: &'static [u8],
++    seeds: &'static [u8],
++}
++
++impl Radix944Atlas {
++    fn from_bytes(bytes: &'static [u8], bound: i64, expected_seeds: usize) -> Self {
++        assert_eq!(&bytes[..4], b"T944");
++        let seed_count = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
++        assert_eq!(seed_count, expected_seeds);
++        let code_bytes = 4 * 944 * 944;
++        assert_eq!(bytes.len(), 8 + code_bytes + 4 * seed_count);
++        let atlas = Self { codes: &bytes[8..8 + code_bytes],
++                           seeds: &bytes[8 + code_bytes..] };
++        assert_eq!(&atlas.seeds[..4], &[0, 0, 0, 0]);
++        for ra in 0..944 {
++            for rb in 0..944 {
++                let (digit, _, _, _) = atlas.digit_residue(ra, rb);
++                assert!(norm(digit) <= bound * bound);
++            }
++        }
++        atlas
++    }
++
++    fn seed_digits(&self) -> Vec<(i16, i16)> {
++        self.seeds.chunks_exact(4).map(|chunk| {
++            (i16::from_le_bytes(chunk[..2].try_into().unwrap()),
++             i16::from_le_bytes(chunk[2..].try_into().unwrap()))
++        }).collect()
++    }
++
++    fn digit_residue(&self, ra: usize, rb: usize) -> ((i32, i32), usize, usize, usize) {
++        assert!(ra < 944 && rb < 944);
++        let offset = 4 * (ra * 944 + rb);
++        let code = u32::from_le_bytes(self.codes[offset..offset + 4].try_into().unwrap()) as usize;
++        let (seed_id, exponent, unit_code) = (code >> 4, (code >> 3) & 1, code & 7);
++        assert!(seed_id < self.seeds.len() / 4 && unit_code < 6);
++        let offset = 4 * seed_id;
++        let seed = (
++            i16::from_le_bytes(self.seeds[offset..offset + 2].try_into().unwrap()) as i32,
++            i16::from_le_bytes(self.seeds[offset + 2..offset + 4].try_into().unwrap()) as i32,
++        );
++        let digit = if exponent == 0 { seed }
++                    else { (-3 * seed.1, seed.0 + 3 * seed.1) };
++        let digit = unit_images(digit)[unit_code];
++        assert_eq!((digit.0.rem_euclid(944) as usize,
++                    digit.1.rem_euclid(944) as usize), (ra, rb));
++        (digit, seed_id, exponent, unit_code)
++    }
++}
++
+ struct Frontier17Tables {
+     full7: FrontierAtlas,
+     final7: FrontierAtlas,
+@@ -2213,6 +2298,41 @@
+ 
+ static MIXED_RADIX640_TABLES: LazyLock<MixedRadix640Tables> =
+     LazyLock::new(MixedRadix640Tables::new);
++
++struct AsymmetricRadix944Tables {
++    full: Radix944Atlas,
++    final_row: Radix944Atlas,
++    windows: Vec<Box<[U256Affine]>>,
++    retained_bytes: usize,
++}
++
++impl AsymmetricRadix944Tables {
++    fn new() -> Self {
++        let full = Radix944Atlas::from_bytes(RADIX944_FULL_ATLAS, 944, 74_263);
++        let final_row = Radix944Atlas::from_bytes(RADIX944_FINAL_ATLAS, 550, 102_797);
++        let mut windows = Vec::with_capacity(13);
++        let mut base = Jacobian::generator();
++        for index in 0..13 {
++            let seeds = if index == 12 { final_row.seed_digits() }
++                        else { full.seed_digits() };
++            windows.push(build_u256_window(&seeds, base));
++            if index < 12 {
++                base = affine_multiples(base, 944).pop().unwrap();
++            }
++        }
++        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
++        assert_eq!(entries, 993_953);
++        assert_eq!(size_of::<U256Affine>(), 64);
++        let retained_bytes = entries * size_of::<U256Affine>()
++            + RADIX944_FULL_ATLAS.len() + RADIX944_FINAL_ATLAS.len()
++            + size_of::<Self>() + windows.capacity() * size_of::<Box<[U256Affine]>>();
++        assert!(retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES < 72_000_000);
++        Self { full, final_row, windows, retained_bytes }
++    }
++}
++
++static ASYMMETRIC_RADIX944_TABLES: LazyLock<AsymmetricRadix944Tables> =
++    LazyLock::new(AsymmetricRadix944Tables::new);
+ 
+ struct TauBucketAtlas {
+     codes: &'static [u8],
+@@ -2461,6 +2581,12 @@
+ }
+ 
+ pub(super) fn warm_format(format: u8) -> usize {
++    if format == 59 {
++        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
++        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
++        std::sync::LazyLock::force(&U256_BETA_CANONICAL);
++        return ASYMMETRIC_RADIX944_TABLES.retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES;
++    }
+     if format == 58 {
+         std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+         std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
+@@ -3781,6 +3907,72 @@
+                       else if index < 6 { 512 * 512 } else { 640 * 640 });
+     }
+     assert!(a.is_zero() && b.is_zero(), "mixed-radix 640 recoding did not terminate");
++
++    let mut buckets = [U256XYZZ::identity(); 2];
++    let mut gauge_products = 0usize;
++    for exponent in 0..2 {
++        let mut gauge = None;
++        for power in [1usize, 2, 0] {
++            if !choices.iter().any(|&(seed, bucket, unit)|
++                                   seed != 0 && bucket == exponent && unit / 2 == power) {
++                continue;
++            }
++            if let Some(previous) = gauge {
++                let delta = (previous + 3 - power) % 3;
++                if delta != 0 && !buckets[exponent].is_identity() {
++                    buckets[exponent] = buckets[exponent].rotate_power_solinas(delta);
++                    gauge_products += 1;
++                }
++            }
++            gauge = Some(power);
++            for (index, &(seed_id, bucket, unit_code)) in choices.iter().enumerate() {
++                if seed_id == 0 || bucket != exponent || unit_code / 2 != power { continue; }
++                buckets[exponent] = buckets[exponent].add_mixed(
++                    tables.windows[index][seed_id].unit_solinas(unit_code & 1));
++            }
++        }
++        if let Some(power) = gauge {
++            if power != 0 && !buckets[exponent].is_identity() {
++                buckets[exponent] = buckets[exponent].rotate_power_solinas(power);
++                gauge_products += 1;
++            }
++        }
++    }
++    assert!(gauge_products <= 4);
++    let point = buckets[0].add_xyzz(buckets[1].tau()).affine_hex_binary_inverse();
++    (point, representative, nonidentity.saturating_sub(1),
++     tables.retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES,
++     fallback, corner, gauge_products)
++}
++
++pub(super) fn multiply_u256_tau_asymmetric_radix944_gauge_xyzz_tau(
++    scalar_words: [u64; 4],
++) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
++    let scalar = super::Uint(scalar_words);
++    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
++        scalar
++    } else {
++        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
++    };
++    let (representative, fallback, corner) =
++        super::hexagonal_certified_fixed_choice_words(residue.0);
++    let tables: &'static AsymmetricRadix944Tables = &*ASYMMETRIC_RADIX944_TABLES;
++    let (mut a, mut b) = representative;
++    let mut choices = [(0usize, 0usize, 0usize); 13];
++    let mut nonidentity = 0usize;
++    for (index, choice) in choices.iter_mut().enumerate() {
++        let (qa, signed_ra, ra) = a.div_rem_radix944_fast();
++        let (qb, signed_rb, rb) = b.div_rem_radix944_fast();
++        let atlas = if index == 12 { &tables.final_row } else { &tables.full };
++        let (digit, seed_id, exponent, unit_code) = atlas.digit_residue(ra, rb);
++        a = qa.adjust_small_radix_quotient(signed_ra, digit.0, 944);
++        b = qb.adjust_small_radix_quotient(signed_rb, digit.1, 944);
++        *choice = (seed_id, exponent, unit_code);
++        nonidentity += usize::from(seed_id != 0);
++        debug_assert!(norm(digit) <= if index == 12 { 550 * 550 }
++                      else { 944 * 944 });
++    }
++    assert!(a.is_zero() && b.is_zero(), "asymmetric radix-944 recoding did not terminate");
+ 
+     let mut buckets = [U256XYZZ::identity(); 2];
+     let mut gauge_products = 0usize;
+@@ -5265,6 +5457,39 @@
+     }
+ 
+     #[test]
++    fn two_limb_radix944_division_matches_generic_at_boundaries() {
++        let high_words = [0u64, 1, 2, 3, (1u64 << 60) - 1,
++                          1u64 << 60, (1u64 << 61) - 3,
++                          (1u64 << 61) - 2, (1u64 << 61) - 1];
++        let low_words = [0u64, 1, 2, 3, 943, 944, 945,
++                         u64::MAX - 3, u64::MAX - 2,
++                         u64::MAX - 1, u64::MAX];
++        let mut cases = 0usize;
++        for high in high_words {
++            for low in low_words {
++                for low_four in [0u8, 1, 15] {
++                    let magnitude: BigInt = ((BigInt::from(high) << 64usize)
++                        + BigInt::from(low)) * BigInt::from(16u32)
++                        + BigInt::from(low_four);
++                    for value in [magnitude.clone(), -magnitude] {
++                        let word = Signed192::from_bigint(&value);
++                        assert_eq!(word.div_rem_radix944_fast(),
++                                   word.div_rem_small_radix(944),
++                                   "high={high} low={low} low_four={low_four}");
++                        cases += 1;
++                    }
++                }
++            }
++        }
++        for value in -5000..=5000 {
++            let word = Signed192::from_i32(value);
++            assert_eq!(word.div_rem_radix944_fast(), word.div_rem_small_radix(944));
++            cases += 1;
++        }
++        println!("fast_radix944_division_cases={cases}");
++    }
++
++    #[test]
+     fn two_limb_radix384_recoder_matches_prior_panel() {
+         let panel: serde_json::Value = serde_json::from_str(include_str!(
+             "../../../../prime-j0-radix384-20261010/fresh-inputs.json"
+@@ -5689,6 +5914,43 @@
+         println!("mixed_radix640_cases={} retained_bytes={} additions={} gauge_products={} control_additions={} control_gauge_products={}",
+                  scalars.len(), warm_format(58), additions, gauge_products,
+                  reference_additions, reference_gauge_products);
++    }
++
++    #[test]
++    fn asymmetric_radix944_matches_fresh_panel_and_mixed_radix640() {
++        let panel: serde_json::Value = serde_json::from_str(include_str!(
++            "../../../../prime-j0-asymmetric-r944-20261010/fresh-inputs.json"
++        )).unwrap();
++        let scalars = panel["scalars_hex"].as_array().unwrap();
++        assert_eq!(scalars.len(), 4096);
++        let mut additions = 0usize;
++        let mut gauge_products = 0usize;
++        let mut control_additions = 0usize;
++        let mut control_gauge_products = 0usize;
++        for (index, text) in scalars.iter().enumerate() {
++            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
++            let words = super::super::scalar_words_256(&scalar).unwrap();
++            let candidate = multiply_u256_tau_asymmetric_radix944_gauge_xyzz_tau(words);
++            let control = multiply_u256_tau_mixed_radix640_gauge_xyzz_tau(words);
++            assert_eq!(candidate.0, control.0, "point {index}");
++            assert_eq!(candidate.1, control.1, "representative {index}");
++            assert_eq!((candidate.4, candidate.5), (control.4, control.5),
++                       "representative metadata {index}");
++            assert_eq!(candidate.3, warm_format(59));
++            assert!(candidate.2 <= 12 && candidate.6 <= 4, "bounds {index}");
++            additions += candidate.2;
++            gauge_products += candidate.6;
++            control_additions += control.2;
++            control_gauge_products += control.6;
++            if index < 128 {
++                let reduced = &scalar % &SCALAR_LATTICE.n;
++                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
++                           "independent binary {index}");
++            }
++        }
++        println!("asymmetric_radix944_cases={} retained_bytes={} additions={} gauge_products={} control_additions={} control_gauge_products={}",
++                 scalars.len(), warm_format(59), additions, gauge_products,
++                 control_additions, control_gauge_products);
+     }
+ 
+     #[test]
