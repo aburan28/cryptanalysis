@@ -57,6 +57,7 @@ rebuild the actual modules and audit every listed declaration with
 | Mathematical step | Lean declaration | Status |
 | --- | --- | --- |
 | Three lattice-neighbor norms equal `r` | `PrimeJ0HexTerminal.neighbor_norms` | Checked |
+| Minimum among four floor/ceiling corners lies in all three Voronoi strips | `corner_score_norm_identity`, `four_corner_minimum_has_hex_strips` | Checked |
 | Cauchy identity and digit support | `inner_cauchy_identity`, `digit_inner_bound`, `support_certificate` | Checked |
 | Nearest-neighbor inequalities imply three Voronoi strips | `closest_neighbor_inner` | Checked |
 | Fifteen-step reconstruction and terminal strip bound | `terminal_inner_bound` | Checked |
@@ -64,14 +65,13 @@ rebuild the actual modules and audit every listed declaration with
 | Production fixed-width chooser returns a six-neighbor nearest representative for every reduced scalar | Native chooser and prior reciprocal proof; Lean bridge open | Partial |
 | Exact 11,023-orbit census and native row indexing | `search.py`, `hex.py`, native audit | Exact executable checks; Lean bridge open |
 
-The checked theorem preserves the explicit nearest-neighbor assumption.
-The written argument for the production chooser is that it selects the
-minimum-norm member of the four floor/ceiling corners in the equilateral
-`W,V` lattice cell. For any point in that cell, a nearest lattice point is
-one of those corners; this follows by projecting onto the three pairs of
-parallel nearest-neighbor lines. The fixed-width reciprocal and fraction
-classifier that choose the corner are covered by the earlier exact
-reciprocal work and independently screened here. A Lean statement tying the
-native word-level classifier to `sixNeighborsClosest` remains open; the
-formalization is partial at that implementation bridge. No theorem uses an
-assumed conclusion or custom axiom.
+The checked four-corner lemma uses normalized cell coordinates `0≤x,y≤d`.
+It proves that the minimum of the four exact norm-difference scores has all
+six Voronoi inequalities. `corner_score_norm_identity` verifies the score
+polynomials against the equilateral cell norm. The terminal theorem still
+preserves an explicit nearest-neighbor hypothesis. The fixed-width reciprocal
+and fraction classifier used by the production chooser are covered by the
+earlier exact reciprocal work and independently screened here. A Lean
+statement tying that native word-level classifier to the four-corner minimum
+and `sixNeighborsClosest` remains open; the formalization is partial at that
+implementation bridge. No theorem uses an assumed conclusion or custom axiom.
