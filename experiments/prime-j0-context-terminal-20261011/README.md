@@ -1,9 +1,10 @@
-# Exhaustive terminal-pair bound for recorded scalar paths
+# Exact terminal-pair bound for all four scalar corners
 
 The current four-corner secp256k1 selector checks the coordinate-wise halves
 of an out-of-disk terminal. This screen measures the largest point-work saving
-available by changing **only the terminal pair** of each path retained in its
-frozen 4,096-scalar certificate. It permits any two nonidentity entries from
+available by changing **only the terminal pair** of the four nearest-plane
+paths for each scalar in its frozen 4,096-scalar certificate. It permits any
+two nonidentity entries from
 the existing 149-radius terminal table whose Eisenstein coordinates sum to
 that path's terminal, including a two-point split of an in-disk terminal.
 The twelve full-window digits, scalar representatives, point table, and proxy
@@ -25,13 +26,20 @@ receipt. Pair selection, exhaustive search, and witness lookup are outside the
 point-work proxy and would add online work in a native implementation.
 
 The old certificate omits 1,867 of the 16,384 lattice corners when its
-midpoint split rule finds no option. This screen does not reconstruct those
-corners, so 468 units bounds terminal-pair improvements **within the 14,517
-recorded paths**, not every possible four-corner scalar path. The screen is a
-retrospective design diagnostic on a panel already used by the selector.
+midpoint split rule finds no option. [check_omitted.py](check_omitted.py)
+reconstructs all of them through the frozen recoder. Of these, 1,856 have
+terminal norm at least `4 × 149²`; the triangle inequality excludes any sum
+of two points with norm below `149²`. The remaining 11 corners are checked
+against the full table: six admit a pair, and none has a lower proxy than
+the scalar's recorded choice. The [omitted-corner receipt](omitted-corner-check.json)
+records each of the 11, including concrete witnesses where available.
+Consequently **609,203 is the exact minimum over these four corners, their
+fixed twelve full-window digit streams, and zero, one, or two entries from
+the existing terminal table** on this panel. The screen is retrospective:
+the panel was already used by the selector.
 
-The measured ceiling is small relative to the extra search. The next design
-step is to examine the omitted corners and, if they contain viable two-point
-terminals, decide whether their point-work gain warrants a prospective
-candidate. Changing full-window digits or the table layout is a separate
-route to a larger gain.
+The 468-unit ceiling is small relative to the extra online search. A larger
+operation reduction now requires changing the full-window digit schedule,
+searching representatives beyond these four corners, or changing the point
+table. Those are distinct candidate designs with their own correctness and
+complete-operation measurement gates.
