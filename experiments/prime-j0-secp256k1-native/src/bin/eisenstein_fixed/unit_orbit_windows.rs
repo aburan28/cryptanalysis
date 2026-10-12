@@ -1529,6 +1529,40 @@ impl Radix13Tables {
 
 static RADIX13_TABLES: LazyLock<Radix13Tables> = LazyLock::new(Radix13Tables::new);
 
+struct Radix13CanonicalTables {
+    atlas: OrbitAtlas,
+    windows: Vec<Box<[U256Affine]>>,
+    retained_bytes: usize,
+}
+
+impl Radix13CanonicalTables {
+    fn new() -> Self {
+        let atlas = OrbitAtlas::new_radix(RADIX13);
+        assert_eq!(atlas.digits.len(), 148_209);
+        let mut windows = Vec::with_capacity(RADIX13_WINDOWS);
+        let mut base = Jacobian::generator();
+        for index in 0..RADIX13_WINDOWS {
+            windows.push(build_u256_window_encoded(&atlas.digits, base, true));
+            if index + 1 < RADIX13_WINDOWS {
+                base = affine_multiples(base, RADIX13).pop().unwrap();
+            }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        assert_eq!(entries, 1_926_717);
+        let retained_bytes = entries * size_of::<U256Affine>()
+            + atlas.codes.len() * size_of::<u32>()
+            + atlas.digits.len() * size_of::<(i16, i16)>()
+            + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[U256Affine]>>();
+        assert!(retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES
+            + size_of::<[GaugeTreePlan; GAUGE_PLAN_COUNT]>() < RADIX13_CAP_BYTES);
+        Self { atlas, windows, retained_bytes }
+    }
+}
+
+static RADIX13_CANONICAL_TABLES: LazyLock<Radix13CanonicalTables> =
+    LazyLock::new(Radix13CanonicalTables::new);
+
 struct Radix384Tables {
     atlas: OrbitAtlas,
     windows: Vec<Box<[U256Affine]>>,
@@ -2576,6 +2610,13 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 74 {
+        LazyLock::force(&PARETO_GAUGE_PLANS);
+        LazyLock::force(&U256_BETA_CANONICAL);
+        return RADIX13_CANONICAL_TABLES.retained_bytes
+            + SOLINAS_UNIT_CONSTANT_BYTES
+            + size_of::<[GaugeTreePlan; GAUGE_PLAN_COUNT]>();
+    }
     if format == 73 {
         LazyLock::force(&PARETO_GAUGE_PLANS);
         return warm_format(71) + size_of::<[GaugeTreePlan; GAUGE_PLAN_COUNT]>();
@@ -3538,6 +3579,39 @@ pub(super) fn multiply_u256_sector_gauge_tree_pareto(
         super::hexagonal_certified_fixed_choice_words(residue.0);
     let tables = &*SECTOR_U256_CANONICAL_TABLES;
     let (choices, nonidentity) = u256_sector_choices(representative);
+    let (point, gauge_products, _) =
+        evaluate_u256_gauge_tree_pareto(&choices, &tables.windows);
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES
+         + size_of::<[GaugeTreePlan; GAUGE_PLAN_COUNT]>(),
+     fallback, corner, gauge_products)
+}
+
+pub(super) fn multiply_u256_radix943_gauge_tree_pareto(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*RADIX13_CANONICAL_TABLES;
+    let (mut a, mut b) = representative;
+    let mut choices = [(0usize, 0usize); RADIX13_WINDOWS];
+    let mut nonidentity = 0usize;
+    for choice in &mut choices {
+        let (quotient_a, signed_rem_a, residue_a) = a.div_rem_radix13();
+        let (quotient_b, signed_rem_b, residue_b) = b.div_rem_radix13();
+        let (digit, orbit_id, unit_code) = tables.atlas.digit_residue(residue_a, residue_b);
+        a = quotient_a.adjust_radix13_quotient(signed_rem_a, digit.0);
+        b = quotient_b.adjust_radix13_quotient(signed_rem_b, digit.1);
+        *choice = (orbit_id, unit_code);
+        nonidentity += usize::from(orbit_id != 0);
+    }
+    assert!(a.is_zero() && b.is_zero(), "canonical radix-943 recoding did not terminate");
     let (point, gauge_products, _) =
         evaluate_u256_gauge_tree_pareto(&choices, &tables.windows);
     (point, representative, nonidentity.saturating_sub(1),
@@ -5905,6 +5979,64 @@ mod tests {
         assert_eq!(warm_format(73), 64_342_768);
         println!("pareto_gauge_cases={} rotations={} field_products={} product_depth={} retained_bytes={}",
                  scalars.len(), rotations, products, depth, warm_format(73));
+    }
+
+    #[test]
+    fn radix943_pareto_replays_full_panel_and_independent_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-sector-digit-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        let mut terms = 0usize;
+        let mut rotations = 0usize;
+        let mut products = 0usize;
+        let mut depth = 0usize;
+        let mut bytes = 0usize;
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_sector_gauge_tree_pareto(words);
+            let candidate = multiply_u256_radix943_gauge_tree_pareto(words);
+            assert_eq!(candidate.0, reference.0, "complete point {index}");
+            assert_eq!(candidate.1, reference.1, "short representative {index}");
+            assert_eq!((candidate.4, candidate.5), (reference.4, reference.5),
+                       "selector fields {index}");
+            let n = candidate.2 + 1;
+            assert_eq!(n, 13, "active radix-943 terms {index}");
+            let plan_depth = {
+                let (mut a, mut b) = candidate.1;
+                let mut counts = [0usize; 3];
+                for _ in 0..RADIX13_WINDOWS {
+                    let (qa, ra, resa) = a.div_rem_radix13();
+                    let (qb, rb, resb) = b.div_rem_radix13();
+                    let (digit, orbit, code) =
+                        RADIX13_CANONICAL_TABLES.atlas.digit_residue(resa, resb);
+                    a = qa.adjust_radix13_quotient(ra, digit.0);
+                    b = qb.adjust_radix13_quotient(rb, digit.1);
+                    if orbit != 0 { counts[code / 2] += 1; }
+                }
+                assert!(a.is_zero() && b.is_zero());
+                let plan = &PARETO_GAUGE_PLANS[gauge_plan_index(counts)];
+                assert_eq!(plan.rotations as usize, candidate.6);
+                plan.product_depth as usize
+            };
+            terms += n;
+            rotations += candidate.6;
+            products += 10 * n - 14 + candidate.6;
+            depth += plan_depth;
+            bytes = candidate.3;
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+        assert_eq!((terms, rotations, products, depth),
+                   (53_248, 9_027, 484_163, 199_382));
+        assert_eq!(bytes, warm_format(74));
+        println!("radix943_pareto_cases={} terms={} rotations={} field_products={} product_depth={} retained_bytes={}",
+                 scalars.len(), terms, rotations, products, depth, bytes);
     }
 
     #[test]

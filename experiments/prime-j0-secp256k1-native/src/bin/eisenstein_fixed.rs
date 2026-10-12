@@ -3581,7 +3581,7 @@ fn check_generator_case(
     let preparation_start = Instant::now();
     LazyLock::force(&SCALAR_LATTICE);
     LazyLock::force(&DECODE_CONSTANTS);
-    if (123..=173).contains(&unit_orbit_format) {
+    if (123..=174).contains(&unit_orbit_format) {
         LazyLock::force(&HYBRID_FIELD);
     }
     if (124..=168).contains(&unit_orbit_format) {
@@ -3630,11 +3630,15 @@ fn check_generator_case(
         LazyLock::force(&GLV_COMB10_POINTS);
     }
     let scalar = scalar_from_hex(scalar_hex);
-    let scalar_words = (125..=173).contains(&unit_orbit_format)
+    let scalar_words = (125..=174).contains(&unit_orbit_format)
         .then(|| scalar_words_256(&scalar)).flatten();
     let preparation_ms = preparation_start.elapsed().as_secs_f64() * 1000.0;
     let start = Instant::now();
-    let actual = if unit_orbit_format == 173 {
+    let actual = if unit_orbit_format == 174 {
+        unit_orbit_windows::multiply_u256_radix943_gauge_tree_pareto(
+            scalar_words.expect("radix-943 Pareto tree requires unsigned 256-bit scalar")
+        ).0
+    } else if unit_orbit_format == 173 {
         unit_orbit_windows::multiply_u256_sector_gauge_tree_pareto(
             scalar_words.expect("Pareto gauge tree requires unsigned 256-bit scalar")
         ).0
@@ -3838,7 +3842,9 @@ fn check_generator_case(
     };
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if unit_orbit_format == 173 {
+    let mode = if unit_orbit_format == 174 {
+        "unit_orbit_u256_radix943_xyzz_gauge_pareto_solinas_fixed"
+    } else if unit_orbit_format == 173 {
         "unit_orbit_u256_sector14_xyzz_gauge_pareto_solinas_fixed"
     } else if unit_orbit_format == 172 {
         "unit_orbit_u256_sector14_xyzz_gauge_plan_solinas_fixed"
@@ -4050,6 +4056,8 @@ fn main() {
             || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-sector")
             || args[0].starts_with("--check-scalar-unit-orbit-u256-sector14-xyzz")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-sector14-xyzz")
+            || args[0].starts_with("--check-scalar-unit-orbit-u256-radix943-xyzz")
+            || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-radix943-xyzz")
             || args[0].starts_with("--check-scalar-unit-orbit-u256-tau-frontier15-budget-affine-solinas-gauge-xyzz-tau")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-tau-frontier15-budget-affine-solinas-gauge-xyzz-tau")
             || args[0].starts_with("--check-scalar-unit-orbit-u256-tau-frontier15-budget-affine-solinas-xyzz-tau")
@@ -4100,7 +4108,9 @@ fn main() {
             || args[0].starts_with("--benchmark-scalar-unit-orbit-radix943"))
         && args[0].ends_with("-fixed-fixture")
     {
-        let format = if args[0].contains("unit-orbit-u256-sector14-xyzz-gauge-pareto-solinas-fixed-fixture") {
+        let format = if args[0].contains("unit-orbit-u256-radix943-xyzz-gauge-pareto-solinas-fixed-fixture") {
+            174
+        } else if args[0].contains("unit-orbit-u256-sector14-xyzz-gauge-pareto-solinas-fixed-fixture") {
             173
         } else if args[0].contains("unit-orbit-u256-sector14-xyzz-gauge-plan-solinas-fixed-fixture") {
             172
@@ -4351,6 +4361,8 @@ fn main() {
             || args[0] == "--check-scalar-unit-orbit-u256-sector15-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-u256-sector16-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-u256-sector16-fixed-case"
+            || args[0] == "--benchmark-scalar-unit-orbit-u256-radix943-xyzz-gauge-pareto-solinas-fixed-case"
+            || args[0] == "--check-scalar-unit-orbit-u256-radix943-xyzz-gauge-pareto-solinas-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-u256-tau-frontier15-budget-affine-solinas-gauge-xyzz-tau-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-u256-tau-frontier15-budget-affine-solinas-gauge-xyzz-tau-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-u256-tau-frontier15-budget-affine-solinas-xyzz-tau-fixed-case"
@@ -4440,7 +4452,9 @@ fn main() {
             args[0].contains("w6-comb13-hex9-radius2"),
             args[0].contains("w6-comb13-hex9-graph33"),
             args[0].contains("w6-comb13-hex9-graphaware33"),
-            if args[0].contains("unit-orbit-u256-sector14-xyzz-gauge-pareto-solinas") {
+            if args[0].contains("unit-orbit-u256-radix943-xyzz-gauge-pareto-solinas") {
+                174
+            } else if args[0].contains("unit-orbit-u256-sector14-xyzz-gauge-pareto-solinas") {
                 173
             } else if args[0].contains("unit-orbit-u256-sector14-xyzz-gauge-plan-solinas") {
                 172
