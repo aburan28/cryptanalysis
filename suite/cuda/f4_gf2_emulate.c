@@ -10,6 +10,7 @@
 #include <stdlib.h>
 
 #include "f4_gf2_device.cuh"
+#include "f4_gf2_echelon.cuh"
 
 int f4_gf2_emulate_batch(const f4_u64 *terms, const f4_u32 *poly_start,
                          const f4_u32 *sys_poly_start, const f4_u32 *sys_meta,
@@ -33,6 +34,64 @@ int f4_gf2_emulate_batch(const f4_u64 *terms, const f4_u32 *poly_start,
     free(scratch);
     free(sh);
     return 0;
+}
+
+/* The large-matrix elimination of f4_gf2_echelon.cuh, panel by panel as
+ * the CUDA driver launches it: the panel with `threads` emulated threads,
+ * the other grid steps as one emulated thread, and the update as every
+ * block of a grid of two parts per tile, two warps each.  `mat` is
+ * eliminated in place; `low` receives up to `rows` (lo, hi) pairs. */
+int f4_gf2_emulate_echelon(f4_u64 *mat, f4_u32 rows, f4_u64 stride, f4_u32 low_start, f4_u32 width,
+                           f4_u32 *active, f4_u32 threads, f4_u64 *low, f4_u32 *n_low,
+                           f4_u32 *pivots, f4_u64 *ops)
+{
+    if (threads == 0u || threads > F4_MAX_THREADS || width > 128u) return -1;
+    const f4_u32 hw = (low_start + 63u) / 64u;
+    const f4_u64 n = rows ? rows : 1u;
+    f4_u64 *prow = (f4_u64 *)calloc(n, sizeof(f4_u64));
+    f4_u32 *cand = (f4_u32 *)calloc(n, sizeof(f4_u32));
+    f4_u64 *pw = (f4_u64 *)calloc(n, sizeof(f4_u64));
+    f4_u64 *coeff = (f4_u64 *)calloc(n, sizeof(f4_u64));
+    f4_u32 *is_piv = (f4_u32 *)calloc(n, sizeof(f4_u32));
+    f4_u32 *counts = (f4_u32 *)calloc(hw ? hw : 1u, sizeof(f4_u32));
+    F4ePivots *piv = (F4ePivots *)calloc(1, sizeof(F4ePivots));
+    F4ePanelShared *sh = (F4ePanelShared *)calloc(1, sizeof(F4ePanelShared));
+    F4eUpdateShared *ush = (F4eUpdateShared *)calloc(1, sizeof(F4eUpdateShared));
+    int rc = 0;
+    if (!prow || !cand || !pw || !coeff || !is_piv || !counts || !piv || !sh || !ush) {
+        rc = -2;
+        goto done;
+    }
+    *n_low = 0u;
+    *ops = 0ull;
+    for (f4_u32 w = 0; w < hw; ++w) {
+        const f4_u32 high = low_start - 64u * w;
+        const f4_u64 mask = high >= 64u ? ~0ull : ((1ull << high) - 1ull);
+        /* Three interleaved gather threads leave the candidates out of row
+         * order, as the device's may be. */
+        for (f4_u64 gid = 0; gid < 3u; ++gid)
+            f4e_gather_thread(gid, 3u, mat, stride, w, mask, active, rows, cand, pw, counts + w,
+                              prow);
+        f4e_panel(sh, threads, prow, rows, cand, pw, coeff, is_piv, counts + w, piv);
+        f4e_materialise_thread(0u, 1u, mat, stride, w, active, piv, ops);
+        const f4_u64 tiles = (stride - w + F4E_TILE - 1u) / F4E_TILE;
+        for (f4_u64 block = 0; block < 2u * tiles; ++block)
+            f4e_update_block(ush, 64u, block, 2u, mat, stride, w, cand, coeff, is_piv, counts + w,
+                             piv, ops);
+    }
+    f4e_low_thread(0u, 1u, mat, stride, low_start, width, active, rows, low, n_low);
+    *pivots = piv->total;
+done:
+    free(prow);
+    free(cand);
+    free(pw);
+    free(coeff);
+    free(is_piv);
+    free(counts);
+    free(piv);
+    free(sh);
+    free(ush);
+    return rc;
 }
 
 /* sizeof(F4Result) and sizeof(F4Shared), so the Rust side can check the

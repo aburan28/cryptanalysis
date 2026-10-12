@@ -1,0 +1,111 @@
+{
+  "schema": "ecc2k130-normal4-equalb-m6-input-protocol-v1",
+  "comparison": "Q1421 normal-weight-four base against the four Q1420 W24 policies, plus transported Q1421",
+  "proposal_ids": ["Q1420", "Q1421"],
+  "candidate_id": null,
+  "field_modulus_exponents": [131, 13, 2, 1, 0],
+  "subgroup_order": "680564733841876926932320129493409985129",
+  "source_curve_id": "EC1N131Ckb1h136f03e58c98",
+  "descendant_curve_id": "EC1N131Cbinh833014327b07",
+  "route_id": "IW1E263d1hadee4e69fa3d",
+  "bound_inputs": {
+    "q1421_manifest": {
+      "path": "experiments/ecc2k130-normal-weight4-base-20261009/runs/R1/manifest.json",
+      "sha256": "77e789e88108006c7c271ac40fcf7d514607a43e8b20db1bf0c73886a7e7d8fd"
+    },
+    "q1421_producer": {
+      "path": "experiments/ecc2k130-normal-weight4-base-20261009/runs/R1/producer.json",
+      "sha256": "55878db044d7bf0508c35da57fd16d64239692b23e02dbb8dbb80ccb2c8c6f2c"
+    },
+    "q1421_verification": {
+      "path": "experiments/ecc2k130-normal-weight4-base-20261009/runs/R1/verification.json",
+      "sha256": "9957b46c3f5692d794f1095ec3942a37674cf9b49f15e5fbcf6fca4ce9fa06d4"
+    },
+    "q1420_config": {
+      "path": "experiments/ecc2k130-263-equal-w24-workload-20261005/CONFIG.json",
+      "sha256": "452ca7dca448a1dc5cbbbc34d10027b819b7ce3a41dc250b17bde226947ac4f4"
+    },
+    "q1420_base_selection": {
+      "path": "experiments/ecc2k130-263-equal-w24-workload-20261005/base_selection.json",
+      "sha256": "0c8eff6fd5bec20abfcba1731dddd07323fff09accfc75a3707e231663174df5"
+    },
+    "q1420_primary_workload": {
+      "path": "experiments/ecc2k130-263-equal-w24-workload-20261005/primary_workload.json",
+      "sha256": "17eafde74e26cba743249fc08c102a1d32c4b1610ae0e3014a59b43be8bfc40b"
+    },
+    "q1420_verification": {
+      "path": "experiments/ecc2k130-263-equal-w24-workload-20261005/verification.json",
+      "sha256": "7a3c99a921cf2002db17baab7fc79928af7ae44ce03330b83c77ebfd7673402b"
+    },
+    "route_manifest": {
+      "path": "experiments/koblitz-polynomial-w-pair-20260925/ecc2k130_degree263_route_manifest.json",
+      "sha256": "4b8ce3b607f9fd34c64a157cc904a00b8350e48570d1eaac7b4ca0646f296075"
+    }
+  },
+  "w24_archives": {
+    "source": {
+      "path": "experiments/ecc2k130-263-w24-exact-base-20261005/runs/w24-b2048-r1/source-masks.bin.gz",
+      "gzip_sha256": "c57b565635dd81dd9c4a0b78a92a725b488a242a98b31dfd1a47058519c1288c",
+      "raw_sha256": "59f89b3f9b2773963f1a722737f34740e1bfc657aaa277bef4c2e74a6746ffdd",
+      "full_signed_classes": 8393232
+    },
+    "descendant_native": {
+      "path": "experiments/ecc2k130-263-w24-exact-base-20261005/runs/w24-b2048-r1/descendant-masks.bin.gz",
+      "gzip_sha256": "1588b18f92a5acb5c412fb97639a06a44f5977635880cd709923f5164e17636e",
+      "raw_sha256": "513fa94908281b93ac5598c8f70eca925115e7efd012d7c36fd1859c03049203",
+      "full_signed_classes": 8386414
+    }
+  },
+  "equal_base": {
+    "actual_usable_points_B": 11743888,
+    "signed_classes_each": 5871944,
+    "w24_subset_rule": "first 5871944 ascending uint32 masks of each independently verified full source/native archive",
+    "normal4_rule": "all 44824 rational canonical weight-four normal-coordinate orbits and their 131 rotations; sign partners as in Q1421",
+    "normal4_rational_orbits": 44824,
+    "normal4_reciprocal_partner_orbits": 0,
+    "normal4_potential_signed_frobenius_columns": 44824,
+    "w24_subset_source_sha256": null,
+    "w24_subset_descendant_native_sha256": null,
+    "w24_effective_columns": null
+  },
+  "policies": [
+    "w24_source",
+    "w24_transported",
+    "w24_descendant_native",
+    "w24_pullback",
+    "normal4_source",
+    "normal4_transported"
+  ],
+  "point_controls": {
+    "w24_each_seed_geometry": 64,
+    "normal4_source": 128,
+    "selection_domain": "ecc2k130-normal4-equalb-m6-base-control-v1",
+    "rule": "SHA256(domain|geometry|counter) big-endian integer modulo selected signed classes, skip repeated indices"
+  },
+  "primary_target": {
+    "workload_id": "eee7f6ee5f6b",
+    "target_count": 1,
+    "source_and_descendant_points": "use exact public point pair in the bound Q1420 primary workload",
+    "known_fixture_scalar_for_verification_only": true
+  },
+  "ordinary_relation_queries": {
+    "scalar_domain": "ecc2k130-normal4-equalb-m6-ordinary-v1",
+    "candidate_rule": "SHA256(UTF8(domain)||0x00||counter-be64), first 17 bytes as big-endian integer masked to 130 bits; reject zero, values >= r, and duplicate accepted scalars",
+    "query_point_rule": "source [scalar]G; forward degree-263 image for descendant policies; keep scalar outside solver inputs",
+    "frozen_prefix_lengths": [16, 256, 65536],
+    "point_encoding": "little_endian_polynomial_basis_integer_affine_xy",
+    "query_stream_sha256": null
+  },
+  "input_producer_envelope": {
+    "workers": 1,
+    "wall_seconds": 1800,
+    "peak_rss_bytes": 4294967296,
+    "host_cpu_isolation": "unverified"
+  },
+  "pdp_summands": 6,
+  "pdp_solver_policies": null,
+  "verified_relation_yield": null,
+  "verified_novel_rank": null,
+  "target_online_ms": null,
+  "rho_online_ms": null
+}

@@ -1,0 +1,29 @@
+{
+  "kind": "q1484_r2_pre_registered_checkpoint_replay",
+  "proposal_id": "Q1484",
+  "attempt_id": "Q1484R2",
+  "candidate_id": null,
+  "run_id": null,
+  "isogeny": "none",
+  "curve_id": "EC1N131Ckb1h6816f880945e",
+  "parent_protocol": "Q1484 original exact N131 window-base protocol",
+  "failed_attempt": "Q1484R1 infrastructure failure, OSError ENOSPC",
+  "recovery_rule": "Recompute each raw orbit from ordinal zero using the original frozen projection and representative sources. For all 19,922,944 durable R1-prefix ordinals, compare the recomputed two-bit status to the archived R1 bitmap. At the checkpoint boundary require the recomputed distinct projected-key count to equal R1's progress record. Then process the remaining ordinals into a separate full bitmap and sorted-key digest. Never reuse unverified R1 in-memory state.",
+  "scratch_policy": "Use a separate r2 run directory on /private/tmp via a temporary worktree symlink; after process completion, replace the symlink with the byte-identical archived directory in this branch. Keep R1 files immutable.",
+  "limits": {
+    "max_wall_seconds": 10800,
+    "max_peak_rss_bytes": 16000000000,
+    "minimum_free_scratch_bytes_before_run": 100000000,
+    "minimum_free_scratch_bytes_at_checkpoint": 50000000,
+    "progress_interval_raw_orbits": 1048576
+  },
+  "success_gates": [
+    "Publish exact R1 checkpoint hash, parent source hashes, R2 source and checked Sage runtime before launching R2.",
+    "Recompute and compare every archived R1 two-bit status and the R1 unique-key count at the durable boundary.",
+    "Process exactly 2^26 raw orbits, archive all statuses, by-span counts, B, K, and sorted projected-set SHA-256.",
+    "Independently audit full bitmap counts and direct group-law samples before using the base in a budget screen."
+  ],
+  "claim_scope": "Exact factor-base geometry only. No relation yield, stage success cost, or complete N131 2^x is measured.",
+  "complete_n131_log2_work": null,
+  "challenge_run_admitted": false
+}

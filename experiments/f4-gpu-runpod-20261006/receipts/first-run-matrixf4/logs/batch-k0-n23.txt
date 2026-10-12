@@ -1,0 +1,22 @@
+$ /root/cryptanalysis/suite/target/release/examples/f4_batch_bench --degree 23 --curve-a 0 --targets 1024 --modes rayon,lockstep:cpu,lockstep:cuda --replay-cap 200000 --replay-batch 16384 --out /root/gpu-bench-inherit0/batch/k0-n23
+# exit 0, 59.920 s
+factor base: 2025 points, SHA-256 f0cf0c9ece38497d298d42afd7f94bf477d02cd14dcc8d839af90ea29e70312a (sorted "x,y" hex lines)
+K_0/2^23: 2025 base points (l = 11), 1024 targets, node budget 4096, kernel Fast, 13 threads
+
+| mode | wall s | decomposed | reductions | splits | F4 calls | rounds | mean round | digest |
+|:-----|-------:|-----------:|-----------:|-------:|---------:|-------:|-----------:|:-------|
+| rayon | 6.555 | 416 | 378706 | 189382 | 756229 | 0 | 0.0 | acbaf773fc68f68d |
+| lockstep:cpu | 8.356 | 416 | 378706 | 189382 | 756229 | 1144 | 661.8 | acbaf773fc68f68d |
+| lockstep:cuda | 7.510 | 416 | 378706 | 189382 | 756229 | 1144 | 661.8 | acbaf773fc68f68d |
+
+Decision throughput on 200000 recorded requests, batches of 16384:
+| backend | wall s | decisions/s | µs/decision |
+|:--------|-------:|------------:|------------:|
+| host-1-thread | 21.861 | 9149 | 109.31 |
+| cpu | 1.798 | 111253 | 8.99 |
+| cuda | 1.869 | 106995 | 9.35 |
+
+Stage diagnostic only: the decomposition oracle, not an end-to-end ECDLP cost.
+Wrote /root/gpu-bench-inherit0/batch/k0-n23/f4_batch.json
+
+--- stderr ---

@@ -73,6 +73,7 @@
 #include "ca_internal.h" /* ca_now: the CLI already links the static library */
 
 #include <fcntl.h>
+#include <errno.h>
 #include <limits.h>
 #include <pthread.h>
 #include <signal.h>
@@ -99,8 +100,11 @@ static int arg_is(int i, const char *name)
 
 static const char *opt(const char *name)
 {
-    for (int i = 2; i + 1 < argc_g; i++)
-        if (arg_is(i, name)) return argv_g[i + 1];
+    for (int i = 2; i < argc_g; i++) {
+        if (!arg_is(i, name)) continue;
+        if (i + 1 == argc_g) die("option requires a value");
+        return argv_g[i + 1];
+    }
     return NULL;
 }
 
@@ -115,10 +119,19 @@ static uint64_t opt_u64(const char *name, uint64_t def)
 {
     const char *v = opt(name);
     if (!v) return def;
+    if (v[0] == '-') die("option value must be nonnegative");
     char *end = NULL;
+    errno = 0;
     unsigned long long u = strtoull(v, &end, 0);
-    if (end == v || *end != '\0') die("option value is not an integer");
+    if (end == v || *end != '\0' || errno == ERANGE) die("option value is not a valid uint64 integer");
     return (uint64_t)u;
+}
+
+static uint32_t opt_u32(const char *name, uint32_t def)
+{
+    uint64_t value = opt_u64(name, def);
+    if (value > UINT32_MAX) die("option value exceeds uint32 range");
+    return (uint32_t)value;
 }
 
 /* strtod, not atof: atof cannot report a malformed value (cert-err34-c). */
@@ -153,8 +166,9 @@ static _Noreturn void usage(void)
         "usage: cryptanalysis <command> [options]  (ca is a compatible alias)\n"
         "  bsgs  --group zp|ec --p P --order N --g G --h H [--lo L --hi U]\n"
         "  rho   --group zp|ec --p P --order N --g G --h H [--threads T]\n"
-        "  rho   --curve ecc2k130 [--run-id R --dp-file F --checkpoint F ...]\n"
-        "        --check [--kat F] runs the ECC2K-130 host known-answer check\n"
+        "  rho   --curve ecc2k130 [--backend cuda|metal] [walk options]\n"
+        "        cuda: campaign sigma walk; metal: separate table walk\n"
+        "        --check [--kat F] checks the selected backend (KAT: cuda only)\n"
         "  version | factor N | prime N | ec-order --p P --a A --b B | gpu-info\n"
         "  gen   --group zp|ec --p P [--a A --b B] [--order N] [--x X] [--seed S]\n"
         "  solve --alg bsgs|rho|kangaroo|grumpy|precomp|glv|dlog|gpu-rho --group zp|ec --p P [--a "
@@ -441,12 +455,17 @@ static int cmd_solve(const char *selected_alg)
     return 0;
 }
 
-/* The campaign's GF(2^131) walk uses a specialized CUDA kernel and fixed
- * public instance. Keep the backend private to the package; the stable user
- * entry point is `cryptanalysis rho --curve ecc2k130`. This is a walk, not a
- * general arbitrary-target DLP solver. */
+/* ECC2K-130 walks use private curve-specific backends. CUDA uses the live
+ * campaign's sigma walk; Metal uses a separate table walk and corpus. This is
+ * a walk, not a general arbitrary-target DLP solver. */
 static int cmd_ecc2k130_rho(void)
 {
+    const char *selected_backend = flag("--backend") ? opt("--backend") : "cuda";
+    if (!selected_backend ||
+        (strcmp(selected_backend, "cuda") && strcmp(selected_backend, "metal")))
+        die("--backend must be cuda or metal");
+    if (!strcmp(selected_backend, "metal") && (flag("--kat") || flag("--checkpoint")))
+        die("Metal table walk has no campaign KAT or CUDA checkpoint format");
     char self[PATH_MAX];
 #ifdef __linux__
     ssize_t n = readlink("/proc/self/exe", self, sizeof(self) - 1);
@@ -462,11 +481,11 @@ static int cmd_ecc2k130_rho(void)
     if (!slash) die("cannot locate cryptanalysis executable directory");
     *slash = '\0';
     char backend[PATH_MAX];
-    int npath =
-        snprintf(backend, sizeof(backend), "%s/../libexec/cryptanalysis/ecc2k130-rho-kernel", self);
+    int npath = snprintf(backend, sizeof(backend), "%s/../libexec/cryptanalysis/ecc2k130-rho-%s",
+                         self, selected_backend);
     if (npath < 0 || (size_t)npath >= sizeof(backend)) die("backend path is too long");
     if (access(backend, X_OK) != 0)
-        die("ECC2K-130 rho kernel is not installed beside cryptanalysis");
+        die("selected ECC2K-130 rho backend is not installed beside cryptanalysis");
     char **args = calloc((size_t)argc_g + 1, sizeof(*args));
     if (!args) die("cannot allocate backend arguments");
     int j = 0;
@@ -475,6 +494,11 @@ static int cmd_ecc2k130_rho(void)
     args[j++] = flag("--check") ? "check" : flag("--bench") ? "bench" : "walk";
     for (int i = 2; i < argc_g; ++i) {
         if (!strcmp(argv_g[i], "--check") || !strcmp(argv_g[i], "--bench")) continue;
+        if (!strcmp(argv_g[i], "--backend")) {
+            ++i;
+            if (i >= argc_g || strcmp(argv_g[i], selected_backend)) die("invalid --backend value");
+            continue;
+        }
         if (!strcmp(argv_g[i], "--curve")) {
             ++i;
             if (i >= argc_g || strcmp(argv_g[i], "ecc2k130")) die("--curve must be ecc2k130");
@@ -532,9 +556,10 @@ static int cmd_ic(void)
     ca_ic_params_default(&pr);
     const char *m = opt("--method");
     if (m && !strcmp(m, "rexp")) pr.method = CA_IC_RANDOM_EXPONENT;
-    pr.factor_base_bound = (uint32_t)opt_u64("--B", 0);
-    pr.sieve_radius = (uint32_t)opt_u64("--C", 0);
-    pr.threads = (uint32_t)opt_u64("--threads", 1);
+    else if (m && strcmp(m, "lsieve")) die("--method must be lsieve or rexp");
+    pr.factor_base_bound = opt_u32("--B", 0);
+    pr.sieve_radius = opt_u32("--C", 0);
+    pr.threads = opt_u32("--threads", 1);
     pr.seed = opt_u64("--seed", 0);
     pr.verbose = flag("--verbose") || flag("-v");
     uint64_t x = 0;
@@ -1039,6 +1064,12 @@ static void *work_lane_main(void *arg)
  * When the node name does not fit, it is cut and a hash of the *whole*
  * name is appended, so two pods sharing a long prefix stay distinct.
  */
+/* Identity across a call the optimiser will not inline: it hands the name
+ * builders a pointer whose pointee length the compiler cannot bound, so a
+ * fixed local buffer does not make -Wformat-truncation flag lane_peer and
+ * the shard-identity builder, both of which bound their own output. */
+static __attribute__((noinline)) const char *coord_opaque_str(const char *s) { return s; }
+
 static void lane_peer(char *out, size_t cap, const char *node, uint64_t lane)
 {
     char suffix[32];
@@ -1076,8 +1107,24 @@ static int cmd_work(void)
     ca_coord_state *st = NULL;
     if (ca_coord_state_init(&st, ctx) != CA_OK) die("out of memory");
 
-    const char *node = opt("--node");
-    if (!node) node = "node";
+    const char *node_arg = opt("--node");
+    if (!node_arg) node_arg = "node";
+    /* Fold a random per-process instance tag into the node name, so two
+     * agents started with the same --node (two pods from one Deployment,
+     * two shells that both defaulted it) do not mint the same peer names
+     * and drop each other's check-ins as (peer, seq) duplicates.  See
+     * ca_coord_node_instanced and docs/COORDINATOR.md sec. 7. */
+    char node_buf[CA_COORD_PEER_MAX];
+    ca_coord_node_instanced(node_buf, sizeof(node_buf), node_arg, ca_coord_instance_id());
+    /* Read through coord_opaque_str so the downstream name builders see an
+     * unbounded char* (as they did when --node came straight from argv),
+     * not a fixed array whose worst case trips -Wformat-truncation on code
+     * that already bounds its own output at runtime. */
+    const char *node = coord_opaque_str(node_buf);
+    fprintf(stderr,
+            "[agent] node identity: %s (per-process instance tag guards against "
+            "same --node collisions)\n",
+            node);
     uint64_t threads = opt_u64("--threads", 1);
     if (threads < 1) threads = 1;
     if (threads > 256) threads = 256;

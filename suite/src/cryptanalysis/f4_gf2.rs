@@ -541,10 +541,12 @@ fn build(
     // Reference rows, before cancellation: an upper bound on the count.
     let b = binom();
     let mut rows_bound = 0u64;
+    let mut candidates_bound = 0u64;
     for &(_, pdeg) in &generating {
         let k = (degree - pdeg) as usize;
         for j in 0..=k.min(v) {
             rows_bound = rows_bound.saturating_add(b[v][j].saturating_mul(upto(missing, k - j)));
+            candidates_bound = candidates_bound.saturating_add(b[v][j]);
         }
     }
     if rows_bound > caps.max_rows as u64
@@ -559,7 +561,11 @@ fn build(
     s.row_slack.clear();
     s.row_skip.clear();
     s.distinct.clear();
-    let plan = if opts.f5 {
+    // F5 only drops rows in the span of the others.  On a matrix that will
+    // be eliminated on a device its symbolic half costs more host time than
+    // the dropped rows save there, so it is skipped; the answer is the same.
+    let words_bound = candidates_bound.saturating_mul(layout.rank_space.div_ceil(64));
+    let plan = if opts.f5 && !super::f4_gpu::offload_expected(words_bound) {
         F5Plan::new(&generating, &layout, degree)
     } else {
         None
@@ -675,8 +681,13 @@ fn build(
 
     // Fill.  XOR cancels colliding products; empty rows are dropped.
     let stride = n_cols.div_ceil(64);
-    s.matrix.clear();
-    s.matrix.resize(candidates * stride, 0);
+    if candidates * stride > 1 << 22 {
+        // Fresh zeroed pages instead of writing gigabytes of zeros.
+        s.matrix = vec![0; candidates * stride];
+    } else {
+        s.matrix.clear();
+        s.matrix.resize(candidates * stride, 0);
+    }
     s.stored_slack.clear();
     let classes = degree as usize + 1;
     s.class_or.clear();
@@ -692,24 +703,40 @@ fn build(
         let dst = stored * stride;
         let (lo, hi) = (s.row_start[row] as usize, s.row_start[row + 1] as usize);
         let words = &mut s.matrix[dst..dst + stride];
-        for &key in &s.prov[lo..hi] {
-            // SAFETY: every key is at most `max_key`, inside `remap`
-            // (asserted above), and `remap` sends every key that occurs to a
-            // column `< n_cols ≤ 64 · stride`.
+        let keys = &s.prov[lo..hi];
+        // SAFETY (both loops below): every key is at most `max_key`, inside
+        // `remap` (asserted above), and `remap` sends every key that occurs
+        // to a column `< n_cols ≤ 64 · stride`.
+        let word_of = |key: u32| unsafe { *s.remap.get_unchecked(key as usize) } as usize / 64;
+        for &key in keys {
             let c = unsafe { *s.remap.get_unchecked(key as usize) } as usize;
             debug_assert!(c < n_cols);
             unsafe {
                 *words.get_unchecked_mut(c / 64) ^= 1u64 << (c % 64);
             }
         }
-        let words = &s.matrix[dst..dst + stride];
-        if words.iter().all(|&w| w == 0) {
+        // A row's nonzero words are among those its keys touched; on a
+        // wide matrix reading only those beats scanning the row.
+        let sparse = 2 * keys.len() < stride;
+        let empty = if sparse {
+            keys.iter().all(|&key| words[word_of(key)] == 0)
+        } else {
+            words.iter().all(|&w| w == 0)
+        };
+        if empty {
             continue;
         }
         let slack = s.row_slack[row];
         let class = &mut s.class_or[slack as usize * stride..(slack as usize + 1) * stride];
-        for (acc, &w) in class.iter_mut().zip(words) {
-            *acc |= w;
+        if sparse {
+            for &key in keys {
+                let w = word_of(key);
+                class[w] |= words[w];
+            }
+        } else {
+            for (acc, &w) in class.iter_mut().zip(words.iter()) {
+                *acc |= w;
+            }
         }
         s.stored_slack.push(slack);
         s.stored_skip.push(s.row_skip[row]);
@@ -952,6 +979,67 @@ fn echelon(m: &mut [u64], rows: usize, stride: usize, stop: usize, s: &mut Scrat
     ops
 }
 
+/// Eliminate the built matrix over columns `..low_start` and leave in
+/// `s.low` the linear blocks of the rows reduced to zero there, the zero
+/// ones dropped; returns the number of pivots and the word XORs.  A matrix
+/// of at least `F4_F2_ECHELON_MIN_WORDS` words goes to a CUDA device when
+/// one opens, unless `F4_F2_ECHELON` says otherwise
+/// ([`super::f4_gpu::offload_echelon`]); it eliminates with other pivots,
+/// so only the word count can differ.
+fn eliminate_high(
+    s: &mut Scratch,
+    rows: usize,
+    stride: usize,
+    low_start: usize,
+    width: usize,
+) -> (usize, u64) {
+    #[cfg(all(test, feature = "gpu-emulator"))]
+    if EMULATE_ECHELON.with(std::cell::Cell::get) {
+        let e = super::f4_gpu::emulate_echelon(
+            &s.matrix[..rows * stride],
+            rows,
+            stride,
+            low_start,
+            width,
+            &s.stored_skip,
+            64,
+        );
+        s.low = e.low;
+        return (e.pivots, e.word_ops);
+    }
+    if let Some(e) = super::f4_gpu::offload_echelon(
+        &s.matrix[..rows * stride],
+        rows,
+        stride,
+        low_start,
+        width,
+        &s.stored_skip,
+    ) {
+        s.low = e.low;
+        return (e.pivots, e.word_ops);
+    }
+    let mut m = std::mem::take(&mut s.matrix);
+    let ops = echelon(&mut m, rows, stride, low_start, s);
+    s.low.clear();
+    for &r in &s.low_rows {
+        let r = r as usize;
+        s.low.push(extract_bits(
+            &m[r * stride..(r + 1) * stride],
+            low_start,
+            width,
+        ));
+    }
+    s.matrix = m;
+    (s.pivots.len(), ops)
+}
+
+#[cfg(all(test, feature = "gpu-emulator"))]
+thread_local! {
+    /// Route every elimination on this thread through the emulated device
+    /// kernels, for tests that hold them to the host path.
+    pub(crate) static EMULATE_ECHELON: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 /// Bits `start .. start + width` of `row` (`width ≤ 128`).
 fn extract_bits(row: &[u64], start: usize, width: usize) -> u128 {
     let mut out = 0u128;
@@ -1122,21 +1210,11 @@ pub fn decide_with(
         k.eliminated_cols = b.cols as u64;
 
         let t1 = std::time::Instant::now();
-        let mut m = std::mem::take(&mut s.matrix);
-        k.word_ops = echelon(&mut m, b.rows, b.stride, b.low_start, s);
         let width = b.cols - b.low_start;
-        s.low.clear();
-        for &r in &s.low_rows {
-            let r = r as usize;
-            s.low.push(extract_bits(
-                &m[r * b.stride..(r + 1) * b.stride],
-                b.low_start,
-                width,
-            ));
-        }
-        s.matrix = m;
+        let (pivots, ops) = eliminate_high(s, b.rows, b.stride, b.low_start, width);
+        k.word_ops = ops;
         let rank = rref_u128(&mut s.low, width);
-        k.rank = (s.pivots.len() + rank) as u64;
+        k.rank = (pivots + rank) as u64;
         k.reduce_ns = t1.elapsed().as_nanos();
 
         let t2 = std::time::Instant::now();
@@ -1217,23 +1295,13 @@ pub fn profile_with(
         k.eliminated_rows = b.rows as u64 - k.f5_skipped;
         k.eliminated_cols = b.cols as u64;
         let t1 = std::time::Instant::now();
-        let mut m = std::mem::take(&mut s.matrix);
-        k.word_ops = echelon(&mut m, b.rows, b.stride, b.low_start, s);
-        let width = b.cols - b.low_start;
         // Over all variables the linear block can exceed 65 columns only by
         // variables the matrix never touches; it is at most n_vars + 1 ≤ 65.
-        s.low.clear();
-        for &r in &s.low_rows {
-            let r = r as usize;
-            s.low.push(extract_bits(
-                &m[r * b.stride..(r + 1) * b.stride],
-                b.low_start,
-                width,
-            ));
-        }
-        s.matrix = m;
+        let width = b.cols - b.low_start;
+        let (pivots, ops) = eliminate_high(s, b.rows, b.stride, b.low_start, width);
+        k.word_ops = ops;
         let low_rank = rref_u128(&mut s.low, width);
-        k.rank = (s.pivots.len() + low_rank) as u64;
+        k.rank = (pivots + low_rank) as u64;
         k.reduce_ns = t1.elapsed().as_nanos();
         let low_masks = &s.col_mask[b.low_start..];
         let const_bit = match low_masks.last() {

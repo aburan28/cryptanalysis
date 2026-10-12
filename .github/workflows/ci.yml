@@ -21,6 +21,15 @@ defaults:
     shell: bash
 
 jobs:
+  isolated-bench-contract:
+    name: Isolated benchmark contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test admission and result gates
+        run: python3 -m unittest discover -s tests -p test_isolated_bench.py -v
+
   # ------------------------------------------------------------- build ----
   build:
     name: ${{ matrix.os }} / ${{ matrix.cc }} / ${{ matrix.build_type }}
@@ -246,7 +255,7 @@ jobs:
              -o "$RUNNER_TEMP/gpu_cuda.o" cuda/gpu_cuda.c
 
       - name: Upload the PTX and cubins
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cuda-kernel
           path: |

@@ -43,7 +43,17 @@ jobs:
         with:
           workspaces: suite
       - name: Format
-        run: cargo fmt --all --check
+        # The P-256 native benchmark is an immutable measurement source whose
+        # exact bytes are bound into every frozen receipt. Check all other Rust
+        # sources without rewriting or silently invalidating those receipts.
+        run: |
+          mapfile -d '' sources < <(
+            find . -type f -name '*.rs' \
+              ! -path './target/*' \
+              ! -path './examples/p256_isogeny_native_bench.rs' \
+              -print0 | sort -z
+          )
+          rustfmt --check --edition 2021 "${sources[@]}"
       - name: Clippy
         # The three lints allowed in Cargo.toml are the whole allow list;
         # everything else is an error.
@@ -84,6 +94,13 @@ jobs:
             | python3 -c 'import json,sys; r=json.load(sys.stdin)["result"]; assert r["verified"] is True, r'
           ./target/release/ca-ic prime --curve secp256k1 --bits 20 --targets 4 --json \
             | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["status"] == "complete" and r["vs_rho"]["verdict"]["all_verified"] is True, r["status"]'
+      - name: Normalize prime IC into the common benchmark contract
+        run: |
+          ./target/release/ca-ic prime --type j0 --bits 20 --targets 4 --json --out /tmp/prime-native.json > /dev/null
+          python3 ../experiments/ic-bench/prime_bridge.py adapt /tmp/prime-native.json --out-dir /tmp/prime-normalized
+          python3 ../experiments/ic-candidate-catalog/analyze.py /tmp/prime-normalized/prime.jsonl > /tmp/prime-analysis.json
+          python3 -c 'import json; r=json.loads(open("/tmp/prime-normalized/prime.jsonl").read()); assert r["verified_scalar"] and r["candidate_id"].startswith("IC1P") and r["ratio_to_batch_floor"] > 0, r'
+
       - name: Smoke crax
         # One verified answer from each crax family, JSON-checked: the C
         # library's solvers through the bindings, the challenge corpus,
@@ -124,7 +141,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ecc2k130/build/cuda
           key: cuda-wheels-${{ hashFiles('ecc2k130/scripts/fetch_cuda.sh') }}
@@ -138,13 +155,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: suite
-      - name: NVRTC accepts the embedded source
+      - name: NVRTC accepts the embedded source and emits PTX and SASS
         working-directory: suite
         run: |
           pip download -q --no-deps -d /tmp/nvrtc nvidia-cuda-nvrtc-cu12
           unzip -q -o /tmp/nvrtc/*.whl -d /tmp/nvrtc/x
           lib=$(find /tmp/nvrtc/x -name 'libnvrtc.so.12' | head -1)
-          CA_NVRTC_LIB="$lib" cargo test --release --lib nvrtc_compiles -- --nocapture
+          CA_NVRTC_LIB="$lib" cargo test --release --lib nvrtc_ -- --nocapture
 
   rust-msrv:
     # The floor declared in suite/Cargo.toml, re-checked here so that it
@@ -215,7 +232,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Cache the pip download cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: pip-engine-${{ matrix.python }}-${{ hashFiles('suite/python/indexcalc/requirements-sat.txt') }}-ruff${{ env.RUFF_VERSION }}

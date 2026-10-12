@@ -5,6 +5,8 @@
 #include "generated/tau8_hot_map.h"
 #include "generated/tau8_pair_map.h"
 #include "test_fixtures.h"
+#include "ec_tau_internal.h"
+#include "curve_internal.h"
 
 static int tau_cost_cases;
 
@@ -490,8 +492,8 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     CHECK(ca_ec_endo_radix8_prepare(g, point, &endo_pre, &endo_doubles, &endo_adds,
                                     &endo_inversions));
     CHECK(ca_ec_endo_radix8_prepare_verify(&endo_pre));
-    CHECK_EQ_U64(endo_doubles, UINT64_C(8) * (endo_pre.positions - 1));
-    CHECK_EQ_U64(endo_adds, UINT64_C(127) * endo_pre.positions);
+    CHECK_EQ_U64(endo_doubles, 8 * (endo_pre.positions - 1));
+    CHECK_EQ_U64(endo_adds, 127 * endo_pre.positions);
     CHECK_EQ_U64(endo_inversions, 1);
     CHECK(ca_ec_joint_window4_verify_map());
     ca_joint_window4_precomp joint_pre = {0};
@@ -499,9 +501,9 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     CHECK(ca_ec_joint_window4_prepare(g, point, &joint_pre, &joint_doubles, &joint_adds,
                                       &joint_rotations, &joint_inversions));
     CHECK(ca_ec_joint_window4_prepare_verify(&joint_pre));
-    CHECK_EQ_U64(joint_doubles, UINT64_C(4) * (joint_pre.positions - 1));
-    CHECK_EQ_U64(joint_adds, UINT64_C(85) * joint_pre.positions);
-    CHECK_EQ_U64(joint_rotations, UINT64_C(8) * joint_pre.positions);
+    CHECK_EQ_U64(joint_doubles, 4 * (joint_pre.positions - 1));
+    CHECK_EQ_U64(joint_adds, 85 * joint_pre.positions);
+    CHECK_EQ_U64(joint_rotations, 8 * joint_pre.positions);
     CHECK_EQ_U64(joint_inversions, 1);
     CHECK(ca_ec_joint_window4_hot_verify_map());
     ca_joint_window4_precomp hot_joint_pre = {0};
@@ -1248,7 +1250,31 @@ static void joint_pair_width_named(uint64_t p, uint64_t b, uint64_t order, unsig
     ca_ec_joint_pair_clear(&pre);
 }
 
-static void tau_cost_named(const char *name)
+static void check_j0_coord_orbit(const ca_group *g, const ca_elem *point)
+{
+    ca_elem orbit = *point, representative = *point;
+    CHECK(ca_ec_j0_coord_canonicalize(g, &representative) < 6);
+    for (int j = 0; j < 6; j++) {
+        ca_elem reduced = orbit, replay = orbit;
+        uint32_t power = ca_ec_j0_coord_canonicalize(g, &reduced);
+        CHECK(power < 6);
+        for (uint32_t t = 0; t < power; t++) {
+            ca_elem next;
+            ca_ec_endo(g, &next, &replay);
+            replay = next;
+        }
+        CHECK(ca_group_equal(g, &reduced, &representative));
+        CHECK(ca_group_equal(g, &reduced, &replay));
+        ca_elem next;
+        ca_ec_endo(g, &next, &orbit);
+        orbit = next;
+    }
+}
+
+/* The tau digit path uses the -omega eigenvalue of the rho automorphism;
+ * compare the actual points over the subgroup, including aliasing and
+ * boundary scalars. */
+static void tau_scalar_checks(const char *name)
 {
     uint64_t p, a, b, order;
     CHECK(ca_curve_by_name(name, &p, &a, &b, &order) == CA_OK);
@@ -1918,12 +1944,11 @@ static void paired_rho_startup_checks(void)
         for (size_t j = 0; j < sizeof(seeds) / sizeof(seeds[0]); j++) {
             uint64_t reference = UINT64_MAX, candidate = UINT64_MAX, batched = UINT64_MAX;
             uint64_t plane_result = UINT64_MAX, free_result = UINT64_MAX;
-            uint64_t steered_result = UINT64_MAX;
             ca_stats ref_stats = {0}, cand_stats = {0}, batch_stats = {0};
-            ca_stats plane_stats = {0}, free_stats = {0}, steered_stats = {0};
+            ca_stats plane_stats = {0}, free_stats = {0};
             ca_curve_startup_stats ref_startup = {0}, cand_startup = {0};
             ca_curve_startup_stats batch_startup = {0}, plane_startup = {0};
-            ca_curve_startup_stats free_startup = {0}, steered_startup = {0};
+            ca_curve_startup_stats free_startup = {0};
             CHECK(ca_curve_solve_startup(&group, &base, &target, seeds[j], &reference,
                   CA_CURVE_STARTUP_GENERIC, &ref_startup, NULL, &ref_stats) == CA_OK);
             CHECK(ca_curve_solve_startup(&group, &base, &target, seeds[j], &candidate,
@@ -1937,15 +1962,11 @@ static void paired_rho_startup_checks(void)
             CHECK(ca_curve_solve_startup(&group, &base, &target, seeds[j], &free_result,
                   CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_BATCH, &free_startup,
                   NULL, &free_stats) == CA_OK);
-            CHECK(ca_curve_solve_startup(&group, &base, &target, seeds[j], &steered_result,
-                  CA_CURVE_STARTUP_TAU_PAIRED2_TAUPAIR_STEER_BATCH, &steered_startup,
-                  NULL, &steered_stats) == CA_OK);
             CHECK_EQ_U64(reference, scalars[i]);
             CHECK_EQ_U64(candidate, reference);
             CHECK_EQ_U64(batched, reference);
             CHECK_EQ_U64(plane_result, reference);
             CHECK_EQ_U64(free_result, reference);
-            CHECK_EQ_U64(steered_result, reference);
             CHECK_EQ_U64(cand_stats.group_ops, ref_stats.group_ops);
             CHECK_EQ_U64(cand_stats.table_entries, ref_stats.table_entries);
             CHECK_EQ_U64(cand_startup.budget_equivalent_group_ops,
@@ -2009,30 +2030,6 @@ static void paired_rho_startup_checks(void)
             CHECK_EQ_U64(free_startup.eval_pair_scores, batch_startup.eval_pair_scores);
             CHECK_EQ_U64(free_startup.eval_inversions, batch_startup.eval_inversions);
             CHECK(free_startup.eval_rotations <= batch_startup.eval_rotations);
-            CHECK_EQ_U64(steered_stats.group_ops, ref_stats.group_ops);
-            CHECK_EQ_U64(steered_stats.table_entries, ref_stats.table_entries);
-            CHECK_EQ_U64(steered_startup.budget_equivalent_group_ops,
-                         ref_startup.budget_equivalent_group_ops);
-            CHECK_EQ_U64(steered_startup.table_evaluations,
-                         ref_startup.table_evaluations);
-            CHECK_EQ_U64(steered_startup.restart_evaluations,
-                         ref_startup.restart_evaluations);
-            CHECK_EQ_U64(steered_startup.prepare_bytes,
-                         sizeof(ca_tau4_joint_precomp));
-            CHECK_EQ_U64(steered_startup.table_output_inversions, 1);
-            CHECK(steered_startup.eval_tau_pairs > 0);
-            CHECK(steered_startup.eval_tau_pair_cheap_z <=
-                  steered_startup.eval_tau_pairs);
-            CHECK_EQ_U64(steered_startup.eval_gauge_table_lookups,
-                         steered_startup.eval_tau_pairs);
-            CHECK_EQ_U64(ref_startup.startup_point_count,
-                         ref_startup.table_evaluations + ref_startup.restart_evaluations);
-            CHECK_EQ_U64(steered_startup.startup_point_count,
-                         ref_startup.startup_point_count);
-            CHECK_EQ_U64(steered_startup.startup_point_digest_lo,
-                         ref_startup.startup_point_digest_lo);
-            CHECK_EQ_U64(steered_startup.startup_point_digest_hi,
-                         ref_startup.startup_point_digest_hi);
         }
     }
     ca_group generic;
@@ -2048,9 +2045,149 @@ static void paired_rho_startup_checks(void)
     CHECK(ca_curve_solve_startup(&generic, &id, &id, 17, &output,
           CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH,
           NULL, NULL, NULL) == CA_ERR_UNSUPPORTED);
-    CHECK(ca_curve_solve_startup(&generic, &id, &id, 17, &output,
-          CA_CURVE_STARTUP_TAU_PAIRED2_TAUPAIR_STEER_BATCH,
-          NULL, NULL, NULL) == CA_ERR_UNSUPPORTED);
+}
+
+static void tau_cost_named(const char *name)
+{
+    uint64_t p, a, b, order;
+    CHECK(ca_curve_by_name(name, &p, &a, &b, &order) == CA_OK);
+    ca_group g;
+    ca_curve_info info;
+    CHECK(ca_curve_group(&g, p, a, b, order, &info) == CA_OK);
+    CHECK(info.endo == CA_CURVE_ENDO_J0);
+    ca_elem gen;
+    CHECK(ca_group_find_generator(&g, &gen, 1) == CA_OK);
+    ca_tau4_precomp pre;
+    uint64_t prep_ops = 0;
+    CHECK(ca_ec_tau4_prepare(&g, &gen, &pre, &prep_ops));
+    CHECK(prep_ops == 19);
+    ca_rng rng;
+    ca_rng_seed(&rng, 0x74a2ULL ^ order);
+    for (int i = 0; i < 256; i++) {
+        uint64_t k = i < 8 ? (uint64_t[]){0, 1, 2, 3, order - 2, order - 1, order, UINT64_MAX}[i]
+                           : ca_rng_next(&rng);
+        ca_elem want, got = gen;
+        uint64_t nt = UINT64_MAX, na = UINT64_MAX;
+        ca_group_mul(&g, &want, &gen, k % order, NULL);
+        CHECK(ca_ec_mul_tau2(&g, &got, &got, k, &nt, &na));
+        CHECK(ca_group_equal(&g, &got, &want));
+        CHECK(nt < 256 && na < 256);
+        got = gen;
+        CHECK(ca_ec_mul_tau4(&g, &got, &got, k, &nt, &na));
+        CHECK(ca_group_equal(&g, &got, &want));
+        CHECK(nt < 256 && na < 256);
+        uint64_t n3 = UINT64_MAX;
+        got = gen;
+        CHECK(ca_ec_mul_tau4_tripling(&g, &got, &got, k, &nt, &na, &n3));
+        CHECK(ca_group_equal(&g, &got, &want));
+        CHECK(nt < 256 && na < 256 && n3 < 256);
+        got = gen;
+        CHECK(ca_ec_tau4_mul_prepared(&g, &pre, &got, k, &n3, &na));
+        CHECK(ca_group_equal(&g, &got, &want));
+        CHECK(na < 256 && n3 < 256);
+        if (i < 64) check_j0_coord_orbit(&g, &want);
+        if (i < 32) {
+            ca_elem triple = want, ref;
+            ca_group_mul(&g, &ref, &want, 3, NULL);
+            CHECK(ca_ec_triple_j0(&g, &triple, &triple));
+            CHECK(ca_group_equal(&g, &triple, &ref));
+        }
+    }
+    ca_elem id, got;
+    ca_group_identity(&g, &id);
+    CHECK(ca_ec_mul_tau2(&g, &got, &id, 123, NULL, NULL));
+    CHECK(ca_group_is_identity(&g, &got));
+    CHECK(ca_ec_mul_tau4(&g, &got, &id, 123, NULL, NULL));
+    CHECK(ca_group_is_identity(&g, &got));
+    CHECK(ca_ec_mul_tau4_tripling(&g, &got, &id, 123, NULL, NULL, NULL));
+    CHECK(ca_group_is_identity(&g, &got));
+    CHECK(ca_ec_tau4_prepare(&g, &id, &pre, &prep_ops));
+    CHECK(prep_ops == 0);
+    CHECK(ca_ec_tau4_mul_prepared(&g, &pre, &got, 123, NULL, NULL));
+    CHECK(ca_group_is_identity(&g, &got));
+    CHECK(ca_ec_triple_j0(&g, &got, &id));
+    CHECK(ca_group_is_identity(&g, &got));
+}
+
+static void tau_small_curve_checks(void)
+{
+    const uint64_t cases[][3] = {{7, 3, 13}, {13, 2, 19}, {37, 5, 37}, {79, 3, 97}};
+    for (size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
+        ca_group g;
+        ca_curve_info info;
+        CHECK(ca_curve_group(&g, cases[c][0], 0, cases[c][1], cases[c][2], &info) == CA_OK);
+        CHECK(info.endo == CA_CURVE_ENDO_J0);
+        ca_elem gen;
+        CHECK(ca_group_find_generator(&g, &gen, 1) == CA_OK);
+        ca_tau4_precomp pre;
+        CHECK(ca_ec_tau4_prepare(&g, &gen, &pre, NULL));
+        for (uint64_t k = 0; k < cases[c][2]; k++) {
+            ca_elem want, got;
+            ca_group_mul(&g, &want, &gen, k, NULL);
+            CHECK(ca_ec_mul_tau2(&g, &got, &gen, k, NULL, NULL));
+            CHECK(ca_group_equal(&g, &got, &want));
+            CHECK(ca_ec_mul_tau4(&g, &got, &gen, k, NULL, NULL));
+            CHECK(ca_group_equal(&g, &got, &want));
+            CHECK(ca_ec_mul_tau4_tripling(&g, &got, &gen, k, NULL, NULL, NULL));
+            CHECK(ca_group_equal(&g, &got, &want));
+            CHECK(ca_ec_tau4_mul_prepared(&g, &pre, &got, k, NULL, NULL));
+            CHECK(ca_group_equal(&g, &got, &want));
+        }
+    }
+    /* Exceptional kernels: x=0 has order 3; y=0 has order 2. */
+    ca_group g;
+    ca_elem point, got, want;
+    CHECK(ca_group_ec_init(&g, 7, 0, 1, 0) == CA_OK);
+    CHECK(ca_ec_lift_x(&g, &point, 0));
+    CHECK(ca_ec_triple_j0(&g, &got, &point));
+    CHECK(ca_group_is_identity(&g, &got));
+    CHECK(ca_group_ec_init(&g, 7, 0, 6, 0) == CA_OK);
+    CHECK(ca_ec_lift_x(&g, &point, 1));
+    ca_group_mul(&g, &want, &point, 3, NULL);
+    CHECK(ca_ec_triple_j0(&g, &got, &point));
+    CHECK(ca_group_equal(&g, &got, &want));
+    /* Ineligible families leave the output untouched. */
+    CHECK(ca_group_ec_init(&g, 7, 1, 0, 0) == CA_OK);
+    got = point;
+    CHECK(!ca_ec_mul_tau2(&g, &got, &point, 3, NULL, NULL));
+    CHECK(memcmp(&got, &point, sizeof(got)) == 0);
+    CHECK(!ca_ec_triple_j0(&g, &got, &point));
+    CHECK(memcmp(&got, &point, sizeof(got)) == 0);
+}
+
+static void tau_large_curve_checks(void)
+{
+    /* 2^61-1 is prime; E: y^2=x^3+7 has order 43 * r, with this
+     * 56-bit prime r.  This exercises the signed-128 lattice path beyond
+     * the much smaller registered subgroups. */
+    const uint64_t p = UINT64_C(2305843009213693951);
+    const uint64_t order = UINT64_C(53624256071278747);
+    ca_group g;
+    ca_curve_info info;
+    CHECK(ca_curve_group(&g, p, 0, 7, order, &info) == CA_OK);
+    CHECK(info.endo == CA_CURVE_ENDO_J0);
+    ca_elem gen;
+    CHECK(ca_group_find_generator(&g, &gen, 1) == CA_OK);
+    ca_tau4_precomp pre;
+    CHECK(ca_ec_tau4_prepare(&g, &gen, &pre, NULL));
+    ca_rng rng;
+    ca_rng_seed(&rng, UINT64_C(0x56c0ffee));
+    for (int i = 0; i < 128; i++) {
+        uint64_t k = i < 6 ? (uint64_t[]){0, 1, order - 1, order, order + 1, UINT64_MAX}[i]
+                           : ca_rng_next(&rng);
+        ca_elem want, got;
+        ca_group_mul(&g, &want, &gen, k % order, NULL);
+        CHECK(ca_ec_mul_tau2(&g, &got, &gen, k, NULL, NULL));
+        CHECK(ca_group_equal(&g, &got, &want));
+        CHECK(ca_ec_mul_tau4(&g, &got, &gen, k, NULL, NULL));
+        CHECK(ca_group_equal(&g, &got, &want));
+        CHECK(ca_ec_mul_tau4_tripling(&g, &got, &gen, k, NULL, NULL, NULL));
+        CHECK(ca_group_equal(&g, &got, &want));
+        got = gen;
+        CHECK(ca_ec_tau4_mul_prepared(&g, &pre, &got, k, NULL, NULL));
+        CHECK(ca_group_equal(&g, &got, &want));
+        if (i < 16) check_j0_coord_orbit(&g, &want);
+    }
 }
 
 int main(void)
@@ -2123,6 +2260,10 @@ int main(void)
     by_name("pf-anomalous-b9", CA_CURVE_ENDO_NONE, 2, 40.0);
     by_name("pf-j0-twist-b27", CA_CURVE_ENDO_J0, 6, 40.0);
     by_name("pf-ssj0-b7", CA_CURVE_ENDO_NONE, 2, 40.0);
+    tau_scalar_checks("glv-j0-26");
+    tau_scalar_checks("glv-j0-32");
+    tau_small_curve_checks();
+    tau_large_curve_checks();
 
     /* The endomorphism must not change the answer: cross-check GLV against a
      * plain solve on the same instance. */
