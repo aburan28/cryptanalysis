@@ -3222,6 +3222,57 @@ def main():
         "complete_n131_solve_work_log2": None,
         "analysis_sha256": sha(q1490_path),
     }
+    q1491_dir = HERE / "q20261012_n83_mask_density"
+    q1491_path = q1491_dir / "analysis.json"
+    q1491_root_path = q1491_dir / "root_work.json"
+    q1491 = json.loads(q1491_path.read_text())
+    q1491_root = json.loads(q1491_root_path.read_text())
+    assert q1491["proposal_id"] == q1491_root["proposal_id"] == "Q1491"
+    assert q1491["candidate_id"] is None and q1491["run_id"] is None
+    assert q1491["curve_id"] == q1491_root["curve_id"] == q1488["curve_id"]
+    assert q1491["factor_base_actual_B"] == q1488["factor_base_actual_B"]
+    assert q1491["factor_base_folded_columns_K"] == q1488[
+        "factor_base_folded_columns_K"]
+    assert q1491["selected_unique_pairs"] == 40
+    assert q1491["holdout_pair_matches_selected"] == 8
+    assert q1491["promoted_flip_count"] == 166
+    assert q1491["complete_n83_decomposition_work_log2"] is None
+    assert q1491["complete_n131_solve_work_log2"] is None
+    assert q1491_root["complete_n131_solve_work_log2"] is None
+    best_q1491 = q1491["selected_summary"]["166"]
+    root_q1491 = q1491_root["summary"]["selected_166"]
+    assert best_q1491["completed"] == 8
+    assert best_q1491["two_root_pairs"] == root_q1491[
+        "two_root_pairs"] == 5
+    assert best_q1491["combined_cnf_xor_calls_completed"] == root_q1491[
+        "cnf_xor_calls"]
+    ledger["q1491_n83_mask_density_stage"] = {
+        "proposal_id": "Q1491",
+        "candidate_id": None,
+        "curve_id": q1491["curve_id"],
+        "factor_base_actual_B": q1491["factor_base_actual_B"],
+        "factor_base_folded_columns_K": q1491[
+            "factor_base_folded_columns_K"],
+        "point_decomposition_stage_code": "PDP4sat",
+        "selected_mask_attempts": 40,
+        "selected_distinct_first_pairs": q1491["selected_unique_pairs"],
+        "selected_two_root_first_pairs": sum(
+            row["two_root_pairs"] for row in q1491[
+                "selected_summary"].values()),
+        "promoted_flip_count": q1491["promoted_flip_count"],
+        "promoted_selected_cnf_xor_calls_per_two_root_pair": best_q1491[
+            "combined_cnf_xor_calls_per_two_root_pair"],
+        "promoted_holdout_cnf_xor_calls_per_two_root_pair": q1491[
+            "holdout_summary"]["166"][
+                "combined_cnf_xor_calls_per_two_root_pair"],
+        "promoted_selected_root_field_api_entries": root_q1491[
+            "root_field_api_entries"],
+        "root_rate_independent_holdout": False,
+        "complete_n83_decomposition_work_log2": None,
+        "complete_n131_solve_work_log2": None,
+        "analysis_sha256": sha(q1491_path),
+        "root_work_sha256": sha(q1491_root_path),
+    }
     output = HERE / "work_ledger.json"
     output.write_text(json.dumps(ledger, indent=2) + "\n")
     print(json.dumps({"n53_pair_samples_log2": math.log2(samples53),
