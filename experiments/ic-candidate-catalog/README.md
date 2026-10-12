@@ -310,6 +310,94 @@ actual `B` against the four Q1420 geometries. Q1421 remains a proposal with
 separate from the sampled type-II normal-basis weight-six four-summand policy
 and from Q1420.
 
+The [Q1420/Q1421 equal-B six-policy input gate](../ecc2k130-normal4-equalb-m6-20261010/PROTOCOL.md)
+fixes `B=11,743,888` for source W24, transported W24, descendant-native
+W24, its pullback, normal4 source, and transported normal4. It binds the
+verified degree-263 route and Q1420 one-target public point, specifies
+deterministic W24 mask prefixes and 65,536 target-independent ordinary
+queries, and requires checked-Sage point/map replay before a paired
+six-summand PDP screen. The [verified input result](../ecc2k130-normal4-equalb-m6-20261010/RESULT.md)
+records both W24 prefix digests, all 256 fixed point/map controls, a matched
+65,536-query source/descendant public-point stream with independent checked-Sage
+replay, and the bound one-target point. Its
+[configuration](../ecc2k130-normal4-equalb-m6-20261010/CONFIG.json)
+retains `candidate_id: null` while PDP, rank, final matrix, and target stages
+are pending.
+
+The [exact equal-B source-leaf m6 gate](../ecc2k130-equalb-m6-leaf-circuit-20261010/RESULT.md)
+now constructs matched native-XOR six-summand circuits for source W24 and
+normal4 with two multiplication equations and one trace equation per exact
+rational leaf. Checked Sage replays all 192 frozen source-point controls and
+both planted six-point chains; pinned SAT positive/negative controls also
+pass. On the first frozen ordinary public query, both CryptoMiniSat attempts
+entered search and reached their 150-second external cap with
+`BOUNDED_UNKNOWN` status. The checked order-four torsion witness gives four
+distinct raw x-target lifts of the same projected `[4]Q` relation. The next
+paired gate must charge all four lifts per query and compare independently
+verified relations and novel rank, with this exact circuit as its control.
+This is a PDP-stage proposal with `candidate_id: null`.
+
+The [exact four-lift equal-B m6 gate](../ecc2k130-equalb-four-lift-pdp-20261010/RESULT.md)
+puts all four checked raw x-preimages of one projected ordinary query into
+one native-XOR formula for each source geometry. Four SAT and four UNSAT
+target-mux controls and independent Sage lift replay pass. Both W24 and
+normal4 entered CryptoMiniSat search and returned `BOUNDED_UNKNOWN` at the
+frozen internal cap; the raw conflict and restart counts are retained. An
+exact restriction of the verified W24 orbit map gives 5,869,878 potential
+source columns at the common `B=11,743,888`, versus 44,824 for normal4.
+This prioritizes a verified ordinary normal4 relation/rank gate with a W24
+control while preserving all target-dependent attempts and the final-matrix
+cost. The complete IC pipeline remains an unactivated proposal.
+
+The [balanced-S3 equal-B m6 gate](../ecc2k130-equalb-balanced-s3-20261010/RESULT.md)
+reorganizes those six exact leaves into three pair sums and a final two-link
+tree. Independent checked Sage replay passes both planted point chains and
+Boolean-root controls. Each all-lift formula saves 1,030 variables, 131
+ordinary clauses, and 899 native XORs against the target-first circuit.
+The normal4 and W24 ordinary-query searches both entered live search and
+reached their frozen external wall cap with `BOUNDED_UNKNOWN`; raw restart
+tables and independent audits distinguish this from a solver launch failure.
+The static reduction is small, so the next PDP gate compares exact four-hot
+encodings of normal4's weight-four supports, with W24 retained as a paired
+reference. Verified ordinary relations and novel rank remain the promotion
+measure; `candidate_id` is still `null`.
+
+The [normal4 selector gate](../ecc2k130-normal4-support-index-20261010/RESULT.md)
+corrects the support-position width to eight bits and compares both an exact
+four-threshold counter and four ordered support indices against the frozen
+balanced formula. Checked Sage passes 128 frozen points and a position-130
+leaf; 11 native-XOR SAT controls pass. The counter saves 93,654 variables
+(17.451%) and 181,914 ordinary clauses (30.320%) in the full m6 formula,
+without adding XORs. Its formula is smaller than the support-index formula
+in all three XCNF dimensions. Both ordinary query-zero searches reached the
+150-second external guard with `BOUNDED_UNKNOWN` and independent live-search
+audits. The counter becomes the normal4 circuit baseline, while relation
+yield and rank remain unmeasured; held-out N131 four-policy prefixes await a
+relation-producing PDP. The next independent gates are the degree-263
+exceptional-input transport proof and charged n53 compact-orbit recovery.
+
+The [equal-B Gaussian-matrix gate](../ecc2k130-equalb-gauss-gate-20261010/RESULT.md)
+replayed the exact normal4-counter and W24-balanced four-lift query under
+matched CryptoMiniSat default and raised Gaussian limits. The raised limit
+admitted 8,262-by-13,084 components and recorded active elimination, while
+peak RSS rose 3.6–3.9-fold and all four guarded searches remained
+`BOUNDED_UNKNOWN`. The first sandboxed launch is preserved as four
+`PRODUCER_FAILURE` rows; the corrected R2 launch and independent raw-log
+audit are linked from the result. That observation motivated the controlled
+two-versus-five matrix-count gate below. `candidate_id` remains `null`
+pending verified relations and rank.
+
+The [two-repeat Gaussian matrix-count result](../ecc2k130-equalb-gauss-count-20261010/RESULT.md)
+kept those exact XCNFs, four raw lifts of public query zero, large
+row/column limits, solver binary, and resource caps fixed. Two/five paired
+sampled-RSS ratios were 0.695 and 0.473 for normal4, and 0.614 and 0.525
+for W24. All eight cells reached the external guard with `BOUNDED_UNKNOWN`;
+W24/two printed positive elimination calls once, while normal4/two had no
+elimination summary, leaving the full activity gate unresolved. The next
+separately frozen gate is a longer single-Q0 normal4/two run with a complete
+five-matrix control. The held-out 16/256-query screen remains gated on a
+verified ordinary relation or an independently justified solver-policy change.
+
 The [preregistered cold full-rank one-target control](../ecc2k130-cold-fullrank-20261006/RESULT.md)
 assigns canonical `IC1`/workload/run IDs to independently replayed n37 and n41
 four-summand exact-support recoveries; its n53 cell is a preserved 180-second
