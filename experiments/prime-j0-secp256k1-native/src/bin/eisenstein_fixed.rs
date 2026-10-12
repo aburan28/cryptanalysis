@@ -3581,7 +3581,7 @@ fn check_generator_case(
     let preparation_start = Instant::now();
     LazyLock::force(&SCALAR_LATTICE);
     LazyLock::force(&DECODE_CONSTANTS);
-    if (123..=171).contains(&unit_orbit_format) {
+    if (123..=172).contains(&unit_orbit_format) {
         LazyLock::force(&HYBRID_FIELD);
     }
     if (124..=168).contains(&unit_orbit_format) {
@@ -3630,11 +3630,15 @@ fn check_generator_case(
         LazyLock::force(&GLV_COMB10_POINTS);
     }
     let scalar = scalar_from_hex(scalar_hex);
-    let scalar_words = (125..=171).contains(&unit_orbit_format)
+    let scalar_words = (125..=172).contains(&unit_orbit_format)
         .then(|| scalar_words_256(&scalar)).flatten();
     let preparation_ms = preparation_start.elapsed().as_secs_f64() * 1000.0;
     let start = Instant::now();
-    let actual = if unit_orbit_format == 171 {
+    let actual = if unit_orbit_format == 172 {
+        unit_orbit_windows::multiply_u256_sector_gauge_tree_cached(
+            scalar_words.expect("cached gauge tree requires unsigned 256-bit scalar")
+        ).0
+    } else if unit_orbit_format == 171 {
         unit_orbit_windows::multiply_u256_sector_gauge_tree(
             scalar_words.expect("gauge tree requires unsigned 256-bit scalar")
         ).0
@@ -3830,7 +3834,9 @@ fn check_generator_case(
     };
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if unit_orbit_format == 171 {
+    let mode = if unit_orbit_format == 172 {
+        "unit_orbit_u256_sector14_xyzz_gauge_plan_solinas_fixed"
+    } else if unit_orbit_format == 171 {
         "unit_orbit_u256_sector14_xyzz_gauge_tree_solinas_fixed"
     } else if unit_orbit_format == 170 {
         "unit_orbit_u256_sector14_xyzz_karatsuba_solinas_fixed"
@@ -4088,7 +4094,9 @@ fn main() {
             || args[0].starts_with("--benchmark-scalar-unit-orbit-radix943"))
         && args[0].ends_with("-fixed-fixture")
     {
-        let format = if args[0].contains("unit-orbit-u256-sector14-xyzz-gauge-tree-solinas-fixed-fixture") {
+        let format = if args[0].contains("unit-orbit-u256-sector14-xyzz-gauge-plan-solinas-fixed-fixture") {
+            172
+        } else if args[0].contains("unit-orbit-u256-sector14-xyzz-gauge-tree-solinas-fixed-fixture") {
             171
         } else if args[0].contains("unit-orbit-u256-sector14-xyzz-karatsuba-solinas-fixed-fixture") {
             170
@@ -4424,7 +4432,9 @@ fn main() {
             args[0].contains("w6-comb13-hex9-radius2"),
             args[0].contains("w6-comb13-hex9-graph33"),
             args[0].contains("w6-comb13-hex9-graphaware33"),
-            if args[0].contains("unit-orbit-u256-sector14-xyzz-gauge-tree-solinas") {
+            if args[0].contains("unit-orbit-u256-sector14-xyzz-gauge-plan-solinas") {
+                172
+            } else if args[0].contains("unit-orbit-u256-sector14-xyzz-gauge-tree-solinas") {
                 171
             } else if args[0].contains("unit-orbit-u256-sector14-xyzz-karatsuba-solinas") {
                 170
