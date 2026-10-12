@@ -109,7 +109,7 @@ function(ca_configure_target tgt)
     target_compile_definitions(${tgt} PRIVATE CA_RHO_J0_COORDINATE_ORBIT=1)
   elseif(CA_RHO_J0_FACTORED_HASH)
     target_compile_definitions(${tgt} PRIVATE CA_RHO_J0_FACTORED_HASH=1)
-  endif()
+  endif() # close the experimental orbit-reducer conditional before tau options
   target_link_libraries(${tgt} PUBLIC Threads::Threads m)
   if(CA_NATIVE)
     target_compile_options(${tgt} PRIVATE -march=native)
