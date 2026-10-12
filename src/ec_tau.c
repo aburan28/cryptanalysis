@@ -441,29 +441,6 @@ static void reduce_with_lattice_eisenstein(tau_vec v1, tau_vec v2, ca_i128 det, 
 static void reduce_with_lattice(tau_vec v1, tau_vec v2, ca_i128 det, uint64_t k, ca_i128 *out_a,
                                 ca_i128 *out_b)
 {
-    ca_i128 u0 = round_div((ca_i128)k * v2.y, det);
-    ca_i128 v0 = round_div(-(ca_i128)k * v1.y, det);
-    ca_i128 best = -1, bx = 0, by = 0;
-    for (int du = -2; du <= 2; du++) {
-        for (int dv = -2; dv <= 2; dv++) {
-            ca_i128 u = u0 + du, v = v0 + dv;
-            ca_i128 x = (ca_i128)k - u * v1.x - v * v2.x;
-            ca_i128 y = -u * v1.y - v * v2.y;
-            ca_i128 score = iabs128(x) + iabs128(y);
-            if (best < 0 || score < best) {
-                best = score;
-                bx = x;
-                by = y;
-            }
-        }
-    }
-    *out_x = bx;
-    *out_y = by;
-}
-
-static void reduce_with_lattice(tau_vec v1, tau_vec v2, ca_i128 det, uint64_t k, ca_i128 *out_a,
-                                ca_i128 *out_b)
-{
     ca_i128 x, y;
     reduce_with_lattice_eisenstein(v1, v2, det, k, &x, &y, NULL, NULL);
     /* omega = 1 - tau, hence x + y*omega = (x+y) - y*tau. */
