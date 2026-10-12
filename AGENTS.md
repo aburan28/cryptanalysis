@@ -237,7 +237,10 @@ the additive walk `Q + i[a0]G`);
 `ISO0` for no isogeny
 Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid`; `PDP4sat`
 for a compact four-summand S3 SAT chain, `PDP4root` for the compact
-four-summand S3 root index, and `PDP4qpair` for a complete
+four-summand S3 root index, `PDP4theory` for a four-summand SAT search with
+external exact S3 field-root propagation, `PDP4phi5` for a compact
+four-summand torsion-symmetrized five-input polynomial SAT stage, and
+`PDP4qpair` for a complete
 four-summand signed-Frobenius quotient pair-sum index; `PDP4claw` for a
 two-color four-summand pair-sum distinguished-point claw; `PDP4qclaw` for its
 signed-Frobenius quotient walk; `PDP4qtable` for a signed-Frobenius quotient
