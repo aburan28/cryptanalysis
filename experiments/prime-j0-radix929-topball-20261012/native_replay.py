@@ -37,6 +37,11 @@ def run(binary: Path, overlay_record: Path) -> tuple[dict, bytes, dict]:
         "overlay_builder_sha256": digest(HERE / "native_overlay.py"),
     }
     assert all(record[key] == value for key, value in sources.items())
+    copied_native = overlay_record.parent / "experiments/prime-j0-secp256k1-native"
+    assert record["compiled_module_sha256"] == digest(
+        copied_native / "src/bin/eisenstein_fixed/unit_orbit_windows.rs")
+    assert record["compiled_cli_sha256"] == digest(
+        copied_native / "src/bin/eisenstein_fixed.rs")
     audit_raw = subprocess.run([str(binary), "--radix929-audit"],
                                check=True, capture_output=True, text=True).stdout.strip()
     audit = fields(audit_raw)
