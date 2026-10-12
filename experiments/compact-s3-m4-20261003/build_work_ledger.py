@@ -9,6 +9,7 @@ import math
 import re
 from decimal import Decimal, localcontext
 from pathlib import Path
+from statistics import median
 
 from run_probe import HERE, ROOT, sha
 
@@ -3144,6 +3145,82 @@ def main():
             },
             "challenge_dispatch_allowed": False,
         },
+    }
+    # Bind the later N83 search diagnostics without promoting a capped stage
+    # to a complete decomposition or a degree-131 work estimate.
+    q1488_path = HERE / "q20261012_n83_first_pair_restart" / "analysis.json"
+    q1490_path = HERE / "q20261012_n83_discriminator_sweep" / "analysis.json"
+    q1488 = json.loads(q1488_path.read_text())
+    q1490 = json.loads(q1490_path.read_text())
+    for proposal, analysis in (("Q1488", q1488), ("Q1490", q1490)):
+        assert analysis["proposal_id"] == proposal
+        assert analysis["candidate_id"] is None and analysis["run_id"] is None
+        assert analysis["curve_id"] == "EC1N83Ckb1h876c2921cb64"
+        assert analysis["factor_base_actual_B"] == 30_977_592
+        assert analysis["factor_base_folded_columns_K"] == 186_612
+        assert analysis["complete_n83_decomposition_work_log2"] is None
+        assert analysis["complete_n131_solve_work_log2"] is None
+    assert q1488["first_pair_completed_attempts"] == 18
+    assert q1488["selected_unique_pairs"] == 9
+    assert all(row["status"] == "FIRST_PAIR_TERMINATED"
+               for row in q1488["points"].values())
+    selected_first_pair_calls = [
+        row["first_pair_combined_calls"]
+        for name, row in q1488["points"].items()
+        if name.startswith("selected_")]
+    holdout_first_pair_calls = [
+        row["first_pair_combined_calls"]
+        for name, row in q1488["points"].items()
+        if name.startswith("holdout_")]
+    assert len(selected_first_pair_calls) == len(holdout_first_pair_calls) == 9
+    assert len(q1490["selected_variants"]) == 34
+    assert len(q1490["points"]) == 37
+    assert all(row["status"] == "CHECKPOINT_TERMINATED"
+               and row["distinct_pair1_count_at_cap"] == 1
+               for row in q1490["points"].values())
+    best_selected = min((row["combined_cnf_xor_calls_at_cap"],
+                         row["bit_index"])
+                        for name, row in q1490["points"].items()
+                        if name.startswith("selected_"))
+    assert best_selected[1] in [
+        q1490["points"][f"holdout_{variant}"]["bit_index"]
+        for variant in q1490["promoted_variants"]]
+    best_holdout_calls = q1490["points"][
+        f"holdout_bit{best_selected[1]}"]["combined_cnf_xor_calls_at_cap"]
+    ledger["q1488_n83_first_pair_restart_stage"] = {
+        "proposal_id": "Q1488",
+        "candidate_id": None,
+        "curve_id": q1488["curve_id"],
+        "factor_base_actual_B": q1488["factor_base_actual_B"],
+        "factor_base_folded_columns_K": q1488["factor_base_folded_columns_K"],
+        "point_decomposition_stage_code": "PDP4sat",
+        "ordinary_points": 2,
+        "first_pair_completed_attempts": 18,
+        "unique_pairs_per_point": 9,
+        "selected_median_first_pair_cnf_xor_calls": median(
+            selected_first_pair_calls),
+        "holdout_median_first_pair_cnf_xor_calls": median(
+            holdout_first_pair_calls),
+        "complete_n83_decomposition_work_log2": None,
+        "complete_n131_solve_work_log2": None,
+        "analysis_sha256": sha(q1488_path),
+    }
+    ledger["q1490_n83_discriminator_sweep_stage"] = {
+        "proposal_id": "Q1490",
+        "candidate_id": None,
+        "curve_id": q1490["curve_id"],
+        "factor_base_actual_B": q1490["factor_base_actual_B"],
+        "factor_base_folded_columns_K": q1490["factor_base_folded_columns_K"],
+        "point_decomposition_stage_code": "PDP4sat",
+        "selected_bit_positions": 34,
+        "holdout_bit_positions": 3,
+        "best_bit_index": best_selected[1],
+        "best_selected_cnf_xor_calls_at_cap": best_selected[0],
+        "best_holdout_cnf_xor_calls_at_cap": best_holdout_calls,
+        "distinct_pairs_per_attempt_at_cap": 1,
+        "complete_n83_decomposition_work_log2": None,
+        "complete_n131_solve_work_log2": None,
+        "analysis_sha256": sha(q1490_path),
     }
     output = HERE / "work_ledger.json"
     output.write_text(json.dumps(ledger, indent=2) + "\n")
