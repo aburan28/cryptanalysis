@@ -80,6 +80,14 @@ The
 contains the derivation, raw results, and limits.  Set
 `-DCA_J0_RHO_COVARIANT_WALK=OFF` to build the former walk.
 
+## Research problems
+
+Track major research and audit blockers in [`problems/`](problems/README.md):
+name the obstruction, cite what is known, state what would unblock it, and
+record the next discriminating experiment or proof obligation. Follow the
+[agent rule](AGENTS.md#name-the-obstruction) and
+[problem template](problems/TEMPLATE.md).
+
 ## Build
 
 Local Sage experiments use the optimized workspace build through `./sage`:

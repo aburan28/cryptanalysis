@@ -1,5 +1,41 @@
 # Agent rules for cryptanalysis experiments
 
+## Name the obstruction
+
+When substantial research, cryptanalysis, or audit work cannot meet a proof,
+implementation, experiment, or validation requirement, **name the specific
+problem**. Before repeating the same blocked approach or handing it off, create
+or update `problems/<descriptive-slug>.md` using
+[the problem template](problems/TEMPLATE.md), add it to
+[the problem index](problems/README.md), and link it from the affected work.
+
+- State exactly what is blocked, under which parameters and assumptions, and
+  why that gap prevents the requested conclusion. Track major or recurring
+  blockers, not every routine TODO.
+- Separate observed evidence, suspected explanations, missing implementations,
+  access/tool or assistance limits, resource limits, and proved mathematical
+  obstructions. Cite artifacts or proofs with their exact scope; mark unknowns
+  explicitly. A timeout or bounded failed search does not prove impossibility;
+  failure to find an attack does not establish security.
+- Say **what would unblock it**: the missing lemma, construction, verified map,
+  measurement, implementation, access, or resource, with checkable acceptance
+  criteria. Explain what satisfying those criteria would establish and what
+  would remain unresolved. "More research" is not an exit condition.
+- Give the next discriminating experiment or proof obligation, its controls
+  and execution limits where relevant, and how each possible outcome changes
+  the next action. Apply the existing experiment and budget rules.
+- Reuse an existing problem record for the same obstruction, including a
+  cross-repository link when appropriate. Update its evidence, next action,
+  and index row in the PR that changes the situation; preserve frozen evidence.
+  Resolve it only with linked evidence meeting its exit criteria. If another
+  record replaces it, mark it superseded and link the successor.
+
+Recording a problem keeps the original requirement visible; recording it alone
+does not resolve that requirement. It
+does not authorize abandoning requested work, weakening its acceptance criteria,
+or promoting a claim. Completing the template or merging its PR does not solve
+the underlying problem.
+
 ## Research searches must leave visual reports
 
 For every substantive search for new isogenies, curves, scalar rules,
