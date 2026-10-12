@@ -44,9 +44,6 @@
 #include <float.h>
 #include <limits.h>
 #include <stdlib.h>
-#include "cryptanalysis/ca_group.h"
-#include "ca_internal.h"
-#include "ec_tau_internal.h"
 
 typedef __int128 ca_i128;
 
@@ -451,7 +448,6 @@ static void reduce_lattice_five_from_center(tau_vec v1, tau_vec v2, ca_i128 cent
             by = y;
         }
     }
-    /* omega = 1 - tau, hence x + y*omega = (x+y) - y*tau. */
     *out_a = bx + by;
     *out_b = -by;
 }
