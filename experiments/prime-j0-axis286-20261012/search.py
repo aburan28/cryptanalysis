@@ -88,8 +88,8 @@ def audit() -> dict:
         "ordinary_windows": WINDOWS,
         "winner": winner,
         "runner_up": ranked[1],
-        "lower_tail_axis_entry_floor": 98_416,
-        "upper_tail_ordinary_entry_floor": 69_984,
+        "lower_tail_axis_entry_floor": 233_256,
+        "upper_tail_ordinary_entry_floor": 218_484,
         "all_rows": rows,
         "source_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
     }
