@@ -91,6 +91,16 @@ CPU wall times on this shared host are exploratory. A separate
 [canonical-x lookup](../n83-orbit-key-x-20261012/README.md) reduces the
 target-independent base setup path and materializes its checked output.
 
+Further width-16 encoding tests retain this public workload and base:
+[constant-folded aligned S₃ products](../n83-geometric-m5-constfold16-20261012/README.md)
+reduce the formula to 47,241 AND gates before a five-million-conflict
+`INDETERMINATE` stop; a
+[constant raw target with free leaf powers](../n83-geometric-m5-fixedtarget16-20261012/README.md)
+uses 63,329 gates and reaches its 600-second wall cap. A
+[bounded XOR-matrix diagnostic](../n83-geometric-m5-gauss25k-20261012/README.md)
+found four matrices when the column limit was raised, but no relation in
+three 60-second arms and lower conflict throughput with the matrices.
+
 From a fresh checkout, the checked Sage launcher is required for local
 Sage work:
 
