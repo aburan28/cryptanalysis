@@ -1,0 +1,123 @@
+name: N83 E-1 sparse29 versus sparse28 Tier 1 replay
+
+# The public standard Linux runner is a fresh instance for this paired panel.
+# The in-repository Tier 1 preflight and noise gates decide whether its receipt
+# supports an instance-scoped stage timing result.
+on:
+  push:
+    branches: [codex/e1-sparse29-vs28-tier1-20261011]
+    paths:
+      - .github/workflows/n83-e1-sparse29-vs28-tier1.yml
+      - experiments/koblitz-n83-index-design-20260929/packed_index_e1_sparse29_vs28_20261011/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: n83-e1-sparse29-vs28-tier1-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  paired-stage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 125
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Freeze runner and source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          receipt_dir="$RUNNER_TEMP/n83-e1-sparse29-vs28-tier1"
+          mkdir -p "$receipt_dir"
+          {
+            echo "N83_E1_RECEIPT_DIR=$receipt_dir"
+            echo "N83_E1_INSTANCE_ID=gh-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}"
+            echo "N83_E1_CRYPTO_REPO=$RUNNER_TEMP/n83-e1-crypto"
+          } >> "$GITHUB_ENV"
+          python3 scripts/isolated_bench.py probe-host > "$receipt_dir/host-probe.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from datetime import datetime, timezone
+
+          instance_id = 'gh-{}-{}-{}'.format(os.environ['GITHUB_RUN_ID'],
+                                              os.environ['GITHUB_RUN_ATTEMPT'],
+                                              os.environ['GITHUB_JOB'])
+          receipt = {
+              'provider': 'github_actions',
+              'instance_id': instance_id,
+              'runner_name': os.environ.get('RUNNER_NAME'),
+              'runner_os': os.environ.get('RUNNER_OS'),
+              'runner_arch': os.environ.get('RUNNER_ARCH'),
+              'image_os': os.environ.get('ImageOS'),
+              'image_version': os.environ.get('ImageVersion'),
+              'advertised_runner': 'ubuntu-24.04 standard',
+              'observed_cpu_affinity': sorted(os.sched_getaffinity(0)),
+              'observed_mem_total_kib': next((line.split()[1] for line in
+                  Path('/proc/meminfo').read_text().splitlines()
+                  if line.startswith('MemTotal:')), None),
+              'git_sha': os.environ['GITHUB_SHA'],
+              'git_ref': os.environ['GITHUB_REF'],
+              'run_url': '{}/{}/actions/runs/{}'.format(os.environ['GITHUB_SERVER_URL'],
+                  os.environ['GITHUB_REPOSITORY'], os.environ['GITHUB_RUN_ID']),
+              'recorded_at_utc': datetime.now(timezone.utc).isoformat(),
+          }
+          path = Path(os.environ['RUNNER_TEMP']) / 'n83-e1-sparse29-vs28-tier1' / 'allocation.json'
+          path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + '\n')
+          PY
+
+      - name: Restore pinned crypto source and build both modes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/aburan28/crypto.git "$N83_E1_CRYPTO_REPO"
+          git -C "$N83_E1_CRYPTO_REPO" cat-file -e '904f0f844f3c1e69e8d22ae5e60ecd56e6648611^{commit}'
+          experiment=experiments/koblitz-n83-index-design-20260929/packed_index_e1_sparse29_vs28_20261011
+          python3 "$experiment/restore_crypto_source.py" \
+            --crypto-repo "$N83_E1_CRYPTO_REPO"
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/n83-e1-cargo"
+          export NATIVE_S3_SOURCE_SHA256
+          export NATIVE_S3_BUILD_MANIFEST_SHA256
+          NATIVE_S3_SOURCE_SHA256="$(sha256sum "$experiment/native_packed_index.rs" | cut -d ' ' -f 1)"
+          NATIVE_S3_BUILD_MANIFEST_SHA256="$(sha256sum "$experiment/Cargo.toml" | cut -d ' ' -f 1)"
+          echo "N83_E1_BINARY=$CARGO_TARGET_DIR/release/native_packed_index" >> "$GITHUB_ENV"
+          cd "$experiment"
+          cargo test --release --locked
+          cargo build --release --locked
+
+      - name: Verify frozen receipt and Tier 1 preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          experiment=experiments/koblitz-n83-index-design-20260929/packed_index_e1_sparse29_vs28_20261011
+          python3 "$experiment/verify_inputs.py"
+          cpu_id="$(python3 -c 'import os; print(min(os.sched_getaffinity(0)))')"
+          python3 "$experiment/make_tier1_manifest.py" \
+            --workdir "$GITHUB_WORKSPACE" --binary "$N83_E1_BINARY" \
+            --cpus "$cpu_id" --execution-cpu "$cpu_id" \
+            --provider github_actions --instance-id "$N83_E1_INSTANCE_ID" \
+            --allocation-receipt "$N83_E1_RECEIPT_DIR/allocation.json" \
+            --output "$N83_E1_RECEIPT_DIR/manifest.json"
+          python3 scripts/isolated_bench.py probe \
+            "$N83_E1_RECEIPT_DIR/manifest.json" > "$N83_E1_RECEIPT_DIR/preflight.json"
+
+      - name: Run eight alternating frozen same-target pairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/isolated_bench.py \
+            --queue-root "$N83_E1_RECEIPT_DIR/queue" run \
+            "$N83_E1_RECEIPT_DIR/manifest.json" \
+            > "$N83_E1_RECEIPT_DIR/run-summary.json"
+
+      - name: Preserve preflight, raw pairs, and failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: n83-e1-sparse29-vs28-tier1-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/n83-e1-sparse29-vs28-tier1/
+          if-no-files-found: error
+          retention-days: 14
