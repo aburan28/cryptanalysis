@@ -17,6 +17,7 @@ CLI = Path("experiments/prime-j0-secp256k1-native/src/bin/eisenstein_fixed.rs")
 FIXTURES = (
     EXP / "prime-j0-axis286-20261012/holdout.json",
     HERE / "holdout.json",
+    HERE / "holdout2.json",
 )
 
 
