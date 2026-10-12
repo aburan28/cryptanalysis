@@ -450,7 +450,7 @@ static void glv_mul(const ca_group *g, ca_elem *r, const ca_elem *a, const ca_ta
     ca_group_mul(g, r, a, k, ops);
 }
 
-static void glv_restart(const glv_ctx *c, glv_walk *w, ca_rng *rng, uint64_t *ops)
+static int glv_restart(const glv_ctx *c, glv_walk *w, ca_rng *rng, uint64_t *ops)
 {
     const ca_group *g = c->g;
     uint64_t n = g->order;
@@ -609,11 +609,13 @@ static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_
             startup->budget_equivalent_group_ops += ops;
             startup->evaluation_seconds += ca_now() - batch_start;
         }
+        for (uint32_t i = 0; i < c.r; i++) {
         ca_elem t1, t2;
         glv_mul(g, &t1, base, GLV_BASE_PRE(&c), c.alpha[i], &ops);
         glv_mul(g, &t2, target, GLV_TARGET_PRE(&c), c.beta[i], &ops);
         ca_group_op(g, &c.M[i], &t1, &t2);
         ops++;
+        }
     }
     double exp_dps = 1.25 * (double)sqrt_nm / (double)(1ULL << dp) + 1024;
     if (ca_htab_init(&tab, (size_t)(exp_dps < 1e8 ? exp_dps : 1e8)) != CA_OK) goto nomem;
@@ -716,6 +718,36 @@ static ca_status curve_solve_mode(const ca_group *g, const ca_elem *base,
                                   const ca_elem *target, uint64_t seed, uint64_t *x,
                                   ca_curve_startup_mode mode, ca_curve_startup_stats *startup,
                                   ca_curve_info *info, ca_stats *st)
+{
+    if (startup) memset(startup, 0, sizeof(*startup));
+    if (mode != CA_CURVE_STARTUP_GENERIC && mode != CA_CURVE_STARTUP_TAU_PAIRED2 &&
+        mode != CA_CURVE_STARTUP_TAU_PAIRED2_BATCH &&
+        mode != CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH)
+        return CA_ERR_INVALID;
+    if (mode != CA_CURVE_STARTUP_GENERIC &&
+        (g->kind != CA_GROUP_EC || g->endo_kind != CA_CURVE_ENDO_J0))
+        return CA_ERR_UNSUPPORTED;
+    if (info) {
+        memset(info, 0, sizeof(*info));
+        info->endo = (ca_curve_endo)g->endo_kind;
+        info->aut_order = g->endo_kind ? g->aut_order : 2;
+        info->lambda = g->endo_lambda;
+        info->rho_speedup = sqrt((double)info->aut_order);
+    }
+    if (g->order && !ca_check_members(g, base, target, g->order, "glv rho"))
+        return CA_ERR_NOT_FOUND;
+    if (g->kind == CA_GROUP_EC && g->endo_kind != 0)
+        return glv_rho_solve(g, base, target, seed, x, st,
+                             mode != CA_CURVE_STARTUP_GENERIC,
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_BATCH ||
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH,
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH, startup);
+    ca_rho_params rp;
+    ca_rho_params_default(&rp);
+    rp.seed = seed;
+    return ca_rho_solve(g, base, target, &rp, x, st);
+}
+
 #ifdef CA_J0_RHO_COVARIANT_WALK
 typedef struct glv_cov_walk {
     ca_elem Y;
@@ -767,7 +799,8 @@ static ca_status glv_covariant_rho_solve(const ca_group *g, const ca_elem *base,
         *x = 0;
         return CA_OK;
     }
-    if (n < 64) return glv_rho_solve(g, base, target, seed, x, st);
+    if (n < 64)
+        return glv_rho_solve(g, base, target, seed, x, st, 0, 0, 0, NULL);
     glv_ctx c;
     memset(&c, 0, sizeof(c));
     c.g = g;
@@ -915,44 +948,6 @@ nomem:
     return CA_ERR_NOMEM;
 }
 #endif
-
-ca_status ca_curve_solve(const ca_group *g, const ca_elem *base, const ca_elem *target,
-                         uint64_t seed, uint64_t *x, ca_curve_info *info, ca_stats *st)
-{
-    if (startup) memset(startup, 0, sizeof(*startup));
-    if (mode != CA_CURVE_STARTUP_GENERIC && mode != CA_CURVE_STARTUP_TAU_PAIRED2 &&
-        mode != CA_CURVE_STARTUP_TAU_PAIRED2_BATCH &&
-        mode != CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH)
-        return CA_ERR_INVALID;
-    if (mode != CA_CURVE_STARTUP_GENERIC &&
-        (g->kind != CA_GROUP_EC || g->endo_kind != CA_CURVE_ENDO_J0))
-        return CA_ERR_UNSUPPORTED;
-    if (info) {
-        memset(info, 0, sizeof(*info));
-        info->endo = (ca_curve_endo)g->endo_kind;
-        info->aut_order = g->endo_kind ? g->aut_order : 2;
-        info->lambda = g->endo_lambda;
-        info->rho_speedup = sqrt((double)info->aut_order);
-    }
-    if (g->order && !ca_check_members(g, base, target, g->order, "glv rho"))
-        return CA_ERR_NOT_FOUND;
-    if (g->kind == CA_GROUP_EC && g->endo_kind != 0)
-        return glv_rho_solve(g, base, target, seed, x, st,
-                             mode != CA_CURVE_STARTUP_GENERIC,
-                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_BATCH ||
-                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH,
-                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH, startup);
-    if (g->kind == CA_GROUP_EC && g->endo_kind != 0) {
-#ifdef CA_J0_RHO_COVARIANT_WALK
-        if (g->endo_kind == 1) return glv_covariant_rho_solve(g, base, target, seed, x, st);
-#endif
-        return glv_rho_solve(g, base, target, seed, x, st);
-    }
-    ca_rho_params rp;
-    ca_rho_params_default(&rp);
-    rp.seed = seed;
-    return ca_rho_solve(g, base, target, &rp, x, st);
-}
 
 ca_status ca_curve_solve(const ca_group *g, const ca_elem *base, const ca_elem *target,
                          uint64_t seed, uint64_t *x, ca_curve_info *info, ca_stats *st)
