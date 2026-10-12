@@ -12,6 +12,13 @@ change as a verified finding or correction. When there is no graphable change,
 record which graphs were checked and why they remain current. Distinguish
 proposals and extrapolations from proved or measured results; keep the
 candidate, curve-identity, measurement, and Sage rules below in force.
+
+For small-prime or pinned GF(2^83) elliptic-curve surface searches, quartic
+subgroup transfers, genus-2+ Jacobian transfers, hyperelliptic covers, Mumford
+arithmetic, gluing or polarization candidates, or Frobenius compatibility
+checks, use [ecdlp-surfaces](.agents/skills/ecdlp-surfaces/SKILL.md) for tool
+selection, commands, and interpretation limits.
+
 ## Preserve scope and report evidence
 
 Use [report-evidence](.agents/skills/report-evidence/SKILL.md) for implementation,
