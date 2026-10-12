@@ -1,0 +1,56 @@
+{
+  "candidate_id": null,
+  "claim_scope": "Compare a compact four-summand S3 solver on exact window-orbit bases with the archived Q1480 weight-base solver on the same N53/N83 ordinary public targets. Pinned and unpinned planted controls check correctness only. Successful ordinary work, natural yield, and N131 2^x remain unknown until measured.",
+  "factor_base_policy_is_changed": true,
+  "instances": {
+    "53": {
+      "curve_id": "EC1N53Ckb1hf77aab617904",
+      "factor_base_proposal_id": "Q1481",
+      "nominal_window_dimension_d": 14,
+      "actual_usable_B": 430360,
+      "folded_K": 4060,
+      "enumerated_set_sha256": "42e746657e39ea4d07aafc873110339e314cd685b3bd8493eb3c60aed1354ba5",
+      "ordinary_parent_workload_id": "6dfaff711b08",
+      "ordinary_target_input_sha256": "af7fadc7c17bac764a39b1b2278e6364028e150e78999132166fe7179ab0f7df"
+    },
+    "83": {
+      "curve_id": "EC1N83Ckb1h876c2921cb64",
+      "factor_base_proposal_id": "Q1481",
+      "nominal_window_dimension_d": 23,
+      "actual_usable_B": 348006384,
+      "folded_K": 2096424,
+      "enumerated_set_sha256": "f2d7771988cbd03fa4ea3145fc3870e5a3fc44171b9a57165257f016cdeb19d4",
+      "ordinary_parent_workload_id": "9ce3dd487274",
+      "ordinary_target_input_sha256": "1b9fe04e4d1fe38f87c97b25c5e4291611b414f6c921867aa562a647bbaebcc7"
+    }
+  },
+  "isogeny": "none",
+  "kind": "q1482_pre_registered_window_orbit_s3_stage_design",
+  "point_decomposition": {
+    "m": 4,
+    "stage_code": "PDP4hybrid",
+    "equations": "The same balanced three-S3 chain used by Q1480, with the first pair handled by exact native S3 root theory and the final and right links in the compact CNF.",
+    "leaf_constraint": "At least one cyclic window selector per leaf; each selected window forces every coordinate outside its d positions to zero; each leaf is nonzero. No cardinality network is needed.",
+    "theory_weight_parameter": "The native solver receives d as a Hamming-weight upper bound. Every window-valid leaf has weight <= d, so every sound rejection for the larger weight<=d domain remains sound for the window subset. This may be weak and is not a measured speed claim.",
+    "solver_binary": "Q1480 frozen native conditioned-join solver, reused without source changes",
+    "solver_wall_cap_seconds": 60,
+    "external_process_safeguard_seconds": 75,
+    "solver_conflict_cap": 1000000
+  },
+  "planted_control_rule": "In Q1481 representative order, select the first four rational raw x orbits whose cofactor-projected keys are distinct. Use curve.pointFromX's deterministic sign. Their raw sum defines the one raw target x; their cofactor-projected sum defines the public target. If the sum is identity, continue to the next distinct orbit until nonidentity. This is fixture construction outside the target-dependent interval and never estimates ordinary yield.",
+  "proposal_id": "Q1482",
+  "run_order": [
+    "n53_planted_pinned",
+    "n83_planted_pinned",
+    "n53_planted_unpinned",
+    "n83_planted_unpinned",
+    "n53_ordinary",
+    "n83_ordinary"
+  ],
+  "success_gates": [
+    "Both pinned controls return independently verified four-distinct-column public relations.",
+    "Every ordinary run preserves a raw status, all failed/censored attempts, exact SAT and field operation counters, wall interval, and peak RSS.",
+    "A verified unpinned N83 ordinary relation is required before claiming successful N83 decomposition work or fitting a N131 growth law."
+  ],
+  "run_id": null
+}

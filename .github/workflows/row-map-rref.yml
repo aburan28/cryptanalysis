@@ -2,6 +2,7 @@ name: Row map Metal RREF
 
 on:
   push:
+    branches: [main]
     paths:
       - 'experiments/groebner-perf-20260924/round30/**'
       - 'experiments/groebner-perf-20260924/round29/active*'
@@ -16,6 +17,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   evidence:

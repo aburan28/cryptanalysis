@@ -342,16 +342,127 @@ multiplies 1.4; the reduction is the next thing to look at.  The engine keeps
 512 lanes per batched inversion, as four interleaved chains, because a core
 has L1 where the device has registers; a lane that reports restarts in the
 same step; work is handed out in 64-step slices of one batch so efficiency
-cores do not gate a launch.  All 14 cores give 139-159 M it/s, which is the
-package's limit rather than the scheduler's (ten workers give 136).
+cores do not gate a launch, the last slice's worth in quarters so the workers
+that run out of slices first wait on a short one (1.3% on four x86-64 workers
+at the default 1024 steps a launch).  All 14 cores give 139-159 M it/s, which
+is the package's limit rather than the scheduler's (ten workers give 136).
+
+**On x86-64 the step runs N lanes at a time.** The state is stored limb by
+limb -- lane i's limb 0 at `x0[i]`, its limb 1 at `x1[i]` -- so that N
+consecutive lanes load as three vector registers, and `src/f131x.h` is
+`f131.h` over GCC/clang vector types on the vector carry-less multiplier:
+N = 8 on AVX-512 (VPCLMULQDQ), 4 on AVX2 (VPCLMULQDQ), 2 on SSE (PCLMULQDQ),
+`-DECC_F131_LANES=1` for the scalar path.  The five products, the squaring
+and the conversion of a step are vector; so is the selection, which leaves the
+byte tables for the bit planes of the labels, as the model computes it.  On
+AVX-512 with VBMI it is a table form: the nibbles of the 132-bit label vector
+index `vpermi2b` lookups (128 bytes, position in the high nibble of the index)
+that `vpsadbw` sums, one 32-bit reciprocal does both reductions mod 131, and
+the phase mask and the sign row are gathered by the resulting index, a limb
+an array (their 3-bit limbs by byte permutes), and the pivot is a byte max
+over the same nibble lookups.  Without VBMI it is the bitwise form: the phase from eight masked
+popcounts, `HW^-1` by a gather, the reductions by a reciprocal, the pivot's
+mask by a bitwise comparator of every coordinate's label with k (a majority
+per bit, one ternary-logic instruction per limb), and the pivot by a binary
+search down the planes.  The tag and the 4-cycle rule and the addend's gathers
+are vector too, in the selection pass; only the rare lane that reports stays
+scalar.  The one inversion a batch makes is Montgomery's trick across the
+K = N x `ECC_F131_CHAIN_VECTORS` interleaved chains and then `f131x::inv`, the
+N lanes of the last vector inverted side by side by the Itoh-Tsujii chain in
+the polynomial basis, its long runs of squarings read from nibble tables of
+x -> x^(2^k).  The backward pass of the batched inversion folds each lane's
+point addition in where its lambda is produced, one group behind it so the
+addition waits on nothing, and the additions no longer make a second pass
+over the batch's 48 KB of state.  The vector path takes 4096 lanes per
+inversion by default: the batch's fixed cost (the inversion and each pass's
+run-up and drain, under a microsecond together) shows against a lane step of
+13 ns, and 540 KB of state, two batches a worker, still sits in a core's
+L2.  2048 was the default while the inversion was scalar and the step
+longer, when 1024 and 4096 both measured 2% slower; with the step as it is
+now 4096 measured 1.4% over 2048 on one worker and 3 to 5% on four, over
+sixteen interleaved runs, and 8192 (whose two batches a worker overrun a
+2 MB L2) the same as 4096.
+
+Measured on a 4-vCPU Sapphire Rapids VM (AVX-512, VPCLMULQDQ, VPOPCNTDQ;
+gcc 13; `bench --steps 2048 --launches 6`, the binaries interleaved, median of
+six, each binary at its default batch: 512 lanes per inversion on the scalar
+path, 2048 on the vector path and 4096 in the last row).  It is an
+uncontrolled cloud host whose clock drifts across a session -- the same
+binaries ran about 30% slower in a louder phase, with the same ratios -- so
+these figures are exploratory, not a promoted speedup; the repository's CPU
+performance isolation gate applies.
+
+| | M it/s, one worker | M it/s, four workers |
+|---|---:|---:|
+| scalar path (`-DECC_F131_LANES=1`) | 9.6 | 36.5 |
+| vector products, squaring and conversion, N = 8 lanes at a time | 45.2 | 171.8 |
+| + table-form selection, vector tags and addend, fused addition | 72.2 | 277.6 |
+| + the inversion in vector lanes, the selection's tables a limb an array | 74.5 | 283.0 |
+| + 3-bit limbs by permutes, the addend by row loads, the forward pass in the selection's loop | 76.8 | 293.1 |
+| + 4096 lanes per inversion | 78.2 | 300.4 |
+
+The bench's clock used to start before the lanes were seeded, and a start
+point is 64 point additions with an inversion apiece, 50 us a lane: a fifth
+of a second over 4,096 lanes that an earlier version of this table counted
+as walking (53 M it/s on one worker for the third row, 39 for the second).
+`ec2k-cpu` now seeds the lanes before `cmdRun` starts its clock, and every
+row above was re-measured with that fix in each binary, all six in one
+session (a louder one had the fifth row at 76.5 and 286.3).
+
+The third row is a 1.6x gain over the vector baseline, in one worker and in
+four, from the table-form selection, the tag and addend vectorised in the
+selection pass, the reduction's quotient and tail each folded into one
+carry-less product (where f131.h spells the quotient out as sixteen truncating
+shifts and the tail as fourteen), a SWAR word test for the rare report, and the
+point addition folded into the inversion's backward pass.  The fourth adds
+2-3% from the inversion in vector lanes (370 ns for the eight against a
+microsecond of dependent scalar products), the selection's gathered tables
+indexed by the value itself, and the addition pipelined one group behind its
+lambda.  Of a lane's step at 2048 lanes (one worker, the stages timed apart,
+in reference cycles of the 2.4 GHz TSC: 33 a lane, with the core at about
+3.05 GHz under this load), the five products and the squaring are 20 (61%),
+the selection with its tags and addend 11 (34%), the conversion and weight
+1.7 (5%).  What is left is the vector ports: a product is about 82 uops over
+the two ports that take 512-bit work -- 16 carry-less multiplies, 14
+unpacks, 17 shifts and 33 logic ops, half of them the reduction by the dense
+modulus this basis has -- and the chain stage runs at that floor, so what
+remains is in the product itself rather than the scaffolding around it.
+
+The fifth row is the selection's loads and the ports' idle time.  With
+eleven gathers a vector between the selection and the addend, the stage
+issued more loads than vector instructions: the 3-bit limbs of the phase
+mask and the sign row are bytes now, read by register permutes (4-6% off
+the selection proper), and the addend's table point is its 32-byte row,
+eight row loads and a qword transpose for the four limbs where four
+gathers were thirty-two loads (9-10% off the tag and addend).  Then the
+forward half of Montgomery's trick moved inside the selection's loop, a
+group of eight vectors at a time after their addends: the selection waits
+on permutes, gathers and loads with room on the multiplier, and as a pass
+of its own the forward pass had kept the multiplier full and the load
+ports idle -- 3% on the step, whole binary, which the stage harness cannot
+see because it times the stages apart.  Three things measured within the
+noise of ten interleaved runs and were not kept: stage 1 fused the same
+way (a group's x converted straight into the registers the selection
+reads), four or one chain vectors instead of two with the fused forward
+pass, the selection four or sixteen vectors at a time instead of eight,
+and clang 18 for gcc 13.  The representation itself was costed and not
+tried: in the palindromic form of the normal basis a squaring is a bit
+spread and the conversion and the sign row go away, but a product is then
+two 131-bit products and two 262-bit mirrors, about 107 uops against 82,
+and there are five of those a step to one squaring.  The sixth row is
+the default batch, 4096 lanes per inversion for 2048, as above: the same
+step with its fixed cost over twice the lanes.
 
 The reports of a run do not depend on the batch size or the worker count,
 which `src/cputest.cpp` checks along with: the multiplier against a
 bit-serial product; every `f131.h` routine against its packed counterpart on
 4,000 random operands and 1,500 curve points with histories that fire the
-cycle rule, the reduction also on limbs no product produces; start points
-against the model's; and every lane and every report of a run with restarts
-re-walked on the model (28,641 checks, and again with the software product).
+cycle rule, the reduction also on limbs no product produces; on x86-64 every
+`f131x.h` routine against `f131.h` lane by lane, the selection on operands
+that reach every branch of the pivot and the reduction mod 131 on every
+16-bit input; start points against the model's; and every lane and every
+report of a run with restarts re-walked on the model (37,100 checks, and
+again with the software product, 28,600 on the scalar path).
 
 **`ec2k-metal`.** Metal Shading Language is C++14 with address spaces, so the
 kernel is not a port: `scripts/mslgen.py` inlines the headers and applies four
