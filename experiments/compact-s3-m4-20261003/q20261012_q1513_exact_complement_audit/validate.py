@@ -119,6 +119,15 @@ def check():
                 break
             blocks.append(bits)
     assert result["rows"] == rows
+    q1509 = run.PARENT / "q20261012_n83_pair_depth_sweep"
+    assert run.sha(q1509 / "result.json") == (
+        "8df96b60d7d08bdc517a05a03960b3ef0a027b3fea6a229beab8de7db20d956e")
+    for label in ("selected", "holdout"):
+        for number in (2, 3):
+            ours = run.read(HERE / "runs" / f"{label}_round{number}" / "receipt.json")
+            prior = run.read(q1509 / "runs" / f"{label}_round{number}" / "receipt.json")
+            assert ours["sat"]["first_pair_bits"] == prior["sat"]["first_pair_bits"]
+            assert ours["both_exact_base_usable"] == prior["both_exact_base_usable"]
     preflight = HERE / "runs/preflight_max_id_selected_round3"
     failure = run.read(preflight / "receipt.json")
     assert failure["status"] == "DRIVER_PREFLIGHT_FAILURE"
@@ -127,14 +136,15 @@ def check():
     assert "dimacs_nb_of_vars <= __MAX_ID__" in (
         preflight / "solver.stderr.txt").read_text()
     return {"proposal_id": "Q1516", "curve_id": p["curve_id"],
-            "candidate_id": None, "measured_new_rounds": len(rows),
-            "new_first_pair_cnf_xor_calls": sat_calls,
-            "new_first_pair_calls_per_exact_usable_pair": sat_calls / usable if usable else None,
-            "new_exact_base_usable_pairs": usable,
-            "new_complete_signed_complement_scans": scanned,
-            "new_exact_base_hits": hits,
-            "new_batch_mul_calls_excluding_inversion_internals": calls,
-            "new_batch_mul_calls_log2": math.log2(calls) if calls else None,
+            "candidate_id": None, "prior_work": "Q1509", "status": "REPLICATION",
+            "measured_replay_rounds": len(rows),
+            "replay_first_pair_cnf_xor_calls": sat_calls,
+            "replay_first_pair_calls_per_exact_usable_pair": sat_calls / usable if usable else None,
+            "replay_exact_base_usable_pairs": usable,
+            "replay_complete_signed_complement_scans": scanned,
+            "replay_exact_base_hits": hits,
+            "replay_batch_mul_calls_excluding_inversion_internals": calls,
+            "replay_batch_mul_calls_log2": math.log2(calls) if calls else None,
             "N131_W6_four_sign_full_scan_batch_mul_calls_transfer": 65596347880,
             "N131_W6_four_sign_full_scan_log2_transfer": math.log2(65596347880),
             "N131_full_scan_gap_above_2pow30_6_per_decomposition_bits":
