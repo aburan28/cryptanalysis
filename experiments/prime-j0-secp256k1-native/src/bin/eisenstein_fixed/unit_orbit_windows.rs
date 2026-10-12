@@ -2,7 +2,7 @@
 
 use super::{
     batch_to_affine, hexagonal_four_corner_choices, BigInt, CompactPairPoint, Jacobian,
-    SCALAR_LATTICE,
+    Signed192, SCALAR_LATTICE,
 };
 use num_traits::{ToPrimitive, Zero};
 use std::mem::size_of;
@@ -33,6 +33,40 @@ fn unit_images(pair: (i32, i32)) -> [(i32, i32); 6] {
     debug_assert_eq!(value, pair);
     debug_assert!(images.iter().all(|&image| norm(image) == norm(pair)));
     images
+}
+
+impl Signed192 {
+    fn from_i32(value: i32) -> Self {
+        Self {
+            negative: value < 0,
+            limbs: [u64::from(value.unsigned_abs()), 0, 0],
+        }
+    }
+
+    fn rem_euclid_power_of_two(self, width: u8) -> usize {
+        assert!((8..=10).contains(&width));
+        let base = 1u64 << width;
+        let remainder = self.limbs[0] & (base - 1);
+        if self.negative && remainder != 0 {
+            (base - remainder) as usize
+        } else {
+            remainder as usize
+        }
+    }
+
+    fn div_exact_power_of_two(self, width: u8) -> Self {
+        assert!((8..=10).contains(&width));
+        let shift = u32::from(width);
+        assert_eq!(self.limbs[0] & ((1u64 << shift) - 1), 0);
+        let limbs: [u64; 3] = std::array::from_fn(|index| {
+            (self.limbs[index] >> shift)
+                | (if index + 1 < 3 { self.limbs[index + 1] << (64 - shift) } else { 0 })
+        });
+        Self {
+            negative: self.negative && limbs != [0; 3],
+            limbs,
+        }
+    }
 }
 
 fn nearest_digit((a, b): (i32, i32), base: i32) -> (i16, i16) {
@@ -109,6 +143,16 @@ impl OrbitAtlas {
         let base = BigInt::from(self.base());
         let ra = ((a % &base + &base) % &base).to_usize().unwrap();
         let rb = ((b % &base + &base) % &base).to_usize().unwrap();
+        self.digit_residue(ra, rb)
+    }
+
+    fn digit_word(&self, a: Signed192, b: Signed192) -> ((i32, i32), usize, usize) {
+        let ra = a.rem_euclid_power_of_two(self.width);
+        let rb = b.rem_euclid_power_of_two(self.width);
+        self.digit_residue(ra, rb)
+    }
+
+    fn digit_residue(&self, ra: usize, rb: usize) -> ((i32, i32), usize, usize) {
         let code = self.codes[ra * self.base() + rb] as usize;
         let (orbit_id, unit_code) = (code >> 3, code & 7);
         assert!(unit_code < 6);
@@ -321,6 +365,40 @@ pub(super) fn multiply_format(
     )
 }
 
+pub(super) fn multiply_word_format(
+    scalar: &BigInt,
+    format: u8,
+) -> (Jacobian, BigInt, BigInt, usize, usize) {
+    let lattice = &*SCALAR_LATTICE;
+    let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
+    let (start_a, start_b) = hexagonal_four_corner_choices(&residue).remove(0);
+    let mut a = Signed192::from_bigint(&start_a);
+    let mut b = Signed192::from_bigint(&start_b);
+    let tables = selected(format);
+    let mut result = Jacobian::identity();
+    let mut nonidentity: usize = 0;
+    for (index, &width) in tables.widths.iter().enumerate() {
+        let atlas = tables.atlas(width);
+        let (digit, orbit_id, unit_code) = atlas.digit_word(a, b);
+        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(width);
+        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(width);
+        if orbit_id == 0 {
+            continue;
+        }
+        let mut addend = tables.windows[index][orbit_id].into_affine();
+        for _ in 0..(unit_code / 2) {
+            addend = addend.omega();
+        }
+        if unit_code & 1 != 0 {
+            addend = addend.neg();
+        }
+        result = result.add_mixed(addend);
+        nonidentity += 1;
+    }
+    assert!(a.is_zero() && b.is_zero(), "word unit-orbit recoding did not terminate");
+    (result, start_a, start_b, nonidentity.saturating_sub(1), tables.retained_bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -399,6 +477,104 @@ mod tests {
                 }
                 assert_eq!((a, b), (BigInt::ZERO, BigInt::ZERO));
                 assert_eq!(rebuilt, start);
+            }
+        }
+    }
+
+    #[test]
+    fn word_power_of_two_updates_match_bigint_at_sign_and_limb_boundaries() {
+        let high: BigInt = BigInt::from(1) << 129;
+        for width in [8u8, 9, 10] {
+            let base = BigInt::from(1) << width;
+            for value in [
+                -&high - 1, -&high, -&base - 1, -&base, BigInt::from(-1),
+                BigInt::ZERO, BigInt::from(1), &base - 1, base.clone(),
+                &high - 1, high.clone(), &high + 1,
+            ] {
+                let word = Signed192::from_bigint(&value);
+                let remainder = ((&value % &base + &base) % &base).to_usize().unwrap();
+                assert_eq!(word.rem_euclid_power_of_two(width), remainder);
+                let quotient = word
+                    .sub(Signed192::from_i32(remainder as i32))
+                    .div_exact_power_of_two(width);
+                let expected = (&value - remainder) / &base;
+                assert_eq!(BigInt::from_biguint(
+                    if quotient.negative { num_bigint::Sign::Minus } else { num_bigint::Sign::Plus },
+                    num_bigint::BigUint::from_bytes_le(&quotient.limbs.iter()
+                        .flat_map(|word| word.to_le_bytes()).collect::<Vec<_>>()),
+                ), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn word_recoder_matches_bigint_and_independent_fixture_points() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tau6-comb13-bench-fixture.json"
+        )).unwrap();
+        for format in [14, 15, 16] {
+            for (case_index, case) in fixture["cases"].as_array().unwrap().iter().enumerate() {
+                let scalar = BigInt::parse_bytes(case["scalar_hex"].as_str().unwrap().as_bytes(), 16)
+                    .unwrap();
+                let old = multiply_format(&scalar, format);
+                let word = multiply_word_format(&scalar, format);
+                assert_eq!((&word.1, &word.2, word.3, word.4),
+                           (&old.1, &old.2, old.3, old.4));
+                let tables = selected(format);
+                let (mut old_a, mut old_b) = (old.1.clone(), old.2.clone());
+                let (mut word_a, mut word_b) =
+                    (Signed192::from_bigint(&old_a), Signed192::from_bigint(&old_b));
+                for (window, &width) in tables.widths.iter().enumerate() {
+                    let atlas = tables.atlas(width);
+                    let digit = atlas.digit(&old_a, &old_b);
+                    assert_eq!(atlas.digit_word(word_a, word_b), digit,
+                               "format {format}, case {case_index}, window {window}");
+                    let base = BigInt::from(atlas.base());
+                    old_a = (old_a - digit.0.0) / &base;
+                    old_b = (old_b - digit.0.1) / &base;
+                    word_a = word_a.sub(Signed192::from_i32(digit.0.0))
+                        .div_exact_power_of_two(width);
+                    word_b = word_b.sub(Signed192::from_i32(digit.0.1))
+                        .div_exact_power_of_two(width);
+                    assert_eq!(word_a, Signed192::from_bigint(&old_a),
+                               "format {format}, case {case_index}, window {window} a");
+                    assert_eq!(word_b, Signed192::from_bigint(&old_b),
+                               "format {format}, case {case_index}, window {window} b");
+                }
+                assert_eq!(word.0.affine_hex(), old.0.affine_hex(),
+                           "format {format}, case {case_index}");
+                let expected = if case["expected_identity"].as_bool() == Some(true) {
+                    "identity".to_owned()
+                } else {
+                    format!("{}:{}", case["expected_x_hex"].as_str().unwrap(),
+                            case["expected_y_hex"].as_str().unwrap())
+                };
+                assert_eq!(word.0.affine_hex(), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn word_recoder_matches_bigint_on_fresh_full_range_scalars() {
+        let mut state = 0x58bd_0c71_9a46_e253u64;
+        for case_index in 0..256 {
+            let mut bytes = [0u8; 32];
+            for chunk in bytes.chunks_exact_mut(8) {
+                state ^= state >> 12;
+                state ^= state << 25;
+                state ^= state >> 27;
+                chunk.copy_from_slice(&state.wrapping_mul(0x2545_f491_4f6c_dd1d).to_be_bytes());
+            }
+            let scalar = BigInt::from_bytes_be(num_bigint::Sign::Plus, &bytes)
+                % &SCALAR_LATTICE.n;
+            for format in [14, 15, 16] {
+                let old = multiply_format(&scalar, format);
+                let word = multiply_word_format(&scalar, format);
+                assert_eq!((&word.1, &word.2, word.3, word.4),
+                           (&old.1, &old.2, old.3, old.4),
+                           "format {format}, case {case_index}");
+                assert_eq!(word.0.affine_hex(), old.0.affine_hex(),
+                           "format {format}, case {case_index}");
             }
         }
     }

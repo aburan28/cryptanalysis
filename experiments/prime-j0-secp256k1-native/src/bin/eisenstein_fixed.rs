@@ -3183,7 +3183,7 @@ fn check_generator_case(
     LazyLock::force(&SCALAR_LATTICE);
     LazyLock::force(&DECODE_CONSTANTS);
     let retained_bytes = if unit_orbit_format != 0 {
-        unit_orbit_windows::warm_format(unit_orbit_format)
+        unit_orbit_windows::warm_format(unit_orbit_format % 100)
     } else {
         0
     };
@@ -3227,7 +3227,9 @@ fn check_generator_case(
     let scalar = scalar_from_hex(scalar_hex);
     let preparation_ms = preparation_start.elapsed().as_secs_f64() * 1000.0;
     let start = Instant::now();
-    let point = if unit_orbit_format != 0 {
+    let point = if unit_orbit_format >= 100 {
+        unit_orbit_windows::multiply_word_format(&scalar, unit_orbit_format % 100).0
+    } else if unit_orbit_format != 0 {
         unit_orbit_windows::multiply_format(&scalar, unit_orbit_format).0
     } else if hex_nine_graphaware33 {
         scalar_multiply_width_six_comb13_hex9_graphaware33(&scalar).0
@@ -3267,7 +3269,13 @@ fn check_generator_case(
     let actual = point.affine_hex();
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if unit_orbit_format == 14 {
+    let mode = if unit_orbit_format == 114 {
+        "unit_orbit_word14_fixed"
+    } else if unit_orbit_format == 115 {
+        "unit_orbit_word15_fixed"
+    } else if unit_orbit_format == 116 {
+        "unit_orbit_word16_fixed"
+    } else if unit_orbit_format == 14 {
         "unit_orbit_windows14_fixed"
     } else if unit_orbit_format == 15 {
         "unit_orbit_windows15_fixed"
@@ -3331,7 +3339,7 @@ fn check_all_unit_orbit_fixture_cases(fixture_path: &str, format: u8, timed: boo
     let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("read fixture"))
         .expect("parse fixture");
     let count = fixture["cases"].as_array().expect("cases").len();
-    unit_orbit_windows::warm_format(format);
+    unit_orbit_windows::warm_format(format % 100);
     for index in 0..count {
         check_generator_case(
             fixture_path, index, timed, false, false, false, false, false, 0, 0, false,
@@ -3344,10 +3352,18 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.len() == 2
         && (args[0].starts_with("--check-scalar-unit-orbit-windows")
-            || args[0].starts_with("--benchmark-scalar-unit-orbit-windows"))
+            || args[0].starts_with("--benchmark-scalar-unit-orbit-windows")
+            || args[0].starts_with("--check-scalar-unit-orbit-word")
+            || args[0].starts_with("--benchmark-scalar-unit-orbit-word"))
         && args[0].ends_with("-fixed-fixture")
     {
-        let format = if args[0].contains("unit-orbit-windows14-fixed-fixture") {
+        let format = if args[0].contains("unit-orbit-word14-fixed-fixture") {
+            114
+        } else if args[0].contains("unit-orbit-word15-fixed-fixture") {
+            115
+        } else if args[0].contains("unit-orbit-word16-fixed-fixture") {
+            116
+        } else if args[0].contains("unit-orbit-windows14-fixed-fixture") {
             14
         } else if args[0].contains("unit-orbit-windows15-fixed-fixture") {
             15
@@ -3455,7 +3471,13 @@ fn main() {
             || args[0] == "--benchmark-scalar-unit-orbit-windows15-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-windows15-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-windows16-fixed-case"
-            || args[0] == "--check-scalar-unit-orbit-windows16-fixed-case")
+            || args[0] == "--check-scalar-unit-orbit-windows16-fixed-case"
+            || args[0] == "--benchmark-scalar-unit-orbit-word14-fixed-case"
+            || args[0] == "--check-scalar-unit-orbit-word14-fixed-case"
+            || args[0] == "--benchmark-scalar-unit-orbit-word15-fixed-case"
+            || args[0] == "--check-scalar-unit-orbit-word15-fixed-case"
+            || args[0] == "--benchmark-scalar-unit-orbit-word16-fixed-case"
+            || args[0] == "--check-scalar-unit-orbit-word16-fixed-case")
     {
         let index = args[2].parse::<usize>().expect("case index");
         check_generator_case(
@@ -3495,7 +3517,13 @@ fn main() {
             args[0].contains("w6-comb13-hex9-radius2"),
             args[0].contains("w6-comb13-hex9-graph33"),
             args[0].contains("w6-comb13-hex9-graphaware33"),
-            if args[0].contains("unit-orbit-windows14") {
+            if args[0].contains("unit-orbit-word14") {
+                114
+            } else if args[0].contains("unit-orbit-word15") {
+                115
+            } else if args[0].contains("unit-orbit-word16") {
+                116
+            } else if args[0].contains("unit-orbit-windows14") {
                 14
             } else if args[0].contains("unit-orbit-windows15") {
                 15
