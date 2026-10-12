@@ -29,16 +29,24 @@ builder, evaluator, holdout generator, and verifier before the new panel
 was drawn. [holdout.json](holdout.json) contains 512 distinct scalars
 disjoint from earlier panels; its SHA-256 is
 `55e0e3e39eb751ecd873f5e1d38e8645ccbdbe80763dd7205d0accf2b236fd8a`.
-The [replay receipt](replay.json) records complete-point agreement with
-the radix-286 evaluator and independently generated points for both that
-panel and the prior 512-case panel. The same two panels pass on macOS
+Commit `d79b5b7b6f585e00f1e145cb74d2de978634b15f` then froze
+[holdout2.py](holdout2.py) and the three-panel verifier before a further
+512 scalars were drawn. [holdout2.json](holdout2.json) has SHA-256
+`b122c90b6ba7c8c9c6846d080db96a760534e813507257703f8ea0843e9ce591`;
+the generator checks disjointness from the 4,096-scalar design panel and
+eight earlier holdouts and records their digests. The [replay receipt](replay.json)
+records complete-point agreement with the radix-286 evaluator and
+independently generated points for all three panels. The same panels pass on macOS
 ARM64 and Linux ARM64; [local-build.json](local-build.json) and
 [linux-build.json](linux-build.json) retain the source and binary hashes.
+[replay-two-panel.json](replay-two-panel.json) preserves the earlier
+two-panel receipt.
 
 | Panel | Cases | Direct-terminal noninitial additions | Radix-286 additions | Direct-terminal rotations | Radix-286 rotations | Direct-terminal retained bytes | Radix-286 retained bytes |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | Prior control | 512 | 7,679 | 7,680 | 1,021 | 1,024 | 11,652,560 | 14,309,128 |
 | New frozen panel | 512 | 7,680 | 7,680 | 1,021 | 1,020 | 11,652,560 | 14,309,128 |
+| Design-disjoint panel | 512 | 7,680 | 7,680 | 1,023 | 1,022 | 11,652,560 | 14,309,128 |
 
 The native atlas audit checked all 65,536 residues and reported 177,174
 point entries. The Linux replay used the pinned `rust:1.93.1-bookworm`
