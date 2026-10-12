@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "kind": "n83_shifted_s3_bounded_sat_protocol",
+  "curve_id": "EC1N83Ckb1h2bcb59d56ad6",
+  "candidate_id": null,
+  "public_ordinary_input_sha256": "5b9098b9d6c8aeb9c71ddde78c9fbc3b9777b0befc6b45b51cefb581b74bc77d",
+  "planted_selection_seed_sha256": "d5cf91c2cd9b5e033a015fc6f4209ba7268c1c9a7819c9d7c53f9d9a6e6b61fe",
+  "planted_selection": "For each slot, derive SHA-256(seed || UTF-8(label) || one-byte slot index), interpret it as the initial nonzero d-bit mask, then scan masks cyclically in ascending order modulo 2^d-1. Choose the first nonzero rational x with both lifts, nonidentity cofactor-four projection, a new signed-Frobenius orbit, and a nonidentity raw prefix sum using the smaller-y lift. Reject and advance if the final raw sum or projected target is identity. Retain the seed and masks locally; publish only target points and witness digest.",
+  "geometry": [
+    {"label": "shifted_m7_d12", "geometry_sha256": "291416e1c5d543528c7543ec2061046ffe37f23382ec0403f81e291eaeebce0d"},
+    {"label": "shifted_m8_d11", "geometry_sha256": "7a2be256cc9011a97789ea4f04ab9f280d3fd38516dc5860f73094a258775708"}
+  ],
+  "small_field_degrees": [3, 4],
+  "small_field_slot_rule": "For a small field of degree n, find the lexicographically least encoded normal element alpha. In slot i take the span of alpha^(2^i) and alpha^(2^(i+1)) with indices modulo n; enumerate every nonzero rational x in that subspace and all of its point lifts. Exhaust every labeled x tuple for m=7 and m=8, comparing the S3-chain target-x set with the group-sum target-x set; identify misses caused by identity intermediates separately.",
+  "solver_binary_sha256": "a3f85c3709b5e2a040bf82a4a604d1c7b9f10219bbf180a9e0f72319a2e892ac",
+  "solver_threads": 1,
+  "solver_internal_seconds_per_branch": 30,
+  "solver_max_conflicts_per_branch": 200000,
+  "external_wall_seconds_per_branch": 45,
+  "max_process_tree_rss_bytes_per_branch": 2147483648,
+  "branch_order": "For each label: one fully pinned planted raw-sum-x branch, then all four planted raw target fibers, then all four fibers of the previously frozen ordinary public target. Do not give the solver the private witness in unpinned runs. Preserve all attempts, including timeout, budget, error, UNSAT and SAT with failed group lift. An unsuccessful planted control blocks promotion of ordinary outcomes to a yield estimate but does not erase their exploratory rows.",
+  "claim_boundary": "Bounded planted and one-frozen-ordinary-target PDP diagnostics only. One ordinary target cannot establish a stable relation-yield rate; no relation matrix, factor logs, target DLP, same-point rho or IC speedup."
+}
