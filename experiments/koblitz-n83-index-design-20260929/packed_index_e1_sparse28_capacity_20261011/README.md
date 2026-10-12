@@ -1,13 +1,13 @@
 # E-1 sparse28 root-directory capacity result
 
-The sparse28 exact root directory reduced full-key probes from **69,190,310
-to 7,415,319** on the frozen N83 one-target, 29.9-million-state workload.
-In an A–B–B–A local panel, target-process CPU medians were **45.440 s for
-sparse26** and **35.591 s for sparse28**; sparse28 was lower in both adjacent
-pairs. The root table grew by **37,748,736 bytes (36 MiB)**. All four runs
-completed under the 5,500 MiB RSS cap with the same exact behavior and
-`state_cap_no_relation` status. This is an exploratory CPU result pending a
-physical-host isolation receipt.
+The sparse28 exact root directory achieved a **1.144× Tier 1 instance-scoped
+target-stage speedup** over sparse26 on the frozen N83 one-target,
+29.9-million-state workload. Eight alternating pairs on one GitHub-hosted
+Linux instance were all exact and valid; the paired bootstrap 95% interval
+was **[1.123, 1.215]**. Full-key probes fell from **69,190,310 to
+7,415,319**. The root table grew by **37,748,736 bytes (36 MiB)**, and
+both arms stayed below the 5,500 MiB RSS cap with the same first-witness
+behavior and `state_cap_no_relation` bounded-stage status.
 
 This is proposal `Q2026101132`, curve `EC1N83Ckb1h876c2921cb64`, workload
 `63dd0929cf33`, and source SHA-256
@@ -66,6 +66,82 @@ The 2-million-state sparse28 screen in the parent exploration had similar
 target CPU to sparse26; this capacity result answers the larger-index question.
 The repository [CPU isolation gate](../../../docs/ISOLATED_BENCHMARKS.md)
 remains required for a controlled wall-time comparison.
+
+## Tier 1 instance replay
+
+The [Tier 1 protocol](tier1_protocol.json) binds the capacity protocol by
+SHA-256 and keeps the same frozen public point, 29.9-million-state cap,
+5,500 MiB RSS cap, exact lookup, and first-witness rule. It fixes eight
+alternating sparse26/sparse28 pairs with a 300-second limit per arm. This
+comparison is prioritized because sparse28 used less target process CPU in
+both adjacent full-capacity pairs, while the existing Mac wall times vary
+strongly with host load.
+
+The [Tier 1 manifest generator](make_tier1_manifest.py) verifies the four
+preserved capacity rows and full partner audit, checks the pinned public
+source, and freezes the benchmark runner's expected fields and result. It
+also hashes an allocation receipt whose `provider` and `instance_id` match
+the supplied arguments. A dry-run manifest passed the Tier 1 runner's input
+contract; this establishes the replay wiring, not a timing result.
+
+### Measured Tier 1 panel
+
+The [raw Linux receipt](tier1_github_38187970079/results/summary.json) comes
+from [GitHub Actions run 38187970079](https://github.com/aburan28/cryptanalysis/actions/runs/38187970079)
+on instance `gh-38187970079-1-paired-stage` (`ubuntu-24.04`, x86-64). The
+frozen one-target workload `63dd0929cf33` uses the same public point, one
+pinned exposed CPU, exact binary, and 300-second arm cap for both modes.
+The native online interval starts after index construction and the lookup
+sample; it ends after target query preparation, partner generation, exact
+lookup, and native relation checks. The table shows medians across eight
+arms of each mode; phase medians are displayed independently.
+
+| Mode | Target online wall (s) | Target process CPU (s) | Query prep (s) | Partner generation (s) | Partner check (s) | Maximum native RSS (bytes) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| sparse26 reference | 64.430 | 64.422 | 4.039 | 21.599 | 38.623 | 5,280,362,496 |
+| sparse28 candidate | 56.469 | 56.462 | 4.044 | 21.534 | 30.557 | 5,308,678,144 |
+
+The median of the **eight paired** reference/candidate ratios is **1.144**;
+its bootstrap 95% interval is **[1.123, 1.215]**, with every pair above 1.
+The native phase costs and residual sum to each online interval. All 16 raw
+outputs matched their frozen arm records, including operation counts and
+first-witness lookup samples. The cgroup recorded zero CPU throttles and
+zero memory failures during measured arms. The runner marked
+`speedup_claim_eligible=true` for this Tier 1 bounded-stage comparison.
+The [independent verifier](verify_tier1_receipt.py) replays the raw hashes,
+exact fields, phase sums, pair order, allocation, memory and noise counters,
+and paired confidence interval. Reusable index construction is recorded in
+the raw results outside this target-stage interval.
+
+The [GitHub-hosted Linux workflow](../../../.github/workflows/n83-e1-sparse28-tier1.yml)
+now runs this frozen comparison on a fresh Tier 1 instance and preserves its
+preflight and raw pairs. For a manual replay, run on a separate idle Linux
+instance from a checkout containing the merged Tier 1 runner. Save a JSON
+allocation receipt containing `provider` and
+`instance_id`, plus the provider's image, CPU and memory allocation, and
+creation time when available. Keep API credentials out of the receipt.
+After building the pinned binary as above, select one CPU shown by
+`probe-host` within the instance's affinity mask:
+
+```sh
+python3 /workspace/cryptanalysis/experiments/koblitz-n83-index-design-20260929/packed_index_e1_sparse28_capacity_20261011/make_tier1_manifest.py \
+  --workdir /workspace/cryptanalysis \
+  --binary /workspace/build/n83-e1-sparse28-capacity/release/native_packed_index \
+  --provider runpod --instance-id POD_ID \
+  --allocation-receipt /workspace/receipts/runpod-allocation.json \
+  --cpus SELECTED_CPU --execution-cpu SELECTED_CPU \
+  --output /workspace/sparse28-capacity-tier1-manifest.json
+python3 /workspace/cryptanalysis/scripts/isolated_bench.py probe /workspace/sparse28-capacity-tier1-manifest.json
+timeout 6600 python3 /workspace/cryptanalysis/scripts/isolated_bench.py \
+  run /workspace/sparse28-capacity-tier1-manifest.json
+```
+
+Preserve every valid and invalid pair, including raw stdout/stderr, source
+and input hashes, memory, phase sums, process CPU time, and observed
+throttling or memory failures. A Tier 1 stage speedup requires eight exact
+same-target pairs and a paired bootstrap 95% lower bound above 1. The full
+one-target IC comparison also requires relation collection, rank, recovery,
+and matched-rho accounting under the repository contract.
 
 ## Physical-host replay
 
