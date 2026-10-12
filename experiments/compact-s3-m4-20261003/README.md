@@ -2429,80 +2429,89 @@ pairs. Q1487 censored on that same target. N83 uses 10,000 table and
 operation counts and separate setup/query costs; one N53 success is not a
 natural-yield estimate, and N83 successful cost remains unknown.
 
+### Q1490 ordinary relation witness bridge
+
+[Q1490](q1490_ordinary_witness_bridge/README.md) reconstructs Q1488's
+verified N53 ordinary relation as four exact Q1481 raw cyclic-window
+points. Their raw sum is preimage 141 of Q1482's 428 frozen target
+preimages, and all three chained `S3` equations hold. The first frozen
+attempt preserved a packed-point-key versus x-only-key preflight failure;
+the separately frozen R2 conversion passes. This is a known-witness
+correctness control, not an unpinned solve or a cost observation.
+
+### Q1491 exact ordinary CNF witness
+
+[Q1491](q1491_ordinary_cnf_witness/README.md) appends 327 unit clauses
+for Q1490's witness to Q1482's byte-identical ordinary N53 CNF body.
+The frozen native solver returns SAT, and independent model replay verifies
+the same public four-point relation at target preimage 141. This confirms
+that the actual CNF accepts a known ordinary relation. Its pinned solver
+time is a correctness diagnostic, not successful unpinned PDP work.
+
+### Q1492 ordinary partial-pin diagnostic
+
+[Q1492](q1492_ordinary_partial_pin/README.md) keeps Q1482's exact ordinary
+N53 CNF and all four leaves free while pinning the known target preimage,
+either midpoint, or both midpoints from Q1490. All four cells censor at
+60 seconds with no verified relation. The target-only cell makes 143
+million direct right-`S3` evaluations; midpoint-pin cells make about
+14.4 million root calls while rebuilding left-pair domains. The
+fully pinned Q1491 SAT model remains a correctness witness, so these
+cells measure only capped search prefixes.
+
+### Q1493 Frobenius-swept first-window search
+
+[Q1493](q1493_frobenius_window_sweep/README.md) fixes only the first raw
+leaf's window to start zero and sweeps all Frobenius rotations of each
+ordinary public target. The full sweep preserves mathematical coverage
+of Q1481's Frobenius-stable base; Q1490's known N53 witness maps into
+rotation 44 and passes the rotation preflight. The native solver censors
+on that positive cell at 60 seconds. A separately frozen, post-search
+control pins the known witness into the rotation-44 CNF; the native solver
+returns SAT, and inverse-Frobenius replay verifies the ordinary relation.
+This establishes that the rotated encoding accepts the witness, without
+measuring unpinned solve cost. All 53 N53 and 83 N83 rotations
+then censor at their frozen 5-second caps with zero verified relations.
+The independent audit preserves the operation vectors and charged stage
+intervals. This is a bounded search failure, not a successful PDP cost
+or an N131 work exponent.
+
+### Q1494 full native-XOR window S3
+
+[Q1494](q1494_full_xor_window_s3/README.md) adds the missing first-pair
+`S3` link to Q1493's exact window-base formula and gives all three links
+to CryptoMiniSat as native XOR rows. Its pinned N53 ordinary rotation-44
+control returns SAT and replays the public relation. With the witness
+pins removed, that known-satisfiable cell reaches the frozen 60-second
+cap without a model; the ordinary N53 and N83 rotation-zero cells also
+censor. The N53 formula has 795 XOR rows, and N83 has 1,245. The audit
+preserves exact conflicts and raw rounded propagation displays. This
+tests one solver representation on three bounded cells, not a full
+target-orbit sweep or successful decomposition cost. N83 yield, novel
+rank, and complete N131 `2^x` remain unknown. The N53 logs show zero
+active Gaussian matrices; N83 later uses one small matrix, while its
+large field-product components exceed the default column limit.
+
 ## Next goal
 
-Build and measure a **fully coupled algebraic four-leaf pair-support
-mechanism** that leaves both internal midpoints existential and reasons
-about many factor-base completions on both sides of the join across cyclic
-windows, beyond Q1485/Q1486's single-left, bounded 4,096-completion local
-domains. Q1485 through Q1487 all choose or constrain a narrow midpoint
-slice and find no unpinned relation; another faster fixed-midpoint oracle
-is unlikely to answer the solve-cost question. Pre-register a compact
+Test a **fully coupled four-leaf search** that leaves both internal
+midpoints existential while it reasons about many cyclic windows at once.
+Q1485 through Q1487 all choose or constrain a narrow midpoint slice and
+find no unpinned relation; Q1493's Frobenius sweep and Q1494's full native
+XOR circuit also censor. Pre-register a compact
 symbolic support method, check it against direct enumeration on small
-fields, and reuse the exact Q1481/Q1482 N53/N83 curves, bases, public points,
-and limits. Its first gate is one independently verified, fully unpinned
-known-satisfiable N83 relation without constructing the full pair table.
-The next gate is one ordinary N83 relation, followed by a frozen
-ordinary-query panel for useful relation yield and novel rank. Count failed
-attempts, SAT propagation, field arithmetic, memory, and target-dependent
-wall intervals alongside Q1482/Q1483/Q1485/Q1486/Q1487/Q1488, pairing N53/N83
-inputs and operation-count boundaries. If only the planted control passes,
-retain ordinary cost and N131 complete work as unknown. A complete N131
-`2^x` also requires its exact usable base, relation collection, final matrix
+fields, and reuse the exact Q1481/Q1482 N53/N83 curves, bases, public
+points and limits. The first gate is to recover Q1490's known-satisfiable
+ordinary N53 relation with every leaf, midpoint and target selector free.
+Then independently verify a fully unpinned known-representable N83 control,
+followed by an ordinary N83 relation, without constructing the full pair
+table. Only after those gates should a frozen ordinary-query panel estimate
+useful yield and novel rank. Count failed attempts, SAT propagation,
+field arithmetic, memory, and target-dependent wall intervals alongside
+Q1482/Q1483/Q1485/Q1486/Q1487/Q1488/Q1493/Q1494. If only controls pass, retain
+N83 ordinary cost and N131 complete work as unknown. A complete N131 `2^x`
+also requires its exact usable base, relation collection, final matrix
 solve, target descent, and independent scalar replay.
-## Next goal
-
-The next experiment should couple the existing exact S3 field-root oracle
-to **free-leaf search as an external propagator**. When a leaf pair becomes
-fixed, compute its zero or two pair-intermediate roots in the field and
-constrain the solver. Q1319 already encoded those roots as Boolean circuits,
-and Q1327/Q1328 already enumerated a native pair index; the proposed hybrid
-must avoid both circuit expansion and a complete `K²n` table. First recover
-Q1419's frozen N53/N83 `free_mids` controls, then an unpinned ordinary N53
-relation, then an unpinned ordinary N83 relation on exact Q1325 W≤5. Preserve
-all failed queries, operation counts, memory and independent group-law
-replays. The N83 result is the first decisive method gate; a fresh ordinary
-query panel must then measure useful-row yield and novel rank per query.
-Compare against Q1319, the native root index, and the pair-table on matched
-inputs. Q1419 does not establish that this hybrid will scale; the gate tests
-that hypothesis.
-
-For the existing m=4 path, an ordinary N83 four-point relation on the exact
-Q1325 base still requires a search that avoids both the full \(K^2n\) index
-and Q1331's fixed two-million-state support limit. Q1329 has now
-validated the native S3 search on an unpinned, known-satisfiable N83 target;
-Q1401 has independently validated the quotient-pair search on the exact
-Q1325 base with a planted public target. Q1403's ordered implicit-base
-SAT formula still cannot recover its unpinned known-satisfiable control
-within 60 seconds or the ordinary target within 120 seconds. Q1404 removes
-the projection circuits yet also cannot recover its unpinned planted or
-ordinary target within the frozen caps. Q1408's balanced tree reaches the
-same one-million-conflict cap on the ordinary target, with no relation.
-Q1410 reaches that cap without recovering an independently known ordinary
-N53 relation, so the next design needs a different search mechanism.
-Q1412's leaf-ordering control also preserves the known relation but reaches
-the ordinary N53 conflict cap without a model.
-Q1415 activates XOR Gaussian matrices on the exact Q1410 N53 ordinary
-formula but reaches its 120-second cap without a model. A new mechanism
-should first recover an unpinned ordinary N53 relation, then an ordinary
-N83 relation on the exact Q1325 base, with failed attempts and field API
-work charged to the query.
-Q1400's ordinary no-hit and tiny fixed-rectangle support bound leave
-ordinary relation yield unmeasured.
-Run frozen ordinary single-target workloads under identical operation and
-memory limits, retaining all zero-yield cells and independently verifying
-any relations.
-The design needs measurable useful-row yield and novel rank per query,
-including failed attempts. Merely increasing the current sampled index cap
-cannot justify extrapolation to its 2.9-trillion-state N83 full index.
-
-Use the exact Q1413 N131 W≤5 and W≤6 bases to calibrate inversion,
-multiplication, conversion, hashing, and point costs in a common operation
-unit. Add base construction, relation collection, final matrix rank and
-solve, target descent, and scalar replay to a complete \(2^x\) ledger.
-Keep \(x\) unknown until every required term is measured or bounded. A
-challenge run is justified only if the **complete** fitted cost is
-credibly below \(2^{61}\).
 
 ## Reproduction
 
@@ -2567,6 +2576,14 @@ python3 experiments/compact-s3-m4-20261003/q1462_sparse_sum_sat/build.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1462_sparse_sum_sat/validate_controls.py --check
 python3 experiments/compact-s3-m4-20261003/q1462_sparse_sum_sat/freeze_protocol.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1462_sparse_sum_sat/verify_archive.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1490_ordinary_witness_bridge/freeze_recovery.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1490_ordinary_witness_bridge/bridge_v2.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1491_ordinary_cnf_witness/freeze_protocol.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1491_ordinary_cnf_witness/run.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1492_ordinary_partial_pin/freeze_protocol.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1492_ordinary_partial_pin/run_partial.py --cell target_only --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1493_frobenius_window_sweep/run.py --preflight --check
+python3 experiments/compact-s3-m4-20261003/q1493_frobenius_window_sweep/audit.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```
 
