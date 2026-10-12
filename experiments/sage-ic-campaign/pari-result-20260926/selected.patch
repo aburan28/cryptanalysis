@@ -1,0 +1,125 @@
+--- a/src/sage/schemes/elliptic_curves/ell_point.py
++++ b/src/sage/schemes/elliptic_curves/ell_point.py
+@@ -4554,6 +4554,20 @@
+             222
+             sage: getattr(506*P*37, '_order', None)
+             222
++
++        Binary NTL fields retain ordinary Sage points when converting the
++        PARI result directly::
++
++            sage: # needs sage.rings.finite_rings
++            sage: F = GF(2^65, 'z', impl='ntl')
++            sage: E = EllipticCurve(F, [1, 1, 0, 0, 1])
++            sage: P = E.random_point()
++            sage: 17*P == P*17 == sum([P]*17, E(0))
++            True
++            sage: type(17*P) is type(P), (17*P).parent() is P.parent()
++            (True, True)
++            sage: (-17)*P == -(17*P), 0*P == E(0)
++            (True, True)
+         """
+         k = ZZ(other)
+         E = self.curve()
+@@ -4573,12 +4587,21 @@
+             pariQ = None
+ 
+         if pariQ is not None:
+-            if pariQ == [0]:
+-                vQ = 0
++            if (type(self) is EllipticCurvePoint_finite_field
++                    and E._point is EllipticCurvePoint_finite_field):
++                from sage.schemes.elliptic_curves import binary_batch
++                native = binary_batch._native
+             else:
+-                assert len(pariQ) == 2
+-                vQ = Sequence(tuple(pariQ) + (1,), E.base_ring())
+-            Q = EllipticCurvePoint_finite_field(E, vQ, check=False)
++                native = None
++            if native is not None:
++                Q = native._from_pari_point(E, pariQ)
++            else:
++                if pariQ == [0]:
++                    vQ = 0
++                else:
++                    assert len(pariQ) == 2
++                    vQ = Sequence(tuple(pariQ) + (1,), E.base_ring())
++                Q = EllipticCurvePoint_finite_field(E, vQ, check=False)
+ 
+         else:
+             Q = IntegerMulAction(ZZ, self.parent())._act_(k, self)
+--- a/src/sage/schemes/elliptic_curves/binary_batch_ntl.pyx
++++ b/src/sage/schemes/elliptic_curves/binary_batch_ntl.pyx
+@@ -385,6 +385,27 @@
+     static bool bb_pari_binary(GEN g) {
+         return typ(g) == t_FFELT && g[1] == t_FF_F2xq;
+     }
++    static bool bb_from_pari_element(NTL::GF2E& out, GEN value, GEN generator) {
++        // Only copy coordinates in this exact polynomial representation.
++        // Other PARI representations retain Sage's general coercion path.
++        if (!bb_pari_binary(value) || !bb_pari_binary(generator)
++                || !gequal(gel(value, 3), gel(generator, 3))) return false;
++        GEN f = gel(value, 2);
++        if (typ(f) != t_VECSMALL) return false;
++        const long words = lg(f) - 2;
++        const long wordbytes = sizeof(unsigned long);
++        std::vector<unsigned char> bytes(words * wordbytes);
++        // Explicit little-endian bytes: independent of host byte order.
++        for (long i = 0; i < words; ++i) {
++            unsigned long word = (unsigned long)f[i+2];
++            for (long j = 0; j < wordbytes; ++j)
++                bytes[i*wordbytes+j] = (unsigned char)(word >> (8*j));
++        }
++        NTL::GF2X polynomial;
++        NTL::GF2XFromBytes(polynomial, bytes.data(), bytes.size());
++        NTL::conv(out, polynomial);
++        return true;
++    }
+     static GEN bb_pari_point(const NTL::GF2E& x, const NTL::GF2E& y, GEN g) {
+         GEN result = cgetg(3, t_VEC);
+         gel(result, 1) = bb_pari_element(x, g);
+@@ -411,8 +432,44 @@
+     }
+     """
+     bint bb_pari_binary(GEN)
++    bint bb_from_pari_element(GF2E_c&, GEN, GEN) except +
+     GEN bb_pari_point(const GF2E_c&, const GF2E_c&, GEN)
+     void bb_basis_words(unsigned int*, long, long, long) except +
++
++
++def _from_pari_point(curve, Gen coordinates):
++    """Construct a standard finite-field point from a PARI scalar result.
++
++    This private helper is called only for PARI's result on ``curve``.
++    Field metadata is checked before copying its packed polynomial words.
++    """
++    if curve._point is not EllipticCurvePoint_finite_field:
++        raise ValueError('expected the standard finite-field point class')
++    if len(coordinates) == 1 and coordinates == [0]:
++        return curve(0)
++    if len(coordinates) != 2:
++        raise ValueError('expected PARI point coordinates')
++    field = curve.base_ring()
++    zero = field.zero()
++    if not isinstance(zero, FiniteField_ntl_gf2eElement):
++        return _construct_standard_point(curve, field(coordinates[0]),
++                                         field(coordinates[1]), field.one())
++    cdef FiniteField_ntl_gf2eElement model = zero
++    cdef FiniteField_ntl_gf2eElement x = model._new(), y = model._new()
++    cdef Gen generator, px = coordinates[0], py = coordinates[1]
++    try:
++        generator = field._binary_batch_pari_generator
++    except AttributeError:
++        generator = field.modulus()._pari_with_name(field.variable_name()).ffgen()
++        field._binary_batch_pari_generator = generator
++    model._cache.F.restore()
++    sig_check()
++    if not bb_from_pari_element(x.x, px.g, generator.g):
++        x = field(px)
++    model._cache.F.restore()
++    if not bb_from_pari_element(y.x, py.g, generator.g):
++        y = field(py)
++    return _construct_standard_point(curve, x, y, field.one())
+ 
+ 
+ def _pari_point(curve, P):

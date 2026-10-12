@@ -39,23 +39,25 @@ extern "C" __global__ void f4_gf2_decide_batch(const f4_u64 *terms, const f4_u32
 }
 
 /* One large matrix (f4_gf2_echelon.cuh): per panel, f4e_gather on a grid,
- * f4e_panel_block on one block, then f4e_materialise and f4e_update on
- * grids, the latter's size a multiple of 32; f4e_low at the end. */
+ * f4e_panel_block on one block, f4e_materialise on a grid, then f4e_update
+ * on tiles × parts blocks of a multiple of 32 threads; f4e_low at the end. */
 #define F4E_GID   ((f4_u64)blockIdx.x * blockDim.x + threadIdx.x)
 #define F4E_TOTAL ((f4_u64)gridDim.x * blockDim.x)
 
 extern "C" __global__ void f4e_gather(const f4_u64 *mat, f4_u64 stride, f4_u32 w, f4_u64 mask,
                                       const f4_u32 *active, f4_u32 rows, f4_u32 *cand, f4_u64 *pw,
-                                      f4_u32 *count)
+                                      f4_u32 *count, f4_u64 *prow)
 {
-    f4e_gather_thread(F4E_GID, F4E_TOTAL, mat, stride, w, mask, active, rows, cand, pw, count);
+    f4e_gather_thread(F4E_GID, F4E_TOTAL, mat, stride, w, mask, active, rows, cand, pw, count,
+                      prow);
 }
 
-extern "C" __global__ void f4e_panel_block(const f4_u32 *cand, f4_u64 *pw, f4_u64 *coeff,
-                                           f4_u32 *is_piv, const f4_u32 *count, F4ePivots *piv)
+extern "C" __global__ void f4e_panel_block(const f4_u64 *prow, f4_u32 rows, f4_u32 *cand,
+                                           f4_u64 *pw, f4_u64 *coeff, f4_u32 *is_piv,
+                                           const f4_u32 *count, F4ePivots *piv)
 {
     __shared__ F4ePanelShared sh;
-    f4e_panel(&sh, blockDim.x, cand, pw, coeff, is_piv, count, piv);
+    f4e_panel(&sh, blockDim.x, prow, rows, cand, pw, coeff, is_piv, count, piv);
 }
 
 extern "C" __global__ void f4e_materialise(f4_u64 *mat, f4_u64 stride, f4_u32 w, f4_u32 *active,
@@ -64,11 +66,13 @@ extern "C" __global__ void f4e_materialise(f4_u64 *mat, f4_u64 stride, f4_u32 w,
     f4e_materialise_thread(F4E_GID, F4E_TOTAL, mat, stride, w, active, piv, ops);
 }
 
-extern "C" __global__ void f4e_update(f4_u64 *mat, f4_u64 stride, f4_u32 w, const f4_u32 *cand,
-                                      const f4_u64 *coeff, const f4_u32 *is_piv,
+extern "C" __global__ void f4e_update(f4_u64 *mat, f4_u64 stride, f4_u32 w, f4_u32 parts,
+                                      const f4_u32 *cand, const f4_u64 *coeff, const f4_u32 *is_piv,
                                       const f4_u32 *count, const F4ePivots *piv, f4_u64 *ops)
 {
-    f4e_update_thread(F4E_GID, F4E_TOTAL, mat, stride, w, cand, coeff, is_piv, count, piv, ops);
+    __shared__ F4eUpdateShared sh;
+    f4e_update_block(&sh, blockDim.x, blockIdx.x, parts, mat, stride, w, cand, coeff, is_piv, count,
+                     piv, ops);
 }
 
 extern "C" __global__ void f4e_low(const f4_u64 *mat, f4_u64 stride, f4_u32 low_start, f4_u32 width,

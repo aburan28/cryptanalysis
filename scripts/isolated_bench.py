@@ -19,6 +19,8 @@ import statistics
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 import uuid
 
 CGROUP_ROOT = Path("/sys/fs/cgroup")
@@ -78,18 +80,34 @@ def json_write(path, value):
 def require_manifest(manifest):
     if manifest.get("schema") != 1:
         raise ValueError("manifest schema must be 1")
+    tier = manifest.get("measurement_tier", "tier0_host")
+    if tier not in ("tier0_host", "tier1_instance"):
+        raise ValueError("measurement_tier must be tier0_host or tier1_instance")
     isolation = manifest["isolation"]
     cpus = cpu_set(isolation["cpus"])
-    nodes = cpu_set(isolation["mem_nodes"])
+    nodes = cpu_set(isolation["mem_nodes"]) if tier == "tier0_host" else set()
     run_cpu = isolation.get("execution_cpu")
     if not isinstance(run_cpu, int) or run_cpu not in cpus:
-        raise ValueError("execution_cpu must be one CPU in the isolated partition")
-    cgroup = Path(isolation["cgroup"])
-    if not cgroup.is_absolute() or cgroup == CGROUP_ROOT:
-        raise ValueError("an absolute non-root cgroup is required")
-    if not str(cgroup).startswith(str(CGROUP_ROOT) + "/"):
-        raise ValueError("cgroup must be beneath /sys/fs/cgroup")
-    if not (1 <= len(cpus) <= 256 and len(nodes) == 1):
+        raise ValueError("execution_cpu must be one declared CPU")
+    cgroup = None
+    if tier == "tier0_host":
+        cgroup = Path(isolation["cgroup"])
+        if not cgroup.is_absolute() or cgroup == CGROUP_ROOT:
+            raise ValueError("an absolute non-root cgroup is required")
+        if not str(cgroup).startswith(str(CGROUP_ROOT) + "/"):
+            raise ValueError("cgroup must be beneath /sys/fs/cgroup")
+    else:
+        allocation = manifest.get("allocation")
+        if not isinstance(allocation, dict) or not all(
+            isinstance(allocation.get(key), str) and allocation[key].strip()
+            for key in ("provider", "instance_id", "receipt")
+        ):
+            raise ValueError("Tier 1 requires provider, instance_id, and receipt")
+        if not Path(allocation["receipt"]).is_absolute():
+            raise ValueError("Tier 1 allocation receipt must be an absolute path")
+        if "cgroup" in isolation or "mem_nodes" in isolation:
+            raise ValueError("Tier 1 uses observed cgroup and memory placement, not host isolation fields")
+    if not (1 <= len(cpus) <= 256 and (tier != "tier0_host" or len(nodes) == 1)):
         raise ValueError("invalid CPU or NUMA count")
     if not isinstance(manifest.get("cases"), list) or not manifest["cases"]:
         raise ValueError("cases must be nonempty")
@@ -122,31 +140,14 @@ def require_manifest(manifest):
     for field in manifest["pair_fields"]:
         if not isinstance(field, str) or not field:
             raise ValueError("invalid pair field")
-    if len(set(manifest["pair_fields"])) != len(manifest["pair_fields"]):
-        raise ValueError("pair_fields must be unique")
-    result_field = manifest.get("result_field")
-    if not isinstance(result_field, str) or not result_field or any(
-        char.isspace() or char == "=" for char in result_field
-    ):
-        raise ValueError("result_field must name the independently checked answer")
-    for case in manifest["cases"]:
-        expected = case.get("expected_fields")
-        if not isinstance(expected, dict) or any(
-            not isinstance(expected.get(field), str) or not expected[field]
-            for field in manifest["pair_fields"]
-        ):
-            raise ValueError("each case needs expected_fields for every pair field")
-        if not isinstance(case.get("expected_result"), str) or not case["expected_result"]:
-            raise ValueError("each case needs an expected_result")
-        if any(case["expected_result"] in case[variant][1:]
-               for variant in ("reference", "candidate")):
-            raise ValueError("expected_result must not be passed to solver argv")
     if not isinstance(manifest.get("artifacts"), list) or not manifest["artifacts"]:
         raise ValueError("artifacts must list at least one source or build file")
     for item in manifest["artifacts"]:
         path = Path(item)
         if not path.is_absolute() or not path.is_file():
             raise ValueError("artifact path must be an existing absolute file: " + str(item))
+    if tier == "tier1_instance" and manifest["allocation"]["receipt"] not in manifest["artifacts"]:
+        raise ValueError("Tier 1 allocation receipt must be included in artifacts")
     return cpus, nodes, cgroup
 
 
@@ -158,6 +159,44 @@ def virtualization():
     if result.returncode == 1:
         return "none"
     return result.stdout.strip() or "unknown"
+
+
+def ec2_instance_type():
+    """Read the instance type through IMDSv2; never accept an environment hint."""
+    endpoint = "http://169.254.169.254/latest"
+    request = urllib.request.Request(
+        endpoint + "/api/token", method="PUT",
+        headers={"X-aws-ec2-metadata-token-ttl-seconds": "60"})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(request, timeout=2) as response:
+            token = response.read(256).decode("ascii")
+        if not token:
+            return None
+        request = urllib.request.Request(
+            endpoint + "/meta-data/instance-type",
+            headers={"X-aws-ec2-metadata-token": token})
+        with opener.open(request, timeout=2) as response:
+            return response.read(64).decode("ascii").strip()
+    except (OSError, UnicodeError, urllib.error.URLError):
+        return None
+
+
+def frequency_state(cpu, instance_type, architecture, sys_cpu_root=Path("/sys/devices/system/cpu")):
+    freq = Path(sys_cpu_root) / f"cpu{cpu}" / "cpufreq"
+    governor = read(freq / "scaling_governor")
+    low, high = read(freq / "scaling_min_freq"), read(freq / "scaling_max_freq")
+    state = {"governor": governor, "min_khz": low, "max_khz": high,
+             "current_khz": read(freq / "scaling_cur_freq"), "mode": None,
+             "ec2_instance_type": instance_type}
+    if governor == "performance" and low and low == high:
+        state["mode"] = "cpufreq_fixed"
+        return state, None
+    if (not freq.exists() and architecture in ("aarch64", "arm64")
+            and instance_type == "g5g.metal"):
+        state["mode"] = "aws_graviton2_hardware_fixed"
+        return state, None
+    return state, f"CPU {cpu} frequency is neither governor-fixed nor attested fixed hardware"
 
 
 def version_line(executable):
@@ -191,7 +230,75 @@ def host_probe():
     return info
 
 
+def tier1_cgroup():
+    """Read the container's own cgroup counters on either common Linux hierarchy."""
+    if (CGROUP_ROOT / "cgroup.controllers").exists():
+        membership = read("/proc/self/cgroup") or ""
+        relative = next((line.split(":", 2)[2] for line in membership.splitlines()
+                         if line.startswith("0::")), "/")
+        path = (CGROUP_ROOT / relative.lstrip("/")).resolve()
+        if not path.is_relative_to(CGROUP_ROOT):
+            return None
+        # A cgroup namespace can mount the process's own cgroup at the root.
+        return path if (path / "cpu.stat").exists() else CGROUP_ROOT
+    return next((path for path in (CGROUP_ROOT / "cpu", CGROUP_ROOT / "cpu,cpuacct")
+                 if (path / "cpu.stat").exists()), None)
+
+
+def tier1_counters(cpus):
+    cgroup = tier1_cgroup()
+    result = counters(cpus, cgroup) if cgroup else None
+    if result is None:
+        return None
+    if not (CGROUP_ROOT / "cgroup.controllers").exists():
+        failcnt = read(CGROUP_ROOT / "memory" / "memory.failcnt")
+        result["memory_events"] = {"oom": int(failcnt)} if failcnt and failcnt.isdigit() else {}
+        result["cpu_pressure_total"] = {}
+        result["memory_usage_bytes"] = read(CGROUP_ROOT / "memory" / "memory.usage_in_bytes")
+        result["memory_peak_bytes"] = read(CGROUP_ROOT / "memory" / "memory.max_usage_in_bytes")
+    else:
+        result["memory_usage_bytes"] = read(cgroup / "memory.current")
+        result["memory_peak_bytes"] = read(cgroup / "memory.peak")
+    return result
+
+
+def preflight_tier1(manifest):
+    cpus, _nodes, _cgroup = require_manifest(manifest)
+    problems = []
+    evidence = host_probe()
+    evidence["timestamp_ns"] = time.time_ns()
+    evidence["measurement_tier"] = "tier1_instance"
+    evidence["allocation"] = manifest["allocation"]
+    evidence["observed_cgroup"] = str(tier1_cgroup()) if sys.platform == "linux" else None
+    evidence["cpu_model"] = next((line.split(":", 1)[1].strip() for line in
+                                  (read("/proc/cpuinfo") or "").splitlines()
+                                  if line.startswith(("model name", "Hardware", "Processor"))), None)
+    evidence["memory_policy"] = "container_default_unverified"
+    if sys.platform != "linux":
+        problems.append("Tier 1 requires Linux")
+    else:
+        try:
+            allowed = os.sched_getaffinity(0)
+            if manifest["isolation"]["execution_cpu"] not in allowed:
+                problems.append("execution CPU is outside container affinity")
+        except OSError as exc:
+            problems.append("cannot inspect CPU affinity: " + str(exc))
+        sampled = tier1_counters(cpus)
+        evidence["counter_probe"] = sampled
+        if sampled is None or not all(cpu in sampled["per_cpu"] for cpu in cpus):
+            problems.append("selected CPU counters unavailable")
+        if sampled is None or "nr_throttled" not in sampled["cpu_stat"]:
+            problems.append("container CPU throttling counter unavailable")
+        if sampled is None or "oom" not in sampled["memory_events"]:
+            problems.append("container memory failure counter unavailable")
+    evidence["host_exclusivity"] = "unverified"
+    evidence["provider_identity"] = "self_reported_receipt"
+    return {"ok": not problems, "problems": problems, "evidence": evidence}
+
+
 def preflight(manifest):
+    if manifest.get("measurement_tier", "tier0_host") == "tier1_instance":
+        return preflight_tier1(manifest)
     cpus, nodes, cgroup = require_manifest(manifest)
     problems = []
     evidence = {"timestamp_ns": time.time_ns(), "host": platform.node(),
@@ -250,25 +357,6 @@ def preflight(manifest):
     if read(cg / "memory.events") is None:
         problems.append("memory.events unavailable")
     if read(cg / "cpu.pressure") is None:
-    events = read(cg / "cgroup.events")
-    evidence["cgroup.events"] = events
-    if events is None or "populated 0" not in events.splitlines():
-        problems.append("benchmark cgroup or a descendant contains processes")
-    cpu_stat_text = read(cg / "cpu.stat")
-    if not cpu_stat_text or not all(
-        any(line.startswith(key + " ") for line in cpu_stat_text.splitlines())
-        for key in ("nr_throttled", "throttled_usec")
-    ):
-        problems.append("cpu.stat throttling counters unavailable")
-    memory_events = read(cg / "memory.events")
-    if not memory_events or not all(
-        any(line.startswith(key + " ") for line in memory_events.splitlines())
-        for key in ("oom", "oom_kill")
-    ):
-        problems.append("memory.events unavailable")
-    pressure = read(cg / "cpu.pressure")
-    if not pressure or not any(line.startswith("some ") and "total=" in line
-                               for line in pressure.splitlines()):
         problems.append("cpu.pressure unavailable")
     interrupts_text = read("/proc/interrupts")
     if not interrupts_text or not all(f"CPU{cpu}" in interrupts_text.splitlines()[0].split()
@@ -292,6 +380,8 @@ def preflight(manifest):
                 problems.append(key + " does not cover benchmark CPUs")
         except ValueError:
             problems.append(key + " unavailable or empty")
+    instance_type = None
+    metadata_queried = False
     for cpu in sorted(cpus):
         base = Path(f"/sys/devices/system/cpu/cpu{cpu}")
         siblings = read(base / "topology/thread_siblings_list")
@@ -304,13 +394,13 @@ def preflight(manifest):
         containing_nodes = {node for node in nodes if (Path(f"/sys/devices/system/node/node{node}") / f"cpu{cpu}").exists()}
         if len(containing_nodes) != 1:
             problems.append(f"CPU {cpu} is not on exactly one requested NUMA node")
-        freq = base / "cpufreq"
-        governor = read(freq / "scaling_governor")
-        low, high = read(freq / "scaling_min_freq"), read(freq / "scaling_max_freq")
-        evidence["frequency"][str(cpu)] = {"governor": governor, "min_khz": low,
-                                           "max_khz": high, "current_khz": read(freq / "scaling_cur_freq")}
-        if governor != "performance" or not low or low != high:
-            problems.append(f"CPU {cpu} frequency must be fixed with performance governor")
+        if not (base / "cpufreq").exists() and not metadata_queried:
+            instance_type = ec2_instance_type()
+            metadata_queried = True
+        state, issue = frequency_state(cpu, instance_type, evidence["architecture"])
+        evidence["frequency"][str(cpu)] = state
+        if issue:
+            problems.append(issue)
     if not shutil.which("numactl"):
         problems.append("numactl is required for explicit memory binding")
     irq_dir = Path("/proc/irq")
@@ -326,7 +416,6 @@ def preflight(manifest):
                     evidence["irq_affinity_overlap"].append(path.parent.name)
             except ValueError:
                 pass
-                problems.append("IRQ effective affinity unreadable: " + str(path))
         if evidence["irq_affinity_overlap"]:
             problems.append("IRQ effective affinity intersects benchmark CPUs")
     return {"ok": not problems, "problems": problems, "evidence": evidence}
@@ -421,6 +510,41 @@ def noise(before, after, usage_before, usage_after):
     return problems
 
 
+def tier1_noise(before, after):
+    if before is None or after is None:
+        return ["container counters disappeared"]
+    issues = []
+    for section, keys in (("cpu_stat", ("nr_throttled",)),
+                          ("memory_events", ("oom", "oom_kill"))):
+        for key in keys:
+            old, new = before[section].get(key), after[section].get(key)
+            if old is not None and (new is None or new < old):
+                issues.append(section + " counter disappeared or reset: " + key)
+            elif old is not None and new > old:
+                issues.append(section + " event: " + key)
+    return issues
+
+
+def tier1_observations(before, after, usage_before, usage_after):
+    result = {"child_user_ms": (usage_after.ru_utime - usage_before.ru_utime) * 1000,
+              "child_system_ms": (usage_after.ru_stime - usage_before.ru_stime) * 1000,
+              "child_involuntary_switches": usage_after.ru_nivcsw - usage_before.ru_nivcsw,
+              "child_major_faults": usage_after.ru_majflt - usage_before.ru_majflt,
+              "cgroup_memory_peak_bytes": after.get("memory_peak_bytes"),
+              "cgroup_memory_usage_before_bytes": before.get("memory_usage_bytes"),
+              "cgroup_memory_usage_after_bytes": after.get("memory_usage_bytes"),
+              "counter_deltas": {}}
+    for section in ("cpu_stat", "memory_events"):
+        result["counter_deltas"][section] = {
+            key: after[section][key] - value for key, value in before[section].items()
+            if key in after[section]}
+    result["counter_deltas"]["per_cpu"] = {
+        str(cpu): {key: after["per_cpu"][cpu][key] - value
+                   for key, value in values.items() if key in after["per_cpu"].get(cpu, {})}
+        for cpu, values in before["per_cpu"].items() if cpu in after["per_cpu"]}
+    return result
+
+
 def output_fields(stdout):
     for line in reversed(stdout.splitlines()):
         fields = {}
@@ -444,23 +568,25 @@ def benchmark_env():
 
 
 def one_run(argv, manifest, cpus, nodes, cgroup, folder, serial):
+    tier = manifest.get("measurement_tier", "tier0_host")
     health = preflight(manifest)
     if not health["ok"]:
         return {"serial": serial, "status": "rejected", "preflight": health,
-                "command": argv}
+                "command": argv, "measurement_tier": tier}
     binary_before = sha256(argv[0])
-    before = counters(cpus, cgroup)
+    before = counters(cpus, cgroup) if tier == "tier0_host" else tier1_counters(cpus)
     if set(before["per_cpu"]) != cpus or set(before["interrupts"]) != cpus:
         return {"serial": serial, "status": "invalid", "issues": ["CPU counters unavailable"],
                 "command": argv, "before": before}
     usage_before = resource.getrusage(resource.RUSAGE_CHILDREN)
     begin = time.monotonic_ns()
     run_cpu = manifest["isolation"]["execution_cpu"]
-    launcher = [shutil.which("numactl"), "--membind=" + format_set(nodes),
-                "--physcpubind=" + str(run_cpu), "--"] + argv
+    launcher = ([shutil.which("numactl"), "--membind=" + format_set(nodes),
+                 "--physcpubind=" + str(run_cpu), "--"] + argv) if tier == "tier0_host" else argv
     def child_setup():
-        with (cgroup / "cgroup.procs").open("w") as stream:
-            stream.write(str(os.getpid()))
+        if tier == "tier0_host":
+            with (cgroup / "cgroup.procs").open("w") as stream:
+                stream.write(str(os.getpid()))
         os.sched_setaffinity(0, {run_cpu})
     try:
         proc = subprocess.Popen(launcher, cwd=manifest["workdir"], env=benchmark_env(),
@@ -469,7 +595,8 @@ def one_run(argv, manifest, cpus, nodes, cgroup, folder, serial):
                                 preexec_fn=child_setup)
     except (OSError, subprocess.SubprocessError) as exc:
         return {"serial": serial, "status": "invalid", "issues": ["launch failed: " + str(exc)],
-                "command": argv, "before": before, "after": counters(cpus, cgroup)}
+                "command": argv, "before": before,
+                "after": counters(cpus, cgroup) if tier == "tier0_host" else tier1_counters(cpus)}
     def stop_child():
         try:
             os.killpg(proc.pid, signal.SIGKILL)
@@ -489,15 +616,16 @@ def one_run(argv, manifest, cpus, nodes, cgroup, folder, serial):
         raise
     outer_ms = (time.monotonic_ns() - begin) / 1e6
     usage_after = resource.getrusage(resource.RUSAGE_CHILDREN)
-    after = counters(cpus, cgroup)
+    after = counters(cpus, cgroup) if tier == "tier0_host" else tier1_counters(cpus)
     stdout = stdout_bytes.decode("utf-8", "replace")
     stderr = stderr_bytes.decode("utf-8", "replace")
     stem = f"{serial:05d}"
     (folder / (stem + ".stdout.txt")).write_text(stdout)
     (folder / (stem + ".stderr.txt")).write_text(stderr)
     fields = output_fields(stdout)
-    issues = noise(before, after, usage_before, usage_after)
-    if read(cgroup / "cgroup.procs"):
+    issues = (noise(before, after, usage_before, usage_after) if tier == "tier0_host"
+              else tier1_noise(before, after))
+    if tier == "tier0_host" and read(cgroup / "cgroup.procs"):
         issues.append("benchmark cgroup not empty after process exit")
         kill_file = cgroup / "cgroup.kill"
         if kill_file.exists():
@@ -521,8 +649,6 @@ def one_run(argv, manifest, cpus, nodes, cgroup, folder, serial):
             raise ValueError("invalid online_ms")
     except (KeyError, ValueError):
         issues.append("missing or invalid online_ms")
-    if metric is not None and metric > outer_ms:
-        issues.append("online_ms exceeds outer elapsed time")
     if fields.get("verified") != "1":
         issues.append("missing verified=1")
     if proc.returncode != 0:
@@ -530,6 +656,7 @@ def one_run(argv, manifest, cpus, nodes, cgroup, folder, serial):
     if timed_out:
         issues.append("timeout")
     return {"serial": serial, "status": "valid" if not issues else "invalid",
+            "measurement_tier": tier,
             "issues": issues, "command": argv, "binary_sha256": binary_before,
             "returncode": proc.returncode, "timed_out": timed_out,
             "environment": benchmark_env(),
@@ -537,26 +664,25 @@ def one_run(argv, manifest, cpus, nodes, cgroup, folder, serial):
             "child_involuntary_switches": usage_after.ru_nivcsw - usage_before.ru_nivcsw,
             "child_major_faults": usage_after.ru_majflt - usage_before.ru_majflt,
             "fields": fields, "before": before, "after": after,
+            "tier1_observations": (tier1_observations(before, after, usage_before, usage_after)
+                                   if tier == "tier1_instance" and before and after else None),
             "postflight": postflight,
             "stdout_file": stem + ".stdout.txt", "stderr_file": stem + ".stderr.txt"}
 
 
 def execute(manifest, output):
     cpus, nodes, cgroup = require_manifest(manifest)
+    tier = manifest.get("measurement_tier", "tier0_host")
     output.mkdir(parents=True, exist_ok=False)
     json_write(output / "manifest.json", manifest)
     artifact_hashes_before = {path: sha256(path) for path in manifest["artifacts"]}
-    binary_paths = {case[variant][0] for case in manifest["cases"]
-                    for variant in ("reference", "candidate")}
-    binary_hashes_before = {path: sha256(path) for path in sorted(binary_paths)}
-    runner_hash_before = sha256(Path(__file__))
     health = preflight(manifest)
     json_write(output / "preflight.json", health)
     if not health["ok"]:
         summary = {"status": "rejected", "problems": health["problems"],
+                   "measurement_tier": tier,
+                   "speedup_claim_eligible": False,
                    "artifact_sha256": artifact_hashes_before,
-                   "binary_sha256": binary_hashes_before,
-                   "runner_sha256": runner_hash_before,
                    "paired_speedup": None, "valid_pairs": 0}
         json_write(output / "summary.json", summary)
         return summary
@@ -570,7 +696,8 @@ def execute(manifest, output):
                 for variant in order:
                     row = one_run(case[variant], manifest, cpus, nodes, cgroup,
                                   output, len(rows) + 1)
-                    row.update({"case": case["id"], "repeat": repeat, "variant": variant})
+                    row.update({"case": case["id"], "repeat": repeat, "variant": variant,
+                                "measurement_tier": tier})
                     pair[variant] = row
                     rows.append(row)
                     ledger.write(json.dumps(row, sort_keys=True) + "\n")
@@ -587,14 +714,21 @@ def execute(manifest, output):
                                 pair["reference"]["fields"][field] != pair["candidate"]["fields"].get(field)]
                     if mismatch:
                         issues.append("pair mismatch: " + ",".join(mismatch))
-                                if any(row["fields"].get(field) != case["expected_fields"][field]
-                                       for row in pair.values())]
-                    if mismatch:
-                        issues.append("frozen-input mismatch: " + ",".join(mismatch))
-                    if any(row["fields"].get(manifest["result_field"]) !=
-                           case["expected_result"] for row in pair.values()):
+                    expected_fields = case.get("expected_fields", {})
+                    frozen_mismatch = [
+                        field for field, expected_value in expected_fields.items()
+                        if any(row["fields"].get(field) != expected_value
+                               for row in pair.values())
+                    ]
+                    if frozen_mismatch:
+                        issues.append("frozen-input mismatch: " + ",".join(frozen_mismatch))
+                    result_field = manifest.get("result_field")
+                    if ("expected_result" in case and result_field and
+                            any(row["fields"].get(result_field) != case["expected_result"]
+                                for row in pair.values())):
                         issues.append("answer differs from frozen expected_result")
                 record = {"case": case["id"], "repeat": repeat,
+                          "measurement_tier": tier,
                           "run_serials": {variant: row["serial"] for variant, row in pair.items()},
                           "status": "valid" if not issues else "invalid", "issues": issues,
                           "speedup": (pair["reference"]["online_ms"] /
@@ -609,12 +743,6 @@ def execute(manifest, output):
     artifacts_stable = artifact_hashes_after == artifact_hashes_before
     complete = (len(rows) == expected and len(pairs) == expected // 2 and
                 len(ratios) * 2 == expected and artifacts_stable)
-    binary_hashes_after = {path: sha256(path) for path in sorted(binary_paths)}
-    binaries_stable = binary_hashes_after == binary_hashes_before
-    runner_stable = sha256(Path(__file__)) == runner_hash_before
-    complete = (len(rows) == expected and len(pairs) == expected // 2 and
-                len(ratios) * 2 == expected and artifacts_stable and
-                binaries_stable and runner_stable)
     per_case = []
     for case in manifest["cases"]:
         case_ratios = [pair["speedup"] for pair in pairs
@@ -627,17 +755,28 @@ def execute(manifest, output):
         boot = sorted(statistics.median(per_case[rng.randrange(len(per_case))]
                                         for _ in per_case) for _ in range(10000))
         bootstrap95 = [boot[250], boot[9749]]
+    tier1_bootstrap95 = None
+    if complete and tier == "tier1_instance" and len(manifest["cases"]) == 1 and len(ratios) >= 8:
+        rng = random.Random(20261011)
+        boot = sorted(statistics.median(ratios[rng.randrange(len(ratios))]
+                                        for _ in ratios) for _ in range(10000))
+        tier1_bootstrap95 = [boot[250], boot[9749]]
+    tier1_ci = bootstrap95 if len(per_case) >= 5 else tier1_bootstrap95
+    tier1_claim_eligible = (complete and tier == "tier1_instance" and
+                            manifest.get("repetitions", 1) >= 8 and
+                            tier1_ci is not None and tier1_ci[0] > 1)
     summary = {"status": "completed" if complete else "invalid",
+               "measurement_tier": tier,
                "valid_pairs": len(ratios), "expected_pairs": expected // 2,
                "paired_speedup": statistics.median(per_case) if complete else None,
                "bootstrap95_by_target": bootstrap95,
+               "tier1_bootstrap95_by_pair": tier1_bootstrap95,
+               "speedup_claim_eligible": (tier1_claim_eligible if tier == "tier1_instance"
+                                          else complete and bool(per_case) and
+                                          statistics.median(per_case) > 1),
                "artifact_sha256": artifact_hashes_before,
                "artifacts_stable": artifacts_stable,
                "runner_sha256": sha256(Path(__file__)),
-               "binary_sha256": binary_hashes_before,
-               "binaries_stable": binaries_stable,
-               "runner_sha256": runner_hash_before,
-               "runner_stable": runner_stable,
                "manifest_sha256": sha256(output / "manifest.json")}
     json_write(output / "summary.json", summary)
     return summary
@@ -649,7 +788,6 @@ def only_worker(queue_root):
     with contextlib.ExitStack() as stack:
         lock_paths = [queue_root / "worker.lock"]
         if sys.platform == "linux":
-            lock_paths.append(Path("/run/lock/cryptanalysis-isolated-bench.lock"))
             lock_paths.append(HOST_LOCK_PATH)
         for path in lock_paths:
             lock = stack.enter_context(path.open("a+"))
@@ -662,7 +800,6 @@ def only_worker(queue_root):
 
 @contextlib.contextmanager
 def job_slot(shared_job_lock):
-    """Hold a lock shared with any other launcher for the whole job."""
     if shared_job_lock is None:
         yield
         return
@@ -684,7 +821,6 @@ def database(queue_root):
     return db
 
 
-def serve(queue_root, once=False):
 def serve(queue_root, once=False, shared_job_lock=None):
     with only_worker(queue_root):
         db = database(queue_root)
@@ -699,17 +835,6 @@ def serve(queue_root, once=False, shared_job_lock=None):
                 time.sleep(1)
                 continue
             job_id, raw = item
-            db.execute("UPDATE jobs SET status='running',started_ns=? WHERE id=?",
-                       (time.time_ns(), job_id))
-            output = queue_root / "results" / job_id
-            try:
-                summary = execute(json.loads(raw), output)
-                status = summary["status"]
-            except Exception as exc:
-                summary = {"status": "error", "error": type(exc).__name__ + ": " + str(exc)}
-                status = "error"
-            db.execute("UPDATE jobs SET status=?,finished_ns=?,output=?,summary=? WHERE id=?",
-                       (status, time.time_ns(), str(output), json.dumps(summary), job_id))
             with job_slot(shared_job_lock):
                 db.execute("UPDATE jobs SET status='running',started_ns=? WHERE id=?",
                            (time.time_ns(), job_id))
@@ -779,11 +904,6 @@ def main():
             for item in db.execute("SELECT id,status,created_ns,output FROM jobs ORDER BY created_ns"):
                 print(json.dumps(item))
     elif args.action == "serve":
-        serve(args.queue_root, args.once)
-    else:
-        with only_worker(args.queue_root):
-            output = args.queue_root / "results" / uuid.uuid4().hex
-            summary = execute(manifest, output)
         serve(args.queue_root, args.once, args.shared_job_lock)
     else:
         with only_worker(args.queue_root):

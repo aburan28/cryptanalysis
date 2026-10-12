@@ -12,6 +12,7 @@ on:
       - "experiments/fb-archive/**"
       - "experiments/fb-search/**"
       - "experiments/ic-online-c/**"
+      - "experiments/orbit-quotient-summation/**"
       - "experiments/pdp-degree-heuristics/**"
       - "experiments/pdp-scaling/sumpoly.py"
       - "experiments/pdp-scaling/gf2n.py"
@@ -31,6 +32,7 @@ on:
       - "experiments/fb-archive/**"
       - "experiments/fb-search/**"
       - "experiments/ic-online-c/**"
+      - "experiments/orbit-quotient-summation/**"
       - "experiments/pdp-degree-heuristics/**"
       - "experiments/pdp-scaling/sumpoly.py"
       - "experiments/pdp-scaling/gf2n.py"
@@ -62,9 +64,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -81,6 +83,7 @@ jobs:
           python -m pytest -q experiments/frobenius-quotient-m4/test_fqm4_factor_bases.py
           python -m pytest -q experiments/linearized-half-decomposition/test_lhd_factor_bases.py
           python -m pytest -q experiments/sage-ic-campaign/pb-bulk-halftrace-20260924/test_pbbulk_factor_bases.py
+          python -m pytest -q experiments/orbit-quotient-summation
 
       - name: Candidate catalog
         working-directory: experiments/ic-candidate-catalog
@@ -136,9 +139,9 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 

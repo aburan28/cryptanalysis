@@ -3,15 +3,13 @@
 Reproducible, content-addressed copies of the factor bases used by the IC
 experiments: the full AGENTS.md `factor_base` record, the exact `field` and
 `curve` records it belongs to, and (when enumerated) the sorted usable point set
-or a declared lossless orbit encoding. The digest uses the encoding stated in
-each factor-base record.
+whose SHA-256 is the record's `enumerated_set_sha256`.
 
 ```bash
 python3 fbarchive.py export --n 19 --family geomtrace --l 5              # one toy base (pdpkernel.c)
 python3 fbarchive.py export-suite --suite full                           # every ic-bench base
 python3 fbarchive.py export --n 131 --family geomtraceu --l 12           # ECC2K-130, pure Python
 python3 fbarchive.py export --n 131 --family prefix --l 28 --no-points   # recipe and basis only
-python3 orbit_base_archive.py                                             # n83 known-log orbit base
 python3 fbarchive.py verify [--rebuild [--rebuild-max-points 300]]      # check the index
 python3 fbarchive.py upload [--dry-run] [--require]                     # to $IC_ARCHIVE_S3_URI
 python3 sweeps.py export && python3 sweeps.py verify [--all-cells NAME]  # large sweeps, recipe only
@@ -30,29 +28,22 @@ python3 -m pytest -q .
   of the JSON content and of the point set.
 - `large/`: archives above `--max-git-bytes` (1 MiB) get `storage` `s3`. They
   are git-ignored and must be uploaded; `verify` skips them when absent.
-
-The [n83 known-log orbit archive](bases/EC1N83Ckb1h876c2921cb64/knownlogorbit-s831043-7056f3b1f520.json.gz)
-uses `ic-factor-base-orbit-archive/1` and has `points_included` set to
-`orbit-compressed` in the same index. Its 48,194 strictly sorted canonical
-keys are packed as 21-byte little-endian integers, then base64-encoded in
-the compressed archive. Together with the exact n83 curve and the declared
-sign/Frobenius action, they define 8,000,204 distinct subgroup points.
-The index's `l` cell and the recipe's `l` value are empty and null because
-this orbit family has no nominal subspace dimension.
-`enumerated_set_sha256` hashes the packed representative keys; it is not a
-bytewise hash of an expanded eight-million-point list. The archive includes
-the exact candidate factor-base record, field and curve records, builder and
-binary hashes, and the source-bound independent checked-Sage replay receipt.
-`verify` checks the compressed representation, identity, digest and count;
-`verify --rebuild` also compares it with the tracked source binary and replay
-receipt. The expanded points are not materialized in the archive.
+- An explicit `--chunk-bytes 33554432` stores an oversized archive as bounded
+  Git parts with `storage` `git-chunks`. A `.chunks.json` manifest and ordered
+  `.part-0000`, `.part-0001`, ... files retain the original compressed bytes.
+  The index's byte count and file SHA-256 still identify the complete compressed
+  payload. Each part has its own size and digest; verification checks those,
+  reassembly, content, record, point-set digest, and point count. Missing or
+  altered parts fail verification. The current format supports at most 1 GiB
+  per complete payload, 80 MiB per part, and 4,096 parts. Plain gzip/xz and the
+  default S3 behavior are unchanged. The upload command includes all parts.
 
 `verify` rechecks every digest and count, and flags files that are not in the index.
-`--rebuild` also regenerates ordinary bases from their recipes and requires
-byte-identical content. For the n83 orbit base it rechecks the tracked
-representative binary and the independent Sage replay receipt. CI rebuilds
-ordinary bases up to 300 points; a full rebuild takes a few minutes, most of
-it the N131 `l = 12` bases.
+`--rebuild` regenerates ordinary bases from their recipes and requires
+byte-identical content. The N83 known-log orbit base instead rechecks its
+tracked representative binary and independent Sage replay receipt. CI rebuilds
+ordinary bases up to 300 points; a full rebuild takes a few minutes, most of it
+the N131 `l = 12` bases.
 
 ## Builders
 
@@ -194,13 +185,6 @@ stores a base only when the rebuilt `factor_base_sha256` equals the cited one,
 and reports anything it cannot rebuild. It backfilled 2,466 bases from
 `fb-search` (scans and trace-equation runs) and `pdp-degree-heuristics`
 (per-attempt profiling), all of them byte-exact.
-stores a base only when the rebuilt `factor_base_sha256` or
-`enumerated_set_sha256` equals a cited digest for that recipe, and reports
-anything it cannot rebuild. It backfilled 2,466 bases from
-`fb-search` (scans and trace-equation runs) and `pdp-degree-heuristics`
-(per-attempt profiling), all of them byte-exact, plus 103 archives for 105
-`fb-search` online-prediction and stage-ids citations (94 record digests and 11
-point-set digests, 0 rebuild mismatches).
 
 The remaining debt (`unarchived.csv`) is bases that no builder here can
 reproduce: a prime-field base (`bielliptic-quartic`) and a rational "fraction"
@@ -244,16 +228,30 @@ Nothing is hardcoded. Without a URI or credentials, it prints why and exits 0;
 objects are skipped when boto3 can read that metadata. CI uploads only on pushes
 where `IC_ARCHIVE_S3_URI` and AWS secrets are configured.
 
+The [N83 known-log orbit archive](bases/EC1N83Ckb1h876c2921cb64/knownlogorbit-s831043-7056f3b1f520.json.gz)
+uses `ic-factor-base-orbit-archive/1` and has `points_included` set to
+`orbit-compressed` in the index. Its 48,194 strictly sorted canonical keys are
+packed as 21-byte little-endian integers, then base64-encoded in the compressed
+archive. Together with the exact N83 curve and declared sign/Frobenius action,
+they define 8,000,204 distinct subgroup points. The `l` cell and recipe value
+are empty and null because this orbit family has no nominal subspace dimension.
+`enumerated_set_sha256` hashes the packed representative keys, not an expanded
+point list. The archive includes the exact candidate factor-base record, field
+and curve records, builder and binary hashes, and an independently checked Sage
+replay receipt. `verify` checks its compressed representation, identity, digest
+and count; `verify --rebuild` also checks the tracked source binary and replay
+receipt. The expanded points are not materialized.
+
 ## Streaming point and orbit metadata shards
 
 `orbit_shards.py` provides a separate `ic-factor-base-shards/1` format for
-enumerated bases too large for one JSON object. A producer streams **strictly
-sorted** `(x, y)` rows; the writer retains at most `--shard-records` rows
-per compressed shard and builds a content-addressed manifest. Its
-`enumerated_set_sha256` is computed incrementally using the existing
-canonical sorted-point-list encoding, so the final count and digest must
-match the existing `factor_base` record. A recipe-only base has unknown
-`B` and digest and cannot claim a completed point archive.
+enumerated bases too large for one JSON object. A producer streams strictly
+sorted `(x, y)` rows; the writer retains at most `--shard-records` rows per
+compressed shard and builds a content-addressed manifest. Its
+`enumerated_set_sha256` is computed incrementally using the canonical
+sorted-point-list encoding, so the final count and digest must match the
+existing `factor_base` record. A recipe-only base has unknown `B` and digest
+and cannot claim a completed point archive.
 
 Input `--record` is a small JSON object containing the existing `field`,
 `curve`, and `factor_base` records. Input `--rows` is JSONL or `-` for
@@ -265,14 +263,13 @@ standard input. Each row has exactly these seven fields:
 
 The coordinates use the field record's unsigned integer encoding.
 `orbit_key` names an implementation-defined projected quotient key;
-`frobenius_phase` is an exponent from `0` to `n-1`;
-`sign` is `-1` or `1`. The column ID and coefficient must both be
-present or both null. The archive verifies **structure, hashes, order, and
-agreement with the enumerated point set declared by the existing digest**.
-It does **not** prove subgroup projection, orbit equivalence, phase,
-coefficient, or usefulness for point decomposition; manifests explicitly
-carry `annotations_verified: false`. Publish a separate mathematical
-verification receipt before using these annotations as relation columns.
+`frobenius_phase` is an exponent from `0` to `n-1`; `sign` is `-1` or `1`.
+The column ID and coefficient must both be present or both null. The archive
+verifies structure, hashes, order, and agreement with the enumerated point set
+declared by the existing digest. It does not prove subgroup projection, orbit
+equivalence, phase, coefficient, or usefulness for point decomposition;
+manifests explicitly carry `annotations_verified: false`. Publish a separate
+mathematical verification receipt before using annotations as relation columns.
 
 ```bash
 python3 orbit_shards.py ingest --record base-record.json --rows sorted-points.jsonl \
@@ -280,13 +277,83 @@ python3 orbit_shards.py ingest --record base-record.json --rows sorted-points.js
 python3 orbit_shards.py verify /data/factor-bases/manifests/<sha256>.json
 ```
 
-The producer may also call `write_shards(root, record, row_iterator)`
-directly without materializing its point set. Each shard stores canonical
-JSONL in deterministic gzip, with compressed and uncompressed SHA-256,
-byte count, record count, and first/last point in the manifest. The
-content-addressed manifest includes the complete base record and its
-original `factor_base_sha256`; it is independent of absolute paths and
-measurement run IDs. Keep `candidate_id`, `workload_id`, and `run_id`
-in a separate benchmark table under the AGENTS.md measurement contract.
-This format is a storage substrate for a future nonlinear orbit-union
-generator, not evidence that such a base improves relation yield at N131.
+The producer may also call `write_shards(root, record, row_iterator)` without
+materializing its point set. Each shard stores canonical JSONL in deterministic
+gzip, with compressed and uncompressed SHA-256, byte count, record count, and
+first/last point in the manifest. The content-addressed manifest includes the
+complete base record and original `factor_base_sha256`; it is independent of
+absolute paths and measurement run IDs. Keep `candidate_id`, `workload_id`, and
+`run_id` in a separate benchmark table under the AGENTS.md measurement
+contract. This format is a storage substrate for a future nonlinear
+orbit-union generator, not evidence that such a base improves relation yield
+at N131.
+
+## Keeping the archive forever
+
+"Archive" here means a reproducible, hash-checked copy, and the intent is that
+nothing in it is ever deleted. Three layers keep it:
+
+1. **Git.** `bases/`, `index.csv`, `aliases.csv`, `unarchived.csv`, `sweeps/` and
+   `sweeps.csv` are committed. CI fails if an indexed archive goes missing or if a
+   cited base is not archived. The archive is **append-only**: `appendonly.py`
+   (CI workflow `fb-refs`) compares every change with the base branch and fails if
+   any row of `index.csv`, `aliases.csv`, `sweeps.csv` or `sweeps/*.points.csv` is
+   removed or changed, or if any archived file is deleted or rewritten. Adding is
+   always allowed, and a correction is a new entry. `unarchived.csv`, the debt
+   list, is the one file meant to shrink.
+2. **The default branch's history cannot be rewritten.** Set this in GitHub, not in
+   code: **Settings → Rules → Rulesets → New branch ruleset**, enforcement
+   *Active*, target *Default branch*, with **Restrict deletions** and **Block force
+   pushes** on and no bypass list. Every archive ever merged then stays reachable
+   in history, even if a later commit removes it.
+3. **An offsite copy that cannot be deleted.** `.github/workflows/fb-archive-offsite.yml`
+   uploads everything above to `$IC_ARCHIVE_S3_URI` on every merge to the default
+   branch, weekly, and on demand. It also uploads every sweep's materialized
+   bases (below). Set it up once:
+   - Create an S3 bucket with **Object Lock enabled** at creation, which also turns
+     on versioning. Set a default retention in **compliance mode**; the longest
+     period you are willing to pay for, for example 100 years. In compliance mode
+     no one, including the root account, can delete or shorten a locked object
+     version. A re-upload of a changed file (`index.csv`) adds a new locked
+     version; the old one stays.
+   - Create an IAM user whose policy allows only `s3:PutObject`, `s3:GetObject`
+     and `s3:ListBucket` on that bucket (no delete).
+   - Add the repository secrets `IC_ARCHIVE_S3_URI` (`s3://bucket/prefix`),
+     `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_DEFAULT_REGION`.
+   - Run the workflow once by hand (**Actions → fb-archive-offsite → Run workflow**).
+
+   Archives over 1 MiB (`storage=s3`, kept in the git-ignored `large/`) exist only
+   on the machine that built them. The upload job runs `upload --rebuild-missing`,
+   which regenerates each one from its recipe, checks it against the indexed
+   `content_sha256`, and only then uploads it. Today that covers six `geomtraceu`
+   bases at n = 41 (l = 16..20) and n = 47 (l = 23), 191 MB in all.
+
+   Until the secrets exist, every job says in its summary that nothing was copied.
+
+   `setup_permanent_archive.sh` does all of the above and the ruleset in item 2 in
+   one go (`BUCKET=<new-bucket-name> ./setup_permanent_archive.sh`, with the `aws`
+   CLI, `gh` as a repository admin, and `jq`). It asks for confirmation before
+   creating the irreversible compliance retention.
+
+### Sweep bases, materialized: `sweep_points.py`
+
+The sweep manifests are recipes. `sweep_points.py` turns each one into the bases
+themselves: one shard per curve (`fbsweep-points/1`, documented in the module).
+Each shard holds every family's base at its largest dimension as `(c, x)` records,
+and the base at a smaller k is the prefix `c < 2^k`. Each `x` is the abscissa of
+both rational points over it, so the x list is the exact point set.
+
+`sweeps/<name>.points.csv` commits each shard's x count, length and content
+SHA-256 to git. The shards go only to S3 because they are too large for git.
+
+| sweep | shards | x values | uncompressed |
+|---|--:|--:|--:|
+| `volcano-m83` | 6,475 | 212,378,266 | 3.21 GB |
+| `ecc2k130-isogeny-class` | 789 | 413,653,551 | 8.69 GB |
+| `volcano-ic` | 457 | 234,955 | 0.00 GB |
+
+`points NAME --check` regenerates every shard, compares it with the committed
+digest and with every count the experiment recorded, and `--upload` puts it at
+`<prefix>/factor-base-sweeps/<name>/points/<label>.bin.gz`. Generating
+`--write-index` here recomputed every recorded count of all three sweeps from
+the shards with no mismatch.

@@ -1,19 +1,38 @@
 // Batch polynomial inverses across whole warps using a product tree.
 // Each warp lane remains an independent tree; no walk points are combined.
 #pragma once
+#include "collective_root_policy.h"
 #ifndef ECC_COLLECTIVE_WARPS
 #define ECC_COLLECTIVE_WARPS 4
+#endif
+#ifndef ECC_STATIC_GROUP_BARRIERS
+#define ECC_STATIC_GROUP_BARRIERS 0
 #endif
 #if ECC_COLLECTIVE_WARPS != 0 && ECC_COLLECTIVE_WARPS != 2 && ECC_COLLECTIVE_WARPS != 4 && ECC_COLLECTIVE_WARPS != 8 && ECC_COLLECTIVE_WARPS != 16
 #error "ECC_COLLECTIVE_WARPS must be 0, 2, 4, 8 or 16"
 #endif
 namespace eccPacked131 {
+#if ECC_STATIC_GROUP_BARRIERS
+template<int WARPS,int ID=1>
+__device__ __forceinline__ void goal30StaticGroupBarrier(int group){
+    static_assert(ECC_THREADS/(32*WARPS)<=15,"barrier zero is reserved for the block");
+    if constexpr(ID<=ECC_THREADS/(32*WARPS)){
+        if(group==ID-1){
+            asm volatile("barrier.sync %0, %1;" :: "n"(ID),"n"(32*WARPS) : "memory");
+        }else goal30StaticGroupBarrier<WARPS,ID+1>(group);
+    }
+}
+#endif
 template<int WARPS>
 __device__ __forceinline__ void goal22GroupBarrier() {
     // Barrier zero belongs to the walk's ordinary block synchronization.
     // Every group owns a distinct ID and consists of complete warps.
+#if ECC_STATIC_GROUP_BARRIERS
+    goal30StaticGroupBarrier<WARPS>(int(threadIdx.x)/(32*WARPS));
+#else
     const int id = 1 + int(threadIdx.x) / (32 * WARPS);
     asm volatile("barrier.sync %0, %1;" :: "r"(id), "n"(32 * WARPS) : "memory");
+#endif
 }
 template<int WARPS>
 __device__ __noinline__ P131 goal22CollectiveInverse(P131 input) {
@@ -27,7 +46,7 @@ __device__ __noinline__ P131 goal22CollectiveInverse(P131 input) {
     const int group = physicalWarp / WARPS;
     // With two-warp groups, rotate every pair of groups so roots visit
     // all four relative warp positions rather than alternating two of them.
-    const int rotation = group / (WARPS < 4 ? 4 / WARPS : 1);
+    const int rotation = collectiveRootRotation<WARPS>(group,unsigned(blockIdx.x));
     const int logicalWarp = (physicalWarp % WARPS + rotation) % WARPS;
     const int warp = group * WARPS + logicalWarp;
     const int tid = warp * 32 + int(threadIdx.x) % 32;

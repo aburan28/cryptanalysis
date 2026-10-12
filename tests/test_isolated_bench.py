@@ -1,15 +1,17 @@
 """Contract tests for the host-independent parts of the benchmark runner."""
 
 import contextlib
+import fcntl
 import importlib.util
 import copy
-import fcntl
+import io
 import json
 import os
 from pathlib import Path
 import tempfile
 import threading
 import unittest
+from unittest import mock
 
 
 SOURCE = Path(__file__).resolve().parents[1] / "scripts" / "isolated_bench.py"
@@ -49,6 +51,47 @@ class IsolatedBenchTests(unittest.TestCase):
         self.assertTrue(any("steal" in issue for issue in issues))
         self.assertTrue(any("context switches" in issue for issue in issues))
 
+    def test_fixed_frequency_requires_a_matching_host_and_absent_cpufreq(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            root = Path(dirname)
+            fixed, issue = bench.frequency_state(4, "g5g.metal", "aarch64", root)
+            self.assertIsNone(issue)
+            self.assertEqual(fixed["mode"], "aws_graviton2_hardware_fixed")
+            for instance_type, architecture in ((None, "aarch64"),
+                                                ("g5g.16xlarge", "aarch64"),
+                                                ("g5g.metal", "x86_64")):
+                state, issue = bench.frequency_state(4, instance_type, architecture, root)
+                self.assertIsNone(state["mode"])
+                self.assertIsNotNone(issue)
+            freq = root / "cpu4" / "cpufreq"
+            freq.mkdir(parents=True)
+            state, issue = bench.frequency_state(4, "g5g.metal", "aarch64", root)
+            self.assertIsNone(state["mode"])
+            self.assertIsNotNone(issue)
+            (freq / "scaling_governor").write_text("performance\n")
+            (freq / "scaling_min_freq").write_text("2500000\n")
+            (freq / "scaling_max_freq").write_text("2500000\n")
+            state, issue = bench.frequency_state(4, None, "x86_64", root)
+            self.assertIsNone(issue)
+            self.assertEqual(state["mode"], "cpufreq_fixed")
+            (freq / "scaling_min_freq").write_text("1000000\n")
+            state, issue = bench.frequency_state(4, "g5g.metal", "aarch64", root)
+            self.assertIsNone(state["mode"])
+            self.assertIsNotNone(issue)
+
+    def test_instance_type_requires_imdsv2_token(self):
+        with mock.patch.object(bench.urllib.request, "build_opener") as factory:
+            opener = factory.return_value
+            opener.open.side_effect = [io.BytesIO(b"test-token"), io.BytesIO(b"g5g.metal")]
+            self.assertEqual(bench.ec2_instance_type(), "g5g.metal")
+            token_request = opener.open.call_args_list[0].args[0]
+            type_request = opener.open.call_args_list[1].args[0]
+            self.assertEqual(token_request.get_method(), "PUT")
+            self.assertEqual(type_request.get_header("X-aws-ec2-metadata-token"), "test-token")
+            self.assertEqual(factory.call_args.args[0].proxies, {})
+            opener.open.side_effect = OSError("IMDS unavailable")
+            self.assertIsNone(bench.ec2_instance_type())
+
     def test_pair_fields_and_single_worker(self):
         with tempfile.TemporaryDirectory() as dirname:
             root = Path(dirname)
@@ -57,31 +100,107 @@ class IsolatedBenchTests(unittest.TestCase):
             binary.chmod(0o755)
             manifest = {"schema": 1, "workdir": str(root), "timeout_s": 1,
                         "measurement_boundary": "self reported online_ms",
-                        "pair_fields": ["target_x"], "result_field": "scalar",
+                        "pair_fields": ["target_x"],
                         "artifacts": [str(binary)],
                         "isolation": {"cpus": "4", "execution_cpu": 4, "mem_nodes": "0",
                                       "cgroup": "/sys/fs/cgroup/bench"},
-                        "cases": [{"id": "t0", "expected_fields": {"target_x": "9"},
-                                   "expected_result": "7",
-                                   "reference": [str(binary)],
+                        "cases": [{"id": "t0", "reference": [str(binary)],
                                    "candidate": [str(binary)]}]}
             bench.require_manifest(manifest)
-            manifest["cases"][0]["candidate"].append("7")
-            with self.assertRaises(ValueError):
-                bench.require_manifest(manifest)
-            manifest["cases"][0]["candidate"].pop()
             manifest["pair_fields"] = []
             with self.assertRaises(ValueError):
                 bench.require_manifest(manifest)
-            old_lock = bench.HOST_LOCK_PATH
-            bench.HOST_LOCK_PATH = root / "host.lock"
+            with bench.only_worker(root):
+                with self.assertRaises(RuntimeError):
+                    with bench.only_worker(root):
+                        pass
+
+    def test_tier1_manifest_is_explicit_and_receipt_is_hashed(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            root = Path(dirname)
+            binary = root / "bench"
+            binary.write_text("#!/bin/sh\nexit 0\n")
+            binary.chmod(0o755)
+            receipt = root / "allocation.json"
+            receipt.write_text('{"provider":"runpod","id":"pod-1"}\n')
+            manifest = {"schema": 1, "measurement_tier": "tier1_instance",
+                        "workdir": str(root), "timeout_s": 1,
+                        "measurement_boundary": "internal online_ms",
+                        "pair_fields": ["target_x"], "result_field": "scalar",
+                        "artifacts": [str(binary), str(receipt)],
+                        "allocation": {"provider": "runpod", "instance_id": "pod-1",
+                                       "receipt": str(receipt)},
+                        "isolation": {"cpus": "4", "execution_cpu": 4},
+                        "cases": [{"id": "t0", "expected_fields": {"target_x": "9"},
+                                   "expected_result": "7", "reference": [str(binary)],
+                                   "candidate": [str(binary)]}]}
+            self.assertEqual(bench.require_manifest(manifest), ({4}, set(), None))
+            for change in (lambda m: m["artifacts"].remove(str(receipt)),
+                           lambda m: m["isolation"].update({"cgroup": "/sys/fs/cgroup/bench"}),
+                           lambda m: m.pop("allocation"),
+                           lambda m: m.update({"measurement_tier": "tier2"})):
+                altered = copy.deepcopy(manifest)
+                change(altered)
+                with self.assertRaises(ValueError):
+                    bench.require_manifest(altered)
+
+    def test_tier1_counter_events_invalidate_and_irq_is_observed(self):
+        before = {"cpu_stat": {"nr_throttled": 0},
+                  "memory_events": {"oom": 0},
+                  "per_cpu": {4: {"irq": 0, "softirq": 0, "steal": 0}}}
+        after = copy.deepcopy(before)
+        after["per_cpu"][4]["irq"] = 1
+        self.assertEqual(bench.tier1_noise(before, after), [])
+        after["cpu_stat"]["nr_throttled"] = 1
+        after["memory_events"]["oom"] = 1
+        self.assertEqual(len(bench.tier1_noise(before, after)), 2)
+
+    def test_tier1_requires_repeated_consistent_pairs_for_claim(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            root = Path(dirname)
+            binary = root / "bench"
+            binary.write_text("#!/bin/sh\nexit 0\n")
+            binary.chmod(0o755)
+            receipt = root / "allocation.json"
+            receipt.write_text("{}\n")
+            manifest = {"schema": 1, "measurement_tier": "tier1_instance",
+                        "workdir": str(root), "timeout_s": 1,
+                        "measurement_boundary": "internal online_ms",
+                        "pair_fields": ["target_x"], "result_field": "scalar",
+                        "artifacts": [str(binary), str(receipt)],
+                        "allocation": {"provider": "runpod", "instance_id": "pod-1",
+                                       "receipt": str(receipt)},
+                        "isolation": {"cpus": "4", "execution_cpu": 4},
+                        "repetitions": 8,
+                        "cases": [{"id": "t0", "expected_fields": {"target_x": "9"},
+                                   "expected_result": "7", "reference": [str(binary), "reference"],
+                                   "candidate": [str(binary), "candidate"]}]}
+            original_preflight, original_run = bench.preflight, bench.one_run
             try:
-                with bench.only_worker(root):
-                    with self.assertRaises(RuntimeError):
-                        with bench.only_worker(root):
-                            pass
+                bench.preflight = lambda _: {"ok": True, "problems": [], "evidence": {}}
+                def fake_run(argv, _manifest, _cpus, _nodes, _cgroup, _folder, serial):
+                    return {"serial": serial, "status": "valid", "issues": [],
+                            "online_ms": 2.0 if argv[-1] == "reference" else 1.0,
+                            "fields": {"target_x": "9", "scalar": "7"}}
+                bench.one_run = fake_run
+                result = bench.execute(manifest, root / "passing")
+                self.assertEqual(result["measurement_tier"], "tier1_instance")
+                self.assertTrue(result["speedup_claim_eligible"])
+                self.assertGreater(result["tier1_bootstrap95_by_pair"][0], 1)
+                manifest["repetitions"] = 4
+                result = bench.execute(manifest, root / "too_few")
+                self.assertFalse(result["speedup_claim_eligible"])
+                manifest["repetitions"] = 8
+                def mixed_run(argv, _manifest, _cpus, _nodes, _cgroup, _folder, serial):
+                    row = fake_run(argv, _manifest, _cpus, _nodes, _cgroup, _folder, serial)
+                    if argv[-1] == "candidate" and serial > 8:
+                        row["online_ms"] = 4.0
+                    return row
+                bench.one_run = mixed_run
+                result = bench.execute(manifest, root / "mixed")
+                self.assertFalse(result["speedup_claim_eligible"])
             finally:
-                bench.HOST_LOCK_PATH = old_lock
+                bench.preflight, bench.one_run = original_preflight, original_run
 
     def test_output_parser_uses_timed_row(self):
         fields = bench.output_fields("setup\ncurve=c online_ms=12.5 verified=1 target_x=9\ndone")
@@ -108,13 +227,11 @@ class IsolatedBenchTests(unittest.TestCase):
             executable.chmod(0o755)
             manifest = {"schema": 1, "workdir": str(root), "timeout_s": 1,
                         "measurement_boundary": "internal online_ms",
-                        "pair_fields": ["target_x"], "result_field": "scalar",
+                        "pair_fields": ["target_x"],
                         "artifacts": [str(executable)],
                         "isolation": {"cpus": "99999", "execution_cpu": 99999,
                                       "mem_nodes": "0", "cgroup": "/sys/fs/cgroup/no-such-partition"},
-                        "cases": [{"id": "t0", "expected_fields": {"target_x": "9"},
-                                   "expected_result": "7",
-                                   "reference": [str(executable)],
+                        "cases": [{"id": "t0", "reference": [str(executable)],
                                    "candidate": [str(executable)]}]}
             db = bench.database(root)
             for job_id in ("a", "b"):
@@ -122,17 +239,44 @@ class IsolatedBenchTests(unittest.TestCase):
                            (job_id, "queued", 1 if job_id == "a" else 2,
                             json.dumps(manifest)))
             db.close()
-            old_lock = bench.HOST_LOCK_PATH
-            bench.HOST_LOCK_PATH = root / "host.lock"
-            try:
-                bench.serve(root, once=True)
-            finally:
-                bench.HOST_LOCK_PATH = old_lock
+            bench.serve(root, once=True)
             db = bench.database(root)
             self.assertEqual(db.execute("SELECT status FROM jobs WHERE id='a'").fetchone()[0], "rejected")
             self.assertEqual(db.execute("SELECT status FROM jobs WHERE id='b'").fetchone()[0], "queued")
             self.assertFalse(marker.exists())
             self.assertFalse((root / "results" / "a" / "runs.jsonl").exists())
+
+    def test_pair_mismatch_cannot_produce_speedup(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            root = Path(dirname)
+            binary = root / "bench"
+            binary.write_text("#!/bin/sh\nexit 0\n")
+            binary.chmod(0o755)
+            manifest = {"schema": 1, "workdir": str(root), "timeout_s": 1,
+                        "measurement_boundary": "internal online_ms",
+                        "pair_fields": ["target_x"],
+                        "artifacts": [str(binary)],
+                        "isolation": {"cpus": "4", "execution_cpu": 4,
+                                      "mem_nodes": "0", "cgroup": "/sys/fs/cgroup/bench"},
+                        "cases": [{"id": "t0", "reference": [str(binary), "reference"],
+                                   "candidate": [str(binary), "candidate"]}]}
+            original_preflight, original_run = bench.preflight, bench.one_run
+            try:
+                bench.preflight = lambda _: {"ok": True, "problems": [], "evidence": {}}
+                def fake_run(argv, _manifest, _cpus, _nodes, _cgroup, _folder, serial):
+                    reference = argv[-1] == "reference"
+                    return {"serial": serial, "status": "valid", "issues": [],
+                            "online_ms": 2.0 if reference else 1.0,
+                            "fields": {"target_x": "1" if reference else "2"}}
+                bench.one_run = fake_run
+                summary = bench.execute(manifest, root / "result")
+            finally:
+                bench.preflight, bench.one_run = original_preflight, original_run
+            self.assertEqual(summary["status"], "invalid")
+            self.assertIsNone(summary["paired_speedup"])
+            pair = json.loads((root / "result" / "pairs.jsonl").read_text())
+            self.assertEqual(pair["status"], "invalid")
+            self.assertIn("target_x", pair["issues"][0])
 
     def test_shared_job_lock_waits_for_other_launcher(self):
         with tempfile.TemporaryDirectory() as dirname:
