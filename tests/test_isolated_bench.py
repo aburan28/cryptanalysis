@@ -7,12 +7,15 @@ import fcntl
 import json
 import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import threading
 import unittest
 
 
 SOURCE = Path(__file__).resolve().parents[1] / "scripts" / "isolated_bench.py"
+GENERATOR = SOURCE.with_name("make_j0_isolated_manifest.py")
 SPEC = importlib.util.spec_from_file_location("isolated_bench", SOURCE)
 bench = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(bench)
@@ -258,6 +261,43 @@ class IsolatedBenchTests(unittest.TestCase):
                 self.assertEqual(summary["measurement_kind"], "table_preparation")
             finally:
                 bench.preflight, bench.one_run = original_preflight, original_run
+
+    def test_j0_manifest_passes_only_public_target_to_solver(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            root = Path(dirname)
+            binary = root / "fixture"
+            binary.write_text(
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "assert sys.argv[1] == '--print-target'\n"
+                "print('curve=' + sys.argv[2] + ' p=2305843009213693951 b=5 '"
+                "'order=51131959441 base_x=1 base_y=2 '"
+                "'target_x=987654321 target_y=123456789 '"
+                "'fixture_scalar=' + sys.argv[3])\n")
+            binary.chmod(0o755)
+            for name in ("CMakeLists.txt", "src/curve.c", "src/ec_tau.c",
+                         "experiments/prime-j0-tau-20260930/large-rho-20261002/bench_rho_large.c",
+                         "scripts/make_j0_isolated_manifest.py", "scripts/isolated_bench.py"):
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("fixture\n")
+            output = root / "panel.json"
+            subprocess.run(
+                [sys.executable, str(GENERATOR), "--reference", str(binary),
+                 "--candidate", str(binary), "--workdir", str(root),
+                 "--cgroup", "/sys/fs/cgroup/benchmark-isolated",
+                 "--cpus", "4-5", "--execution-cpu", "4", "--mem-nodes", "0",
+                 "--targets-36", "1", "--targets-37", "0", "--targets-46", "0",
+                 "--output", str(output)],
+                check=True, capture_output=True, text=True)
+            manifest = json.loads(output.read_text())
+            bench.require_manifest(manifest)
+            case = manifest["cases"][0]
+            self.assertEqual(case["expected_fields"]["target_x"], "987654321")
+            self.assertEqual(case["reference"], case["candidate"])
+            self.assertEqual(case["reference"][1:4],
+                             ["--public-target", "j0-36", "1"])
+            self.assertNotIn(case["expected_result"], case["reference"])
 
 
 if __name__ == "__main__":
