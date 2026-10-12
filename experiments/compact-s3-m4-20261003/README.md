@@ -2385,40 +2385,71 @@ intersections, but incurs 8,570,128 `S3` root calls, 119,998,624 field
 multiplications, 763,105,558 squarings, and 4,482 inversions. Q1485
 therefore does not supply a successful decomposition cost, natural yield,
 rank, or a complete N131 work exponent.
-### Q1484 N131 window-base enumeration
 
-[Q1484](q1484_n131_window_base/README.md) completed an exact census of the
-N131 dimension-27 cyclic-window base, covering all `2^26` raw x-orbits. The
-separately frozen R2 reproduced every status in the R1 prefix after R1's
-disk-full infrastructure failure. The archived, audited R2 base has
-`B = 8,790,494,834` subgroup-usable points before folding and
-`K = 33,551,507` signed-Frobenius columns. Its sorted projected-set digest
-is `d3fa5abbd34df91d48731d283b4960f6110d8202c452a8bd349baa907bb4a331`.
-For uniform nonidentity targets, the necessary 95%-rank query count is at
-least 87,189,268 (`2^26.378`); even with all other costs zero, a sub-`2^61`
-solve would need average cost below `2^34.622` per query in a consistent
-charged unit. This is a necessary ceiling, not a measured PDP cost. Complete
-N131 work remains unknown. A second [fixed pair schedule
-screen](q1484_n131_window_base/fixed_pair_schedule_screen_r2.json) gives a
-Q1488-style target-independent pair table all `B(B+1)/2` point pairs for
-free. Under conditional uniform queries, full `K`-column rank with 95%
-probability still needs at least `2^72.792` target-side pair descriptor
-inspections, more than `2^61` by 11.792 bits in that unit. The screen does
-not bound target-adaptive algebraic PDP or early target-span recovery.
+### Q1486 exact cyclic-window pair-domain search
+
+[Q1486](q1486_window_aware_pair/README.md) exposes the window-selector
+variables already present in Q1482's byte-identical six CNFs. A small-field
+check exhausts partial window completions and both pinned N53/N83 public
+relations verify. Both unpinned planted and both ordinary cells censor at
+60 seconds. The N83 ordinary prefix still makes 8,456,687 `S3` root calls,
+118,442,341 field multiplications, 752,979,922 squarings and 4,130
+inversions, with zero supported midpoint intersections. This exact local
+restriction does not measure successful PDP work or N131 complete `2^x`.
+The post-run [fixed-left coverage diagnostic](q1486_window_aware_pair/coverage_diagnostic.json)
+shows that each ordinary run built only one left domain. Under a stated
+independent uniform `x`-root model, the observed right-pair prefixes have
+expected-intersection scales below `2^-16.16` at N53 and `2^-46.91` at
+N83, even counting two roots per pair. SAT choices are target-dependent,
+so those scales are neither probability bounds nor measured relation yield.
+
+### Q1487 inverse S3 partner support
+
+[Q1487](q1487_inverse_partner/README.md) replaces bounded pair-product
+enumeration with exact inverse-`S3` partner tests. It keeps Q1482's six
+CNFs, Q1486's selector maps, and Q1481's exact N53/N83 bases. Exhaustive
+small-field and native direct-scan controls pass, and both pinned public
+relations replay. The two unpinned planted and two ordinary cells all
+censor at 60 seconds. N83 ordinary performs 20,470 inverse checks and
+5,845,120 actual `S3` root evaluations with **zero right-pair supports**.
+The selected right domains still cover too little of a fixed midpoint's
+possible preimages. Q1487 does not measure cost per successful relation,
+natural yield, rank, or N131 complete `2^x`.
+
+### Q1488 matched Q1481 pair-table control
+
+[Q1488](q1488_window_pair_table/README.md) runs Q1445's signed-Frobenius
+pair-table rule on Q1481's **exact same** N53/N83 bases and Q1482 public
+targets used by Q1487. It reconstructed all 430,360 N53 points from the
+4,060 archived projected x keys and validated full-base N83 sampling.
+The N53 ordinary query independently verifies one four-distinct-column
+relation after 500,000 target-independent table pairs and 184,366 query
+pairs. Q1487 censored on that same target. N83 uses 10,000 table and
+10,000 query pairs and finds no key hit. The Q1488 archive preserves
+operation counts and separate setup/query costs; one N53 success is not a
+natural-yield estimate, and N83 successful cost remains unknown.
 
 ## Next goal
 
-Build and measure an exact, target-coupled **window-pair support mechanism**
-for the compact four-summand solver. Its first gate is one independently
-verified, fully unpinned known-satisfiable N83 relation on the exact Q1481
-base without constructing the full pair table. The next gate is one ordinary
-N83 relation, followed by a frozen ordinary-query panel to measure useful
-relation yield and rank. Pair N53/N83 inputs and operation-count boundaries
-with Q1482/Q1483/Q1485. Count failed attempts, SAT propagation, field arithmetic,
-memory, and target-dependent wall intervals. If only the planted control
-passes, retain ordinary cost and N131 complete work as unknown. A complete
-N131 `2^x` also requires its exact usable base, relation collection, final
-matrix solve, target descent, and independent scalar replay.
+Build and measure a **fully coupled algebraic four-leaf pair-support
+mechanism** that leaves both internal midpoints existential and reasons
+about many factor-base completions on both sides of the join across cyclic
+windows, beyond Q1485/Q1486's single-left, bounded 4,096-completion local
+domains. Q1485 through Q1487 all choose or constrain a narrow midpoint
+slice and find no unpinned relation; another faster fixed-midpoint oracle
+is unlikely to answer the solve-cost question. Pre-register a compact
+symbolic support method, check it against direct enumeration on small
+fields, and reuse the exact Q1481/Q1482 N53/N83 curves, bases, public points,
+and limits. Its first gate is one independently verified, fully unpinned
+known-satisfiable N83 relation without constructing the full pair table.
+The next gate is one ordinary N83 relation, followed by a frozen
+ordinary-query panel for useful relation yield and novel rank. Count failed
+attempts, SAT propagation, field arithmetic, memory, and target-dependent
+wall intervals alongside Q1482/Q1483/Q1485/Q1486/Q1487/Q1488, pairing N53/N83
+inputs and operation-count boundaries. If only the planted control passes,
+retain ordinary cost and N131 complete work as unknown. A complete N131
+`2^x` also requires its exact usable base, relation collection, final matrix
+solve, target descent, and independent scalar replay.
 ## Next goal
 
 The next experiment should couple the existing exact S3 field-root oracle
