@@ -286,8 +286,9 @@ pub struct RunArgs {
     /// Macaulay matrices together on this backend: `cpu`, `cuda[:N]` (an
     /// NVIDIA device, through libcuda and NVRTC), or `emulate[:threads]`
     /// (the GPU kernel on the host; needs the `gpu-emulator` feature).
-    /// Relations, counters and the recovered logarithm are the same as
-    /// without it.
+    /// Lockstep implements the from-scratch engine, so the run uses it
+    /// (`KIC_F4_INHERIT=0`); relations, counters and the recovered logarithm
+    /// are that engine's without lockstep.
     #[arg(long)]
     pub f4_backend: Option<String>,
 }
@@ -1006,6 +1007,7 @@ pub fn run(args: RunArgs, quiet: bool) -> Result<Value, String> {
             if args.control { "; control accounting" } else { "" }
         );
     }
+    let f4_setup = Instant::now();
     let f4_batch = match &args.f4_backend {
         Some(spec) => Some(SharedDecider::new(
             crate::cryptanalysis::f4_gpu::decider_from_spec(spec)
@@ -1013,7 +1015,8 @@ pub fn run(args: RunArgs, quiet: bool) -> Result<Value, String> {
         )),
         None => None,
     };
-    let opts = KoblitzIcOptions {
+    let f4_setup_seconds = f4_setup.elapsed().as_secs_f64();
+    let mut opts = KoblitzIcOptions {
         m: args.summands as usize,
         strategy: args.solver.strategy(),
         factor_index: args.factor_index,
@@ -1030,6 +1033,37 @@ pub fn run(args: RunArgs, quiet: bool) -> Result<Value, String> {
         f4_batch,
         ..KoblitzIcOptions::default()
     };
+    if args.f4_backend.is_some() && args.solver == Solver::Groebner {
+        use crate::cryptanalysis::koblitz_groebner::{SolveOptions, SolverEngine};
+        let supported = |engine| {
+            crate::cryptanalysis::f4_batch::lockstep_supported(&SolveOptions {
+                engine,
+                ..Default::default()
+            })
+        };
+        if !supported(opts.engine) {
+            // A device was asked for: run the engine lockstep implements.
+            let from_scratch = match opts.engine {
+                SolverEngine::InheritedF4 { max_degree }
+                | SolverEngine::MatrixF5 { max_degree }
+                | SolverEngine::MatrixF4 { max_degree } => SolverEngine::MatrixF4 { max_degree },
+                other => other,
+            };
+            if supported(from_scratch) {
+                opts.engine = from_scratch;
+                eprintln!(
+                    "note: --f4-backend runs the from-scratch engine, which lockstep \
+                     implements; at these sizes the default inherited engine is faster \
+                     on the host's cores"
+                );
+            } else {
+                eprintln!(
+                    "note: lockstep cannot run this engine; the searches run on the \
+                     host and f4_batch.rounds stays 0"
+                );
+            }
+        }
+    }
     let mut stages = Vec::new();
     let mut stage_start = Instant::now();
     let record = |stages: &mut Vec<Value>,
@@ -1181,14 +1215,27 @@ pub fn run(args: RunArgs, quiet: bool) -> Result<Value, String> {
         "timing_seconds":{"pair_table":r.pair_table_ns as f64/1e9,"relation_collection":r.relation_collection_ns as f64/1e9,
             "linear_algebra":r.linear_algebra_ns as f64/1e9},
         "f4_batch":{"backend":r.f4_batch_backend,"rounds":r.f4_batch_rounds,"requests":r.f4_batch_requests,
-            "decide_seconds":r.f4_batch_decide_ns as f64/1e9,
+            "decide_seconds":r.f4_batch_decide_ns as f64/1e9,"setup_seconds":f4_setup_seconds,
             "kernel":format!("{:?}",crate::cryptanalysis::koblitz_groebner::f4_kernel()),
+            "engine":format!("{:?}",opts.engine.effective()),
             "f5":crate::cryptanalysis::f4_gf2::default_options().f5},
+        "gpu":gpu_report(),
         "attempt_dispositions":disposition_counts(&r.attempt_records),
         "elapsed_seconds":begin.elapsed().as_secs_f64(),"resources":resources(),
         "limitations":["No imported target was used.","This run does not establish scaling or challenge readiness."]}),
     )
 }
+/// The host's CUDA devices and what the large-matrix offload did on them,
+/// so a report says whether, and where, a run used a GPU.
+fn gpu_report() -> Value {
+    let o = crate::cryptanalysis::f4_gpu::offload_summary();
+    json!({
+        "devices": crate::cryptanalysis::f4_gpu::cuda_devices(),
+        "f4_echelon": {"mode": o.mode, "device": o.device, "matrices": o.matrices,
+            "words": o.words, "seconds": o.seconds},
+    })
+}
+
 /// How every relation attempt ended, by disposition: the decomposition
 /// oracle's outcome mix, failed and budget-exhausted attempts included.
 fn disposition_counts(

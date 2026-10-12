@@ -1,0 +1,40 @@
+name: Public curve witness replay
+
+on:
+  # Retired 2026-10-11: this gate guards a study that has been quiet for 7+ days, and its
+  # push/pull_request triggers were fanning out across the account's shared runners. Run it
+  # on demand, or restore its push/pull_request triggers from git history to bring it back.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-curve-replay-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  correctness-and-timing:
+    name: Public curve witness replay (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Rebuild, preflight, measure and independently audit the frozen panel
+        run: python -u experiments/groebner-perf-20260924/round63/run_validation.py --output public-replay-evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: public-curve-replay-${{ matrix.os }}
+          path: public-replay-evidence/
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,345 @@
+{
+ "rho_log2": {
+  "E0 (neg+tau)": 60.80903656396743,
+  "floor native (neg only)": 64.32574806473616,
+  "floor via 263-isogeny to E0": 60.80903656396743
+ },
+ "model": "Index-calculus vs rho cost model for every curve of the ECC2K-130 class.\n\nModel (the standard one, as in pdp-scaling/README.md and GGMP 2020 Thm 2.4/2.5):\n  factor base F_V with |F| ~ 2^l points (x in an l-dim subspace; half the x lift, 2 points each),\n  unknowns U = 2^(l-1) (points up to sign), relations needed ~ U,\n  relation probability per random target  p = min(1, |F|^m / (m! 2^131)),\n  PDP calls = U / p,\n  LA (sparse, Wiedemann/Lanczos) = m * U^2,\n  per-PDP cost c(m,l):  (a) free (oracle: isolates relation count + LA),\n                        (a') table: precompute all k-sums once, then 2^((m-k) l) per target\n                             (amortised generic decomposition; memory 2^(k l)/k!),\n                        (b) meet-in-the-middle 2^(l*ceil(m/2)) group ops (the best MEASURED\n                            decomposition; pdp-scaling README: every algebraic engine measured\n                            has a steeper l-slope than this),\n  Hypothetical GGMP Frobenius-invariant factor base on E0 (only E0 has tau):\n     relations / 131 and LA / 131^2 at the same |F|  (GGMP Thm 3.4/3.5 best case, H3 = H1).\n  Per-curve density deviation: |F| -> |F| (1 + delta), delta = z * 2^(-l/2); log2 p shifts by\n     m * log2(1 + delta).  z = best z an attacker can buy by screening S subspaces (or curves),\n     z ~ sqrt(2 ln S).\nOutput: costmodel.json and a console table.  Pure python3.\n",
+ "table": {
+  "free|plain|m2": {
+   "best_l": 44,
+   "log2_total": 88.0,
+   "log2_pdp_calls": 87.0,
+   "log2_LA": 87.0
+  },
+  "free|plain|m3": {
+   "best_l": 33,
+   "log2_total": 67.17,
+   "log2_pdp_calls": 66.58,
+   "log2_LA": 65.58
+  },
+  "free|plain|m4": {
+   "best_l": 27,
+   "log2_total": 54.81,
+   "log2_pdp_calls": 53.58,
+   "log2_LA": 54.0
+  },
+  "free|plain|m5": {
+   "best_l": 23,
+   "log2_total": 46.78,
+   "log2_pdp_calls": 44.91,
+   "log2_LA": 46.32
+  },
+  "free|plain|m6": {
+   "best_l": 20,
+   "log2_total": 41.14,
+   "log2_pdp_calls": 39.49,
+   "log2_LA": 40.58
+  },
+  "free|plain|m7": {
+   "best_l": 18,
+   "log2_total": 37.04,
+   "log2_pdp_calls": 34.3,
+   "log2_LA": 36.81
+  },
+  "free|GGMP-hyp(E0)|m2": {
+   "best_l": 46,
+   "log2_total": 78.54,
+   "log2_pdp_calls": 77.97,
+   "log2_LA": 76.93
+  },
+  "free|GGMP-hyp(E0)|m3": {
+   "best_l": 35,
+   "log2_total": 56.53,
+   "log2_pdp_calls": 55.55,
+   "log2_LA": 55.52
+  },
+  "free|GGMP-hyp(E0)|m4": {
+   "best_l": 28,
+   "log2_total": 43.96,
+   "log2_pdp_calls": 43.55,
+   "log2_LA": 41.93
+  },
+  "free|GGMP-hyp(E0)|m5": {
+   "best_l": 24,
+   "log2_total": 35.08,
+   "log2_pdp_calls": 33.87,
+   "log2_LA": 34.26
+  },
+  "free|GGMP-hyp(E0)|m6": {
+   "best_l": 21,
+   "log2_total": 29.08,
+   "log2_pdp_calls": 27.46,
+   "log2_LA": 28.52
+  },
+  "free|GGMP-hyp(E0)|m7": {
+   "best_l": 19,
+   "log2_total": 24.86,
+   "log2_pdp_calls": 21.27,
+   "log2_LA": 24.74
+  },
+  "mitm|plain|m2": {
+   "best_l": 2,
+   "log2_total": 131.0,
+   "log2_pdp_calls": 129.0,
+   "log2_LA": 3.0
+  },
+  "mitm|plain|m3": {
+   "best_l": 2,
+   "log2_total": 132.58,
+   "log2_pdp_calls": 128.58,
+   "log2_LA": 3.58
+  },
+  "mitm|plain|m4": {
+   "best_l": 34,
+   "log2_total": 101.0,
+   "log2_pdp_calls": 33.0,
+   "log2_LA": 68.0
+  },
+  "mitm|plain|m5": {
+   "best_l": 27,
+   "log2_total": 109.91,
+   "log2_pdp_calls": 28.91,
+   "log2_LA": 54.32
+  },
+  "mitm|plain|m6": {
+   "best_l": 23,
+   "log2_total": 93.49,
+   "log2_pdp_calls": 24.49,
+   "log2_LA": 46.58
+  },
+  "mitm|plain|m7": {
+   "best_l": 20,
+   "log2_total": 102.3,
+   "log2_pdp_calls": 22.3,
+   "log2_LA": 40.81
+  },
+  "mitm|GGMP-hyp(E0)|m2": {
+   "best_l": 9,
+   "log2_total": 123.97,
+   "log2_pdp_calls": 114.97,
+   "log2_LA": 2.93
+  },
+  "mitm|GGMP-hyp(E0)|m3": {
+   "best_l": 9,
+   "log2_total": 125.55,
+   "log2_pdp_calls": 107.55,
+   "log2_LA": 3.52
+  },
+  "mitm|GGMP-hyp(E0)|m4": {
+   "best_l": 34,
+   "log2_total": 93.97,
+   "log2_pdp_calls": 25.97,
+   "log2_LA": 53.93
+  },
+  "mitm|GGMP-hyp(E0)|m5": {
+   "best_l": 27,
+   "log2_total": 102.87,
+   "log2_pdp_calls": 21.87,
+   "log2_LA": 40.26
+  },
+  "mitm|GGMP-hyp(E0)|m6": {
+   "best_l": 23,
+   "log2_total": 86.46,
+   "log2_pdp_calls": 17.46,
+   "log2_LA": 32.52
+  },
+  "mitm|GGMP-hyp(E0)|m7": {
+   "best_l": 20,
+   "log2_total": 95.27,
+   "log2_pdp_calls": 15.27,
+   "log2_LA": 26.74
+  },
+  "table|plain|m2": {
+   "best_l": 2,
+   "log2_total": 131.0,
+   "log2_pdp_calls": 129.0,
+   "log2_LA": 3.0
+  },
+  "table|plain|m3": {
+   "best_l": 44,
+   "log2_total": 89.46,
+   "log2_pdp_calls": 44.58,
+   "log2_LA": 87.58
+  },
+  "table|plain|m4": {
+   "best_l": 27,
+   "log2_total": 80.87,
+   "log2_pdp_calls": 53.58,
+   "log2_LA": 54.0
+  },
+  "table|plain|m5": {
+   "best_l": 20,
+   "log2_total": 77.35,
+   "log2_pdp_calls": 56.91,
+   "log2_LA": 40.32
+  },
+  "table|plain|m6": {
+   "best_l": 16,
+   "log2_total": 75.74,
+   "log2_pdp_calls": 59.49,
+   "log2_LA": 32.58
+  },
+  "table|plain|m7": {
+   "best_l": 14,
+   "log2_total": 74.79,
+   "log2_pdp_calls": 58.3,
+   "log2_LA": 28.81
+  },
+  "table|GGMP-hyp(E0)|m2": {
+   "best_l": 9,
+   "log2_total": 123.97,
+   "log2_pdp_calls": 114.97,
+   "log2_LA": 2.93
+  },
+  "table|GGMP-hyp(E0)|m3": {
+   "best_l": 42,
+   "log2_total": 84.3,
+   "log2_pdp_calls": 41.55,
+   "log2_LA": 69.52
+  },
+  "table|GGMP-hyp(E0)|m4": {
+   "best_l": 26,
+   "log2_total": 76.48,
+   "log2_pdp_calls": 49.55,
+   "log2_LA": 37.93
+  },
+  "table|GGMP-hyp(E0)|m5": {
+   "best_l": 19,
+   "log2_total": 73.32,
+   "log2_pdp_calls": 53.87,
+   "log2_LA": 24.26
+  },
+  "table|GGMP-hyp(E0)|m6": {
+   "best_l": 15,
+   "log2_total": 72.53,
+   "log2_pdp_calls": 57.46,
+   "log2_LA": 16.52
+  },
+  "table|GGMP-hyp(E0)|m7": {
+   "best_l": 13,
+   "log2_total": 70.64,
+   "log2_pdp_calls": 57.27,
+   "log2_LA": 12.74
+  }
+ },
+ "density_effect": {
+  "l20_S2^10.0": {
+   "z_best": 3.73,
+   "rel_|F|_gain": 0.0036431012927796314,
+   "log2_relprob_gain_m4": 0.020985333993421933,
+   "log2_relprob_gain_m6": 0.0314780009901329
+  },
+  "l20_S2^20.0": {
+   "z_best": 5.27,
+   "rel_|F|_gain": 0.00514212665573078,
+   "log2_relprob_gain_m4": 0.029598049095626744,
+   "log2_relprob_gain_m6": 0.044397073643440116
+  },
+  "l20_S2^40.0": {
+   "z_best": 7.45,
+   "rel_|F|_gain": 0.007272065255974676,
+   "log2_relprob_gain_m4": 0.04181363777805191,
+   "log2_relprob_gain_m6": 0.06272045666707786
+  },
+  "l24_S2^10.0": {
+   "z_best": 3.73,
+   "rel_|F|_gain": 0.0009107753231949079,
+   "log2_relprob_gain_m4": 0.005253492156028891,
+   "log2_relprob_gain_m6": 0.007880238234043338
+  },
+  "l24_S2^20.0": {
+   "z_best": 5.27,
+   "rel_|F|_gain": 0.001285531663932695,
+   "log2_relprob_gain_m4": 0.007413756336922449,
+   "log2_relprob_gain_m6": 0.011120634505383673
+  },
+  "l24_S2^40.0": {
+   "z_best": 7.45,
+   "rel_|F|_gain": 0.001818016313993669,
+   "log2_relprob_gain_m4": 0.010481847281550041,
+   "log2_relprob_gain_m6": 0.01572277092232506
+  },
+  "l28_S2^10.0": {
+   "z_best": 3.73,
+   "rel_|F|_gain": 0.00022769383079872696,
+   "log2_relprob_gain_m4": 0.0013138214732911447,
+   "log2_relprob_gain_m6": 0.001970732209936717
+  },
+  "l28_S2^20.0": {
+   "z_best": 5.27,
+   "rel_|F|_gain": 0.00032138291598317374,
+   "log2_relprob_gain_m4": 0.001854332197075138,
+   "log2_relprob_gain_m6": 0.0027814982956127074
+  },
+  "l28_S2^40.0": {
+   "z_best": 7.45,
+   "rel_|F|_gain": 0.00045450407849841724,
+   "log2_relprob_gain_m4": 0.0026222472545484993,
+   "log2_relprob_gain_m6": 0.003933370881822749
+  },
+  "l29_S2^10.0": {
+   "z_best": 3.73,
+   "rel_|F|_gain": 0.00016100385179212222,
+   "log2_relprob_gain_m4": 0.0009290430464300554,
+   "log2_relprob_gain_m6": 0.0013935645696450832
+  },
+  "l29_S2^20.0": {
+   "z_best": 5.27,
+   "rel_|F|_gain": 0.00022725203924920865,
+   "log2_relprob_gain_m4": 0.0013112725711867264,
+   "log2_relprob_gain_m6": 0.0019669088567800894
+  },
+  "l29_S2^40.0": {
+   "z_best": 7.45,
+   "rel_|F|_gain": 0.00032138291598317374,
+   "log2_relprob_gain_m4": 0.001854332197075138,
+   "log2_relprob_gain_m6": 0.0027814982956127074
+  }
+ },
+ "pdp_scaling_readme": {
+  "source": "/Volumes/SSD990/cryptanalysis/.claude/worktrees/ecc2k-130-volcano-descent-49e6d4/experiments/pdp-scaling/README.md",
+  "rho_E0_log2": 60.81,
+  "rows": [
+   {
+    "m": 4,
+    "l": 29,
+    "pdp_calls_log2": 48.6,
+    "budget_per_pdp_log2": 12.2,
+    "mitm_log2": 58,
+    "gap_bits": 46,
+    "sat_fit_log2": 195
+   },
+   {
+    "m": 5,
+    "l": 28,
+    "pdp_calls_log2": 28.0,
+    "budget_per_pdp_log2": 32.8,
+    "mitm_log2": 84,
+    "gap_bits": 51
+   },
+   {
+    "m": 6,
+    "l": 24,
+    "pdp_calls_log2": 24.0,
+    "budget_per_pdp_log2": 36.8,
+    "mitm_log2": 72,
+    "gap_bits": 35
+   },
+   {
+    "m": 3,
+    "l": 44,
+    "note": "LA alone exceeds rho",
+    "wdsat_fit_log2": 137
+   }
+  ],
+  "fits_bits_per_l": {
+   "mitm_m3": 1.93,
+   "sat_m3": 3.95,
+   "sat_m4": 6.97,
+   "wdsat_m3": 3.02,
+   "msolve_m3": 5.25
+  },
+  "trace_constraint_gain_bits": "about 1 (constant, all curves with a2 with Tr(a2)=0 and odd n)"
+ }
+}

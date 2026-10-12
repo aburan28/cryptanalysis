@@ -122,7 +122,7 @@ class UploadTest(unittest.TestCase):
             self.assertEqual(fbarchive.upload(dry_run=True, require=True), 0)
         lines = [c.args[0] for c in out.call_args_list]
         present = [r for r in fbarchive.read_index() if (HERE / r["path"]).exists()]
-        self.assertEqual(len(lines), len(present) + 1)
+        self.assertEqual(len(lines), sum(len(fbarchive.archive_paths(HERE / r["path"])) for r in present) + 1)
         self.assertTrue(all("s3://bucket/prefix/factor-bases/" in s for s in lines))
 
     def test_rejects_a_non_s3_uri(self):

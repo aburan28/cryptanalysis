@@ -84,7 +84,23 @@ python3 /workspace/cryptanalysis/scripts/isolated_bench.py --queue-root /workspa
 
 `serve` holds both a queue lock and a fixed host-wide lock under `/run/lock`
 for its whole lifetime. A second server, even with a different queue
-directory, or a direct run refuses to start. Keep the SQLite queue on a
+directory, or a direct run refuses to start. If the host also uses the
+`exp-run` launcher, start the service with its existing serial lock:
+
+```sh
+python3 /workspace/cryptanalysis/scripts/isolated_bench.py \
+  --queue-root /workspace/isolated-bench \
+  --shared-job-lock /workspace/experiment-runs/.serial.lock serve
+```
+
+The service takes this shared `flock` for each complete benchmark job,
+including preflight and result writing, then releases it before the next
+job. A job remains `queued` while another launcher holds the lock. The
+same option applies to a direct `run`. This coordinates with existing
+`exp-run` jobs, including jobs queued before the service starts, because
+their launch scripts already hold that file during execution. Use one
+lock file on a local filesystem for every launcher on the host; a launcher
+that skips it is outside the one-job guarantee. Keep the SQLite queue on a
 single-host local filesystem; SQLite WAL and file locks are not a
 distributed scheduler. The service marks any job left `running` after a crash
 as `interrupted`; it never silently resumes a partial panel. It takes queued
@@ -103,6 +119,61 @@ stored in a manifest, queue row, result file, or repository. The long-lived
 service can then be reached through SSH. [RunPod's Pod documentation](https://docs.runpod.io/runpodctl/reference/runpodctl-remove-pods)
 describes CPU Pods and SSH provisioning; it does not by itself certify
 host-wide CPU/NUMA isolation.
+
+## Replaying the j=0 rho comparison
+
+Build the two C variants on the same Linux host, with identical source,
+compiler, flags, and width-2 tau setup, changing only
+`CA_J0_RHO_COVARIANT_WALK`. Link
+`experiments/prime-j0-tau-20260930/large-rho-20261002/bench_rho_large.c`
+to each static library:
+
+```sh
+cd /workspace/cryptanalysis
+cmake -S . -B /workspace/build/j0-reference -DCMAKE_BUILD_TYPE=Release -DCA_CUPQC=OFF -DCA_WERROR=ON -DCA_J0_RHO_COVARIANT_WALK=OFF -DCA_J0_TAU_RHO_WIDTH=2
+cmake -S . -B /workspace/build/j0-oriented -DCMAKE_BUILD_TYPE=Release -DCA_CUPQC=OFF -DCA_WERROR=ON -DCA_J0_RHO_COVARIANT_WALK=ON -DCA_J0_TAU_RHO_WIDTH=2
+cmake --build /workspace/build/j0-reference --target cryptanalysis_static
+cmake --build /workspace/build/j0-oriented --target cryptanalysis_static test_curve
+mkdir -p /workspace/bin
+cc -O3 -std=c11 -Iinclude experiments/prime-j0-tau-20260930/large-rho-20261002/bench_rho_large.c /workspace/build/j0-reference/libcryptanalysis.a -lm -lpthread -o /workspace/bin/j0-rho-reference
+cc -O3 -std=c11 -Iinclude experiments/prime-j0-tau-20260930/large-rho-20261002/bench_rho_large.c /workspace/build/j0-oriented/libcryptanalysis.a -lm -lpthread -o /workspace/bin/j0-rho-oriented
+```
+
+Build and correctness checks are outside the online timer. Generate the
+exact 160-target panel from the frozen scalar law with
+[make_j0_isolated_manifest.py](../scripts/make_j0_isolated_manifest.py).
+The generator calls each executable's `--print-target` fixture mode, checks
+that both produce the same public point, and freezes the expected scalar in
+the manifest. The timed `--public-target` command receives the point
+coordinates and walk seed, with no expected scalar in its arguments. Its
+`online_ms` covers the rho solve and independent point replay; fixture
+construction stays outside that interval:
+
+```sh
+python3 scripts/make_j0_isolated_manifest.py \
+  --reference /workspace/bin/j0-rho-reference \
+  --candidate /workspace/bin/j0-rho-oriented \
+  --workdir /workspace/cryptanalysis \
+  --cgroup /sys/fs/cgroup/benchmark-isolated \
+  --cpus 4-5 --execution-cpu 4 --mem-nodes 0 \
+  --output /workspace/isolated-bench/j0-rho-panel.json
+python3 scripts/isolated_bench.py probe /workspace/isolated-bench/j0-rho-panel.json
+python3 scripts/isolated_bench.py --queue-root /workspace/isolated-bench submit /workspace/isolated-bench/j0-rho-panel.json
+```
+
+CPU IDs and NUMA nodes above are examples; use the host's verified topology.
+For any Sage manifest, use the absolute checked repository `sage` launcher
+and save its `--runtime-info` receipt before measurement, as required by
+[AGENTS.md](../AGENTS.md).
+IC comparisons must also carry the candidate, workload, and run IDs and the
+stage accounting required by that file; the service enforces the environment
+and pairing but does not replace the IC measurement contract.
+
+The prior [j=0 rho panel](../experiments/prime-j0-rho-coordinate-canon-20261002/README.md)
+was run on a heavily loaded Mac. Its timing ratios remain exploratory until
+replayed through a qualifying isolated host. Historical results elsewhere
+in the repository need an isolation audit before they are treated as
+controlled performance claims.
 
 ## Frozen manifest and result contract
 

@@ -63,7 +63,7 @@ rm -rf "$CANONICAL_STAGE"
 mkdir -p "$CANONICAL_STAGE/bin" "$CANONICAL_STAGE/libexec/cryptanalysis" \
     "$CANONICAL_STAGE/share/cryptanalysis"
 cp "$CLI" "$CANONICAL_STAGE/bin/cryptanalysis"
-cp "$BIN" "$CANONICAL_STAGE/libexec/cryptanalysis/ecc2k130-rho-kernel"
+cp "$BIN" "$CANONICAL_STAGE/libexec/cryptanalysis/ecc2k130-rho-cuda"
 cp tests/campaign-kat.hex "$CANONICAL_STAGE/share/cryptanalysis/"
 cp README.md "$CANONICAL_STAGE/share/cryptanalysis/ECC2K130-README.md"
 cp ../LICENSE "$CANONICAL_STAGE/LICENSE"

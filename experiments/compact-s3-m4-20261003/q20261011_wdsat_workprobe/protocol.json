@@ -1,0 +1,26 @@
+{
+  "proposal_id": "Q1464",
+  "candidate_id": null,
+  "run_id": null,
+  "isogeny": "none",
+  "point_decomposition_stage_code": "PDP4sat",
+  "purpose": "count left-branch attempts under a fixed search budget on the exact Q1463 ordinary N53/N83 balanced-S3 formulas",
+  "inputs": "Q1463 frozen original and equivalent shared-prefix XCNF archives; exact curve, base, target and workload IDs inherited without mutation",
+  "solver": {
+    "upstream_commit": "61c6ff3f49445af2729274819edb27b85a89efc1",
+    "source_policy": "copy pinned WDSat source, apply Q1458 dynamic Gaussian undo allocation and search markers, then Q1464 branch-checkpoint patch; retain external GPL checkout",
+    "variants": ["plain", "xor_gauss"],
+    "controls": ["full_lock"],
+    "ordinary_query": true,
+    "branch_metric": "number of executed conf[0]++ left-branch sites in WDSat search; checkpoints at powers of two; not a count of propagation, XOR or field operations"
+  },
+  "limits": {
+    "left_branch_attempts_per_run": 16384,
+    "wall_seconds_per_run": 90,
+    "address_space_mib": null,
+    "host_isolation": "none; CPU and wall times exploratory",
+    "run_order": ["n53_full_lock_plain", "n53_full_lock_xor_gauss", "n83_full_lock_plain", "n83_full_lock_xor_gauss", "n53_ordinary_plain", "n53_ordinary_xor_gauss", "n83_ordinary_plain", "n83_ordinary_xor_gauss"]
+  },
+  "complete_solve_work_log2": null,
+  "degree131_challenge_gap_bits": null
+}

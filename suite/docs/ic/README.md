@@ -147,16 +147,49 @@ first-fall-degree sweeps (`dreg_sweep`), which also use the fast kernel.
 and decides every round's matrices together, which is what gives a device
 enough independent work: `cuda[:N]` on an NVIDIA GPU (the kernel is
 `suite/cuda/f4_gf2_device.cuh`, one thread block per system; libcuda and
-NVRTC are opened at run time, `CA_F4_PTX` loads a prebuilt PTX instead),
+NVRTC are opened at run time and the kernel is compiled to SASS for the
+device, `CA_F4_PTX` loads a prebuilt PTX instead),
 `emulate[:threads]` for the same kernel source run on the host (build with
 `--features gpu-emulator`), or `cpu`. Each search takes the same steps as
 without it, so relations and the recovered logarithm are identical; the
-report's `f4_batch` block records the backend, the rounds and the requests.
+report's `f4_batch` block records the backend, the rounds, the requests,
+the time spent deciding them, and `setup_seconds`, the backend's own setup
+(for CUDA, the driver, the NVRTC compile and the module load), which no
+phase timer covers.
 Use a batch in the thousands to fill a GPU. `examples/f4_batch_bench.rs`
 replays the matrices real searches request through every backend and checks
 each answer against the host kernel. See
 [`experiments/f4-gpu-20260925`](../../../experiments/f4-gpu-20260925/RESULT.md)
-for the measurements.
+for the measurements. Lockstep implements the from-scratch engine
+(`KIC_F4_INHERIT=0`), so `--f4-backend` switches a run on the default
+inherited engine to it and says so on stderr; `f4_batch.engine` in the
+report names the engine that ran. On an RTX 5090 the device decides these
+small matrices no faster than 13 host threads, and the inherited engine on
+the host is about five times faster than either
+([`experiments/f4-gpu-runpod-20261006`](../../../experiments/f4-gpu-runpod-20261006/RESULT.md)),
+so leave `--f4-backend` off unless lockstep itself is under study.
+
+**Large matrices on a GPU.** Every `f4_gf2` matrix of at least
+`F4_F2_ECHELON_MIN_WORDS` words (default `1 << 20`, 8 MiB) is eliminated on
+CUDA device 0 whenever the driver opens one, and on the host otherwise,
+one 64-column panel at a time (`suite/cuda/f4_gf2_echelon.cuh`). Such a
+matrix is built without F5's symbolic half, which costs more host time
+than the rows it drops save there. These are the matrices of the solving-
+and first-fall-degree sweeps (`dreg_sweep`) and of `f4_degree_bench` and
+`f4_matrix_bench` at degree 5 and above. Rank, refutation and pinned
+variables are the host's; only the word count differs. `F4_F2_ECHELON`
+picks the backend: `auto` (the default, silent when no device opens),
+`cuda[:N]` (device `N`, and a message when it cannot be opened),
+`emulate[:threads]` (the same source on the host), or `host` (never
+offload). `F4_F2_ECHELON_VERBOSE` prints each matrix's upload, device and
+download time, and `F4_F2_ECHELON_PROFILE` each kernel's.
+
+Every `ca-ic run` report has a `gpu` block: `devices` lists the CUDA
+devices the driver reports (empty on a machine without one), and
+`f4_echelon` gives the offload's mode, the device that eliminated, and the
+matrices, words and seconds it took. A report whose `gpu.devices` is empty
+is a CPU-only measurement. Index-calculus runs belong on a GPU host
+([`AGENTS.md`](../../../AGENTS.md#run-index-calculus-on-a-gpu)).
 
 Not every degree/coefficient combination has a usable subgroup. A valid
 curve does not guarantee successful collection or an invertible relation
@@ -1545,6 +1578,42 @@ subgroup can be attacked at all — a charged-regime statement, precompute
 assumed paid. The width curve says which width is cheapest for `T`
 targets at fixed `r`, where precompute is most of the bill. Memory sets
 the reach; the target count sets how much of that memory is worth using.
+
+## The n = 53 crossover, against a batched rho
+
+The selected `n = 53` direct route (`koblitz_rank_fixture`, Stage 106/108
+flags: four-shard `signed_expanded` support, `pair_pair_parallel_4096`)
+passed its online-wall gate against `koblitz_rho_fixture`. That control
+inverts once per step, canonicalises both coordinates by 52 squarings
+each, stores every point, and runs on one thread: about 9.5 µs a step.
+`examples/koblitz_batched_rho.rs` is the same signed-Frobenius walk with
+one inversion shared across 64 walks, the orbit named by `FrobeniusCanon`,
+and only distinguished points stored. Same target, same host, every run
+recovering the scalar and checking `[d]G = Q`:
+
+| arm | runs | median wall |
+|---|---|---|
+| IC direct, selected stack, 4 threads | 3 | 17.3 s (≈16 s CPU) |
+| `koblitz_rho_fixture`, 1 thread | 5 | 3.03 s |
+| `koblitz_batched_rho`, 1 thread | 7 | 0.49 s |
+| `koblitz_batched_rho`, 4 threads | 7 | 0.20 s |
+
+The host is an M4 Pro, which has none of the x86 PCLMUL paths both
+fixtures specialise, so these are not the gate host's ratios. The counts
+carry over: 46.3M support queries against ≈0.56M rho steps, about 80×.
+The walk leaves one cost in, in index calculus's favour: `y` is moved onto
+the representative by up to `n − 1` squarings, not a basis rotation.
+
+**It does not scale toward 131.** A run spends about `r/(n·|F|)` queries
+(40M predicted at `n = 53`, 46.3M measured), and the base rule
+`|F|³ ≈ 6r·η` makes that `∝ r^{2/3}` against rho's `r^{1/2}`. At
+ECC2K-130 it is ≈2^80.6 queries against ≈2^60.9 rho steps. Closing the
+gap by width needs `|F| ≈ 2^61` and a folded pair table of ≈2^114
+entries: the orbit fold divides memory by `2n ≈ 2^8`, and changes no
+exponent. Folding the support table (738 MB → ≈15 MB) would pass the
+memory gate and leave both verdicts as they are.
+
+`docs/ic/runs/koblitz-n53-rho-control-20260922.json` records every run.
 
 ## Persistent fixed parameters through degree 131
 
