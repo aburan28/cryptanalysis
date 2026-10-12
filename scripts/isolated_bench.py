@@ -75,22 +75,50 @@ def json_write(path, value):
     os.replace(temp, path)
 
 
+def tier(manifest):
+    value = manifest.get("isolation", {}).get("tier", "tier0")
+    if value not in ("tier0", "tier1"):
+        raise ValueError("isolation tier must be tier0 or tier1")
+    return value
+
+
 def require_manifest(manifest):
     if manifest.get("schema") != 1:
         raise ValueError("manifest schema must be 1")
     isolation = manifest["isolation"]
+    level = tier(manifest)
     cpus = cpu_set(isolation["cpus"])
     nodes = cpu_set(isolation["mem_nodes"])
     run_cpu = isolation.get("execution_cpu")
     if not isinstance(run_cpu, int) or run_cpu not in cpus:
-        raise ValueError("execution_cpu must be one CPU in the isolated partition")
+        raise ValueError("execution_cpu must be one CPU in the declared CPU set")
     cgroup = Path(isolation["cgroup"])
-    if not cgroup.is_absolute() or cgroup == CGROUP_ROOT:
-        raise ValueError("an absolute non-root cgroup is required")
-    if not str(cgroup).startswith(str(CGROUP_ROOT) + "/"):
+    if not cgroup.is_absolute() or (level == "tier0" and cgroup == CGROUP_ROOT):
+        raise ValueError("tier0 requires an absolute non-root cgroup")
+    if cgroup != CGROUP_ROOT and not str(cgroup).startswith(str(CGROUP_ROOT) + "/"):
         raise ValueError("cgroup must be beneath /sys/fs/cgroup")
     if not (1 <= len(cpus) <= 256 and len(nodes) == 1):
         raise ValueError("invalid CPU or NUMA count")
+    if level == "tier1":
+        if len(cpus) != 1:
+            raise ValueError("tier1 v1 requires one pinned exposed CPU")
+        if manifest.get("repetitions", 1) < 5:
+            raise ValueError("tier1 requires at least five alternating pairs")
+        if len(manifest.get("cases", [])) != 1:
+            raise ValueError("tier1 v1 requires one frozen workload case")
+        allocation = isolation.get("allocation")
+        if not isinstance(allocation, dict) or not all(
+            isinstance(allocation.get(key), str) and allocation[key].strip()
+            for key in ("provider", "instance_id", "receipt")
+        ):
+            raise ValueError("tier1 requires provider, instance_id and allocation receipt")
+        receipt_path = Path(allocation["receipt"])
+        if not receipt_path.is_absolute() or not receipt_path.is_file():
+            raise ValueError("tier1 allocation receipt must be an absolute file")
+        receipt = json.loads(receipt_path.read_text())
+        if (receipt.get("provider") != allocation["provider"] or
+                receipt.get("instance_id") != allocation["instance_id"]):
+            raise ValueError("tier1 allocation receipt identity mismatch")
     if not isinstance(manifest.get("cases"), list) or not manifest["cases"]:
         raise ValueError("cases must be nonempty")
     if not (1 <= manifest.get("repetitions", 1) <= 1000):
@@ -156,6 +184,8 @@ def require_manifest(manifest):
         path = Path(item)
         if not path.is_absolute() or not path.is_file():
             raise ValueError("artifact path must be an existing absolute file: " + str(item))
+    if level == "tier1" and isolation["allocation"]["receipt"] not in manifest["artifacts"]:
+        raise ValueError("tier1 allocation receipt must be hash-bound in artifacts")
     return cpus, nodes, cgroup
 
 
@@ -181,6 +211,20 @@ def version_line(executable):
         return None
 
 
+def cpu_identity():
+    fields = {}
+    for line in (read("/proc/cpuinfo") or "").splitlines():
+        if ":" in line:
+            key, value = (part.strip() for part in line.split(":", 1))
+            fields.setdefault(key, value)
+    for key in ("model name", "Hardware", "Processor"):
+        if fields.get(key):
+            return fields[key]
+    arm = [fields[key] for key in ("CPU implementer", "CPU architecture",
+                                  "CPU part", "CPU variant") if fields.get(key)]
+    return "ARM " + "/".join(arm) if arm else None
+
+
 def host_probe():
     info = {"host": platform.node(), "system": platform.system(),
             "kernel": platform.release(), "architecture": platform.machine(),
@@ -200,23 +244,110 @@ def host_probe():
     return info
 
 
+def current_cgroup():
+    for line in (read("/proc/self/cgroup") or "").splitlines():
+        parts = line.split(":", 2)
+        if len(parts) == 3 and parts[:2] == ["0", ""]:
+            return (CGROUP_ROOT / parts[2].lstrip("/")).resolve()
+    return None
+
+
+def tier1_preflight(manifest, cpus, cgroup, evidence):
+    """Qualify one pinned exposed CPU without asserting physical exclusivity."""
+    problems = []
+    allocation = manifest["isolation"]["allocation"]
+    evidence["allocation"] = {"provider": allocation["provider"],
+                              "instance_id": allocation["instance_id"],
+                              "receipt_sha256": sha256(allocation["receipt"])}
+    evidence["virtualization"] = virtualization()
+    evidence["host_exclusivity_proved"] = False
+    if not evidence.get("cpu_model"):
+        problems.append("CPU model unavailable")
+    try:
+        cg = cgroup.resolve(strict=True)
+        cg.relative_to(CGROUP_ROOT)
+    except (OSError, ValueError):
+        problems.append("declared cgroup is unavailable beneath cgroup v2")
+        cg = cgroup
+    actual_cgroup = current_cgroup()
+    evidence["self_cgroup"] = str(actual_cgroup) if actual_cgroup else None
+    if actual_cgroup != cg:
+        problems.append("declared cgroup is not the runner's current cgroup")
+    try:
+        allowed = os.sched_getaffinity(0)
+        evidence["runner_affinity"] = sorted(allowed)
+        if manifest["isolation"]["execution_cpu"] not in allowed:
+            problems.append("execution CPU is outside runner affinity")
+    except OSError as exc:
+        problems.append("cannot inspect runner affinity: " + str(exc))
+    effective = read(cg / "cpuset.cpus.effective")
+    evidence["cpuset.cpus.effective"] = effective
+    try:
+        if manifest["isolation"]["execution_cpu"] not in cpu_set(effective or ""):
+            problems.append("execution CPU is outside effective cpuset")
+    except ValueError:
+        problems.append("effective cpuset unavailable")
+    for name, keys in (("cpu.stat", ("nr_throttled", "throttled_usec")),
+                       ("memory.events", ("max", "oom", "oom_kill"))):
+        value = read(cg / name)
+        evidence[name] = value
+        if not value or not all(any(line.startswith(key + " ")
+                                    for line in value.splitlines()) for key in keys):
+            problems.append(name + " counters unavailable")
+    for name in ("cpu.max", "memory.max", "cpu.pressure", "memory.current"):
+        value = read(cg / name)
+        evidence[name] = value
+        if value is None:
+            problems.append(name + " unavailable")
+    cpu_max = (evidence.get("cpu.max") or "").split()
+    if (len(cpu_max) != 2 or cpu_max[0] != "max" and not cpu_max[0].isdigit()
+            or not cpu_max[1].isdigit()):
+        problems.append("cpu.max is malformed")
+    if not (evidence.get("memory.max") == "max" or
+            (evidence.get("memory.max") or "").isdigit()):
+        problems.append("memory.max is malformed")
+    if not (evidence.get("memory.current") or "").isdigit():
+        problems.append("memory.current is malformed")
+    pressure = evidence.get("cpu.pressure") or ""
+    if not any(line.startswith("some ") and "total=" in line
+               for line in pressure.splitlines()):
+        problems.append("cpu.pressure counters unavailable")
+    execution_cpu = manifest["isolation"]["execution_cpu"]
+    evidence["topology"][str(execution_cpu)] = read(
+        f"/sys/devices/system/cpu/cpu{execution_cpu}/topology/thread_siblings_list")
+    try:
+        if execution_cpu not in cpu_set(evidence["topology"][str(execution_cpu)] or ""):
+            problems.append("execution CPU sibling topology unavailable")
+    except ValueError:
+        problems.append("execution CPU sibling topology unavailable")
+    evidence["frequency"][str(execution_cpu)] = {
+        "current_khz": read(f"/sys/devices/system/cpu/cpu{execution_cpu}/cpufreq/scaling_cur_freq")}
+    stat = counters({execution_cpu}, cg)
+    if execution_cpu not in stat["per_cpu"]:
+        problems.append("execution CPU steal-time counter unavailable")
+    evidence["per_cpu_counter_available"] = execution_cpu in stat["per_cpu"]
+    return {"ok": not problems, "tier": "tier1", "problems": problems,
+            "evidence": evidence}
+
+
 def preflight(manifest):
     cpus, nodes, cgroup = require_manifest(manifest)
+    level = tier(manifest)
     problems = []
     evidence = {"timestamp_ns": time.time_ns(), "host": platform.node(),
                 "kernel": platform.release(), "architecture": platform.machine(),
                 "virtualization": "unknown", "cmdline": read("/proc/cmdline"),
                 "compiler": version_line("cc"), "os_release": read("/etc/os-release"),
-                "cpu_model": next((line.split(":", 1)[1].strip() for line in
-                                   (read("/proc/cpuinfo") or "").splitlines()
-                                   if line.startswith(("model name", "Hardware", "Processor"))), None),
+                "cpu_model": cpu_identity(),
                 "cpus": sorted(cpus), "execution_cpu": manifest["isolation"]["execution_cpu"],
                 "mem_nodes": sorted(nodes),
                 "cgroup": str(cgroup), "topology": {}, "frequency": {},
                 "irq_affinity_overlap": []}
     if sys.platform != "linux":
         problems.append("requires Linux; this host cannot certify CPU/NUMA isolation")
-        return {"ok": False, "problems": problems, "evidence": evidence}
+        return {"ok": False, "tier": level, "problems": problems, "evidence": evidence}
+    if level == "tier1":
+        return tier1_preflight(manifest, cpus, cgroup, evidence)
     if os.geteuid() != 0:
         problems.append("requires host root to inspect and enforce the isolated partition")
     evidence["virtualization"] = virtualization()
@@ -331,7 +462,9 @@ def preflight(manifest):
                 problems.append("IRQ effective affinity unreadable: " + str(path))
         if evidence["irq_affinity_overlap"]:
             problems.append("IRQ effective affinity intersects benchmark CPUs")
-    return {"ok": not problems, "problems": problems, "evidence": evidence}
+    evidence["host_exclusivity_proved"] = not problems
+    return {"ok": not problems, "tier": "tier0", "problems": problems,
+            "evidence": evidence}
 
 
 def counters(cpus, cgroup):
@@ -378,6 +511,8 @@ def counters(cpus, cgroup):
                         ("core_throttle_count", "package_throttle_count")}
     return {"cpu_stat": numeric_file(cgroup / "cpu.stat"),
             "memory_events": numeric_file(cgroup / "memory.events"),
+            "memory_current": read(cgroup / "memory.current"),
+            "memory_peak": read(cgroup / "memory.peak"),
             "cpu_pressure_total": pressure,
             "memory_numa_stat": read(cgroup / "memory.numa_stat"),
             "per_cpu": stat, "interrupts": irq,
@@ -386,7 +521,7 @@ def counters(cpus, cgroup):
                               for cpu in cpus}}
 
 
-def noise(before, after, usage_before, usage_after):
+def noise(before, after, usage_before, usage_after, level="tier0"):
     problems = []
     def delta(section, key):
         return after[section].get(key, 0) - before[section].get(key, 0)
@@ -396,16 +531,18 @@ def noise(before, after, usage_before, usage_after):
     for key in ("oom", "oom_kill"):
         if delta("memory_events", key):
             problems.append("memory event: " + key)
-    if delta("cpu_pressure_total", "some"):
+    if level == "tier1" and delta("memory_events", "max"):
+        problems.append("memory event: max")
+    if level == "tier0" and delta("cpu_pressure_total", "some"):
         problems.append("CPU pressure accrued")
     for cpu in before["per_cpu"]:
         if cpu not in after["per_cpu"]:
             problems.append(f"CPU {cpu} counter disappeared")
             continue
-        for key in ("irq", "softirq", "steal"):
+        for key in (("irq", "softirq", "steal") if level == "tier0" else ("steal",)):
             if after["per_cpu"][cpu][key] != before["per_cpu"][cpu][key]:
                 problems.append(f"CPU {cpu} {key} time changed")
-        if after["interrupts"].get(cpu) != before["interrupts"].get(cpu):
+        if level == "tier0" and after["interrupts"].get(cpu) != before["interrupts"].get(cpu):
             problems.append(f"CPU {cpu} interrupt count changed")
         for key in ("core_throttle_count", "package_throttle_count"):
             old = before["thermal_throttle"][cpu][key]
@@ -414,9 +551,9 @@ def noise(before, after, usage_before, usage_after):
                 problems.append(f"CPU {cpu} thermal throttle counter changed: {key}")
         old_freq = before["frequency_khz"].get(cpu)
         new_freq = after["frequency_khz"].get(cpu)
-        if old_freq is not None and new_freq != old_freq:
+        if level == "tier0" and old_freq is not None and new_freq != old_freq:
             problems.append(f"CPU {cpu} frequency readback changed")
-    if usage_after.ru_nivcsw > usage_before.ru_nivcsw:
+    if level == "tier0" and usage_after.ru_nivcsw > usage_before.ru_nivcsw:
         problems.append("involuntary context switches")
     if usage_after.ru_majflt > usage_before.ru_majflt:
         problems.append("major page faults")
@@ -458,11 +595,16 @@ def one_run(argv, manifest, cpus, nodes, cgroup, folder, serial):
     usage_before = resource.getrusage(resource.RUSAGE_CHILDREN)
     begin = time.monotonic_ns()
     run_cpu = manifest["isolation"]["execution_cpu"]
-    launcher = [shutil.which("numactl"), "--membind=" + format_set(nodes),
-                "--physcpubind=" + str(run_cpu), "--"] + argv
+    level = tier(manifest)
+    launcher = ([shutil.which("numactl"), "--membind=" + format_set(nodes),
+                 "--physcpubind=" + str(run_cpu), "--"] + argv
+                if level == "tier0" else argv)
     def child_setup():
-        with (cgroup / "cgroup.procs").open("w") as stream:
-            stream.write(str(os.getpid()))
+        if level == "tier0":
+            with (cgroup / "cgroup.procs").open("w") as stream:
+                stream.write(str(os.getpid()))
+        elif current_cgroup() != cgroup.resolve():
+            raise RuntimeError("child cgroup changed before launch")
         os.sched_setaffinity(0, {run_cpu})
     try:
         proc = subprocess.Popen(launcher, cwd=manifest["workdir"], env=benchmark_env(),
@@ -499,8 +641,8 @@ def one_run(argv, manifest, cpus, nodes, cgroup, folder, serial):
     (folder / (stem + ".stderr.txt")).write_text(stderr)
     metric_field = manifest.get("metric_field", "online_ms")
     fields = output_fields(stdout, metric_field)
-    issues = noise(before, after, usage_before, usage_after)
-    if read(cgroup / "cgroup.procs"):
+    issues = noise(before, after, usage_before, usage_after, level)
+    if level == "tier0" and read(cgroup / "cgroup.procs"):
         issues.append("benchmark cgroup not empty after process exit")
         kill_file = cgroup / "cgroup.kill"
         if kill_file.exists():
@@ -533,12 +675,16 @@ def one_run(argv, manifest, cpus, nodes, cgroup, folder, serial):
     if timed_out:
         issues.append("timeout")
     return {"serial": serial, "status": "valid" if not issues else "invalid",
-            "issues": issues, "command": argv, "binary_sha256": binary_before,
+            "tier": level, "issues": issues, "command": argv,
+            "binary_sha256": binary_before,
             "returncode": proc.returncode, "timed_out": timed_out,
             "environment": benchmark_env(),
             "outer_ms": outer_ms, "metric_field": metric_field,
             "metric_ms": metric,
             "online_ms": metric if metric_field == "online_ms" else None,
+            "child_cpu_user_ms": (usage_after.ru_utime - usage_before.ru_utime) * 1000,
+            "child_cpu_system_ms": (usage_after.ru_stime - usage_before.ru_stime) * 1000,
+            "child_peak_rss_kb_cumulative": usage_after.ru_maxrss,
             "child_involuntary_switches": usage_after.ru_nivcsw - usage_before.ru_nivcsw,
             "child_major_faults": usage_after.ru_majflt - usage_before.ru_majflt,
             "fields": fields, "before": before, "after": after,
@@ -548,6 +694,7 @@ def one_run(argv, manifest, cpus, nodes, cgroup, folder, serial):
 
 def execute(manifest, output):
     cpus, nodes, cgroup = require_manifest(manifest)
+    level = tier(manifest)
     output.mkdir(parents=True, exist_ok=False)
     json_write(output / "manifest.json", manifest)
     artifact_hashes_before = {path: sha256(path) for path in manifest["artifacts"]}
@@ -559,6 +706,7 @@ def execute(manifest, output):
     json_write(output / "preflight.json", health)
     if not health["ok"]:
         summary = {"status": "rejected", "problems": health["problems"],
+                   "tier": level,
                    "artifact_sha256": artifact_hashes_before,
                    "binary_sha256": binary_hashes_before,
                    "runner_sha256": runner_hash_before,
@@ -633,12 +781,35 @@ def execute(manifest, output):
         boot = sorted(statistics.median(per_case[rng.randrange(len(per_case))]
                                         for _ in per_case) for _ in range(10000))
         bootstrap95 = [boot[250], boot[9749]]
+    pair_bootstrap95 = None
+    if complete and level == "tier1":
+        rng = random.Random(20261012)
+        boot = sorted(statistics.median(ratios[rng.randrange(len(ratios))]
+                                        for _ in ratios) for _ in range(10000))
+        pair_bootstrap95 = [boot[250], boot[9749]]
+    observed_ratio = statistics.median(per_case) if complete else None
+    qualified = complete and (level == "tier0" or
+                              pair_bootstrap95 is not None and pair_bootstrap95[0] > 1)
+    allocation = manifest["isolation"].get("allocation", {})
     summary = {"status": "completed" if complete else "invalid",
+               "tier": level,
+               "provider": allocation.get("provider"),
+               "instance_id": allocation.get("instance_id"),
+               "allocation_receipt_sha256": (artifact_hashes_before.get(
+                   allocation.get("receipt")) if level == "tier1" else None),
+               "execution_cpu": manifest["isolation"]["execution_cpu"],
+               "cgroup": str(cgroup),
+               "observed_cpu_max": health["evidence"].get("cpu.max"),
+               "observed_memory_max": health["evidence"].get("memory.max"),
+               "host_exclusivity_proved": level == "tier0" and health["ok"],
+               "speedup_qualified": qualified,
+               "observed_ratio_median": observed_ratio,
                "metric_field": manifest.get("metric_field", "online_ms"),
                "measurement_kind": manifest.get("measurement_kind", "online"),
                "valid_pairs": len(ratios), "expected_pairs": expected // 2,
-               "paired_speedup": statistics.median(per_case) if complete else None,
+               "paired_speedup": observed_ratio if qualified else None,
                "bootstrap95_by_target": bootstrap95,
+               "bootstrap95_by_pair": pair_bootstrap95,
                "artifact_sha256": artifact_hashes_before,
                "artifacts_stable": artifacts_stable,
                "binary_sha256": binary_hashes_before,

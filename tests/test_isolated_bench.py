@@ -12,6 +12,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 
 
 SOURCE = Path(__file__).resolve().parents[1] / "scripts" / "isolated_bench.py"
@@ -22,6 +23,82 @@ SPEC.loader.exec_module(bench)
 
 
 class IsolatedBenchTests(unittest.TestCase):
+    def test_arm_cpu_identity_fallback(self):
+        cpuinfo = "processor: 0\nCPU implementer: 0x61\nCPU architecture: 8\nCPU part: 0x000\n"
+        with mock.patch.object(bench, "read", return_value=cpuinfo):
+            self.assertEqual(bench.cpu_identity(), "ARM 0x61/8/0x000")
+
+    def tier1_manifest(self, root):
+        binary = root / "bench"
+        binary.write_text("#!/bin/sh\nexit 0\n")
+        binary.chmod(0o755)
+        allocation = root / "allocation.json"
+        allocation.write_text(json.dumps({"provider": "runpod", "instance_id": "pod-123"}))
+        return {"schema": 1, "workdir": str(root), "timeout_s": 1,
+                "repetitions": 5, "measurement_boundary": "internal online_ms",
+                "pair_fields": ["target_x"], "result_field": "scalar",
+                "artifacts": [str(binary), str(allocation)],
+                "isolation": {"tier": "tier1", "cpus": "4", "execution_cpu": 4,
+                              "mem_nodes": "0", "cgroup": "/sys/fs/cgroup",
+                              "allocation": {"provider": "runpod", "instance_id": "pod-123",
+                                             "receipt": str(allocation)}},
+                "cases": [{"id": "t0", "expected_fields": {"target_x": "9"},
+                           "expected_result": "7", "reference": [str(binary), "reference"],
+                           "candidate": [str(binary), "candidate"]}]}
+
+    def test_tier1_manifest_binds_allocation_and_repeated_one_cpu_case(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            manifest = self.tier1_manifest(Path(dirname))
+            bench.require_manifest(manifest)
+            missing = copy.deepcopy(manifest)
+            missing["artifacts"].pop()
+            with self.assertRaisesRegex(ValueError, "hash-bound"):
+                bench.require_manifest(missing)
+            wrong = copy.deepcopy(manifest)
+            wrong["isolation"]["allocation"]["instance_id"] = "pod-other"
+            with self.assertRaisesRegex(ValueError, "identity mismatch"):
+                bench.require_manifest(wrong)
+            short = copy.deepcopy(manifest)
+            short["repetitions"] = 4
+            with self.assertRaisesRegex(ValueError, "five alternating"):
+                bench.require_manifest(short)
+            multi_cpu = copy.deepcopy(manifest)
+            multi_cpu["isolation"]["cpus"] = "4-5"
+            with self.assertRaisesRegex(ValueError, "one pinned"):
+                bench.require_manifest(multi_cpu)
+
+    def test_tier1_preflight_uses_exposed_cpu_and_current_cgroup(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            root = Path(dirname)
+            cgroup = root / "pod"
+            cgroup.mkdir()
+            manifest = self.tier1_manifest(root)
+            manifest["isolation"]["cgroup"] = str(cgroup)
+            files = {"cpuset.cpus.effective": "4-5", "cpu.stat": "nr_throttled 0\nthrottled_usec 0",
+                     "memory.events": "max 0\noom 0\noom_kill 0", "cpu.max": "max 100000",
+                     "memory.max": "8589934592", "cpu.pressure": "some avg10=0 total=0",
+                     "memory.current": "1024", "thread_siblings_list": "4-5"}
+            original_root = bench.CGROUP_ROOT
+            bench.CGROUP_ROOT = root
+            try:
+                with mock.patch.object(bench, "read", side_effect=lambda path: files.get(Path(path).name)), \
+                     mock.patch.object(bench, "current_cgroup", return_value=cgroup.resolve()), \
+                     mock.patch.object(bench, "virtualization", return_value="docker"), \
+                     mock.patch.object(bench.os, "sched_getaffinity", return_value={4, 5}, create=True), \
+                     mock.patch.object(bench, "counters", return_value={"per_cpu": {4: {"steal": 0}}}):
+                    evidence = {"topology": {}, "frequency": {}, "cpu_model": "test CPU"}
+                    health = bench.tier1_preflight(manifest, {4}, cgroup, evidence)
+                    self.assertTrue(health["ok"], health["problems"])
+                    self.assertFalse(health["evidence"]["host_exclusivity_proved"])
+                    with mock.patch.object(bench, "current_cgroup", return_value=root):
+                        wrong = bench.tier1_preflight(manifest, {4}, cgroup,
+                                                       {"topology": {}, "frequency": {},
+                                                        "cpu_model": "test CPU"})
+                    self.assertFalse(wrong["ok"])
+                    self.assertTrue(any("current cgroup" in p for p in wrong["problems"]))
+            finally:
+                bench.CGROUP_ROOT = original_root
+
     def test_cpu_ranges_and_invalid_ranges(self):
         self.assertEqual(bench.cpu_set("1,3-5,4"), {1, 3, 4, 5})
         self.assertEqual(bench.format_set({5, 1, 3}), "1,3,5")
@@ -51,6 +128,49 @@ class IsolatedBenchTests(unittest.TestCase):
         self.assertTrue(any("interrupt count" in issue for issue in issues))
         self.assertTrue(any("steal" in issue for issue in issues))
         self.assertTrue(any("context switches" in issue for issue in issues))
+        tier1_issues = bench.noise(before, after, u0, u1, "tier1")
+        self.assertTrue(any("throttling" in issue for issue in tier1_issues))
+        self.assertTrue(any("steal" in issue for issue in tier1_issues))
+        self.assertFalse(any("interrupt count" in issue for issue in tier1_issues))
+        self.assertFalse(any("context switches" in issue for issue in tier1_issues))
+        capped = copy.deepcopy(before)
+        capped["memory_events"]["max"] = 0
+        capped_after = copy.deepcopy(capped)
+        capped_after["memory_events"]["max"] = 1
+        self.assertIn("memory event: max",
+                      bench.noise(capped, capped_after, u0, u0, "tier1"))
+
+    def test_tier1_speedup_needs_paired_interval_above_one(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            root = Path(dirname)
+            manifest = self.tier1_manifest(root)
+            original_preflight, original_run = bench.preflight, bench.one_run
+            bench.preflight = lambda _: {"ok": True, "tier": "tier1",
+                                         "problems": [], "evidence": {}}
+            try:
+                for name, ratios in (("strong", [2.0] * 5),
+                                     ("mixed", [2.0, 1.5, 1.1, 0.8, 0.7])):
+                    def fake_run(argv, _manifest, _cpus, _nodes, _cgroup, _folder, serial):
+                        ratio = ratios[(serial - 1) // 2]
+                        metric = ratio if argv[-1] == "reference" else 1.0
+                        return {"serial": serial, "status": "valid", "issues": [],
+                                "metric_ms": metric, "online_ms": metric,
+                                "fields": {"target_x": "9", "scalar": "7"}}
+                    bench.one_run = fake_run
+                    summary = bench.execute(manifest, root / name)
+                    self.assertEqual(summary["status"], "completed")
+                    self.assertEqual(summary["tier"], "tier1")
+                    self.assertEqual(summary["provider"], "runpod")
+                    self.assertIsNotNone(summary["bootstrap95_by_pair"])
+                    if name == "strong":
+                        self.assertTrue(summary["speedup_qualified"])
+                        self.assertEqual(summary["paired_speedup"], 2.0)
+                    else:
+                        self.assertFalse(summary["speedup_qualified"])
+                        self.assertIsNone(summary["paired_speedup"])
+                        self.assertIsNotNone(summary["observed_ratio_median"])
+            finally:
+                bench.preflight, bench.one_run = original_preflight, original_run
 
     def test_pair_fields_and_single_worker(self):
         with tempfile.TemporaryDirectory() as dirname:

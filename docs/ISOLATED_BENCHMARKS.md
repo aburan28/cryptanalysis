@@ -1,14 +1,15 @@
-# Isolated CPU benchmark service
+# Tiered CPU benchmark service
 
 The benchmark runner is [scripts/isolated_bench.py](../scripts/isolated_bench.py).
 It accepts frozen JSON manifests, serializes every job through one persistent
 SQLite queue and an exclusive worker lock, and records raw output and host
 counter snapshots for each reference/candidate solve. It does **not** publish
 a speedup unless every pair verifies, matches the declared input fields, and
-passes the isolation and noise gates. Run the service on housekeeping CPUs;
-the benchmark subprocesses alone enter the isolated partition.
+passes the selected tier's preflight and noise gates. Tier 0 runs the service
+on housekeeping CPUs; its benchmark subprocesses enter the isolated partition.
+Tier 1 runs both variants on one pinned CPU exposed by the same cloud instance.
 
-## What constitutes a controlled result
+## Tier 0: host-isolated comparison
 
 The strict preflight requires a physical Linux host with administrative
 control, an empty cgroup v2 `cpuset.cpus.partition=isolated` partition whose
@@ -25,16 +26,68 @@ throttling, OOM, IRQ or softirq time, interrupt-count changes, steal time,
 involuntary context switches, timeout, nonzero exit, or missing
 `verified=1`/`online_ms`. Raw failures are retained.
 
-This is a deliberately stringent gate. `cpuset` and a container's visible
+This is a deliberately stringent host gate. `cpuset` and a container's visible
 CPU list alone cannot prove that other tenants have no host-level contention.
-RunPod Pods are containerized compute allocations; a Pod may fail this host
-preflight even when it has apparently dedicated vCPUs. A rejected Pod can
-run correctness tests and exploratory profiling, but its receipt cannot be
-used as a controlled CPU speedup claim. [Linux's cgroup v2 documentation](https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html)
+RunPod Pods use Tier 1 when they pass its separate instance-scoped gate.
+[Linux's cgroup v2 documentation](https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html)
 defines the isolated partition and exclusive CPUs. [Linux's CPU isolation
 guide](https://docs.kernel.org/admin-guide/cpu-isolation.html) explains tick,
 RCU, IRQ, and SMT considerations. The runner checks the effective state,
 not just the requested configuration.
+
+## Tier 1: cloud-instance comparison
+
+Set `isolation.tier` to `tier1` and retain a sanitized, immutable provider
+allocation JSON file in `artifacts`. The file and the manifest's
+`isolation.allocation` must agree on nonempty `provider` and `instance_id`;
+the manifest gives its absolute path as `receipt`. Do not put provider API
+keys in either file. Tier 1 version 1 accepts one frozen workload case and
+one pinned exposed CPU, with at least five alternating reference/candidate
+pairs. Both variants use the same instance, executable limits, target, and
+measurement boundary. A multiworker timing claim needs a separate extension
+that records and verifies every worker's placement.
+
+For a Pod whose visible CPU is `4`, the tier-specific manifest fields are:
+
+```json
+{
+  "repetitions": 5,
+  "isolation": {
+    "tier": "tier1", "cpus": "4", "execution_cpu": 4,
+    "mem_nodes": "0", "cgroup": "/sys/fs/cgroup",
+    "allocation": {
+      "provider": "runpod", "instance_id": "POD_ID",
+      "receipt": "/workspace/receipts/POD_ID-allocation.json"
+    }
+  },
+  "artifacts": ["/workspace/receipts/POD_ID-allocation.json"]
+}
+```
+
+This excerpt belongs in an otherwise complete schema-1 benchmark manifest;
+its allocation receipt must contain the same `provider` and `instance_id`.
+Set `cgroup` to the runner's actual cgroup path from `/proc/self/cgroup`,
+which may be the mounted `/sys/fs/cgroup` root inside a container. `probe`
+reports any unmet Tier 1 requirement before a pair is dispatched.
+
+The Tier 1 preflight checks Linux cgroup v2, the runner's actual cgroup,
+effective cpuset and affinity for the declared CPU, allocation identity,
+CPU model and topology, and availability of quota, pressure, memory, and
+steal-time counters. It does not require host root, a host-isolated partition,
+`nohz_full`, fixed frequency, IRQ exclusion, or `numactl`. The child inherits
+the verified cgroup and is pinned with `sched_setaffinity`. Each pair records
+raw counters, process CPU usage, memory events, source and binary hashes,
+both answers, and exact run order. Any throttle, OOM, steal-time increment,
+major fault, failed verification, timeout, changed input, or changed source
+invalidates that pair. Interrupts, pressure, context switches, and frequency
+readbacks remain visible in the receipt; they are not host-exclusivity proofs.
+
+Completed Tier 1 results expose an observed median paired ratio. The
+`paired_speedup` field is populated only when a deterministic 95% paired
+bootstrap interval across the repeated pairs has lower bound above 1.
+Report the provider, instance ID, Tier 1 label, ratio, interval, and
+observable limits together. A Tier 1 receipt establishes an instance-scoped
+result, while Tier 0 establishes the stronger host-isolated result.
 
 The benchmark executable owns the `online_ms` interval. The manifest must
 describe that timer's boundary; the runner cannot infer it from process
