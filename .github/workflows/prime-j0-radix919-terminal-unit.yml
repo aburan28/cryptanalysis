@@ -43,3 +43,18 @@ jobs:
         run: |
           set -euo pipefail
           python3 experiments/prime-j0-radix919-terminal-unit-20261012/screen.py --check
+
+  holdout:
+    name: Independent scalar and point replay
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify the independently generated point panel
+        run: |
+          set -euo pipefail
+          python3 experiments/prime-j0-radix919-terminal-unit-20261012/holdout.py --check
+      - name: Replay all 512 scalar point sums
+        run: |
+          set -euo pipefail
+          python3 experiments/prime-j0-radix919-terminal-unit-20261012/holdout_replay.py --check

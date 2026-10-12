@@ -24,14 +24,31 @@ The summed modeled product depth decreased from 199,382 to 199,373.
 | Modeled field products | 484,163 | 486,343 |
 | Summed modeled depth | 199,382 | 199,373 |
 
+After the design snapshot was committed as `9543d45cc`, a new 512-scalar
+holdout was generated from seed `20261012919`. All **512/512** outputs from
+the radix-919 decomposition matched independently generated secp256k1
+points after each selected term was separately constructed as a point and
+the terms were summed with an affine group law. Thirty holdout scalars used
+the terminal correction. The holdout source model used **60,840 products**
+versus **60,518** for radix 943, an increase of 322 (0.532%).
+
+| Frozen holdout metric | Radix 943 | Radix 919 with terminal correction |
+| --- | ---: | ---: |
+| Scalar and point cases | 512 | 512 |
+| Selected affine terms | 6,656 | 6,686 |
+| Gauge rotations | 1,126 | 1,148 |
+| Modeled field products | 60,518 | 60,840 |
+| Summed modeled depth | 24,939 | 24,926 |
+| Independently replayed point outputs | — | 512/512 |
+
 The design receipt `design.json` binds the input, plan, screen, and atlas
 sources; `design-rows.jsonl` preserves every scalar's terminal state and
 paired source cost. `TerminalUnit.lean`, `DigitCover.lean`, and
 `OrbitAtlas.lean` prove the seven-state terminal theorem, complete scalar
 reconstruction, and orbit digit transport for every integer scalar.
 
-The next gate is an independent holdout generated only after this design
-snapshot is committed, followed by native implementation and complete
-point replay. The source count is a model of ordinary addition paths;
+The next gate is a native implementation of the recoder, table, and XYZZ
+evaluation, followed by complete-operation measurement. The source count
+is a model of ordinary addition paths;
 recoding, table construction, memory access, exceptional paths, and field
 kernel latency need complete-operation measurement on an isolated host.
