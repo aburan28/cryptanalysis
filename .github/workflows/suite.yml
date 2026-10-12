@@ -35,7 +35,7 @@ jobs:
       run:
         working-directory: suite
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -137,8 +137,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - uses: actions/cache@v6
@@ -173,7 +173,7 @@ jobs:
       run:
         working-directory: suite
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.87.0"
@@ -189,6 +189,8 @@ jobs:
             echo "::error::cryptanalysis-suite declares rust-version=$got, but this job builds it with 1.87"
             exit 1
           fi
+      - name: Hyperelliptic mirror parity
+        run: cargo run --locked --bin hyperelliptic-source-parity --
       - name: Check
         run: cargo check --all-targets
       - name: Test
@@ -199,7 +201,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@v2
         with:
@@ -227,8 +229,8 @@ jobs:
       run:
         working-directory: suite/python/indexcalc
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
       - name: Cache the pip download cache
