@@ -3411,8 +3411,6 @@ int ca_ec_tau4_hot_mul_profile(const ca_group *g, const ca_tau4_hot_precomp *pre
 static int tau4_mul_prepared_impl(const ca_group *g, const ca_tau4_precomp *pre, ca_elem *out,
                                   uint64_t k, uint64_t *triples, uint64_t *adds,
                                   uint64_t *rotations, int recoder)
-int ca_ec_tau4_mul_prepared(const ca_group *g, const ca_tau4_precomp *pre, ca_elem *out, uint64_t k,
-                            uint64_t *triples, uint64_t *adds)
 {
     if (!g || !pre || !out || pre->g != g) return 0;
     if (triples) *triples = 0;
@@ -3443,14 +3441,6 @@ int ca_ec_tau4_mul_prepared(const ca_group *g, const ca_tau4_precomp *pre, ca_el
     if (!nd) return 0;
     tau_jac acc = {0, g->mont.r1, 0};
     uint64_t na = 0, n3 = 0, nr = 0;
-    ca_i128 x, y;
-    reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y}, pre->det, k,
-                        &x, &y);
-    uint8_t digits[256];
-    size_t nd = gen_tau4_digits_fast(x, y, pre->digit, digits);
-    if (!nd) return 0;
-    tau_jac acc = {0, g->mont.r1, 0};
-    uint64_t na = 0, n3 = 0;
     size_t nq = (nd + 1) / 2;
     for (size_t qi = nq; qi-- > 0;) {
         if (acc.z) {
@@ -3478,7 +3468,6 @@ int ca_ec_tau4_mul_prepared(const ca_group *g, const ca_tau4_precomp *pre, ca_el
                 na++;
             }
         }
-        if (has_odd && digits[even] != 255) return 0;
         ca_tau4_digit d = pre->digit[slot];
         ca_elem seed = has_odd ? pre->tau_seed[d.seed] : pre->seed[d.seed];
         if (seed.w[2]) continue;
