@@ -25,7 +25,8 @@ recorded unit code to its curve endomorphism. `DigitCover.lean` proves the
 integer reconstruction and subgroup congruence. The Lean development
 formalizes the pair-level sector and factorization. The disjoint
 512-scalar holdout independently checks the curve-level point bridge and
-scalar replay for the implementation; native replay remains the next gate.
+scalar replay for the implementation. The opt-in native evaluator also
+replays all 512 points and audits the complete ordinary residue atlas.
 
 | Result | Lean declaration | Exact status |
 | --- | --- | --- |
