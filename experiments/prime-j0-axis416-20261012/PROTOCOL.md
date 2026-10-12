@@ -29,3 +29,8 @@ must be committed after this phase; its replay source must be committed
 before drawing any new holdout inputs. Independent point replay and a native
 implementation are separate gates. CPU timing requires a qualifying
 isolated-host receipt and a matched complete-operation comparison.
+
+The seed-20261012416 fixture was drawn after the generator commit but
+before the independent replay source was frozen. It is retained as
+`pre-replay-freeze-input.json`, excluded from qualification, and included
+in the disjointness audit for the replacement seed-20261012417 panel.

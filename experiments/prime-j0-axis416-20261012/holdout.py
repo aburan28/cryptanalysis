@@ -10,13 +10,14 @@ import sys
 HERE = Path(__file__).resolve().parent
 EXP = HERE.parent
 OUTPUT = HERE / "holdout.json"
-SEED = 20261012416
+SEED = 20261012417
 CASES = 512
 PRIOR_PANELS = (
     EXP / "prime-j0-sector-digit-20261010/fresh-inputs.json",
     EXP / "prime-j0-radix929-topball-20261012/holdout.json",
     EXP / "prime-j0-split-top-20261012/holdout.json",
     EXP / "prime-j0-radix569-topball-20261012/holdout.json",
+    EXP / "prime-j0-axis416-20261012/pre-replay-freeze-input.json",
 )
 P = (1 << 256) - (1 << 32) - 977
 ORDER = int("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", 16)
