@@ -896,14 +896,14 @@ impl U256XYZZ {
 // built in the same representation, so every general field product can use
 // the secp256k1 pseudo-Mersenne reduction without Montgomery conversions.
 #[derive(Clone, Copy)]
-struct U256XYZZCanonical {
+struct U256XYZZCanonical<const KARATSUBA: bool> {
     x: super::U256,
     y: super::U256,
     zz: super::U256,
     zzz: super::U256,
 }
 
-impl U256XYZZCanonical {
+impl<const KARATSUBA: bool> U256XYZZCanonical<KARATSUBA> {
     fn identity() -> Self {
         Self { x: super::U256::ZERO, y: super::U256::ONE,
                zz: super::U256::ZERO, zzz: super::U256::ZERO }
@@ -921,27 +921,27 @@ impl U256XYZZCanonical {
     fn rotate_power(self, power: usize) -> Self {
         assert!(power < 3);
         if power == 0 || self.is_identity() { return self; }
-        Self { x: u256_mul_solinas(self.x, U256_BETA_CANONICAL[power]), ..self }
+        Self { x: u256_mul_solinas_with::<KARATSUBA>(self.x, U256_BETA_CANONICAL[power]), ..self }
     }
 
     fn add_mixed(self, q: U256Affine) -> Self {
         if self.is_identity() { return Self::from_affine(q); }
-        let u2 = u256_mul_solinas(q.x, self.zz);
-        let s2 = u256_mul_solinas(q.y, self.zzz);
+        let u2 = u256_mul_solinas_with::<KARATSUBA>(q.x, self.zz);
+        let s2 = u256_mul_solinas_with::<KARATSUBA>(q.y, self.zzz);
         let p = u256_sub(u2, self.x);
         let r = u256_sub(s2, self.y);
         if bool::from(p.ct_is_zero()) {
             return if bool::from(r.ct_is_zero()) { self.double() }
                    else { Self::identity() };
         }
-        let pp = u256_square_solinas(p);
-        let ppp = u256_mul_solinas(p, pp);
-        let qx = u256_mul_solinas(self.x, pp);
-        let rx = u256_sub(u256_sub(u256_square_solinas(r), ppp), u256_add(qx, qx));
-        let ry = u256_sub(u256_mul_solinas(r, u256_sub(qx, rx)),
-                          u256_mul_solinas(self.y, ppp));
-        let rzz = u256_mul_solinas(self.zz, pp);
-        let rzzz = u256_mul_solinas(self.zzz, ppp);
+        let pp = u256_square_solinas_with::<KARATSUBA>(p);
+        let ppp = u256_mul_solinas_with::<KARATSUBA>(p, pp);
+        let qx = u256_mul_solinas_with::<KARATSUBA>(self.x, pp);
+        let rx = u256_sub(u256_sub(u256_square_solinas_with::<KARATSUBA>(r), ppp), u256_add(qx, qx));
+        let ry = u256_sub(u256_mul_solinas_with::<KARATSUBA>(r, u256_sub(qx, rx)),
+                          u256_mul_solinas_with::<KARATSUBA>(self.y, ppp));
+        let rzz = u256_mul_solinas_with::<KARATSUBA>(self.zz, pp);
+        let rzzz = u256_mul_solinas_with::<KARATSUBA>(self.zzz, ppp);
         Self { x: rx, y: ry, zz: rzz, zzz: rzzz }
     }
 
@@ -950,16 +950,16 @@ impl U256XYZZCanonical {
             return Self::identity();
         }
         let u = u256_add(self.y, self.y);
-        let v = u256_square_solinas(u);
-        let w = u256_mul_solinas(u, v);
-        let s = u256_mul_solinas(self.x, v);
-        let xx = u256_square_solinas(self.x);
+        let v = u256_square_solinas_with::<KARATSUBA>(u);
+        let w = u256_mul_solinas_with::<KARATSUBA>(u, v);
+        let s = u256_mul_solinas_with::<KARATSUBA>(self.x, v);
+        let xx = u256_square_solinas_with::<KARATSUBA>(self.x);
         let m = u256_add(u256_add(xx, xx), xx);
-        let rx = u256_sub(u256_square_solinas(m), u256_add(s, s));
-        let ry = u256_sub(u256_mul_solinas(m, u256_sub(s, rx)),
-                          u256_mul_solinas(w, self.y));
-        let rzz = u256_mul_solinas(v, self.zz);
-        let rzzz = u256_mul_solinas(w, self.zzz);
+        let rx = u256_sub(u256_square_solinas_with::<KARATSUBA>(m), u256_add(s, s));
+        let ry = u256_sub(u256_mul_solinas_with::<KARATSUBA>(m, u256_sub(s, rx)),
+                          u256_mul_solinas_with::<KARATSUBA>(w, self.y));
+        let rzz = u256_mul_solinas_with::<KARATSUBA>(v, self.zz);
+        let rzzz = u256_mul_solinas_with::<KARATSUBA>(w, self.zzz);
         Self { x: rx, y: ry, zz: rzz, zzz: rzzz }
     }
 
@@ -967,10 +967,10 @@ impl U256XYZZCanonical {
         if self.is_identity() { return "identity".to_owned(); }
         let ctx = &super::HYBRID_FIELD.0;
         let inv_zzz = super::hybrid_binary_invert_raw(self.zzz, ctx);
-        let inv_z = u256_mul_solinas(self.zz, inv_zzz);
-        let inv_zz = u256_square_solinas(inv_z);
-        let x = u256_mul_solinas(self.x, inv_zz);
-        let y = u256_mul_solinas(self.y, inv_zzz);
+        let inv_z = u256_mul_solinas_with::<KARATSUBA>(self.zz, inv_zzz);
+        let inv_zz = u256_square_solinas_with::<KARATSUBA>(inv_z);
+        let x = u256_mul_solinas_with::<KARATSUBA>(self.x, inv_zz);
+        let y = u256_mul_solinas_with::<KARATSUBA>(self.y, inv_zzz);
         format!("{}:{}", hex::encode(x.to_bytes_be()), hex::encode(y.to_bytes_be()))
     }
 }
@@ -991,9 +991,89 @@ fn u256_mul(a: super::U256, b: super::U256) -> super::U256 {
 // back into the low half. Inputs and result are canonical field residues.
 // The first fold leaves at most one high bit; after any second overflow the
 // low half is below c, so the third fixed fold cannot overflow.
-fn u256_mul_solinas(value: super::U256, constant: super::U256) -> super::U256 {
+// Add or subtract a shifted limb vector with a fixed-length carry chain.
+// The sign is encoded as a mask, so field values do not select a branch.
+fn add_shifted_signed<const N: usize>(
+    out: &mut [u64; N], shift: usize, words: &[u64], negative: bool,
+) {
+    let mask = 0u64.wrapping_sub(negative as u64);
+    let mut carry = negative as u128;
+    for index in shift..N {
+        let word = if index - shift < words.len() { words[index - shift] } else { 0 };
+        let sum = out[index] as u128 + (word ^ mask) as u128 + carry;
+        out[index] = sum as u64;
+        carry = sum >> 64;
+    }
+    debug_assert_eq!(carry, negative as u128);
+}
+
+fn abs_diff_u64(left: u64, right: u64) -> (u64, bool) {
+    let (difference, negative) = left.overflowing_sub(right);
+    let mask = 0u64.wrapping_sub(negative as u64);
+    ((difference ^ mask).wrapping_sub(mask), negative)
+}
+
+fn abs_diff_u128(left: u128, right: u128) -> (u128, bool) {
+    let (difference, negative) = left.overflowing_sub(right);
+    let mask = 0u128.wrapping_sub(negative as u128);
+    ((difference ^ mask).wrapping_sub(mask), negative)
+}
+
+// (a0+B*a1)(b0+B*b1), B=2^64. The middle coefficient uses
+// a0*b0 + a1*b1 + (a1-a0)(b0-b1): three 64-by-64 products total.
+fn mul_u128_karatsuba(left: u128, right: u128) -> [u64; 4] {
+    let (a0, a1) = (left as u64, (left >> 64) as u64);
+    let (b0, b1) = (right as u64, (right >> 64) as u64);
+    let p0 = a0 as u128 * b0 as u128;
+    let p2 = a1 as u128 * b1 as u128;
+    let (da, na) = abs_diff_u64(a1, a0);
+    let (db, nb) = abs_diff_u64(b0, b1);
+    let difference = da as u128 * db as u128;
+    let mut out = [0u64; 5];
+    let words = |value: u128| [value as u64, (value >> 64) as u64];
+    add_shifted_signed(&mut out, 0, &words(p0), false);
+    add_shifted_signed(&mut out, 2, &words(p2), false);
+    add_shifted_signed(&mut out, 1, &words(p0), false);
+    add_shifted_signed(&mut out, 1, &words(p2), false);
+    add_shifted_signed(&mut out, 1, &words(difference), na ^ nb);
+    debug_assert_eq!(out[4], 0);
+    [out[0], out[1], out[2], out[3]]
+}
+
+// Apply the same identity with B=2^128. Each of the three 128-bit
+// subproducts uses three 64-by-64 products, for nine in total.
+fn u256_mul_wide_karatsuba(left: super::U256, right: super::U256)
+    -> (super::U256, super::U256) {
+    let half = |words: &[u64; 4], offset: usize| {
+        words[offset] as u128 | ((words[offset + 1] as u128) << 64)
+    };
+    let (a0, a1) = (half(&left.0, 0), half(&left.0, 2));
+    let (b0, b1) = (half(&right.0, 0), half(&right.0, 2));
+    let p0 = mul_u128_karatsuba(a0, b0);
+    let p2 = mul_u128_karatsuba(a1, b1);
+    let (da, na) = abs_diff_u128(a1, a0);
+    let (db, nb) = abs_diff_u128(b0, b1);
+    let difference = mul_u128_karatsuba(da, db);
+    let mut out = [0u64; 9];
+    add_shifted_signed(&mut out, 0, &p0, false);
+    add_shifted_signed(&mut out, 4, &p2, false);
+    add_shifted_signed(&mut out, 2, &p0, false);
+    add_shifted_signed(&mut out, 2, &p2, false);
+    add_shifted_signed(&mut out, 2, &difference, na ^ nb);
+    debug_assert_eq!(out[8], 0);
+    (super::Uint([out[0], out[1], out[2], out[3]]),
+     super::Uint([out[4], out[5], out[6], out[7]]))
+}
+
+fn u256_mul_solinas_with<const KARATSUBA: bool>(
+    value: super::U256, constant: super::U256,
+) -> super::U256 {
     const C: u128 = (1u128 << 32) + 977;
-    let (low, high) = super::U256::mul_wide(&value, &constant);
+    let (low, high) = if KARATSUBA {
+        u256_mul_wide_karatsuba(value, constant)
+    } else {
+        super::U256::mul_wide(&value, &constant)
+    };
     let mut limbs = [0u64; 5];
     let mut carry = 0u128;
     for index in 0..4 {
@@ -1021,12 +1101,20 @@ fn u256_mul_solinas(value: super::U256, constant: super::U256) -> super::U256 {
     super::U256::cmov(&result, &reduced, subtle::Choice::from((borrow ^ 1) as u8))
 }
 
+fn u256_mul_solinas(value: super::U256, constant: super::U256) -> super::U256 {
+    u256_mul_solinas_with::<false>(value, constant)
+}
+
 fn u256_mul_const_solinas(value: super::U256, constant: super::U256) -> super::U256 {
     u256_mul_solinas(value, constant)
 }
 
+fn u256_square_solinas_with<const KARATSUBA: bool>(value: super::U256) -> super::U256 {
+    u256_mul_solinas_with::<KARATSUBA>(value, value)
+}
+
 fn u256_square_solinas(value: super::U256) -> super::U256 {
-    u256_mul_solinas(value, value)
+    u256_square_solinas_with::<false>(value)
 }
 
 fn u256_square(a: super::U256) -> super::U256 {
@@ -2441,6 +2529,9 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 70 {
+        return warm_format(69);
+    }
     if format == 69 {
         std::sync::LazyLock::force(&U256_BETA_CANONICAL);
         return SECTOR_U256_CANONICAL_TABLES.retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES;
@@ -2881,11 +2972,11 @@ fn evaluate_u256_gauge_xyzz(
     (result.affine_hex_binary_inverse(), gauge_products)
 }
 
-fn evaluate_u256_gauge_xyzz_canonical(
+fn evaluate_u256_gauge_xyzz_canonical<const KARATSUBA: bool>(
     choices: &[(usize, usize)], windows: &[Box<[U256Affine]>],
 ) -> (String, usize) {
     assert_eq!(choices.len(), windows.len());
-    let mut result = U256XYZZCanonical::identity();
+    let mut result = U256XYZZCanonical::<KARATSUBA>::identity();
     let mut gauge = None;
     let mut gauge_products = 0usize;
     for power in [1usize, 2, 0] {
@@ -2995,7 +3086,7 @@ pub(super) fn multiply_u256_sector_xyzz(
      fallback, corner, gauge_products)
 }
 
-pub(super) fn multiply_u256_sector_xyzz_canonical(
+fn multiply_u256_sector_xyzz_canonical_with<const KARATSUBA: bool>(
     scalar_words: [u64; 4],
 ) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
     let scalar = super::Uint(scalar_words);
@@ -3009,10 +3100,22 @@ pub(super) fn multiply_u256_sector_xyzz_canonical(
     let tables = &*SECTOR_U256_CANONICAL_TABLES;
     let (choices, nonidentity) = u256_sector_choices(representative);
     let (point, gauge_products) =
-        evaluate_u256_gauge_xyzz_canonical(&choices, &tables.windows);
+        evaluate_u256_gauge_xyzz_canonical::<KARATSUBA>(&choices, &tables.windows);
     (point, representative, nonidentity.saturating_sub(1),
      tables.retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES,
      fallback, corner, gauge_products)
+}
+
+pub(super) fn multiply_u256_sector_xyzz_canonical(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    multiply_u256_sector_xyzz_canonical_with::<false>(scalar_words)
+}
+
+pub(super) fn multiply_u256_sector_xyzz_karatsuba(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    multiply_u256_sector_xyzz_canonical_with::<true>(scalar_words)
 }
 
 pub(super) fn multiply_u256_sector15(
@@ -5089,6 +5192,74 @@ mod tests {
             let words = super::super::scalar_words_256(&scalar).unwrap();
             let reference = multiply_u256_sector_xyzz(words);
             let candidate = multiply_u256_sector_xyzz_canonical(words);
+            assert_eq!((&candidate.0, candidate.1, candidate.2, candidate.3,
+                        candidate.4, candidate.5, candidate.6),
+                       (&reference.0, reference.1, reference.2, reference.3,
+                        reference.4, reference.5, reference.6),
+                       "complete scalar and point record {index}");
+            assert_eq!(candidate.3, 64_314_208, "retained table and constants {index}");
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+    }
+
+    #[test]
+    fn karatsuba_wide_and_field_products_match_independent_arithmetic() {
+        let p = &super::super::HYBRID_FIELD.0.n;
+        let edges = [super::super::U256::ZERO, super::super::U256::ONE,
+                     super::super::Uint([u64::MAX, 0, 0, 0]),
+                     super::super::Uint([u64::MAX, u64::MAX, 0, 0]),
+                     super::super::Uint([0, 0, 1, 0]),
+                     super::super::Uint([u64::MAX; 4])];
+        let check = |a: super::super::U256, b: super::super::U256| {
+            let (low, high) = u256_mul_wide_karatsuba(a, b);
+            let full = low.to_biguint() + (high.to_biguint() << 256);
+            assert_eq!(full, a.to_biguint() * b.to_biguint());
+            let canonical = |value: super::super::U256| {
+                if bool::from(value.ct_lt(p)) { value }
+                else { super::super::U256::sbb(&value, p).0 }
+            };
+            let (a, b) = (canonical(a), canonical(b));
+            let expected = super::super::U256::from_biguint(
+                &((a.to_biguint() * b.to_biguint()) % p.to_biguint()));
+            assert_eq!(u256_mul_solinas_with::<true>(a, b).0, expected.0);
+            assert_eq!(u256_mul_solinas_with::<true>(a, b).0,
+                       u256_mul_solinas(a, b).0);
+            let square = super::super::U256::from_biguint(
+                &((a.to_biguint() * a.to_biguint()) % p.to_biguint()));
+            assert_eq!(u256_square_solinas_with::<true>(a).0, square.0);
+        };
+        for &a in &edges { for &b in &edges { check(a, b); } }
+        let mut state = 0x8c21_33f6_04de_aa71u64;
+        for _ in 0..10_000 {
+            let mut values = [[0u64; 4]; 2];
+            for words in &mut values {
+                for limb in words {
+                    state ^= state << 13;
+                    state ^= state >> 7;
+                    state ^= state << 17;
+                    *limb = state;
+                }
+            }
+            check(super::super::Uint(values[0]), super::super::Uint(values[1]));
+        }
+    }
+
+    #[test]
+    fn karatsuba_xyzz_replays_full_panel_and_independent_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-sector-digit-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_sector_xyzz_canonical(words);
+            let candidate = multiply_u256_sector_xyzz_karatsuba(words);
             assert_eq!((&candidate.0, candidate.1, candidate.2, candidate.3,
                         candidate.4, candidate.5, candidate.6),
                        (&reference.0, reference.1, reference.2, reference.3,
