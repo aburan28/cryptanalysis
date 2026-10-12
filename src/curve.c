@@ -342,7 +342,19 @@ typedef struct glv_ctx {
     const ca_tau4_joint_precomp *joint_pre;
     const ca_tau4_joint_plane_precomp *joint_plane;
     ca_curve_startup_stats *startup;
+#ifdef CA_J0_TAU_RHO_WIDTH4
+    ca_tau4_precomp base_pre, target_pre;
+    int pre_ready;
+#endif
 } glv_ctx;
+
+#ifdef CA_J0_TAU_RHO_WIDTH4
+#    define GLV_BASE_PRE(c)   ((c)->pre_ready ? &(c)->base_pre : NULL)
+#    define GLV_TARGET_PRE(c) ((c)->pre_ready ? &(c)->target_pre : NULL)
+#else
+#    define GLV_BASE_PRE(c)   NULL
+#    define GLV_TARGET_PRE(c) NULL
+#endif
 
 static uint64_t glv_generic_mul_budget(uint64_t scalar)
 {
@@ -403,21 +415,6 @@ static int glv_startup_combination(const glv_ctx *c, ca_elem *out,
     return 1;
 }
 
-static int glv_restart(const glv_ctx *c, glv_walk *w, ca_rng *rng, uint64_t *ops)
-#ifdef CA_J0_TAU_RHO_WIDTH4
-    ca_tau4_precomp base_pre, target_pre;
-    int pre_ready;
-#endif
-} glv_ctx;
-
-#ifdef CA_J0_TAU_RHO_WIDTH4
-#    define GLV_BASE_PRE(c)   ((c)->pre_ready ? &(c)->base_pre : NULL)
-#    define GLV_TARGET_PRE(c) ((c)->pre_ready ? &(c)->target_pre : NULL)
-#else
-#    define GLV_BASE_PRE(c)   NULL
-#    define GLV_TARGET_PRE(c) NULL
-#endif
-
 /* The sixfold automorphism still defines the walk.  Xu et al.'s tau-adic
  * scalar path only accelerates its target-dependent jump table and restart
  * points on j=0 curves; each walk step remains the same batched affine
@@ -451,18 +448,13 @@ static void glv_mul(const ca_group *g, ca_elem *r, const ca_elem *a, const ca_ta
     ca_group_mul(g, r, a, k, ops);
 }
 
-static void glv_restart(const glv_ctx *c, glv_walk *w, ca_rng *rng, uint64_t *ops)
+static int glv_restart(const glv_ctx *c, glv_walk *w, ca_rng *rng, uint64_t *ops)
 {
     const ca_group *g = c->g;
     uint64_t n = g->order;
     w->a = ca_rng_below(rng, n);
     w->b = ca_rng_below(rng, n);
     if (!glv_startup_combination(c, &w->Y, w->a, w->b, 1, ops)) return 0;
-    ca_elem t1, t2;
-    glv_mul(g, &t1, &c->base, GLV_BASE_PRE(c), w->a, ops);
-    glv_mul(g, &t2, &c->target, GLV_TARGET_PRE(c), w->b, ops);
-    ca_group_op(g, &w->Y, &t1, &t2);
-    (*ops)++;
     uint32_t k = glv_class_reduce(g, &w->Y, c->m);
     if (k) {
         w->a = ca_mulmod(w->a, c->lam_pow[k], n);
@@ -610,11 +602,6 @@ static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_
             startup->budget_equivalent_group_ops += ops;
             startup->evaluation_seconds += ca_now() - batch_start;
         }
-        ca_elem t1, t2;
-        glv_mul(g, &t1, base, GLV_BASE_PRE(&c), c.alpha[i], &ops);
-        glv_mul(g, &t2, target, GLV_TARGET_PRE(&c), c.beta[i], &ops);
-        ca_group_op(g, &c.M[i], &t1, &t2);
-        ops++;
     }
     double exp_dps = 1.25 * (double)sqrt_nm / (double)(1ULL << dp) + 1024;
     if (ca_htab_init(&tab, (size_t)(exp_dps < 1e8 ? exp_dps : 1e8)) != CA_OK) goto nomem;
@@ -713,10 +700,6 @@ nomem:
     return failure;
 }
 
-static ca_status curve_solve_mode(const ca_group *g, const ca_elem *base,
-                                  const ca_elem *target, uint64_t seed, uint64_t *x,
-                                  ca_curve_startup_mode mode, ca_curve_startup_stats *startup,
-                                  ca_curve_info *info, ca_stats *st)
 #ifdef CA_J0_RHO_COVARIANT_WALK
 typedef struct glv_cov_walk {
     ca_elem Y;
@@ -768,7 +751,7 @@ static ca_status glv_covariant_rho_solve(const ca_group *g, const ca_elem *base,
         *x = 0;
         return CA_OK;
     }
-    if (n < 64) return glv_rho_solve(g, base, target, seed, x, st);
+    if (n < 64) return glv_rho_solve(g, base, target, seed, x, st, 0, 0, 0, NULL);
     glv_ctx c;
     memset(&c, 0, sizeof(c));
     c.g = g;
@@ -917,8 +900,10 @@ nomem:
 }
 #endif
 
-ca_status ca_curve_solve(const ca_group *g, const ca_elem *base, const ca_elem *target,
-                         uint64_t seed, uint64_t *x, ca_curve_info *info, ca_stats *st)
+static ca_status curve_solve_mode(const ca_group *g, const ca_elem *base,
+                                  const ca_elem *target, uint64_t seed, uint64_t *x,
+                                  ca_curve_startup_mode mode, ca_curve_startup_stats *startup,
+                                  ca_curve_info *info, ca_stats *st)
 {
     if (startup) memset(startup, 0, sizeof(*startup));
     if (mode != CA_CURVE_STARTUP_GENERIC && mode != CA_CURVE_STARTUP_TAU_PAIRED2 &&
@@ -937,17 +922,16 @@ ca_status ca_curve_solve(const ca_group *g, const ca_elem *base, const ca_elem *
     }
     if (g->order && !ca_check_members(g, base, target, g->order, "glv rho"))
         return CA_ERR_NOT_FOUND;
-    if (g->kind == CA_GROUP_EC && g->endo_kind != 0)
+    if (g->kind == CA_GROUP_EC && g->endo_kind != 0) {
+#ifdef CA_J0_RHO_COVARIANT_WALK
+        if (g->endo_kind == 1 && mode == CA_CURVE_STARTUP_GENERIC && !startup)
+            return glv_covariant_rho_solve(g, base, target, seed, x, st);
+#endif
         return glv_rho_solve(g, base, target, seed, x, st,
                              mode != CA_CURVE_STARTUP_GENERIC,
                              mode == CA_CURVE_STARTUP_TAU_PAIRED2_BATCH ||
                              mode == CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH,
                              mode == CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH, startup);
-    if (g->kind == CA_GROUP_EC && g->endo_kind != 0) {
-#ifdef CA_J0_RHO_COVARIANT_WALK
-        if (g->endo_kind == 1) return glv_covariant_rho_solve(g, base, target, seed, x, st);
-#endif
-        return glv_rho_solve(g, base, target, seed, x, st);
     }
     ca_rho_params rp;
     ca_rho_params_default(&rp);
