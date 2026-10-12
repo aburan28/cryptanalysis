@@ -1,0 +1,166 @@
+{
+  "artifacts_sha256": {
+    "/Volumes/SSD990/crypto/cryptanalysis-exact-radix-target/release/prime-j0-secp256k1-native-replay": "04515ce8f8f0ac5448dbc8c269f1d947ed8e401fc8723edbb489538de6eb9553",
+    "experiments/prime-j0-secp256k1-native/Cargo.lock": "c31dcbed43a3410e0ee3a440ee7165b221a304804ab9cbb9d7532f2a6ffa482f",
+    "experiments/prime-j0-secp256k1-native/Cargo.toml": "438235eda97f13312fbb34ad9728be1292a0765b34aae8cdaa082db0dfc3b85b",
+    "experiments/prime-j0-secp256k1-native/FAST_INVERSION_PROTOCOL.md": "cafcab2cdbedca6a431e97d36acb2b6f5c7948d7fc69ed574f1e6cbfb7bcc8ff",
+    "experiments/prime-j0-secp256k1-native/coset-fixture.json": "2d90d33ab939db8f57a831328efb194cf83ed21d6558db7e87a086312bb1177b",
+    "experiments/prime-j0-secp256k1-native/coset-result.json": "443368c2e43dde6f2ca5df476c9684dd204675c28677e32fe9fb32b91817ec08",
+    "experiments/prime-j0-secp256k1-native/fixture.json": "2e8da438343ecf650c9d8d9b2a593f5d603027c4c1f81485f2456c38028491d4",
+    "experiments/prime-j0-secp256k1-native/run_fastinv_native_checks.py": "0ce379bf055e4fc7f3b537182e524c4d2592ba3c0c29e08bde7af3b606a97145",
+    "experiments/prime-j0-secp256k1-native/src/coset.rs": "bcee97748adf373c03ea6f648775817a13132cfda30ab6bee0f0c3f93a06867a",
+    "experiments/prime-j0-secp256k1-native/src/main.rs": "b4cb1add2420e9611a76faef35f7878a9d561ecfa0762d376ba183eba87e988f",
+    "experiments/prime-j0-secp256k1-native/src/mixed_radix.rs": "c7f3013ab56fc575c220218fe621d531ef9ea741cc176c5d1bb621010d85d08f",
+    "experiments/prime-j0-secp256k1-native/src/selective.rs": "247b36fb0daa009f78d402ae6e3c4af237fb0ed0793614d5444a1d1f0bb58346",
+    "suite/src/ct_bignum.rs": "72c264a7424ec4d09964f9bc92dd64aa363d92bfdf41fccc4b219deda0767e0d",
+    "suite/src/ecc/secp256k1_field.rs": "afbd18cd4f6a6a9ad3104acb27b1266812032b7c9fbc25330b23b4cb5d60730d"
+  },
+  "compiler": "rustc 1.93.1 (01f6ddf75 2026-02-11) (Homebrew)",
+  "cpu_speedup_claim": null,
+  "failures": [],
+  "host": {
+    "machine": "arm64",
+    "release": "25.6.0",
+    "system": "Darwin"
+  },
+  "runs": [
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "--manifest-path",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/Cargo.toml",
+        "inversion_chain_matches_ladder_and_field_identity"
+      ],
+      "exit_code": 0,
+      "stderr": "warning: associated items `as_montgomery` and `from_montgomery_unchecked` are never used\n   --> src/../../../suite/src/ecc/secp256k1_field.rs:230:12\n    |\n 59 | impl SecpFieldElement {\n    | --------------------- associated items in this implementation\n...\n230 |     pub fn as_montgomery(&self) -> &U256 {\n    |            ^^^^^^^^^^^^^\n...\n244 |     pub const fn from_montgomery_unchecked(limbs: U256) -> Self {\n    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^\n    |\n    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `prime-j0-secp256k1-native-replay` (bin \"prime-j0-secp256k1-native-replay\" test) generated 1 warning\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s\n     Running unittests src/main.rs (/Volumes/SSD990/crypto/cryptanalysis-exact-radix-target/debug/deps/prime_j0_secp256k1_native_replay-7dce66b1f539d64b)\n",
+      "stdout": "\nrunning 1 test\ntest secp256k1_field::tests::inversion_chain_matches_ladder_and_field_identity ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 38 filtered out; finished in 0.26s\n\n"
+    },
+    {
+      "command": [
+        "cargo",
+        "build",
+        "--offline",
+        "--locked",
+        "--release",
+        "--manifest-path",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/Cargo.toml"
+      ],
+      "exit_code": 0,
+      "stderr": "warning: associated items `from_biguint`, `to_biguint`, `ct_lt`, `ct_is_zero`, `cswap`, and `mul_wide` are never used\n   --> src/../../../suite/src/ct_bignum.rs:68:12\n    |\n 54 | impl<const LIMBS: usize> Uint<LIMBS> {\n    | ------------------------------------ associated items in this implementation\n...\n 68 |     pub fn from_biguint(v: &BigUint) -> Self {\n    |            ^^^^^^^^^^^^\n...\n 88 |     pub fn to_biguint(&self) -> BigUint {\n    |            ^^^^^^^^^^\n...\n117 |     pub fn ct_lt(&self, other: &Self) -> Choice {\n    |            ^^^^^\n...\n123 |     pub fn ct_is_zero(&self) -> Choice {\n    |            ^^^^^^^^^^\n...\n141 |     pub fn cswap(a: &mut Self, b: &mut Self, choice: Choice) {\n    |            ^^^^^\n...\n221 |     pub fn mul_wide(a: &Self, b: &Self) -> (Self, Self) {\n    |            ^^^^^^^^\n    |\n    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: struct `MontgomeryContext` is never constructed\n   --> src/../../../suite/src/ct_bignum.rs:435:12\n    |\n435 | pub struct MontgomeryContext<const LIMBS: usize> {\n    |            ^^^^^^^^^^^^^^^^^\n\nwarning: associated items `new`, `mont_mul`, `mont_sqr`, `to_montgomery`, and `from_montgomery` are never used\n   --> src/../../../suite/src/ct_bignum.rs:460:12\n    |\n451 | impl<const LIMBS: usize> MontgomeryContext<LIMBS> {\n    | ------------------------------------------------- associated items in this implementation\n...\n460 |     pub fn new(n: Uint<LIMBS>) -> Option<Self> {\n    |            ^^^\n...\n481 |     pub fn mont_mul(&self, a: &Uint<LIMBS>, b: &Uint<LIMBS>) -> Uint<LIMBS> {\n    |            ^^^^^^^^\n...\n486 |     pub fn mont_sqr(&self, a: &Uint<LIMBS>) -> Uint<LIMBS> {\n    |            ^^^^^^^^\n...\n491 |     pub fn to_montgomery(&self, a: &Uint<LIMBS>) -> Uint<LIMBS> {\n    |            ^^^^^^^^^^^^^\n...\n497 |     pub fn from_montgomery(&self, a_mont: &Uint<LIMBS>) -> Uint<LIMBS> {\n    |            ^^^^^^^^^^^^^^^\n\nwarning: function `mont_pow_ct` is never used\n   --> src/../../../suite/src/ct_bignum.rs:525:8\n    |\n525 | pub fn mont_pow_ct<const LIMBS: usize>(\n    |        ^^^^^^^^^^^\n\nwarning: associated items `from_biguint`, `to_biguint`, `ct_is_zero`, `as_montgomery`, and `from_montgomery_unchecked` are never used\n   --> src/../../../suite/src/ecc/secp256k1_field.rs:86:12\n    |\n 59 | impl SecpFieldElement {\n    | --------------------- associated items in this implementation\n...\n 86 |     pub fn from_biguint(v: &BigUint) -> Self {\n    |            ^^^^^^^^^^^^\n...\n 94 |     pub fn to_biguint(&self) -> BigUint {\n    |            ^^^^^^^^^^\n...\n216 |     pub fn ct_is_zero(&self) -> Choice {\n    |            ^^^^^^^^^^\n...\n230 |     pub fn as_montgomery(&self) -> &U256 {\n    |            ^^^^^^^^^^^^^\n...\n244 |     pub const fn from_montgomery_unchecked(limbs: U256) -> Self {\n    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: `prime-j0-secp256k1-native-replay` (bin \"prime-j0-secp256k1-native-replay\") generated 5 warnings\n    Finished `release` profile [optimized] target(s) in 0.07s\n",
+      "stdout": ""
+    },
+    {
+      "command": [
+        "/Volumes/SSD990/crypto/cryptanalysis-exact-radix-target/release/prime-j0-secp256k1-native-replay",
+        "--check-coset-fastinv-fixture",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/fixture.json"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "{\"cases\":64,\"cpu_speedup_claim\":null,\"fast_inverse_checks\":64,\"scalar_output_checks\":64,\"verified\":true}\n"
+    },
+    {
+      "command": [
+        "/Volumes/SSD990/crypto/cryptanalysis-exact-radix-target/release/prime-j0-secp256k1-native-replay",
+        "--check-coset-fastinv-fixture",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/coset-fixture.json"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "{\"cases\":256,\"cpu_speedup_claim\":null,\"fast_inverse_checks\":256,\"scalar_output_checks\":256,\"verified\":true}\n"
+    },
+    {
+      "command": [
+        "/Volumes/SSD990/crypto/cryptanalysis-exact-radix-target/release/prime-j0-secp256k1-native-replay",
+        "--check-coset-case",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/coset-fixture.json",
+        "1"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "verified=1 curve=secp256k1 base_x=a8bc2c8eefd9acf0e24c7137c71ee70ebb16f0c1fb2a48ddbb2ba45bcc331e74 base_y=a8fb4a7b841e05f631b494e6198c938305c2c2054d3834d0a0ef27e0406b3ed0 scalar=e43d39ca57e15c6c88904f16e6a6449262e5193930f71ade5eeb660f4aa52298 point=9e47968ee21c7c23a3e347a7d162a9946a33d0c7aff33fdfe71ece2a94b22961:5ac6a8891a8ef59c45c48dde128a56f30bc10d6665f919b16a8c76d7aa7ba673 mode=coset choice=0 source_M_plus_S=1320 exceptional_cached_adds=0\n"
+    },
+    {
+      "command": [
+        "/Volumes/SSD990/crypto/cryptanalysis-exact-radix-target/release/prime-j0-secp256k1-native-replay",
+        "--check-coset-fastinv-case",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/coset-fixture.json",
+        "1"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "verified=1 curve=secp256k1 base_x=a8bc2c8eefd9acf0e24c7137c71ee70ebb16f0c1fb2a48ddbb2ba45bcc331e74 base_y=a8fb4a7b841e05f631b494e6198c938305c2c2054d3834d0a0ef27e0406b3ed0 scalar=e43d39ca57e15c6c88904f16e6a6449262e5193930f71ade5eeb660f4aa52298 point=9e47968ee21c7c23a3e347a7d162a9946a33d0c7aff33fdfe71ece2a94b22961:5ac6a8891a8ef59c45c48dde128a56f30bc10d6665f919b16a8c76d7aa7ba673 mode=coset_fastinv choice=0 source_M_plus_S=1320 exceptional_cached_adds=0\n"
+    },
+    {
+      "command": [
+        "/Volumes/SSD990/crypto/cryptanalysis-exact-radix-target/release/prime-j0-secp256k1-native-replay",
+        "--check-coset-case",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/coset-fixture.json",
+        "0"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "verified=1 curve=secp256k1 base_x=a8bc2c8eefd9acf0e24c7137c71ee70ebb16f0c1fb2a48ddbb2ba45bcc331e74 base_y=a8fb4a7b841e05f631b494e6198c938305c2c2054d3834d0a0ef27e0406b3ed0 scalar=a9667496118a00e375e11976d9fae4f7745a9ca3113e96d5dcef47327afc57c point=16d04caba12bc660e9893f54c76dfb43db8ea45477f48f4092ec920b13a836d2:a200eec95d122c13e897319e4b7c8fed82f25480650829e492edcc97fcd07c5a mode=coset choice=1 source_M_plus_S=1349 exceptional_cached_adds=0\n"
+    },
+    {
+      "command": [
+        "/Volumes/SSD990/crypto/cryptanalysis-exact-radix-target/release/prime-j0-secp256k1-native-replay",
+        "--check-coset-fastinv-case",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/coset-fixture.json",
+        "0"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "verified=1 curve=secp256k1 base_x=a8bc2c8eefd9acf0e24c7137c71ee70ebb16f0c1fb2a48ddbb2ba45bcc331e74 base_y=a8fb4a7b841e05f631b494e6198c938305c2c2054d3834d0a0ef27e0406b3ed0 scalar=a9667496118a00e375e11976d9fae4f7745a9ca3113e96d5dcef47327afc57c point=16d04caba12bc660e9893f54c76dfb43db8ea45477f48f4092ec920b13a836d2:a200eec95d122c13e897319e4b7c8fed82f25480650829e492edcc97fcd07c5a mode=coset_fastinv choice=1 source_M_plus_S=1349 exceptional_cached_adds=0\n"
+    },
+    {
+      "command": [
+        "/Volumes/SSD990/crypto/cryptanalysis-exact-radix-target/release/prime-j0-secp256k1-native-replay",
+        "--check-coset-case",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/coset-fixture.json",
+        "2"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "verified=1 curve=secp256k1 base_x=a8bc2c8eefd9acf0e24c7137c71ee70ebb16f0c1fb2a48ddbb2ba45bcc331e74 base_y=a8fb4a7b841e05f631b494e6198c938305c2c2054d3834d0a0ef27e0406b3ed0 scalar=5f0a5e2d63f73a5335b34a9bd9df29ec590bfcc37c80f9b47b709d7626e1def7 point=7e8dda75ae57fd4a0c3bf7801f67c72126adc9fabb501f4e64daae8e9c01bc82:b95cffea8e8f9330d6beb1bfbe04eff5ab0899303005c60ad0e9bc47d819e794 mode=coset choice=2 source_M_plus_S=1354 exceptional_cached_adds=0\n"
+    },
+    {
+      "command": [
+        "/Volumes/SSD990/crypto/cryptanalysis-exact-radix-target/release/prime-j0-secp256k1-native-replay",
+        "--check-coset-fastinv-case",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/coset-fixture.json",
+        "2"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "verified=1 curve=secp256k1 base_x=a8bc2c8eefd9acf0e24c7137c71ee70ebb16f0c1fb2a48ddbb2ba45bcc331e74 base_y=a8fb4a7b841e05f631b494e6198c938305c2c2054d3834d0a0ef27e0406b3ed0 scalar=5f0a5e2d63f73a5335b34a9bd9df29ec590bfcc37c80f9b47b709d7626e1def7 point=7e8dda75ae57fd4a0c3bf7801f67c72126adc9fabb501f4e64daae8e9c01bc82:b95cffea8e8f9330d6beb1bfbe04eff5ab0899303005c60ad0e9bc47d819e794 mode=coset_fastinv choice=2 source_M_plus_S=1354 exceptional_cached_adds=0\n"
+    },
+    {
+      "command": [
+        "/Volumes/SSD990/crypto/cryptanalysis-exact-radix-target/release/prime-j0-secp256k1-native-replay",
+        "--check-coset-case",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/coset-fixture.json",
+        "3"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "verified=1 curve=secp256k1 base_x=a8bc2c8eefd9acf0e24c7137c71ee70ebb16f0c1fb2a48ddbb2ba45bcc331e74 base_y=a8fb4a7b841e05f631b494e6198c938305c2c2054d3834d0a0ef27e0406b3ed0 scalar=3a4251b5b752971556261cab3981929d2dc9a73ccf8bbb3dadc0723d81969a99 point=691abf5393bf1b4378a5b092f24457b87ad3c05e27073a6b0eb5071f6763a209:366bbc4818aaecf3f470b48976401d03415cec7a9b003e0b35c956519f43ce06 mode=coset choice=3 source_M_plus_S=1357 exceptional_cached_adds=0\n"
+    },
+    {
+      "command": [
+        "/Volumes/SSD990/crypto/cryptanalysis-exact-radix-target/release/prime-j0-secp256k1-native-replay",
+        "--check-coset-fastinv-case",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/coset-fixture.json",
+        "3"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "verified=1 curve=secp256k1 base_x=a8bc2c8eefd9acf0e24c7137c71ee70ebb16f0c1fb2a48ddbb2ba45bcc331e74 base_y=a8fb4a7b841e05f631b494e6198c938305c2c2054d3834d0a0ef27e0406b3ed0 scalar=3a4251b5b752971556261cab3981929d2dc9a73ccf8bbb3dadc0723d81969a99 point=691abf5393bf1b4378a5b092f24457b87ad3c05e27073a6b0eb5071f6763a209:366bbc4818aaecf3f470b48976401d03415cec7a9b003e0b35c956519f43ce06 mode=coset_fastinv choice=3 source_M_plus_S=1357 exceptional_cached_adds=0\n"
+    }
+  ],
+  "schema": 1,
+  "verified": true
+}

@@ -14,6 +14,7 @@ const SOURCES: &[&str] = &[
     "group_common.c",
     "group_zp.c",
     "group_ec.c",
+    "ec_tau.c",
     "bsgs.c",
     "rho.c",
     "kangaroo.c",
