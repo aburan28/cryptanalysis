@@ -5,8 +5,9 @@ Fifteen six-unit radix-256 orbit rows and one direct terminal row give a
 selected points per scalar. Its point payload is **11,339,136 bytes** at
 64 bytes per point, 2,587,840 bytes below the radix-286 format's point
 payload. The new layout also uses 30,378 fewer point entries than the
-existing U16 all-window format. Preparation cost and complete resident
-bytes remain to be measured in the native implementation.
+existing U16 all-window format. The native evaluator reports **11,652,560
+retained bytes** including atlas and row metadata, 2,656,568 bytes below
+the radix-286 evaluator's 14,309,128 bytes.
 
 The [exact census](search.json) checks all 79,879 terminal pairs, their
 13,314 unit orbits, contiguous row ranks, and all unit-code images. The
@@ -21,8 +22,27 @@ uniqueness, and direct-domain coverage have checked Lean declarations
 mapped in [PROOF.md](PROOF.md). The exact terminal count and row rank
 have an exhaustive integer audit; their Lean bridge remains open.
 
-The next gate is a source-frozen native implementation and a new disjoint
-512-scalar panel with independent complete-point replay. A controlled
-online CPU comparison follows on a host that passes the repository's
-isolation preflight. The present result is a format and correctness-design
-screen, with CPU wall-time ordering still unknown.
+## Frozen native replay
+
+Commit `598f4e57d461b0deabccff30d85285ac8909f4f4` froze the native
+builder, evaluator, holdout generator, and verifier before the new panel
+was drawn. [holdout.json](holdout.json) contains 512 distinct scalars
+disjoint from earlier panels; its SHA-256 is
+`55e0e3e39eb751ecd873f5e1d38e8645ccbdbe80763dd7205d0accf2b236fd8a`.
+The [replay receipt](replay.json) records complete-point agreement with
+the radix-286 evaluator and independently generated points for both that
+panel and the prior 512-case panel. The same two panels pass on macOS
+ARM64 and Linux ARM64; [local-build.json](local-build.json) and
+[linux-build.json](linux-build.json) retain the source and binary hashes.
+
+| Panel | Cases | Direct-terminal noninitial additions | Radix-286 additions | Direct-terminal rotations | Radix-286 rotations | Direct-terminal retained bytes | Radix-286 retained bytes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Prior control | 512 | 7,679 | 7,680 | 1,021 | 1,024 | 11,652,560 | 14,309,128 |
+| New frozen panel | 512 | 7,680 | 7,680 | 1,021 | 1,020 | 11,652,560 | 14,309,128 |
+
+The native atlas audit checked all 65,536 residues and reported 177,174
+point entries. The Linux replay used the pinned `rust:1.93.1-bookworm`
+ARM64 image and an offline native build. Operation counts and retained
+bytes are exact diagnostics for this implementation. The next experiment
+is a paired online CPU measurement on a host that passes the repository's
+isolation preflight; wall-time ordering remains unknown until then.

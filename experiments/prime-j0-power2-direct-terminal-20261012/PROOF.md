@@ -23,6 +23,10 @@ exists for every recoded scalar; `search.py` independently checks that
 the generated row index enumerates that exact domain. Connecting the
 finite row implementation and its exact count to Lean remains open.
 
-The native Rust builder, once implemented, must be checked by independent
-point replay. The present Lean modules prove the mathematical scalar
-identity and terminal-domain reachability, not the compiled Rust lookup.
+The native Rust evaluator and its atlas audit are recorded in
+`direct_terminal.rs`. Both 512-scalar panels in `replay.json` compare every
+complete point with the radix-286 evaluator and independently generated
+points on macOS ARM64 and Linux ARM64. These are implementation checks;
+the Lean modules prove the mathematical scalar identity and
+terminal-domain reachability, while the finite row rank bridge remains
+open.

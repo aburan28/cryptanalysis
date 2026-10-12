@@ -34,9 +34,11 @@ point arithmetic, affine recovery, and correctness check for the same
 public scalar panel.
 
 The design screen reuses the frozen 4,096-scalar panel and the radix-286
-control representative. After the native builder and validator are frozen
-in a commit, draw a disjoint 512-scalar panel, replay every point against
-the existing radix-286 evaluator and an independent binary multiplier,
-and retain source, table, output, and failure receipts. A complete CPU
-timing ratio requires a qualifying isolation receipt; the current design
-record contains exact operation and storage counts only.
+control representative. Commit `598f4e57d461b0deabccff30d85285ac8909f4f4`
+freezes the native builder, evaluator, holdout generator, and verifier.
+`holdout.py` then drew 512 distinct scalars disjoint from the earlier
+panels. `replay.py` compares every complete point against the existing
+radix-286 evaluator and an independent binary multiplier, retaining source,
+table, and output digests. A complete CPU timing ratio requires a
+qualifying isolation receipt; the current record has exact operation and
+storage counts and correctness replay.
