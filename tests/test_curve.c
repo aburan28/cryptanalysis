@@ -1250,7 +1250,6 @@ static void joint_pair_width_named(uint64_t p, uint64_t b, uint64_t order, unsig
     ca_ec_joint_pair_clear(&pre);
 }
 
-static void tau_cost_named(const char *name)
 static void check_j0_coord_orbit(const ca_group *g, const ca_elem *point)
 {
     ca_elem orbit = *point, representative = *point;
@@ -2046,6 +2045,16 @@ static void paired_rho_startup_checks(void)
     CHECK(ca_curve_solve_startup(&generic, &id, &id, 17, &output,
           CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH,
           NULL, NULL, NULL) == CA_ERR_UNSUPPORTED);
+}
+
+static void tau_cost_named(const char *name)
+{
+    uint64_t p, a, b, order;
+    CHECK(ca_curve_by_name(name, &p, &a, &b, &order) == CA_OK);
+    ca_group g;
+    ca_curve_info info;
+    CHECK(ca_curve_group(&g, p, a, b, order, &info) == CA_OK);
+    CHECK(info.endo == CA_CURVE_ENDO_J0);
     ca_elem gen;
     CHECK(ca_group_find_generator(&g, &gen, 1) == CA_OK);
     ca_tau4_precomp pre;
