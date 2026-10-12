@@ -1,0 +1,77 @@
+name: isolated benchmark runner contract
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/isolated-bench-runner.yml
+      - scripts/isolated_bench.py
+      - scripts/make_j0_isolated_manifest.py
+      - tests/test_isolated_bench.py
+      - experiments/prime-j0-tau-20260930/large-rho-20261002/bench_rho_large.c
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run runner contract tests
+        run: python3 -m unittest discover -s tests -p test_isolated_bench.py -v
+      - name: Build public-point rho executable
+        run: |
+          cmake -S . -B build-isolated-smoke -DCMAKE_BUILD_TYPE=Release -DCA_CUPQC=OFF -DCA_WERROR=ON
+          cmake --build build-isolated-smoke --target cryptanalysis_static -j2
+          cc -O3 -std=c11 -Wall -Wextra -Werror -Iinclude \
+            experiments/prime-j0-tau-20260930/large-rho-20261002/bench_rho_large.c \
+            build-isolated-smoke/libcryptanalysis.a -lm -lpthread -o build-isolated-smoke/rho-public
+      - name: Verify frozen public-point input and manifest
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          import subprocess
+          import tempfile
+          from scripts.isolated_bench import require_manifest
+
+          binary = Path('build-isolated-smoke/rho-public').resolve()
+          fixture = subprocess.check_output(
+              [str(binary), '--print-target', 'j0-36', '7'], text=True)
+          fields = dict(part.split('=', 1) for part in fixture.split())
+          result = subprocess.check_output(
+              [str(binary), '--public-target', 'j0-36', '1',
+               fields['target_x'], fields['target_y'], '20261002'], text=True)
+          solved = dict(part.split('=', 1) for part in result.split())
+          assert solved['found'] == fields['fixture_scalar'] == '7'
+          assert solved['verified'] == '1'
+          assert solved['fixture_scalar'] == 'unknown'
+          assert float(solved['online_ms']) > 0
+          for key in ('curve', 'p', 'b', 'order', 'base_x', 'base_y',
+                      'target_x', 'target_y'):
+              assert solved[key] == fields[key], key
+          bad = subprocess.run(
+              [str(binary), '--public-target', 'j0-36', '1', '0', '0',
+               '20261002'], capture_output=True, text=True)
+          assert bad.returncode != 0
+
+          with tempfile.TemporaryDirectory() as directory:
+              output = Path(directory, 'manifest.json')
+              subprocess.run([
+                  'python3', 'scripts/make_j0_isolated_manifest.py',
+                  '--reference', str(binary), '--candidate', str(binary),
+                  '--workdir', str(Path.cwd()),
+                  '--cgroup', '/sys/fs/cgroup/benchmark-isolated',
+                  '--cpus', '0', '--execution-cpu', '0', '--mem-nodes', '0',
+                  '--targets-36', '1', '--targets-37', '0',
+                  '--targets-46', '0', '--output', str(output)], check=True)
+              manifest = json.loads(output.read_text())
+              require_manifest(manifest)
+              case = manifest['cases'][0]
+              assert case['reference'][1] == '--public-target'
+              assert len(case['reference']) == 7
+              assert case['reference'] == case['candidate']
+              assert case['expected_fields']['target_x'] == fields['target_x']
+          PY

@@ -1,0 +1,30 @@
+digraph IC_Pipeline {
+  // Overview: the seven IC stages plus optional isogeny and rho baseline.
+  // Companion to ic_assumptions.dot (full assumption graph).
+  rankdir=LR;
+  splines=spline;
+  nodesep=0.4;
+  ranksep=0.6;
+  fontname="Helvetica";
+  fontsize=12;
+  label="Index calculus for ECDLP: pipeline overview (see full assumption graph for dependencies)";
+  labelloc=t;
+  node [fontname="Helvetica", fontsize=11];
+  edge [fontname="Helvetica", fontsize=9];
+
+  SETUP [label="SETUP\ncurve / field / subgroup", shape=box, style="filled,bold", fillcolor="#dbeafe"];
+  FB [label="FB\nfactor base", shape=box, style="filled,bold", fillcolor="#dbeafe"];
+  PDP [label="PDP_m\npoint decomposition", shape=box, style="filled,bold", fillcolor="#dbeafe"];
+  RC [label="RC\nrelation collection", shape=box, style="filled,bold", fillcolor="#dbeafe"];
+  LA [label="LA\nlinear algebra", shape=box, style="filled,bold", fillcolor="#dbeafe"];
+  TD [label="TD\ntarget descent", shape=box, style="filled,bold", fillcolor="#dbeafe"];
+  VERIFY [label="VERIFY\n[k]G = Q", shape=box, style="filled,bold", fillcolor="#dbeafe"];
+  GOAL [label="one verified\nECDLP solved", shape=doubleoctagon, style=filled, fillcolor="#bfdbfe"];
+  ISO [label="ISO (optional)\nisogeny E -> E'", shape=box, style="filled,bold,dashed", fillcolor="#e0e7ff"];
+  RHO [label="RHO baseline\npaired 1-target rho", shape=box, style="filled,dashed", fillcolor="#f3f4f6"];
+
+  SETUP -> FB -> PDP -> RC -> LA -> TD -> VERIFY -> GOAL [penwidth=2.0];
+  ISO -> FB [style=dashed, label="optional route"];
+  ISO -> PDP [style=dashed];
+  RHO -> GOAL [style=dashed, label="must beat:\nrho_online / IC_online"];
+}

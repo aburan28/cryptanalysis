@@ -13,7 +13,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
-ARCHIVE = ROOT / "ecc2k130/research/candidates/goal22"
+ARCHIVE = ROOT / "ecc2k130/runner/research/candidates/goal22"
 EVIDENCE = HERE / "evidence"
 FIGURES = HERE / "figures"
 

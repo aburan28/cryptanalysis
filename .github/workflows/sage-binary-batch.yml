@@ -10,6 +10,7 @@ on:
       - 'experiments/sage-binary-storage/**'
       - '.github/workflows/sage-binary-batch.yml'
   push:
+    branches: [main]
     paths:
       - 'experiments/sage-binary-batch/**'
       - 'experiments/sage-binary-native-addition/**'
@@ -18,6 +19,11 @@ on:
       - 'experiments/sage-binary-storage/**'
       - '.github/workflows/sage-binary-batch.yml'
   workflow_dispatch:
+
+# A new commit supersedes runs for this PR or branch; manual runs stay independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 permissions:
   contents: read
