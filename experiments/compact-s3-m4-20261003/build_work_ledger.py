@@ -7079,7 +7079,6 @@ def main():
         "rows"]] == [1, 1, 0, 0, 0, 0]
     assert q1485_audit["ordinary_verified_relations"] == 0
     assert q1485_audit["complete_n131_log2_work"] is None
-<<<<<<< HEAD
     q1486_dir = HERE / "q1486_window_aware_pair"
     q1486_protocol_path = q1486_dir / "protocol.json"
     q1486_audit_path = q1486_dir / "archive_audit.json"
@@ -7118,7 +7117,6 @@ def main():
     assert q1486_coverage["is_probability_bound"] is False
     assert q1486_coverage["is_empirical_relation_yield"] is False
     assert q1486_coverage["complete_n131_log2_work"] is None
-=======
     q1484_dir = HERE / "q1484_n131_window_base"
     q1484_receipt_path = q1484_dir / "runs/r2/receipt.json"
     q1484_audit_path = q1484_dir / "archive_audit_r2.json"
@@ -7154,7 +7152,6 @@ def main():
             q1484_audit["folded_K"] ==
             q1484_pair["factor_base_folded_columns_K"])
     assert q1484_pair["complete_solve_work_log2"] is None
->>>>>>> origin/codex/q1485-coupled-domain-20261007
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -9794,7 +9791,6 @@ def main():
             "protocol_sha256": sha(q1485_protocol_path),
             "archive_audit_sha256": sha(q1485_audit_path),
         },
-<<<<<<< HEAD
         "q1486_window_aware_pair_compact_s3_stage": {
             "proposal_id": "Q1486", "candidate_id": None,
             "run_id": None, "isogeny": "none",
@@ -9834,7 +9830,7 @@ def main():
             "protocol_sha256": sha(q1486_protocol_path),
             "archive_audit_sha256": sha(q1486_audit_path),
             "postrun_coverage_diagnostic_sha256": sha(q1486_coverage_path),
-=======
+        },
         "q1484_exact_n131_window_base_and_uniform_query_screen": {
             "proposal_id": "Q1484",
             "candidate_id": None,
@@ -9908,7 +9904,6 @@ def main():
                 "early stopping remain open. Compact N83 ordinary "
                 "relation, yield, rank, final matrix, target descent, "
                 "and complete N131 work remain unmeasured."),
->>>>>>> origin/codex/q1485-coupled-domain-20261007
         },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
