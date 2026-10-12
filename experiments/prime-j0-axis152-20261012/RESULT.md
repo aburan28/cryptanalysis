@@ -36,6 +36,15 @@ ordinary tables, terminal axes, and unit constants. The
 [native replay](native-replay.json) bind sources, inputs, table counts,
 and every public point.
 
-The next gate is a second disjoint public-point panel drawn after the
-native source freeze. A matched complete-operation run on a qualifying
-isolated host will determine the CPU timing tradeoff.
+The native evaluator and second-panel checkers were frozen in commit
+`afd9c6eb43b9e318bc82084767e6201bd9f97379` before drawing seed
+`20261012153`. That second panel is disjoint from the design scalars,
+the first panel, and the listed earlier holdouts. Its **512 / 512**
+public points matched both the independent affine replay and the
+opt-in native evaluator. Its point-stream SHA-256 is
+`8da3c15756f1d42392720c6e44d642aee2cafe95e2c399cff5216af9742992e6`.
+The native evaluator used 8,704 point additions and 1,022 gauge
+rotations across these 512 scalars, with 9,216 selected terms. The
+[native result](NATIVE_RESULT.md) retains the build, atlas, and
+per-case replay evidence. A matched complete-operation run on a
+qualifying isolated host will determine the CPU timing tradeoff.
