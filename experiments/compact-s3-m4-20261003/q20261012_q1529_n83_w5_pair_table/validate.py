@@ -67,7 +67,29 @@ def main():
         assert json.loads((folder / "stdout.txt").read_text()) == native
         assert receipt["native"] == native and receipt["status"] == "COMPLETE"
     assert controls == 1
-    print("PASS Q1529: exact base/targets/source/binary, 13 receipts, positive control, counts")
+    analysis = json.loads((HERE / "analysis.json").read_text())
+    assert len(analysis["rows"]) == 13
+    assert analysis["conditional_N83_W5_pair_domain"] == 83 * 186612 * 186611
+    assert analysis["conditional_N83_W5_expected_representatives_per_relation_numerator"] == (
+        2 * 2417851639230796216685689 * 83 * 186612 * 186611)
+    assert analysis["conditional_N83_W5_expected_representatives_per_relation_denominator"] == (
+        30977592**2 * (1 << 18) * 166)
+    q1526 = HERE.parent / "q20261012_q1526_pair_hyperparams/analysis.json"
+    assert sha(q1526) == analysis["q1526_analysis_sha256"]
+    w7 = next(row for row in json.loads(q1526.read_text())["cells"]
+              if row["weight_bound"] == 7 and row["table_fraction"] == "1/1")
+    b, k, r = w7["B"], w7["K"], 680564733841876926932320129493409985129
+    assert analysis["conditional_N131_W7_quotient_reuse_pair_additions_numerator"] == (
+        131 * k*k * 262 * b*b + 263 * k * 2 * r)
+    assert analysis["conditional_N131_W7_quotient_reuse_pair_additions_denominator"] == 262*b*b
+    proof = json.loads((HERE / "lean/proof_receipt.json").read_text())
+    for name, key in (("QueryUnits.lean", "source_sha256"),
+                      ("build.stdout.txt", "stdout_sha256"),
+                      ("build.stderr.txt", "stderr_sha256")):
+        assert sha(HERE / "lean" / name) == proof[key]
+    assert not (HERE / "lean/build.stderr.txt").read_text()
+    assert (HERE / "lean/build.stdout.txt").read_text().count("does not depend on any axioms") == 6
+    print("PASS Q1529: source/binary, base/targets, 13 receipts, control, counts, Lean")
 
 
 if __name__ == "__main__":
