@@ -531,17 +531,12 @@ runs as such.
 ## CPU performance isolation gate
 
 Treat CPU timing ratios from a contended or unverified host as exploratory.
-Promote a new CPU wall-time speedup claim only with a receipt from the
-[isolated benchmark service](docs/ISOLATED_BENCHMARKS.md), or an equivalent
-auditable host-level isolation record. The record must identify the physical
-CPU model, core and SMT topology, NUMA node, exclusive CPU partition,
-execution CPU affinity, memory policy, fixed frequency, IRQ routing, CPU
-quota, code and workload hashes, paired run order, raw failures, throttling,
-steal time, interrupts, and correctness. A container's visible affinity mask
-does not establish host-wide isolation. If the isolation preflight or any
-noise gate fails, preserve the row and keep aggregate speedup unknown.
-Re-evaluate earlier measurements lacking this evidence before citing them as
-controlled speedup results. Correctness runs and algorithmic diagnostics may
+The [tiered benchmark service](docs/ISOLATED_BENCHMARKS.md) admits Tier 0
+host-isolated and Tier 1 instance-scoped paired comparisons under their
+separate preflight and noise gates below. A container's visible affinity mask
+establishes placement only. If the selected tier's gate fails, preserve the
+row and keep its qualified speedup unknown. Re-evaluate earlier measurements
+before assigning a tier. Correctness runs and algorithmic diagnostics may
 still run on ordinary hosts when labeled accordingly.
 
 ## Remote compute
