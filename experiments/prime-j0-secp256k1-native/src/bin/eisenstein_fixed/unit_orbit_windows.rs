@@ -892,6 +892,89 @@ impl U256XYZZ {
     }
 }
 
+// A separate XYZZ accumulator for canonical residues. Its affine inputs are
+// built in the same representation, so every general field product can use
+// the secp256k1 pseudo-Mersenne reduction without Montgomery conversions.
+#[derive(Clone, Copy)]
+struct U256XYZZCanonical {
+    x: super::U256,
+    y: super::U256,
+    zz: super::U256,
+    zzz: super::U256,
+}
+
+impl U256XYZZCanonical {
+    fn identity() -> Self {
+        Self { x: super::U256::ZERO, y: super::U256::ONE,
+               zz: super::U256::ZERO, zzz: super::U256::ZERO }
+    }
+
+    fn from_affine(point: U256Affine) -> Self {
+        Self { x: point.x, y: point.y,
+               zz: super::U256::ONE, zzz: super::U256::ONE }
+    }
+
+    fn is_identity(self) -> bool {
+        bool::from(self.zz.ct_is_zero())
+    }
+
+    fn rotate_power(self, power: usize) -> Self {
+        assert!(power < 3);
+        if power == 0 || self.is_identity() { return self; }
+        Self { x: u256_mul_solinas(self.x, U256_BETA_CANONICAL[power]), ..self }
+    }
+
+    fn add_mixed(self, q: U256Affine) -> Self {
+        if self.is_identity() { return Self::from_affine(q); }
+        let u2 = u256_mul_solinas(q.x, self.zz);
+        let s2 = u256_mul_solinas(q.y, self.zzz);
+        let p = u256_sub(u2, self.x);
+        let r = u256_sub(s2, self.y);
+        if bool::from(p.ct_is_zero()) {
+            return if bool::from(r.ct_is_zero()) { self.double() }
+                   else { Self::identity() };
+        }
+        let pp = u256_square_solinas(p);
+        let ppp = u256_mul_solinas(p, pp);
+        let qx = u256_mul_solinas(self.x, pp);
+        let rx = u256_sub(u256_sub(u256_square_solinas(r), ppp), u256_add(qx, qx));
+        let ry = u256_sub(u256_mul_solinas(r, u256_sub(qx, rx)),
+                          u256_mul_solinas(self.y, ppp));
+        let rzz = u256_mul_solinas(self.zz, pp);
+        let rzzz = u256_mul_solinas(self.zzz, ppp);
+        Self { x: rx, y: ry, zz: rzz, zzz: rzzz }
+    }
+
+    fn double(self) -> Self {
+        if self.is_identity() || bool::from(self.y.ct_is_zero()) {
+            return Self::identity();
+        }
+        let u = u256_add(self.y, self.y);
+        let v = u256_square_solinas(u);
+        let w = u256_mul_solinas(u, v);
+        let s = u256_mul_solinas(self.x, v);
+        let xx = u256_square_solinas(self.x);
+        let m = u256_add(u256_add(xx, xx), xx);
+        let rx = u256_sub(u256_square_solinas(m), u256_add(s, s));
+        let ry = u256_sub(u256_mul_solinas(m, u256_sub(s, rx)),
+                          u256_mul_solinas(w, self.y));
+        let rzz = u256_mul_solinas(v, self.zz);
+        let rzzz = u256_mul_solinas(w, self.zzz);
+        Self { x: rx, y: ry, zz: rzz, zzz: rzzz }
+    }
+
+    fn affine_hex_binary_inverse(self) -> String {
+        if self.is_identity() { return "identity".to_owned(); }
+        let ctx = &super::HYBRID_FIELD.0;
+        let inv_zzz = super::hybrid_binary_invert_raw(self.zzz, ctx);
+        let inv_z = u256_mul_solinas(self.zz, inv_zzz);
+        let inv_zz = u256_square_solinas(inv_z);
+        let x = u256_mul_solinas(self.x, inv_zz);
+        let y = u256_mul_solinas(self.y, inv_zzz);
+        format!("{}:{}", hex::encode(x.to_bytes_be()), hex::encode(y.to_bytes_be()))
+    }
+}
+
 fn u256_add(a: super::U256, b: super::U256) -> super::U256 {
     a.add_mod(&b, &super::HYBRID_FIELD.0.n)
 }
@@ -908,7 +991,7 @@ fn u256_mul(a: super::U256, b: super::U256) -> super::U256 {
 // back into the low half. Inputs and result are canonical field residues.
 // The first fold leaves at most one high bit; after any second overflow the
 // low half is below c, so the third fixed fold cannot overflow.
-fn u256_mul_const_solinas(value: super::U256, constant: super::U256) -> super::U256 {
+fn u256_mul_solinas(value: super::U256, constant: super::U256) -> super::U256 {
     const C: u128 = (1u128 << 32) + 977;
     let (low, high) = super::U256::mul_wide(&value, &constant);
     let mut limbs = [0u64; 5];
@@ -936,6 +1019,14 @@ fn u256_mul_const_solinas(value: super::U256, constant: super::U256) -> super::U
     let result = super::Uint([limbs[0], limbs[1], limbs[2], limbs[3]]);
     let (reduced, borrow) = super::U256::sbb(&result, &super::HYBRID_FIELD.0.n);
     super::U256::cmov(&result, &reduced, subtle::Choice::from((borrow ^ 1) as u8))
+}
+
+fn u256_mul_const_solinas(value: super::U256, constant: super::U256) -> super::U256 {
+    u256_mul_solinas(value, constant)
+}
+
+fn u256_square_solinas(value: super::U256) -> super::U256 {
+    u256_mul_solinas(value, value)
 }
 
 fn u256_square(a: super::U256) -> super::U256 {
@@ -1125,13 +1216,26 @@ struct U256Tables {
 }
 
 fn build_u256_window(digits: &[(i16, i16)], base: Jacobian) -> Box<[U256Affine]> {
+    build_u256_window_encoded(digits, base, false)
+}
+
+fn build_u256_window_encoded(
+    digits: &[(i16, i16)], base: Jacobian, canonical: bool,
+) -> Box<[U256Affine]> {
     build_window(digits, base).iter().enumerate().map(|(index, &packed)| {
         if index == 0 {
             U256Affine { x: super::U256::ZERO, y: super::U256::ZERO }
         } else {
             let point = packed.into_affine();
-            U256Affine { x: super::hybrid_pair_mont(point.x),
-                         y: super::hybrid_pair_mont(point.y) }
+            let x = super::hybrid_pair_mont(point.x);
+            let y = super::hybrid_pair_mont(point.y);
+            if canonical {
+                let ctx = &super::HYBRID_FIELD.0;
+                U256Affine { x: ctx.from_montgomery(&x),
+                             y: ctx.from_montgomery(&y) }
+            } else {
+                U256Affine { x, y }
+            }
         }
     }).collect::<Vec<_>>().into_boxed_slice()
 }
@@ -1222,6 +1326,10 @@ impl FormulaU256Tables {
     }
 
     fn with_widths(widths: &[u8]) -> Self {
+        Self::with_widths_encoded(widths, false)
+    }
+
+    fn with_widths_encoded(widths: &[u8], canonical: bool) -> Self {
         let temporary_atlases: [Option<ArithmeticOrbitAtlas>; 3] =
             std::array::from_fn(|index| {
                 let width = 8 + index as u8;
@@ -1231,7 +1339,7 @@ impl FormulaU256Tables {
         let mut base = Jacobian::generator();
         for &width in widths {
             let atlas = temporary_atlases[usize::from(width - 8)].as_ref().unwrap();
-            windows.push(build_u256_window(&atlas.digits, base));
+            windows.push(build_u256_window_encoded(&atlas.digits, base, canonical));
             for _ in 0..width { base = base.double(); }
         }
         let entries = windows.iter().map(|row| row.len()).sum::<usize>();
@@ -1247,6 +1355,8 @@ static FORMULA_U256_TABLES: LazyLock<FormulaU256Tables> =
     LazyLock::new(FormulaU256Tables::new);
 static SECTOR_U256_TABLES: LazyLock<FormulaU256Tables> =
     LazyLock::new(FormulaU256Tables::new);
+static SECTOR_U256_CANONICAL_TABLES: LazyLock<FormulaU256Tables> =
+    LazyLock::new(|| FormulaU256Tables::with_widths_encoded(&WIDTHS, true));
 static SECTOR15_U256_TABLES: LazyLock<FormulaU256Tables> =
     LazyLock::new(|| FormulaU256Tables::with_widths(&WIDTHS15));
 static SECTOR16_U256_TABLES: LazyLock<FormulaU256Tables> =
@@ -2331,6 +2441,10 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 69 {
+        std::sync::LazyLock::force(&U256_BETA_CANONICAL);
+        return SECTOR_U256_CANONICAL_TABLES.retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES;
+    }
     if format == 68 {
         std::sync::LazyLock::force(&U256_BETA_CANONICAL);
         return warm_format(30) + SOLINAS_UNIT_CONSTANT_BYTES;
@@ -2767,6 +2881,40 @@ fn evaluate_u256_gauge_xyzz(
     (result.affine_hex_binary_inverse(), gauge_products)
 }
 
+fn evaluate_u256_gauge_xyzz_canonical(
+    choices: &[(usize, usize)], windows: &[Box<[U256Affine]>],
+) -> (String, usize) {
+    assert_eq!(choices.len(), windows.len());
+    let mut result = U256XYZZCanonical::identity();
+    let mut gauge = None;
+    let mut gauge_products = 0usize;
+    for power in [1usize, 2, 0] {
+        if !choices.iter().any(|&(orbit, code)| orbit != 0 && code / 2 == power) {
+            continue;
+        }
+        if let Some(previous) = gauge {
+            let delta = (previous + 3 - power) % 3;
+            if delta != 0 && !result.is_identity() {
+                result = result.rotate_power(delta);
+                gauge_products += 1;
+            }
+        }
+        gauge = Some(power);
+        for (index, &(orbit_id, unit_code)) in choices.iter().enumerate() {
+            if orbit_id == 0 || unit_code / 2 != power { continue; }
+            result = result.add_mixed(windows[index][orbit_id].unit_solinas(unit_code & 1));
+        }
+    }
+    if let Some(power) = gauge {
+        if power != 0 && !result.is_identity() {
+            result = result.rotate_power(power);
+            gauge_products += 1;
+        }
+    }
+    assert!(gauge_products <= 2);
+    (result.affine_hex_binary_inverse(), gauge_products)
+}
+
 pub(super) fn multiply_u256_gauge(
     scalar_words: [u64; 4],
 ) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
@@ -2842,6 +2990,26 @@ pub(super) fn multiply_u256_sector_xyzz(
     let tables = &*SECTOR_U256_TABLES;
     let (choices, nonidentity) = u256_sector_choices(representative);
     let (point, gauge_products) = evaluate_u256_gauge_xyzz(&choices, &tables.windows);
+    (point, representative, nonidentity.saturating_sub(1),
+     tables.retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES,
+     fallback, corner, gauge_products)
+}
+
+pub(super) fn multiply_u256_sector_xyzz_canonical(
+    scalar_words: [u64; 4],
+) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
+    let scalar = super::Uint(scalar_words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else {
+        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+    };
+    let (representative, fallback, corner) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let tables = &*SECTOR_U256_CANONICAL_TABLES;
+    let (choices, nonidentity) = u256_sector_choices(representative);
+    let (point, gauge_products) =
+        evaluate_u256_gauge_xyzz_canonical(&choices, &tables.windows);
     (point, representative, nonidentity.saturating_sub(1),
      tables.retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES,
      fallback, corner, gauge_products)
@@ -4859,6 +5027,73 @@ mod tests {
                        (&reference.0, reference.1, reference.2, reference.4,
                         reference.5, reference.6),
                        "full scalar and point record {index}");
+            assert_eq!(candidate.3, 64_314_208, "retained table and constants {index}");
+            if index < 128 {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
+                           "independent point {index}");
+            }
+        }
+    }
+
+    #[test]
+    fn canonical_solinas_general_products_match_independent_modular_arithmetic() {
+        let p = &super::super::HYBRID_FIELD.0.n;
+        let (p_minus_one, borrow) = super::super::U256::sbb(p, &super::super::U256::ONE);
+        assert_eq!(borrow, 0);
+        let (p_minus_two, borrow) = super::super::U256::sbb(
+            &p_minus_one, &super::super::U256::ONE);
+        assert_eq!(borrow, 0);
+        let edges = [super::super::U256::ZERO, super::super::U256::ONE,
+                     super::super::Uint([2, 0, 0, 0]), p_minus_two, p_minus_one];
+        let check = |a: super::super::U256, b: super::super::U256| {
+            let actual = u256_mul_solinas(a, b);
+            let expected = super::super::U256::from_biguint(
+                &((a.to_biguint() * b.to_biguint()) % p.to_biguint()));
+            assert_eq!(actual.0, expected.0);
+            assert!(bool::from(actual.ct_lt(p)));
+            let square_expected = super::super::U256::from_biguint(
+                &((a.to_biguint() * a.to_biguint()) % p.to_biguint()));
+            assert_eq!(u256_square_solinas(a).0, square_expected.0);
+        };
+        for &a in &edges { for &b in &edges { check(a, b); } }
+        let mut state = 0x6d54_8e3a_f112_98b7u64;
+        for _ in 0..10_000 {
+            let mut words = [[0u64; 4]; 2];
+            for value in &mut words {
+                for limb in value {
+                    state ^= state << 13;
+                    state ^= state >> 7;
+                    state ^= state << 17;
+                    *limb = state;
+                }
+            }
+            let canonical = |words| {
+                let value = super::super::Uint(words);
+                if bool::from(value.ct_lt(p)) { value }
+                else { super::super::U256::sbb(&value, p).0 }
+            };
+            check(canonical(words[0]), canonical(words[1]));
+        }
+    }
+
+    #[test]
+    fn canonical_solinas_xyzz_replays_full_panel_and_independent_points() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-sector-digit-20261010/fresh-inputs.json"
+        )).unwrap();
+        let scalars = panel["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 4096);
+        for (index, text) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let reference = multiply_u256_sector_xyzz(words);
+            let candidate = multiply_u256_sector_xyzz_canonical(words);
+            assert_eq!((&candidate.0, candidate.1, candidate.2, candidate.3,
+                        candidate.4, candidate.5, candidate.6),
+                       (&reference.0, reference.1, reference.2, reference.3,
+                        reference.4, reference.5, reference.6),
+                       "complete scalar and point record {index}");
             assert_eq!(candidate.3, 64_314_208, "retained table and constants {index}");
             if index < 128 {
                 let reduced = &scalar % &SCALAR_LATTICE.n;
