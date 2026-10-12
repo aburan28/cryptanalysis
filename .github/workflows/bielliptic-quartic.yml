@@ -1,0 +1,47 @@
+name: Bounded bielliptic quartic diagnostic
+
+on:
+  pull_request:
+    paths:
+      - '**/cryptanalysis/bielliptic_quartic.rs'
+      - '**/bin/quartic_ic.rs'
+      - '**/cryptanalysis/mod.rs'
+      - '**/Cargo.toml'
+      - 'tools/check_bielliptic_quartic.*'
+      - 'research/bielliptic_quartic_20261005/**'
+      - 'experiments/bielliptic-quartic/**'
+      - '.github/workflows/bielliptic-quartic.yml'
+  push:
+    branches: [main, claude/cryptanalysis-repo-setup-p59kek]
+    paths:
+      - '**/cryptanalysis/bielliptic_quartic.rs'
+      - '**/bin/quartic_ic.rs'
+      - '**/cryptanalysis/mod.rs'
+      - '**/Cargo.toml'
+      - 'tools/check_bielliptic_quartic.*'
+      - 'research/bielliptic_quartic_20261005/**'
+      - 'experiments/bielliptic-quartic/**'
+      - '.github/workflows/bielliptic-quartic.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.87.0'
+          components: rustfmt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Native mathematical tests and bounded CLI replay
+        run: bash tools/check_bielliptic_quartic.sh

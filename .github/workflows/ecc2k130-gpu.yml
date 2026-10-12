@@ -12,17 +12,9 @@ name: ecc2k130-gpu
 # and no device re-walk comes from here.
 
 on:
-  push:
-    branches: ["**"]
-    paths:
-      - "ecc2k130/**"
-      - "fpga/model/**"
-      - ".github/workflows/ecc2k130-gpu.yml"
-  pull_request:
-    paths:
-      - "ecc2k130/**"
-      - "fpga/model/**"
-      - ".github/workflows/ecc2k130-gpu.yml"
+  # Retired 2026-10-11: this gate guards a study that has been quiet for 7+ days, and its
+  # push/pull_request triggers were fanning out across the account's shared runners. Run it
+  # on demand, or restore its push/pull_request triggers from git history to bring it back.
   workflow_dispatch:
 
 permissions:
@@ -65,7 +57,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ecc2k130/build/cuda
           key: cuda-wheels-${{ hashFiles('ecc2k130/scripts/fetch_cuda.sh') }}

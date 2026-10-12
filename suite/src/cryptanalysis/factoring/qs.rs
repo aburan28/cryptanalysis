@@ -363,6 +363,19 @@ struct AOutcome {
 }
 
 /// Sieve all `2^{s−1}` polynomials of one `a`.
+/// Whether some byte of `x` is at least `t`: SWAR, may report a false
+/// positive (a carry into the next byte) but never a false negative, so
+/// callers re-check the bytes.  Same test as the NFS line siever's.
+#[inline]
+fn any_byte_ge(x: u64, t: u8) -> bool {
+    const H: u64 = 0x8080_8080_8080_8080;
+    if t > 128 {
+        return x & H != 0;
+    }
+    let k = (128 - t as u64) * 0x0101_0101_0101_0101;
+    (x.wrapping_add(k) | x) & H != 0
+}
+
 fn sieve_a(ctx: &SieveCtx, ap: &APoly) -> AOutcome {
     let fb = ctx.fb;
     let nfb = fb.primes.len();
@@ -388,6 +401,8 @@ fn sieve_a(ctx: &SieveCtx, ap: &APoly) -> AOutcome {
     let mut bainv2 = vec![vec![0u64; nfb]; s];
     let mut soln1 = vec![0u64; nfb];
     let mut soln2 = vec![0u64; nfb];
+    // M mod p, fixed for every polynomial of this `a`.
+    let m_mod: Vec<u64> = fb.primes.iter().map(|&p| ctx.m as u64 % p).collect();
     for i in 1..nfb {
         let p = fb.primes[i];
         if in_a[i] || fb.divides_k[i] {
@@ -445,8 +460,8 @@ fn sieve_a(ctx: &SieveCtx, ap: &APoly) -> AOutcome {
             }
             let lg = fb.logs[i];
             let pu = p as usize;
-            let mut j1 = ((soln1[i] + ctx.m as u64 % p) % p) as usize;
-            let mut j2 = ((soln2[i] + ctx.m as u64 % p) % p) as usize;
+            let mut j1 = ((soln1[i] + m_mod[i]) % p) as usize;
+            let mut j2 = ((soln2[i] + m_mod[i]) % p) as usize;
             if j1 == j2 {
                 while j1 < len {
                     sieve[j1] = sieve[j1].wrapping_add(lg);
@@ -468,14 +483,32 @@ fn sieve_a(ctx: &SieveCtx, ap: &APoly) -> AOutcome {
                 sieve[j1] = sieve[j1].wrapping_add(lg);
             }
         }
-        for (idx, &v) in sieve.iter().enumerate() {
-            if v < ctx.threshold {
-                continue;
-            }
+        // Survivors in ascending order, eight bytes at a time: a word
+        // with no byte at or above the threshold (almost all of them) is
+        // skipped whole.
+        let mut survivor = |idx: usize| {
             out.candidates += 1;
             let x = idx as i64 - m;
             if let Some(rel) = trial_divide(ctx, ap, &in_a, &b, &c, x, &soln1, &soln2) {
                 out.rels.push(rel);
+            }
+        };
+        let words = sieve.chunks_exact(8);
+        let tail = words.remainder();
+        for (w, chunk) in words.enumerate() {
+            let word = u64::from_le_bytes(chunk.try_into().expect("8 bytes"));
+            if any_byte_ge(word, ctx.threshold) {
+                for (k, &v) in chunk.iter().enumerate() {
+                    if v >= ctx.threshold {
+                        survivor(w * 8 + k);
+                    }
+                }
+            }
+        }
+        let tail_start = len - tail.len();
+        for (k, &v) in tail.iter().enumerate() {
+            if v >= ctx.threshold {
+                survivor(tail_start + k);
             }
         }
     }
@@ -837,6 +870,29 @@ impl QsReport {
 
 #[cfg(test)]
 mod tests {
+    /// The word test behind the survivor scan never misses a byte at or
+    /// above the threshold, for every threshold, on words that put every
+    /// byte value in every lane.
+    #[test]
+    fn swar_survivor_test_has_no_false_negatives() {
+        let mut state = 0x2545_F491_4F6C_DD1Du64;
+        for t in 0..=255u8 {
+            for v in 0..=255u8 {
+                for lane in 0..8 {
+                    state ^= state << 13;
+                    state ^= state >> 7;
+                    state ^= state << 17;
+                    let mut bytes = state.to_le_bytes();
+                    bytes[lane] = v;
+                    let word = u64::from_le_bytes(bytes);
+                    if bytes.iter().any(|&b| b >= t) {
+                        assert!(super::any_byte_ge(word, t), "t={t} word={word:#x}");
+                    }
+                }
+            }
+        }
+    }
+
     use super::*;
 
     fn check(n: &BigUint, p: &BigUint) {

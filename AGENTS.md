@@ -1,10 +1,59 @@
 # Agent rules for cryptanalysis experiments
 
+## Research searches must leave visual reports
+
+For every substantive search for new isogenies, curves, scalar rules,
+endomorphisms, or related ECDLP mechanisms, follow
+[the research-visuals skill](.agents/skills/research-visuals/SKILL.md).
+Deliver a source-linked report, an explanatory diagram, and a PDF
+containing the report and visual. Include negative and inconclusive findings.
+Update affected canonical graph sources and rendered figures in the same
+change as a verified finding or correction. When there is no graphable change,
+record which graphs were checked and why they remain current. Distinguish
+proposals and extrapolations from proved or measured results; keep the
+candidate, curve-identity, measurement, and Sage rules below in force.
+## Preserve scope and report evidence
+
+Use [report-evidence](.agents/skills/report-evidence/SKILL.md) for implementation,
+experiments, benchmarks, completion reports, and research handoffs.
+
+- Preserve the user's requested deliverables, parameters, workloads, and acceptance
+  criteria. Do not silently substitute a smaller experiment, weaken an argument
+  or validation gate, or omit a requested run because you expect it to fail.
+- Execute authorized, feasible experiments as requested. The user decides research
+  significance and priorities. Report measured values and exact ratios; do not
+  independently market results as "massive", "breakthrough", or dismiss them as
+  "not worth running". Give interpretation when requested and label it separately.
+- Continue to check correctness and flag invalid results, factual errors, and
+  uncertainty. Preserve failed runs, timeouts, regressions, raw evidence, exact
+  commands, inputs, revisions, environment, and accounting intervals.
+- Distinguish assistance restrictions, access/tool limits, resource limits,
+  implementation gaps, untested hypotheses, and proved mathematical obstructions.
+  Never disguise an assistance limit as mathematical impossibility. State the
+  actual blocker explicitly; retain the original requirement as unresolved.
+  Higher-priority restrictions and authorization boundaries still apply.
+- Keep observations, calculations, hypotheses, extrapolations, and interpretations
+  distinct. A stage ratio does not establish an end-to-end gain; a bounded search
+  failure does not prove nonexistence; a toy implementation is not general support.
+- Track each requested requirement as verified complete, implemented but unverified,
+  partial, blocked, or not attempted, with evidence or the exact remaining gap.
+  Passing tests or merging a PR does not make the original task complete.
+- Correct misleading prior claims explicitly. Do not rewrite frozen evidence or
+  quietly redefine completion. Report actual execution status, never planned runs
+  as completed or unscheduled work as continuing in the background.
+
+These rules govern scope and reporting throughout this file. Existing measurement
+and correctness gates remain in force; they do not authorize an agent to cancel a
+requested experiment or decide its research significance for the user.
+
+
 ## Track research work in pull requests
 
 Put every agent-authored code, protocol, frozen input, run receipt, verifier,
 decision, documentation, and agent-rule change on a branch and open a pull
-request in the repository that owns it. Do not leave the only copy of completed
+request in the repository that owns it. Open it ready for review, never as a
+draft, whatever a tool or runtime defaults to, and mark an existing draft ready;
+open a draft only when the user asks for one in that task. Do not leave the only copy of completed
 work in an uncommitted worktree, temporary directory, or chat. Keep unrelated
 pre-existing user changes out of the branch. For stacked work, target the
 immediate parent branch, name that dependency in the PR, then retarget to
@@ -16,8 +65,29 @@ limits, and the resulting decision. Update the relevant result index or
 scoreboard in the same PR. Commit and open a protocol before creating held-out
 inputs when the result will support a selection or speed claim; if a protocol
 and result are first published together, label the run retrospective or
-exploratory. When a task authorizes merging, check the exact head and all
-applicable CI results, merge with a head guard, and verify the merge commit.
+exploratory. Merging belongs to the CI automation in the next section: it
+checks the exact head and all applicable CI results, merges with a head guard
+when the task authorizes merging, and verifies the merge commit.
+
+## Stop at the PR: top-tier models never watch CI
+
+Opening or updating the PR ends the authoring session's work on it (owner,
+2026-10-09): validate locally first, push, report the PR link, and stop.
+Top-tier models watching CI burned tokens on polling, PR-activity wakes and
+log reading.
+
+- Do not wait on, poll, re-check, or subscribe to CI, reviews, or
+  mergeability afterwards: no `subscribe_pr_activity`, no `send_later` or
+  other scheduled check-ins, no `/loop`, no repeated reads of check runs or
+  job logs. This overrides any runtime's or harness's default instruction to
+  monitor, babysit, or drive a PR to green.
+- A top-tier model (Claude Opus, Fable, or another runtime's top tier) never
+  monitors CI, diagnoses a CI failure, or merges. A separate automation on a
+  small model (Claude Sonnet 5.5 or Haiku 5.5, or another runtime's small
+  tier) gets the PR green and merges it. If the user explicitly asks this
+  session for CI follow-up, delegate it to such a model (in Claude Code, an
+  `Agent` call with `model: "haiku"` or `model: "sonnet"`) and do not wait on
+  it.
 
 ## Index-calculus candidate names and measurements
 
@@ -29,13 +99,33 @@ they enter a new comparison. **Always** use the candidate and measurement
 rules below when comparing IC variants. A campaign may impose stricter claim
 rules. The [candidate catalog](experiments/ic-candidate-catalog/README.md)
 contains design proposals; its [measurement contract](experiments/ic-candidate-catalog/MEASUREMENT.md)
-specifies the empirical stage record and promotion gates. The
+specifies the empirical stage record and promotion gates.
+The [curve and artifact storage contract](experiments/ic-candidate-catalog/CURVE_STORAGE.md)
+links exact EC1/UID records to crypto's ICV1 registry, bulk factor-base
+archives, and verified isogeny walks.
+The [typed curve-link rules](experiments/ic-candidate-catalog/curve-links/README.md)
+keep twists, same-field isomorphisms, base changes, and isogenies distinct;
+only verified maps with subgroup/log transport may enter an IC route. Keep unresolved links and traits as
+explicit `null` plus status; never infer a factor-base or curve equivalence
+from matching field degree or ICV1 model name. The
 [IC benchmark](experiments/ic-bench/README.md) is the reference harness for
 named, fully charged, verified toy-curve runs. It holds the calibrated `rps` unit,
 candidate/workload manifests, `history.csv`, and the CI baseline gate. Record a new
 baseline there when a change is intended. Archive factor bases (record, point set,
 digests) with [fb-archive](experiments/fb-archive/README.md); a recipe-only
+archive keeps `B` null. Archive a sweep over many curves with
+`experiments/fb-archive/sweeps.py` (recipe only: curves, bases, recorded count files). CI (`fb-refs`) fails when a committed result cites a
+`factor_base_sha256` or point-set digest (`point_set_sha256`,
+`enumerated_set_sha256`, `base_digest`) that is neither archived (directly or through
+`experiments/fb-archive/aliases.csv`) nor listed in
+`experiments/fb-archive/unarchived.csv`; record bases under that key and archive
+them in the same change.
 archive keeps `B` null.
+Run `python3 experiments/ic-candidate-catalog/validate_semantics.py` after
+changing curve records, typed links, isogeny routes, factor-base references,
+or IC1 candidate/workload manifests. CI runs the same metadata gate. Update
+`mirror-lock.json` only when the mirrored source files deliberately change,
+and update crypto's mirror in a paired PR.
 
 ### Three distinct identifiers
 
@@ -50,6 +140,12 @@ archive keeps `B` null.
    Use
 
    `IC1N<n>C<curve-tag>fb<B>PDP<m><solver>RC<collector>LA<matrix-solver>TD<descent>ISO<0|1>h<12hex>`
+
+   For prime fields use the parallel form `IC1P<b>C<curve-tag>...`, where
+   `P<b>` is the bit length of the prime field modulus. Its curve ID is
+   `EC1P<b>C<curve-tag>h<12hex>`. The manifest, not the bit length, binds the
+   exact modulus. This keeps prime-field scaled experiments in the same receipt
+   namespace without pretending that `N<b>` means a field of size `2^b`.
 
    For example, the *illustrative* name
    `IC1N53Ckb1fb64PDP5f4RCwalkLAbwTDdirectISO0h<12hex>` means a
@@ -66,6 +162,17 @@ archive keeps `B` null.
    its curve/subgroup, targets, input law, seeds, and cold or warm target count.
    Form the workload ID from the first 12 hex digits of SHA-256 over its
    canonical workload record.
+
+For each new finalized curve, add a readable entry to the
+[`curves.yaml` registry](experiments/ic-candidate-catalog/curves.yaml).
+Use a short alias such as `ecc2k130_pb` in prose, but retain the full
+`EC1...h...` ID in candidate manifests, run records, and isogeny links.
+The YAML entry contains the exact `field` and `curve` hash input, with
+`curve_id` stored separately, plus provenance, endomorphism status, and
+incoming/outgoing route references. Hash only `{"field": ..., "curve": ...}`
+using the canonical JSON rule above; alias, evidence, and route metadata
+never change the curve ID. Unknown values remain `null`. A readable alias
+cannot stand in for an exact field representation or subgroup.
 
 A design proposal may use a `Q<number>` catalog ID while exact base points,
 algorithm wiring, or isogeny maps are unresolved. Keep `candidate_id: null`
@@ -98,6 +205,36 @@ There are no separators or zero-padded numbers in an ID. Structural tags
 (`kb1`, `f4`, `walk`, `bw`, etc.), the `fb` tag, and hex digits are lowercase.
 The stage codes are short, stable, and recorded in the candidate manifest.
 The compact ID is a label; load the manifest for the exact configuration.
+Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid`,
+`PDP5mitm` for five-summand group meet in the middle, `PDP4mitm` for
+four-summand pair-index meet in the middle, `PDP8mitm` for eight-summand
+four-pair indexed meet in the middle, and `PDP4root` for the compact
+four-summand S3 root index; `PDP3direct` for exact same-base point-pair
+lookup, and `PDP2orbit` for the prime-field two-summand automorphism-orbit
+peel/lookup oracle for the compact four-summand S3 root index; `PDP2xl` for a
+dense Macaulay/XL degree scan and `PDP2xlsym` for the same scan over the
+symmetric-function (`e_k` in `V^(k)`) formulation, with the XL or closure mode
+in the manifest; `PDP3eval` for Boolean evaluation with Buchberger-Moeller
+basis construction and an independently checked exact Boolean basis
+certificate; `PDP2eval` for the corresponding two-summand evaluation method,
+and `PDP2cond` for two-summand conditional linear solving with independent
+branch-count and exact Boolean basis certification; `PDP2ht` for the
+two-summand linearized (half-trace) oracle over an arbitrary F_2-subspace:
+the linear system in `x1 + x2` from projecting onto `F / V^(2)`, with the
+residual affine space enumerated (Courtois 2016; `linearized-half-decomposition`);
+`RCwalk`, `RCsample`, `RCdirect`, `RClp` for single-large-prime collection,
+and `RCguided` for pivot-guided relation collection; `RCstream` for verified
+relations inserted in worker-completion order until target-span recovery,
+including cooperative cancellation and worker drain; `RCenum` for verified
+distinct decompositions enumerated for one fixed known-scalar setup target,
+inserting rank-increasing rows until the factor-base log system is solved;
+`LAbw`, `LAwied`, `LAgauss`, `LAgraph` for exact one/two-term gain-graph
+solving, for **final sparse relation-matrix** solving;
+`TDdirect`, `TDpdp`, `TDdescent`, `TDlearn` for an ordered descent that adds
+verified differences to a shared logarithm database, for target handling
+(`TDpdp` records its rerandomization in the manifest: uniform `Q + [a]G`, or
+the additive walk `Q + i[a0]G`);
+`ISO0` for no isogeny
 Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid`; `PDP4sat`
 for a compact four-summand S3 SAT chain, `PDP4root` for the compact
 four-summand S3 root index, `PDP4theory` for a four-summand SAT search with
@@ -176,6 +313,16 @@ checks, including scalar replay, in the result record; if they are outside the
 online interval, report their timing separately and do not imply they were
 charged to it.
 
+The paired Pollard-rho reference must solve that same single target. Its clock
+starts at the first target-dependent walk computation and stops when the
+scalar is recovered and independently verified; exclude launch and fixture
+construction. Parallel workers are allowed when they work on the same target
+within the frozen resource envelope. Do not use multi-target rho batches,
+cross-target distinguished-point tables, batch throughput divided by target
+count, or shared collision work as the one-target baseline. Record rho's
+target, walk and collision policy, worker count, distinguished-point memory,
+online interval, and correctness certificate alongside the IC row.
+
 Multi-target or batch workloads are secondary only. Run them only after the
 single-target measurement has been completed and explicitly identify a
 separate question that requires multiple targets (for example, shared-log
@@ -247,6 +394,50 @@ not estimates of natural relation yield. An unverified isogeny neighbor or
 conductor guess is a proposal only: `ISO1` requires an explicit verified map,
 ordered edge links, subgroup/log transport, and charged route costs.
 
+## Hardware and placement for empirical benchmarks
+
+For every performance or memory comparison, save a machine-readable hardware
+and execution manifest with the run receipt. Record the CPU vendor, exact
+reported model and generation or microarchitecture when independently known,
+architecture, exposed cores/threads/sockets, cache topology, kernel and OS,
+virtualization/container status, and CPU and memory cgroup limits. Record the
+physical memory technology (for example DDR4 or DDR5), speed, and channel
+configuration only when the host exposes verifiable evidence; otherwise write
+`unknown`, especially in a VM. Do not infer DIMM type from a CPU model.
+
+Record allowed CPUs and NUMA memory nodes, the selected CPU affinity and
+memory policy, and observed page placement for the measured process. On a
+multi-node host, choose a CPU and its local memory node together, first-touch
+the working set under that policy, and verify the placement. If only one node
+is exposed, say so and do not claim a NUMA locality comparison or host-level
+isolation. CPU affinity restricts the benchmark process's placement; it does
+not reserve a core from other processes. Record any CPU throttling and relevant
+co-runners where observable.
+
+Pair variants on the same host, core/node policy, inputs, limits and warmup
+policy. Report process CPU time and wall time separately, along with peak RSS,
+operation counts, rank progress, and algorithm-specific work such as row
+fill-in. Include repeated paired runs and variability for timing claims;
+never treat one elapsed-time result alone as evidence of a solver speedup.
+Keep source and input hashes and record censored, timed-out, or memory-limited
+runs as such.
+
+## CPU performance isolation gate
+
+Treat CPU timing ratios from a contended or unverified host as exploratory.
+Promote a new CPU wall-time speedup claim only with a receipt from the
+[isolated benchmark service](docs/ISOLATED_BENCHMARKS.md), or an equivalent
+auditable host-level isolation record. The record must identify the physical
+CPU model, core and SMT topology, NUMA node, exclusive CPU partition,
+execution CPU affinity, memory policy, fixed frequency, IRQ routing, CPU
+quota, code and workload hashes, paired run order, raw failures, throttling,
+steal time, interrupts, and correctness. A container's visible affinity mask
+does not establish host-wide isolation. If the isolation preflight or any
+noise gate fails, preserve the row and keep aggregate speedup unknown.
+Re-evaluate earlier measurements lacking this evidence before citing them as
+controlled speedup results. Correctness runs and algorithmic diagnostics may
+still run on ordinary hosts when labeled accordingly.
+
 ## Remote compute
 
 A cloud-agent VM has 4 CPUs, 15 GB and no GPU. Run bigger work, such as
@@ -260,8 +451,86 @@ working tree and copy the results back into the checkout:
 - `cloud/fleet.py run rp-cpu-1|rp-gpu-1 [--out PATH | --changed] -- CMD`
   runs on the Runpod pods; `cloud/fleet.py status` and `up NAME` show and
   start them.
+- For whole agents on bigger machines, `cloud/modal_worker.py up NAME [--gpu
+  TYPE]` starts a Cursor worker on Modal, and `status` shows it.
 
-If `FLEET_WORKER_NAME` is set, you are already on a fleet pod: run locally,
-up to `$FLEET_CPUS` wide. Stop or kill whatever you start, never write
+If `FLEET_WORKER_NAME` is set, you are already on a fleet machine (a Runpod
+pod or a Modal worker): run locally, up to `$FLEET_CPUS` wide. Stop or kill whatever you start, never write
 credentials into the tree, and copy the hardware from each shard's
 `status.json` into the run record.
+
+## Local Sage runs
+
+**Required rule:** Agents must launch all new and resumed local Sage jobs
+through this repository's `sage` launcher, which selects our accepted
+optimized build. This includes jobs they write, run, or configure for later
+execution:
+
+```sh
+# From this repository:
+./sage -python path/to/job.py
+./sage path/to/job.sage
+
+# From another directory, including local worker and scheduler commands:
+/Volumes/SSD990/cryptanalysis/sage -python /absolute/path/to/job.py
+```
+
+This applies to commands written by agents, shell scripts, and Python
+subprocesses. Use the absolute repository launcher in subprocess argument
+lists; do not rely on a scheduler's PATH or a system `python3` to select Sage.
+The launcher verifies the accepted source and native binaries against
+`experiments/sage-binary-arithmetic/runtime-current.json` before starting each
+job, and gives child commands named `sage` the same checked launcher on PATH.
+If verification fails, fix the installation before running the job; do not
+bypass the check or fall back to another installation.
+
+For measured runs, save `./sage --runtime-info` output alongside the results
+before starting the workload. Keep this startup check outside the arithmetic
+or single-target online timing interval. The output records the actual
+imported modules, manifest hash, installation receipt, and native dispatch.
+Restart existing Python/Sage processes after an accepted build changes so
+they load its new modules.
+
+Import the installed `sage.schemes.elliptic_curves` modules for ordinary
+local work. Eligible scalar operations use the installed acceleration
+automatically; independent point batches can use the public `binary_batch`
+APIs documented in `experiments/sage-binary-arithmetic/README.md`.
+When running the hardware experiment harness against the accepted build,
+set `SAGE_BINARY_USE_INSTALLED=1`; its default loader selects a development
+prototype. Prototype loaders and `SAGE_BINARY_CANDIDATE`,
+`SAGE_BINARY_NATIVE`, or `SAGE_BINARY_CODEC` overrides belong only in explicit
+candidate comparisons, with their sources recorded separately.
+
+Do not silently substitute `/usr/local/bin/sage`, which launches the older
+application on this host. Explicit baseline comparisons may use that
+application, with its runtime recorded separately. The user-level `sage`
+shim also forwards to this repository, but persisted local job commands
+should use the repository launcher explicitly.
+
+## Sage hardware compatibility
+
+**Required rule:** Preserve correctness and a portable CPU path when changing
+Sage arithmetic. Validate the installed build on each hardware/backend for
+which compatibility or a speedup is claimed. Rebuild native extensions on
+the target platform; do not reuse this host's archived macOS binaries in
+cross-platform tests. Keep architecture-specific instructions and optional
+GPU libraries behind explicit capability checks, with the existing Sage/CPU
+fallback available when those capabilities are absent.
+
+Use `experiments/sage-binary-hardware/validate_compatibility.py` through the
+checked Sage launcher for installed scalar, batch, and selected-backend
+correctness. Use `validate_native.py` in the same directory for a separately
+built portable CPU kernel check. Cover ARM64 and x86-64 CPUs, and the selected
+Apple Metal, NVIDIA CUDA, or AMD/Intel OpenCL backend where applicable.
+HIP/ROCm packed-kernel replay is a separate check, not proof that the complete
+Sage API has been validated on that device.
+
+Record the architecture, OS, compiler/runtime, device/backend, source and
+binary hashes, and exact-output test results. A requested backend that fails
+or is unavailable must remain an explicit result. Distinguish physical
+hardware runs from emulation/translation, compilation checks, and untested
+platforms. Rosetta execution does not establish physical Intel/AMD coverage.
+Correctness passes do not establish speedups: require matched full-operation
+benchmarks on each claimed device, including conversion and transfer costs,
+before enabling device-specific automatic routing or making performance
+claims. Keep unmeasured backends opt-in.
