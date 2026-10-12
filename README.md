@@ -5,6 +5,41 @@ Rust, Go and Python bindings, and, in [`suite/`](suite/README.md), the Rust
 attack suite (symmetric, hash, ECDLP, nonce, lattice and post-quantum
 cryptanalysis) that grew up alongside it.
 
+> **Status note on ECC2K-130 and isogeny-volcano work (as of 2026-10-01).**
+> This repository contains no ECDLP speedup, and none is claimed. The
+> volcano / descendant-curve experiments (`experiments/volcano-ic`, and the
+> ECC2K-130 pull requests, for example #62, #65, #66, #70 and #116) are
+> measurements, and every one of them is a null or negative result:
+> no descendant curve is easier than E0, E0 needs 0.996x the attempts of its
+> descendants in the n = 19 end-to-end study (95% CI 0.976-1.017), and the
+> Groebner degree stays the same on every curve tested. Pull requests that
+> propose further experiments are plans, not results, and say so in their
+> descriptions. Pull request titles alone are not evidence of a finding.
+>
+> Why curve choice cannot help here, in short: every constructible curve in the
+> ECC2K-130 isogeny class other than E0 sits one 263-isogeny below it; the
+> remaining ~2^65 curves require an isogeny of 57-bit prime degree whose kernel
+> lives in a degree-~2^53 extension field; the curve enters the Gaudry-Diem
+> algorithm only through one field element c = a6^(1/2); and a 263-isogeny
+> (about 2^15.6 field multiplications) maps any instance back to E0.
+> A census of full-density factor-base subspaces at n = 11, 13, 17 and 19 shows
+> curve-derived sets at or slightly below a random set of the same density, so
+> adapted factor bases give no structural gain (scripts and raw data:
+> [`experiments/factorbase-census`](experiments/factorbase-census/README.md)).
+>
+> We know of no public 2025-2026 result in classical index calculus for binary
+> elliptic curves that says otherwise. If you have a source for one, please open
+> an issue with the link.
+> **P-256 isogeny-class status (2026-10-05).** The complete,
+> certificate-checked factorization of the Frobenius discriminant is frozen in
+> [`experiments/p256-isogeny-search-20261005`](experiments/p256-isogeny-search-20261005/README.md).
+> It is fundamental, so `Z[pi]` is already the maximal order: this class has no
+> vertical volcano levels, no `j=0` or `j=1728` member, and no useful low-degree
+> non-scalar endomorphism. The remaining work is a horizontal explicit-path
+> search with separately charged discovery, mapping, and ECDLP costs. The
+> initial timing is an unisolated Python control; no P-256 ECDLP speedup is
+> claimed.
+
 | algorithm | header | problem | cost |
 |-----------|--------|---------|------|
 | Baby-step giant-step (Shanks), amortised tables | `ca_bsgs.h` | interval / whole group | `1.5 sqrt(N)` ops, `O(sqrt N)` memory |
@@ -35,13 +70,47 @@ constants, to serve as the reference implementation that research code is
 compared against, and to give higher-level languages a fast native core;
 it is not an attack tool for cryptographic sizes.
 
+For prime-field `j=0` curves, rho now uses a Jacobian `tau = 1-omega`
+scalar path when building its jump table and restarting walks.  Width 2 is
+the measured default; width 4 with cached base and target tables and
+tripling is selectable using
+`-DCA_J0_TAU_RHO_WIDTH=4`.  The
+[paper integration and paired measurements](experiments/prime-j0-tau-20260930/README.md)
+describe the scope and timing interval.  Configure `-DCA_J0_TAU_RHO=OFF`
+to build the affine setup reference.
+
+The j=0 rho walk now keeps each point in its current sixfold orientation and
+adds a matching precomputed jump.  It checks orbit collisions at distinguished
+points and showed an exploratory gain over the former per-step canonical walk
+on a frozen 36/38/46-bit one-target panel.  That contended-host timing needs
+replay through the [isolated benchmark service](docs/ISOLATED_BENCHMARKS.md).
+The
+[oriented-walk experiment](experiments/prime-j0-rho-coordinate-canon-20261002/README.md)
+contains the derivation, raw results, and limits.  Set
+`-DCA_J0_RHO_COVARIANT_WALK=OFF` to build the former walk.
+
 ## Build
 
-Requirements: CMake >= 3.16 and a C11 compiler with `__int128` (gcc or
-clang; pthreads).
+Local Sage experiments use the optimized workspace build through `./sage`:
+run `./sage --runtime-info` to verify its installed modules and native
+arithmetic, or `./sage -python path/to/job.py` to start a job. The launcher
+checks the accepted build before each run and gives child processes the
+same Sage. See [the Sage runtime instructions](experiments/sage-binary-arithmetic/README.md#current-apis)
+for installation receipts, the user-level `sage` command, and available APIs.
+For local workers, subprocesses, and jobs launched from another directory,
+use `/Volumes/SSD990/cryptanalysis/sage -python /absolute/path/to/job.py`.
+Save `./sage --runtime-info` with measured results before starting their
+timed workload. The [local Sage rules](AGENTS.md#local-sage-runs) apply to
+new and resumed agent-run jobs as well.
+
+Requirements for the core library: CMake >= 3.16 and a C11 compiler with
+`__int128` (gcc or clang; pthreads). The optional cuPQC example
+(`-DCA_CUPQC=ON`) needs a Linux CUDA host, CMake >= 3.24 and a separately
+installed SDK; see [docs/CUPQC.md](docs/CUPQC.md) for setup. The CPU-only
+build is:
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCA_CUPQC=OFF
 cmake --build build -j
 ctest --test-dir build            # 11 test programs, ~1 minute
 sudo cmake --install build        # headers, library, cryptanalysis, ca, pkg-config
@@ -50,6 +119,9 @@ sudo cmake --install build        # headers, library, cryptanalysis, ca, pkg-con
 Useful options: `-DCA_NATIVE=ON` (`-march=native`), `-DCA_SANITIZE=ON`
 (ASan + UBSan), `-DCA_WERROR=ON`, `-DCA_BUILD_SHARED/STATIC/TOOLS/TESTS`,
 and `-DCA_CUDA=ON` for the GPU backend (see [docs/GPU.md](docs/GPU.md)).
+The independent `CA_CUPQC` option defaults to OFF; when ON it builds NVIDIA's batched
+ML-KEM example using a separately installed cuPQC SDK; see [docs/CUPQC.md](docs/CUPQC.md)
+for dependencies, build commands and validation limits.
 `make test`, `make bench`, `make asan`, `make cuda`, `make cuda-kernel`,
 `make bindings` wrap the common invocations.
 
@@ -218,9 +290,11 @@ $ ./build/ca coord-job --group zp --p 4503599627372423 --order 2251799813686211 
 $ make coordinator && ./build/ca-coordinator -job job.txt -listen :8080 \
       -token-file /etc/ca/token
 
-# On every agent, anywhere.  The URL is the whole configuration: no inbound
-# rule, no address of its own, not even a copy of the job document.
-$ export CA_COORDINATOR_URL=https://rho.example.com CA_COORDINATOR_TOKEN=...
+# On every agent, anywhere.  The agent speaks plain HTTP to a local TLS
+# sidecar (stunnel/nginx/socat) that dials the public https:// hub; see
+# "8a. TLS: terminate it in a sidecar" in docs/COORDINATOR.md.  It needs no
+# inbound rule, no address of its own, not even a copy of the job document.
+$ export CA_COORDINATOR_URL=http://127.0.0.1:8443 CA_COORDINATOR_TOKEN=...
 $ ./build/ca work --node "$(hostname)" --threads "$(nproc)"
 $ ./build/ca coord-status
 ```
@@ -261,6 +335,10 @@ Docs: [docs/CLOUD_LAUNCH.md](docs/CLOUD_LAUNCH.md). Usecase notes and the
 one-click: Actions → **Cloud ECC2K-130** → Run workflow.
 
 ## Hardware
+
+The migrated [ECC2K-130 CPU/CUDA runner](ecc2k130/README.md) includes a shared
+Modal/Runpod container path, S3 checkpoint recovery, and direct reporting to an
+existing RDS rho-dp store. Its cloud worker does not require a separate ingester.
 
 `fpga/` is a synthesisable Pollard rho core for the Certicom **ECC2K-130**
 challenge -- the Koblitz curve `y^2 + xy = x^3 + 1` over `F_2^131` -- with a
@@ -355,6 +433,12 @@ share/cryptanalysis/campaign-kat.hex` before starting a walk, then
 kit; [docs/SAGE_RELEASE.md](docs/SAGE_RELEASE.md) explains how to build and use
 the optimized local Sage for elliptic-curve experiments.
 
+The macOS arm64 archive exposes the separate Metal table walk through
+`bin/cryptanalysis rho --curve ecc2k130 --backend metal`. Run `--check` for its
+host arithmetic check, then use `--run-id R --dp-file table-dps.bin --verify N`
+to collect and re-walk table-walk reports. Those points cannot join the live
+CUDA sigma-walk campaign corpus. The Metal shader is compiled at start-up.
+
 Two more clients run the table walk from the same headers and write the same
 reports, for developing and testing a campaign's pipeline without renting a
 card: `ec2k-cpu` on host cores, its products on PMULL (AArch64) or PCLMULQDQ
@@ -413,8 +497,9 @@ ca coord-job --group zp --p 4503599627372423 --order 2251799813686211 \
 cd bindings/go && go build ./cmd/ca-coordinator
 ./ca-coordinator -job ../../job.txt -listen :8080 -token-file /etc/ca/token
 
-# On every agent, anywhere.  The URL is the whole configuration.
-export CA_COORDINATOR_URL=https://rho.example.com CA_COORDINATOR_TOKEN=…
+# On every agent, anywhere.  The agent speaks plain HTTP to a local TLS
+# sidecar that dials the public https:// hub (see docs/COORDINATOR.md §8a).
+export CA_COORDINATOR_URL=http://127.0.0.1:8443 CA_COORDINATOR_TOKEN=…
 ca work --node "$(hostname)" --threads "$(nproc)"
 ca coord-status
 ```
@@ -663,3 +748,10 @@ all of these.
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
+## Verified Boolean solver comparisons
+
+See [the Gröbner comparison protocol](groebner_compare/README.md) for the bounded
+Boolean worker runner, independent basis certificates, learn/apply fallback
+accounting, and immutable diagnostic receipts. These are solver-stage controls;
+no full-DLP speedup or research-state transition is implied.

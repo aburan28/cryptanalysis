@@ -133,17 +133,20 @@ ca_status ca_grumpy_solve(const ca_group *g, const ca_elem *base, const ca_elem 
 
     ca_htab tab;
     if (ca_htab_init(&tab, (size_t)(3 * sq / 2 + 64)) != CA_OK) return CA_ERR_NOMEM;
-    ca_elem B = {{0}}, U = Hp, V = H2;
-    ca_group_identity(g, &B);
+    /* The three walks B (baby), U and V (giants) advance together through
+     * the batched op, which on a curve shares one field inversion among
+     * the three; results and counts are the three single ops'. */
+    ca_elem walk[3] = {{{0}}, Hp, H2}, step[3] = {*base, mG, m1G_neg};
+    ca_group_identity(g, &walk[0]);
+    uint64_t scratch[6];
     uint64_t i = 0;
     /* Upper bound on iterations: the baby walk alone finds x' in at most
      * width+1 steps (it meets U_0 = H'). */
     uint64_t max_iter = width + 2;
     for (i = 0; i < max_iter; i++) {
-        ca_elem *pts[3] = {&B, &U, &V};
         for (int tpe = 0; tpe < 3; tpe++) {
             uint64_t ot, oi;
-            int ir = ca_htab_insert(&tab, ca_group_hash(g, pts[tpe]), (uint64_t)tpe, i, &ot, &oi);
+            int ir = ca_htab_insert(&tab, ca_group_hash(g, &walk[tpe]), (uint64_t)tpe, i, &ot, &oi);
             if (ir < 0) { rc = CA_ERR_NOMEM; goto out; }
             if (ir == 1) {
                 if (grumpy_collide(&c, (int)ot, oi, tpe, i, x)) { rc = CA_OK; goto out; }
@@ -151,9 +154,7 @@ ca_status ca_grumpy_solve(const ca_group *g, const ca_elem *base, const ca_elem 
                  * walk period divides a small order; keep going */
             }
         }
-        ca_group_op(g, &B, &B, base);
-        ca_group_op(g, &U, &U, &mG);
-        ca_group_op(g, &V, &V, &m1G_neg);
+        ca_group_batch_op(g, walk, walk, step, 3, scratch);
         ops += 3;
         if (params->max_ops && ops > params->max_ops) { rc = CA_ERR_LIMIT; goto out; }
     }
