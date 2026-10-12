@@ -121,3 +121,376 @@ for those controls; it is not a full elliptic-curve or timing measurement.
 The search has scalar-dependent branches and work. It is intended for public
 scalars in research and rho setup; a private-scalar API would require a
 separate constant-time design and review.
+
+The stacked C integration and its exact-output receipt are documented in
+[INTEGRATION.md](INTEGRATION.md). It keeps the baseline prepared evaluator
+available and adds the cost-aware choice as an explicit opt-in function.
+The fixed-base positional τ table is a separate candidate with its own
+prospective protocol and results in [POSITIONAL.md](POSITIONAL.md).
+The one-inversion table builder and its separate preparation metric are in
+[GLOBAL_BATCH.md](GLOBAL_BATCH.md).
+The block-normalized output format for public scalar batches is in
+[BATCH_OUTPUT.md](BATCH_OUTPUT.md).
+
+The optional [table-aware hot-orbit format](TABLE_AWARE_HOT.md) compares the
+two shortest equivalent Eisenstein representatives against the same bounded
+point table. Its fresh 16,384-output panel verifies exactly and saves
+5.61%–6.81% of mixed additions, while charging an extra online recode;
+isolated CPU speed remains unmeasured.
+
+The [demand-gated selector](GATED_TABLE_AWARE.md) recodes a second
+representative only after a cold two-digit block or span overflow.
+Its fresh 16,384-output panel retains 81.35%–99.88% of the always-two
+selector's addition saving while skipping 32%–79% of second recodes;
+CPU speed awaits an isolated host.
+
+The [carry-steered eight-digit format](CARRY_STEERED_TAU8.md) changes the
+carry to the next τ block when a cold two-digit pair has a one-addition
+representative in the same residue class. Its frozen 16,384-output panel
+verifies exactly and saves 5.63%–11.81% of online mixed additions versus
+the ordinary hot table, with identical per-point setup and a 13,122-byte
+static map. Isolated CPU wall speed remains unmeasured.
+
+The [gated dual carry-steering format](GATED_DUAL_STEER.md) combines that
+block rule with a second shortest lattice representative, recoding the
+second only when the first leaves a cold block or overflows the prepared
+span. Its prospectively frozen 16,384-output panel matches generic
+multiplication and an independent operation model; it saves 1.72%–2.56%
+more mixed additions than carry steering alone while recoding a second
+representative on 5.96%–19.92% of scalars. A temporary RunPod CPU pod failed
+the host isolation gate, so CPU wall speed and rho impact remain unknown.
+
+The [tapered complete residue-orbit format](TAPERED_RESIDUE_ORBITS.md) uses
+large complete τ windows followed by narrow tail blocks. Its fresh
+16,384-output panel verifies exactly and saves 3.76%–3.94% online additions
+on the smaller subgroup and 39.14%–39.16% on the larger one versus gated
+dual steering. Preparation rises to 62,424 and 506,664 additions and the
+prepared point tables reach 1.26 MB and 8.57 MB. This is a reused-point
+batch diagnostic; isolated CPU speed and one-target rho benefit remain
+unmeasured.
+
+The [unit-folded orbit graph builder](ORBIT_GRAPH_PRECOMPUTE.md) constructs
+the same tapered table through exact lower-depth predecessor points. Its
+eight-point frozen panel verifies 32,768 graph outputs and reduces preparation
+additions by 37.4% and 47.2% for the two schedules. Preparation rotations
+also fall, while static recipes add 78,744 and 717,360 bytes. No controlled
+CPU timing is available.
+
+The [one-word orbit graph format](PACKED_ORBIT_GRAPH.md) stores each verified
+predecessor recipe in 32 bits. Its eight-point panel matches all 32,768
+generic outputs and both arms' operations while cutting recipe data nearly
+in half: 78,744→39,426 bytes and 717,360→358,734 bytes. The paired binary
+contains both formats; controlled CPU and standalone memory gains are
+unmeasured.
+
+The [affine-wavefront builder](AFFINE_WAVEFRONT.md) evaluates the packed
+orbit graph breadth-first with batched affine inversions. Its eight-point
+panel matches all prepared table entries and 32,768 generic outputs while
+retaining the same graph-addition and online counts. It adds three or four
+preparation inversions and 157,488 or 1,417,200 scratch bytes. Isolated
+preparation time and single-scalar latency are unmeasured.
+
+The [bounded τ-tail shortest-path oracle](TAIL_ORACLE.md) recodes only a
+small-coefficient tail using a 49,923-byte offline action table and the same
+prepared seed points. Its frozen 32,768-output panel matches generic
+multiplication, saving 7.48%–7.75% weighted evaluation operations on
+`glv-j0-32` and 2.84%–2.98% on `j0-56`. A second online recode is charged;
+isolated CPU speed and impact on rho remain unknown.
+
+The [pre-gated τ-tail arm](TAIL_GATE.md) moves the oracle-versus-canonical
+choice into a 6,241-byte offline bitset and emits the selected digit stream
+once. Its genuinely disjoint 32,768-output panel verifies exact mode-3/mode-4
+digit and operation agreement while retaining the original modeled saving.
+The first attempted fixture was invalidated because its seed permuted the
+older files; both the failure and replacement are recorded. Isolated CPU
+speed is still unknown.
+
+The [two-digit τ-pair shortest-path format](TAIL_DOUBLE_PAIR.md) permits a
+second prepared digit in selected τ pairs to trade additions for fewer
+triplings. Its disjoint 32,768-output panel verifies exact scalar recovery
+and saves another 2.39%–2.49% weighted evaluation operations on `glv-j0-32`
+and 0.99%–1.04% on `j0-56` beyond the one-digit tail oracle. It adds no
+prepared points but increases static policy data to 106,087 bytes. Isolated
+CPU speed and rho impact are unmeasured.
+
+The [sign-folded packed two-digit policy](TAIL_DOUBLE_FOLD.md) stores one
+representative of each `z`/`-z` state pair and uses phase-local 10-bit action
+codes. Exhaustive state checks establish the same optimal modeled score and
+gate decisions; a regression replay on the existing 32,768 scalar-point
+inputs matches outputs and operation counts. Active policy data falls from
+106,087 to 37,918 bytes. An isolated paired run is needed to learn whether
+the extra decode work and smaller table improve CPU wall time.
+
+An [8-bit residue-local encoding](TAIL_DOUBLE_FOLD.md#residue-local-byte-format)
+of the same sign-folded policy brings active data to 31,660 bytes. It keeps
+the same modeled evaluation score; the extra residue calculation leaves the
+CPU wall-time ordering unresolved until isolated paired measurement.
+
+The [orbit-pair point dictionary experiment](TAIL_PAIR_FUSED.md) goes further:
+the 727 exact two-digit pair contributions form 121 sign/unit orbits. One
+prepared affine point per orbit evaluates a two-digit pair with one mixed
+addition. Its disjoint 32,768-output panel lowers modeled evaluation cost
+5.49%–5.66% on `glv-j0-32` and 2.17%–2.23% on `j0-56` beyond the two-digit
+arm, with point setup reported separately. Isolated CPU speed and rho impact
+remain unmeasured.
+
+The [phase-complete pair table](PHASE_COMPLETE_PAIR.md) expands those 121
+orbits into 726 exact signed/unit points so the online pair evaluator performs
+no rotations. Its separate disjoint 32,768-output panel verifies every output
+and prepared point and saves another 1.59%–1.66% in the weighted evaluation
+model. The table grows to 23,232 bytes; isolated CPU speed remains unknown.
+
+The [high-order exact-pair search](GLOBAL_PAIR_SEARCH.md) explores a different
+recoding policy over the same complete table. On reused design scalars, a
+bounded-tail oracle plus a 32-choice, width-one high-order beam lowers the
+modeled group-operation score 7.93% and 3.39% against its canonical-plus-oracle
+comparator. The beam also evaluates 63 and 195 trial digits per scalar on the
+two curves, plus canonical completions. A norm-greedy rule loses nearly all
+the modeled gain. These are exploratory operation counts; no native or
+isolated CPU speedup is established.
+
+The [periodic 3-adic pair atlas screen](PERIODIC_PAIR_ATLAS.md) compiles a
+bounded-oracle action into a lookup indexed by coordinate residues modulo
+`27`. A per-scalar gate selects its schedule only when the complete modeled
+group-operation score beats the canonical-plus-oracle schedule. On reused
+design scalars, the gated policy saves 4.40% on `glv-j0-32` and 2.72% on
+`j0-56` with about 3.6 and 13.5 atlas lookups per scalar, respectively.
+The ungated schedule regresses on both curves. Native end-to-end speed and
+academic novelty remain unproved. The
+[prospective native protocol](PERIODIC_PAIR_NATIVE_PROTOCOL.md) fixes the
+modulus-27 gate and disjoint comparison before new inputs are generated.
+Its native old-design controls match all 2,048 Python word streams. The
+[frozen disjoint panel](PERIODIC_PAIR_NATIVE_PROTOCOL.md#frozen-disjoint-panel-result)
+verifies 32,768 scalar-point outputs in eight paired cases and passes the
+predeclared modeled-operation gate: the score falls 4.17%–4.48% on
+`glv-j0-32` and 2.62%–2.70% on `j0-56`, with no schedule fallbacks.
+The candidate's raw local interval was longer in seven of eight pairs;
+without host isolation or repeated pairs, CPU speed remains unknown.
+
+The [bounded 64-bit recoder](PERIODIC_PAIR_INT64.md) keeps the same
+periodic-atlas words and point evaluator while replacing wide remainder
+arithmetic in the online recoder. It matches all 2,048 frozen design word
+streams exactly. A new disjoint, isolated CPU panel is required to learn
+whether the lower recoding overhead improves wall time.
+Its new disjoint 32,768-scalar fixture is committed before either
+comparison arm runs; no isolated CPU result exists yet.
+
+The [single-pass first-word gate](FIRSTWORD_PAIR_GATE.md) uses a 128-byte
+bitset to choose one recoder before constructing any full schedule. On
+older point-1 validation scalars, it saves modeled group-operation score
+2.21% on `glv-j0-32` and 0.77% on `j0-56` against the single-pass
+canonical arm. The native arm matches all 16,384 selected old-data word
+streams and generic outputs. Its disjoint 32,768-scalar held-out panel was
+frozen before execution and passed the predeclared operation gate in all
+eight paired cases: 1.94%–2.13% modeled saving on `glv-j0-32` and
+0.69%–0.87% on `j0-56`. A separate native replay matched all 32,768
+selected held-out word streams. This is an operation-count result;
+isolated CPU timing and academic novelty remain unestablished.
+
+The [exact mixed-radix tail](MIXED_RADIX_TAIL.md) lets a bounded Eisenstein
+state use τ², a single τ, or doubling, each with an exact digit from the
+existing point catalog. Its shortest-path map covers all 16,641 bounded
+states and is independently audited. On 16,384 older scalars, the full
+canonical-high-plus-mixed-tail score is 6.49%–6.66% lower on `glv-j0-32`
+and 2.47%–2.58% lower on `j0-56` than the canonical pair arm; it also beats
+the earlier first-word gate's old-data score. Its later native evaluator
+matched all 16,384 old-data action streams, and the disjoint held-out panel
+passed its operation gate in all eight cases. Host-isolated CPU timing and
+academic novelty remain open.
+
+The [full-digit mixed-radix tail](MIXED_FULL_DIGITS.md) extends every bounded
+radix to all 727 already available digits. Its new disjoint panel verifies
+all eight cases and reduces the operation score 0.52%–0.57% on the smaller
+curve and 0.22%–0.23% on the larger curve against the unit-restricted map.
+The [conventional fixed-base comb control](FIXED_COMB_CONTROL.md) then replays
+the same frozen inputs. With 512 point slots and no static action map, comb
+has a 34.96% and 40.18% lower aggregate operation score than full-digit
+mixed on the two curves. The older positional tau method scores below comb
+but uses a larger prepared table. These comparisons are algorithmic
+diagnostics; controlled CPU timing and a one-target rho speedup are unknown.
+
+The [compact positional tau table](COMPACT_POSITIONAL.md) sizes the prepared
+layers from subgroup bitlength and uses a generic fallback if a scalar needs
+more. A new disjoint 32,768-scalar panel passed all eight prospective gates:
+exactly the same online addition, rotation, and inversion counts as the full
+positional table, zero fallbacks, and verified generic outputs. The point
+table shrank from 36,864 bytes to 6,336 and 12,096 bytes on the two curves;
+preparation triples fell from 1,134 to 180 and 360. Controlled CPU speed and
+one-target rho impact remain unknown.
+
+The [width-three fused positional tau experiment](TAU3_FUSED_POSITIONAL.md)
+combines a 27-slot tau-cubed residue atlas with a six-step, six-unit-orbit
+point table. Its new disjoint 32,768-scalar panel verified all 16 arms and
+passed all eight frozen operation gates. It saved 23.46% and 27.10% of online
+mixed additions against compact width-four positional tau on the two curves,
+with no fallbacks, but used 43,904 and 76,832 point-table bytes plus a
+9,826-byte static map. Unisolated local online timing was slower in every
+case; controlled CPU speed and one-target rho impact remain unknown.
+
+The [six-step tau quotient atlas](TAU3_QUOTIENT_ATLAS.md) replaces six
+successive width-three digit decisions with one exact correction lookup per
+block. Its new disjoint 32,768-scalar panel verified all 16 outputs and
+passed all eight operation-equivalence gates with zero fallbacks. It keeps
+the same point table and group-operation counts as the fused width-three
+mode while adding a 26,244-byte static atlas. Local online times varied
+widely, so a controlled CPU speedup remains unknown.
+
+The [sparse hot-pair tau table](TAU3_SPARSE_HOT.md) retains the quotient
+atlas but prepares only 18 one-digit points per block plus the most frequent
+two-digit orbit pairs from older traces. Its separate disjoint 32,768-scalar
+panel verified all 24 arms and passed all eight frozen operation gates.
+Against compact width-four it saved 14.40% and 8.51% of online mixed
+additions, with point tables twice compact's size: 12,672 and 24,192 bytes.
+The compiled static maps add 45,550 bytes. Local timing did not establish a
+CPU win; controlled CPU speed and one-target rho impact remain unknown.
+
+The [direct radix-27 shortest-path recoder](TAU3_RADIX27_PATH.md) searches
+the 1–9 valid six-step actions in each of 729 coefficient residue classes
+for the minimum additions under the sparse table's fixed block budget.
+Python and native agree exactly on 32,768 older design scalars. A separate
+disjoint 32,768-scalar panel then passed all eight prospective operation
+gates: additions fell by 1.98% and 7.03% beyond the sparse recoder, with
+zero fallback and verified generic outputs. The native per-scalar search
+uses 53,312 bytes of scratch and had substantially higher exploratory local
+latency. This is an exact operation-bound result; no CPU speedup or academic
+novelty is claimed.
+
+The [scattered width-three pair table](TAU3_SCATTER_MATCHING.md) combines
+the complete six-step point table with selected nonadjacent three-step
+pairs. Exact matching on a new disjoint 32,768-scalar Python panel saved
+7.53% and 4.65% of mixed additions against the complete six-step table,
+with 1.82× and 2.00× its point slots. All scalar identities and 184 sampled
+group outputs passed. The native C replay matched all eight Python operation
+counts and all paired point digests with zero fallbacks. It charges an extra
+1,122 and 2,401 preparation additions for the selected pairs. Controlled
+CPU speed and one-target rho impact remain unknown.
+
+The [direct residual-pair selector](TAU3_SCATTER_DIRECT.md) uses the same
+scattered table but skips graph augmentation. On a new fixture disjoint from
+five earlier scalar panels it retained 99.13% and 91.38% of exact matching's
+addition savings, while native C verified all three modes' point outputs and
+operation counts. An isolated benchmark manifest can pair the direct mode
+with either exact matching or the complete-table control. CPU speed remains
+unknown until a qualifying host receipt exists.
+
+The [orbit-indexed scattered action atlas](TAU3_SCATTER_ATLAS.md) replaces
+direct selection's binary pair search with a 505-orbit dense slot lookup.
+It preserves exactly the same additions and prepared points, while adding
+76,540 bytes of static maps. A third disjoint 32,768-scalar fixture and a
+32-arm native replay verified scalar outputs and operation equivalence.
+Controlled CPU timing is still required to determine whether the lookup
+layout pays for its larger map.
+
+The [endomorphism-folded signed radix-256 table](ENDO_RADIX8.md) takes a
+different route: it splits the scalar into two short lattice coordinates,
+prepares positive digit magnitudes once per binary window, and uses the
+`j=0` automorphism to share those points across both coordinates. A new
+disjoint 32,768-scalar fixture passed independent algebra and point checks,
+24 native arms, and an UndefinedBehaviorSanitizer replay. It uses 384 or
+512 prepared points, with zero online doublings. Against fixed comb9, its
+predeclared operation score is 0.36% lower on `glv-j0-32` and 18.97% lower
+on `j0-56`. These are operation-model results; controlled CPU timing and
+one-target rho impact remain unknown.
+
+The [joint Eisenstein radix-16 orbit table](JOINT_WINDOW4.md) uses one
+prepared point per nonzero two-coordinate window. Six unit actions reduce
+255 nonzero digit pairs to 71 point orbits. A fresh fixture disjoint from
+eight earlier scalar panels passed 32,768 algebra checks, 184 independent
+point checks, 24 native arms, and a warnings-as-errors UBSan replay. It
+prepares 284 or 497 points; its operation score is 11.67% and 26.80% below
+comb9 on the two study subgroups. The 56-bit table's seven-position capacity
+is checked at runtime and had zero fallbacks on the held-out fixture.
+Controlled CPU timing and one-target rho impact remain unknown.
+
+The [frequency-selected joint table](JOINT_WINDOW4_HOT.md) chooses the
+stored representative of each six-unit orbit from frozen training digit
+frequencies. On a separate 32,768-scalar fixture it kept the same point
+slots and online additions while reducing unit rotations by 41.9% and
+33.3% on the two study curves. The [packed two-coordinate unit plane](JOINT_WINDOW4_XPLANE.md)
+keeps that selected digit map and the same persistent point-table bytes.
+It stores `x` and `βx` and reconstructs `β²x` with field additions, removing
+all online unit field multiplications on its own fresh fixture. Release and
+UBSan correctness panels pass; controlled CPU timing remains unknown.
+
+The [congruence-directed zero-window variant](JOINT_WINDOW4_ZERO.md) solves
+one GLV lattice congruence modulo 16 to force the lowest joint digit to
+zero, then accepts that representative only if it fits the same table and
+saves a mixed point addition. On a new disjoint fixture it saved 3,867 of
+54,929 mixed additions on `glv-j0-32`; the seven-position `j0-56` table
+had too little slack for a material gain. The candidate requires an extra
+online recode, so a controlled host measurement is still needed to learn
+whether it runs faster.
+
+The [unit-closed hexagonal pair-table experiment](JOINT_PAIR_HEX.md) groups
+adjacent radix-16 Eisenstein digits under one six-unit orbit point. On a
+new disjoint 32,768-scalar fixture, it reduced online table additions by
+40.48% on `glv-j0-32` and 42.71% on `j0-56`, with exact scalar replay in
+release and UBSan builds. Its prepared tables grow to 708 KB and 1.42 MB,
+and its extra preparation additions exceed the online savings in each
+4,096-scalar case. An isolated host measurement and a workload with enough
+reuse per base are needed before calling it faster.
+
+The [bounded upper-pair variant](JOINT_PAIR_TOP.md) proves that the final
+hexagonal pair needs only 756 or 210 orbit points on the two exact study
+curves. It preserves the full pair table's online addition count on a
+new disjoint fixture while cutting prepared point slots to 11,817 and
+33,393. Release and UBSan correctness panels pass. Controlled wall-time
+performance remains unknown.
+
+The [pair point-width experiment](JOINT_PAIR_WIDTH.md) proves that no
+prepared pair orbit point is the identity on these two subgroups. It
+uses that fact to store each bounded-table point in three field words
+instead of four, or in two words with one online field multiplication
+for each nontrivial unit rotation. On a fresh disjoint 32,768-scalar
+fixture, all formats matched outputs and online group-add counts in
+release and UBSan builds. The 24-byte format cuts the point table by
+25%; the 16-byte format cuts it by 50% and adds 22,368 or 44,944
+online field multiplications per 16,384 scalars on the two curves.
+Controlled wall-time performance remains unknown.
+
+The [affine pair wavefront](JOINT_PAIR_WAVE.md) evaluates 128 independent
+public scalars at each pair position using one shared affine inversion
+per active wave. On a fresh disjoint 32,768-scalar fixture, the 24- and
+16-byte wave modes matched their serial controls in outputs, group
+additions, and unit actions in both release and UBSan builds. Output
+inversions fell from 16,384 to 128 on `glv-j0-32` and to 384 on
+`j0-56` for each 16,384-scalar curve panel. This batch-throughput
+experiment still needs isolated-host timing before any CPU speedup
+claim.
+
+The [certified five-neighbor recoder](JOINT_PAIR_FIVE.md) proves that the
+rounded center and four axial lattice neighbors attain the global L1
+minimum on both exact study curves. It reduces pair-recoder candidate
+evaluations from 25 to 5 while preserving prepared tables and group
+operation counts. A new 32,768-scalar fixture passed release and UBSan
+correctness panels in all four serial and wave formats. The isolated
+manifest is ready; controlled wall-time performance remains unknown.
+
+The [certified center guard](JOINT_PAIR_GUARD.md) tests two exact
+dominant-coordinate inequalities before the five-neighbor recoder.
+On a new disjoint 32,768-scalar fixture it accepts the rounded center
+for 16,363 of 16,384 `j0-56` scalars and 2,199 of 16,384
+`glv-j0-32` scalars; the remainder use the unchanged five-neighbor
+search. Release and UBSan correctness panels pair each guarded format
+with its same-width serial or wave control. Isolated CPU timing is
+still needed before claiming a wall-time improvement.
+
+The [exact-corrected quotient variant](JOINT_PAIR_QCORR.md) replaces
+two online signed 128-bit GLV lattice divisions with binary64 quotient
+estimates and exact integer-remainder correction. Its fresh fixture
+includes near-halfway quotients, two of which require corrections on
+`j0-56`. Release and UBSan correctness panels pass 144 arms with
+matching outputs and group operation counts. A portable integer path
+remains available when the floating capability is absent. Isolated
+CPU timing is required to learn whether the quotient change helps.
+
+The [j=0 rho orbit reducer study](RHO_J0_ORBIT_RESULTS.md) moves the
+experiment from scalar-table setup to the repeated rho walk. A coordinate
+representative uses fewer field operations per reduction but changes the
+walk path; its 32-seed operation diagnostic was weaker than the legacy
+hash representative on the frozen small target. A factored hash preserves
+the exact legacy path while reusing the orbit's three x and two y words.
+It recovered and independently verified a full `j0-56` target with the
+same 255,104,119 group operations as the reference. Both variants are off
+by default. A paired isolated-host receipt is still required for any CPU
+wall-time conclusion.

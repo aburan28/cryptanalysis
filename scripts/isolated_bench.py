@@ -117,6 +117,15 @@ def require_manifest(manifest):
                 raise ValueError("Sage commands must use this repository's absolute ./sage launcher")
     if not isinstance(manifest.get("measurement_boundary"), str) or not manifest["measurement_boundary"]:
         raise ValueError("measurement_boundary must describe the benchmark's internal timer")
+    metric_field = manifest.get("metric_field", "online_ms")
+    if (not isinstance(metric_field, str) or not metric_field.endswith("_ms") or
+        not metric_field[0].islower() or not all(
+            char.islower() or char.isdigit() or char == "_" for char in metric_field)):
+        raise ValueError("metric_field must name a nonnegative duration in milliseconds")
+    if (metric_field != "online_ms" and
+        (not isinstance(manifest.get("measurement_kind"), str) or
+         not manifest["measurement_kind"].strip())):
+        raise ValueError("non-online metric requires measurement_kind")
     if not isinstance(manifest.get("pair_fields"), list) or not manifest["pair_fields"]:
         raise ValueError("pair_fields must identify the frozen workload")
     for field in manifest["pair_fields"]:
@@ -243,13 +252,6 @@ def preflight(manifest):
     evidence["cgroup.procs"] = processes
     if processes is None or processes:
         problems.append("benchmark cgroup must be empty before dispatch")
-    cpu_stat_text = read(cg / "cpu.stat")
-    if not cpu_stat_text or not all(key in cpu_stat_text for key in
-                                    ("nr_throttled", "throttled_usec")):
-        problems.append("cpu.stat throttling counters unavailable")
-    if read(cg / "memory.events") is None:
-        problems.append("memory.events unavailable")
-    if read(cg / "cpu.pressure") is None:
     events = read(cg / "cgroup.events")
     evidence["cgroup.events"] = events
     if events is None or "populated 0" not in events.splitlines():
@@ -421,14 +423,14 @@ def noise(before, after, usage_before, usage_after):
     return problems
 
 
-def output_fields(stdout):
+def output_fields(stdout, metric_field="online_ms"):
     for line in reversed(stdout.splitlines()):
         fields = {}
         for word in line.split():
             if "=" in word:
                 key, value = word.split("=", 1)
                 fields[key] = value
-        if "online_ms" in fields:
+        if metric_field in fields:
             return fields
     return {}
 
@@ -495,7 +497,8 @@ def one_run(argv, manifest, cpus, nodes, cgroup, folder, serial):
     stem = f"{serial:05d}"
     (folder / (stem + ".stdout.txt")).write_text(stdout)
     (folder / (stem + ".stderr.txt")).write_text(stderr)
-    fields = output_fields(stdout)
+    metric_field = manifest.get("metric_field", "online_ms")
+    fields = output_fields(stdout, metric_field)
     issues = noise(before, after, usage_before, usage_after)
     if read(cgroup / "cgroup.procs"):
         issues.append("benchmark cgroup not empty after process exit")
@@ -516,13 +519,13 @@ def one_run(argv, manifest, cpus, nodes, cgroup, folder, serial):
         issues.append("post-run isolation changed: " + "; ".join(postflight["problems"]))
     metric = None
     try:
-        metric = float(fields["online_ms"])
+        metric = float(fields[metric_field])
         if not math.isfinite(metric) or metric <= 0:
-            raise ValueError("invalid online_ms")
+            raise ValueError("invalid " + metric_field)
     except (KeyError, ValueError):
-        issues.append("missing or invalid online_ms")
+        issues.append("missing or invalid " + metric_field)
     if metric is not None and metric > outer_ms:
-        issues.append("online_ms exceeds outer elapsed time")
+        issues.append(metric_field + " exceeds outer elapsed time")
     if fields.get("verified") != "1":
         issues.append("missing verified=1")
     if proc.returncode != 0:
@@ -533,7 +536,9 @@ def one_run(argv, manifest, cpus, nodes, cgroup, folder, serial):
             "issues": issues, "command": argv, "binary_sha256": binary_before,
             "returncode": proc.returncode, "timed_out": timed_out,
             "environment": benchmark_env(),
-            "outer_ms": outer_ms, "online_ms": metric,
+            "outer_ms": outer_ms, "metric_field": metric_field,
+            "metric_ms": metric,
+            "online_ms": metric if metric_field == "online_ms" else None,
             "child_involuntary_switches": usage_after.ru_nivcsw - usage_before.ru_nivcsw,
             "child_major_faults": usage_after.ru_majflt - usage_before.ru_majflt,
             "fields": fields, "before": before, "after": after,
@@ -587,6 +592,7 @@ def execute(manifest, output):
                                 pair["reference"]["fields"][field] != pair["candidate"]["fields"].get(field)]
                     if mismatch:
                         issues.append("pair mismatch: " + ",".join(mismatch))
+                    mismatch = [field for field in manifest["pair_fields"]
                                 if any(row["fields"].get(field) != case["expected_fields"][field]
                                        for row in pair.values())]
                     if mismatch:
@@ -597,8 +603,10 @@ def execute(manifest, output):
                 record = {"case": case["id"], "repeat": repeat,
                           "run_serials": {variant: row["serial"] for variant, row in pair.items()},
                           "status": "valid" if not issues else "invalid", "issues": issues,
-                          "speedup": (pair["reference"]["online_ms"] /
-                                      pair["candidate"]["online_ms"]) if not issues else None}
+                          "speedup": ((pair["reference"].get("metric_ms") or
+                                       pair["reference"].get("online_ms")) /
+                                      (pair["candidate"].get("metric_ms") or
+                                       pair["candidate"].get("online_ms"))) if not issues else None}
                 pairs.append(record)
                 pair_ledger.write(json.dumps(record, sort_keys=True) + "\n")
                 pair_ledger.flush()
@@ -607,8 +615,6 @@ def execute(manifest, output):
     expected = 2 * len(manifest["cases"]) * manifest.get("repetitions", 1)
     artifact_hashes_after = {path: sha256(path) for path in manifest["artifacts"]}
     artifacts_stable = artifact_hashes_after == artifact_hashes_before
-    complete = (len(rows) == expected and len(pairs) == expected // 2 and
-                len(ratios) * 2 == expected and artifacts_stable)
     binary_hashes_after = {path: sha256(path) for path in sorted(binary_paths)}
     binaries_stable = binary_hashes_after == binary_hashes_before
     runner_stable = sha256(Path(__file__)) == runner_hash_before
@@ -628,12 +634,13 @@ def execute(manifest, output):
                                         for _ in per_case) for _ in range(10000))
         bootstrap95 = [boot[250], boot[9749]]
     summary = {"status": "completed" if complete else "invalid",
+               "metric_field": manifest.get("metric_field", "online_ms"),
+               "measurement_kind": manifest.get("measurement_kind", "online"),
                "valid_pairs": len(ratios), "expected_pairs": expected // 2,
                "paired_speedup": statistics.median(per_case) if complete else None,
                "bootstrap95_by_target": bootstrap95,
                "artifact_sha256": artifact_hashes_before,
                "artifacts_stable": artifacts_stable,
-               "runner_sha256": sha256(Path(__file__)),
                "binary_sha256": binary_hashes_before,
                "binaries_stable": binaries_stable,
                "runner_sha256": runner_hash_before,
@@ -649,7 +656,6 @@ def only_worker(queue_root):
     with contextlib.ExitStack() as stack:
         lock_paths = [queue_root / "worker.lock"]
         if sys.platform == "linux":
-            lock_paths.append(Path("/run/lock/cryptanalysis-isolated-bench.lock"))
             lock_paths.append(HOST_LOCK_PATH)
         for path in lock_paths:
             lock = stack.enter_context(path.open("a+"))
@@ -684,7 +690,6 @@ def database(queue_root):
     return db
 
 
-def serve(queue_root, once=False):
 def serve(queue_root, once=False, shared_job_lock=None):
     with only_worker(queue_root):
         db = database(queue_root)
@@ -699,17 +704,6 @@ def serve(queue_root, once=False, shared_job_lock=None):
                 time.sleep(1)
                 continue
             job_id, raw = item
-            db.execute("UPDATE jobs SET status='running',started_ns=? WHERE id=?",
-                       (time.time_ns(), job_id))
-            output = queue_root / "results" / job_id
-            try:
-                summary = execute(json.loads(raw), output)
-                status = summary["status"]
-            except Exception as exc:
-                summary = {"status": "error", "error": type(exc).__name__ + ": " + str(exc)}
-                status = "error"
-            db.execute("UPDATE jobs SET status=?,finished_ns=?,output=?,summary=? WHERE id=?",
-                       (status, time.time_ns(), str(output), json.dumps(summary), job_id))
             with job_slot(shared_job_lock):
                 db.execute("UPDATE jobs SET status='running',started_ns=? WHERE id=?",
                            (time.time_ns(), job_id))
@@ -779,11 +773,6 @@ def main():
             for item in db.execute("SELECT id,status,created_ns,output FROM jobs ORDER BY created_ns"):
                 print(json.dumps(item))
     elif args.action == "serve":
-        serve(args.queue_root, args.once)
-    else:
-        with only_worker(args.queue_root):
-            output = args.queue_root / "results" / uuid.uuid4().hex
-            summary = execute(manifest, output)
         serve(args.queue_root, args.once, args.shared_job_lock)
     else:
         with only_worker(args.queue_root):
