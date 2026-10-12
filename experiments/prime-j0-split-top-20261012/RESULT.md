@@ -28,6 +28,22 @@ panel relative to radix 929, while the point payload falls by 52,381,440
 bytes. This is a memory and operation frontier point; cache behavior and
 complete online time require a native implementation on an isolated host.
 
-The design source, per-scalar rows, input and plan hashes, theorem modules,
-proof audit, and protocol are frozen in this directory. A new independent
-holdout and native evaluator are subsequent verification steps.
+After freezing the design and holdout generator in commits `997e24e58` and
+`74edd0785`, a new 512-scalar holdout was drawn from seed `20261012671`.
+The split-table decomposition reconstructed every scalar, and 512/512 final
+points matched independently generated secp256k1 fixture points after the
+selected term points were summed with a separate affine group law. Its point
+stream SHA-256 is
+`c6e43ec4d2d9dfd0efba21a1d208c55aa2de6413451e19e1b19af36053e7d9b3`.
+
+| Independent holdout measure | Radix 943 | Radix 929 | Split-top radix 671 |
+| --- | ---: | ---: | ---: |
+| Scalar and point cases | 512 | 512 | **512** |
+| Selected terms | 6,656 | 6,656 | 7,168 |
+| Modeled ordinary-path products | 60,551 | 60,534 | 65,707 |
+| Final points verified by split replay | — | — | **512/512** |
+
+The [holdout receipt](holdout-replay.json) binds the immutable input,
+source, plan, and point-stream hashes; [per-case rows](holdout-rows.jsonl)
+retain both controls and each terminal split. The native implementation and
+complete retained-memory and online measurements remain the next gates.
