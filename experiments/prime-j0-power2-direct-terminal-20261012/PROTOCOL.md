@@ -39,6 +39,10 @@ freezes the native builder, evaluator, holdout generator, and verifier.
 `holdout.py` then drew 512 distinct scalars disjoint from the earlier
 panels. `replay.py` compares every complete point against the existing
 radix-286 evaluator and an independent binary multiplier, retaining source,
-table, and output digests. A complete CPU timing ratio requires a
+table, and output digests. Commit
+`d79b5b7b6f585e00f1e145cb74d2de978634b15f` froze a second generator
+and three-panel verifier. `holdout2.py` then drew a further 512 scalars
+disjoint from the 4,096-scalar design panel and all eight earlier holdouts;
+`replay-two-panel.json` preserves the earlier replay receipt. A complete CPU timing ratio requires a
 qualifying isolation receipt; the current record has exact operation and
 storage counts and correctness replay.
