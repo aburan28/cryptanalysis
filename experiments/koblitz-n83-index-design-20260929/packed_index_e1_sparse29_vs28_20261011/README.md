@@ -6,6 +6,8 @@ The sparse29 exact root directory reduces full-key target probes from
 (48 MiB). Both full-capacity modes ran from the same source and agree on all
 23 frozen semantic fields, including first-witness certificate
 `083d0561e2d3f52763840c10d4c540550b71446daaf09f3d1ef50a53def81a51`.
+Eight Tier 1 same-target pairs measure a **1.0473×** median sparse28/sparse29
+target-stage wall ratio, with paired bootstrap 95% interval **[1.0253, 1.0625]**.
 The [input verifier](verify_inputs.py) checks the raw results, hashes,
 control status, phase accounting, memory cap, and release-test receipt.
 
@@ -39,3 +41,28 @@ alternating pairs with a 300-second cap per arm. The workflow
 and runs the repository Tier 1 instance preflight and paired runner. A
 stage wall-time gain is eligible only after all eight exact pairs pass memory
 and observed noise gates and the paired 95% bootstrap lower bound exceeds one.
+
+## Tier 1 result
+
+The [GitHub Actions run](https://github.com/aburan28/cryptanalysis/actions/runs/38198612069)
+completed eight alternating pairs on instance
+`gh-38198612069-1-paired-stage`. All 16 raw arms passed the frozen exact
+result, memory, and observed noise checks. All eight pair ratios exceed one.
+`verify_tier1_receipt.py` independently replays the archived raw outputs,
+allocation, preflight, artifact hashes, phase sums, and paired bootstrap
+calculation in `tier1_github_38198612069/`.
+
+| Tier 1 target-stage measure | Sparse28 | Sparse29 |
+| --- | ---: | ---: |
+| Median online wall, seconds | 49.323 | 46.823 |
+| Median target process CPU, seconds | 49.316 | 46.816 |
+| Median query preparation, seconds | 4.744 | 4.749 |
+| Median partner generation, seconds | 18.708 | 18.714 |
+| Median partner check, seconds | 25.851 | 23.328 |
+| Maximum native RSS, bytes | 5,308,686,336 | 5,371,076,608 |
+
+The paired median sparse28/sparse29 wall ratio is **1.0473273**, with paired
+bootstrap 95% interval **[1.0253336, 1.0624546]**. The improvement is
+instance-scoped and specific to the bounded target-dependent PDP stage and
+frozen N83 target. The separate sparse26/sparse28 Tier 1 run used another
+instance, so this result is reported directly against sparse28.
