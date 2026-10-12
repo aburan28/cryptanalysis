@@ -1,0 +1,22 @@
+{
+  "checks": {
+    "cgroup_filesystem": {
+      "command": "stat -fc %T /sys/fs/cgroup",
+      "exit_code": 0,
+      "output": "tmpfs"
+    },
+    "isolated_partition_file": {
+      "command": "cat /sys/fs/cgroup/cpuset.cpus.partition",
+      "exit_code": 1,
+      "output": "No such file or directory"
+    },
+    "workspace_filesystem": {
+      "command": "findmnt -T /workspace -no FSTYPE,SOURCE,TARGET",
+      "exit_code": 0,
+      "output": "overlay overlay /"
+    }
+  },
+  "host_alias": "runpod-isolated-blush-stork",
+  "schema": 1,
+  "strict_isolation_gate": "failed_cgroup_v2_partition_unavailable"
+}
