@@ -85,6 +85,57 @@ theorem closest_neighbor_inner (z v : Pair)
   rw [norm_sub_inner, hn] at hm
   omega
 
+-- In an equilateral W,V cell, the four scores are norm differences
+-- divided by the common positive cell scale. The minimum corner lies
+-- between all three pairs of Voronoi support lines.
+def cornerScore (x y d : Int) : Nat → Int
+  | 0 => 0
+  | 1 => d - 2*x + y
+  | 2 => d + x - 2*y
+  | 3 => d - x - y
+  | _ => 0
+
+def cornerResidual (x y d : Int) : Nat → Pair
+  | 0 => (x, y)
+  | 1 => (x-d, y)
+  | 2 => (x, y-d)
+  | 3 => (x-d, y-d)
+  | _ => (x, y)
+
+def cellNorm (x y d : Int) (corner : Nat) : Int :=
+  let z := cornerResidual x y d corner
+  z.1*z.1 + z.2*z.2 - z.1*z.2
+
+theorem corner_score_norm_identity (x y d : Int) (corner : Nat)
+    (hc : corner < 4) :
+    cellNorm x y d corner =
+      cellNorm x y d 0 + d * cornerScore x y d corner := by
+  have hcases : corner = 0 ∨ corner = 1 ∨ corner = 2 ∨ corner = 3 := by omega
+  rcases hcases with h | h | h | h
+  all_goals
+    subst corner
+    simp only [cellNorm, cornerResidual, cornerScore]
+    grind +ring
+
+theorem four_corner_minimum_has_hex_strips (x y d : Int) (corner : Nat)
+    (hx0 : 0 ≤ x) (hxd : x ≤ d)
+    (hy0 : 0 ≤ y) (hyd : y ≤ d) (hc : corner < 4)
+    (hmin : ∀ j < 4, cornerScore x y d corner ≤ cornerScore x y d j) :
+    let z := cornerResidual x y d corner;
+    -d ≤ 2*z.1-z.2 ∧ 2*z.1-z.2 ≤ d ∧
+    -d ≤ 2*z.2-z.1 ∧ 2*z.2-z.1 ≤ d ∧
+    -d ≤ z.1+z.2 ∧ z.1+z.2 ≤ d := by
+  have h0 := hmin 0 (by decide)
+  have h1 := hmin 1 (by decide)
+  have h2 := hmin 2 (by decide)
+  have h3 := hmin 3 (by decide)
+  have hcases : corner = 0 ∨ corner = 1 ∨ corner = 2 ∨ corner = 3 := by omega
+  rcases hcases with h | h | h | h
+  all_goals
+    subst corner
+    simp only [cornerScore, cornerResidual] at h0 h1 h2 h3 ⊢
+    omega
+
 theorem inner_cauchy_identity (z v : Pair) :
     4 * norm z * norm v - (twiceInner z v)^2 =
       3 * (z.1*v.2 - z.2*v.1)^2 := by
@@ -265,6 +316,8 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms support_minimal_certificate
 #print axioms inner_cauchy_identity
 #print axioms closest_neighbor_inner
+#print axioms corner_score_norm_identity
+#print axioms four_corner_minimum_has_hex_strips
 #print axioms digit_inner_bound
 #print axioms decode_inner_bound
 #print axioms terminal_inner_bound
