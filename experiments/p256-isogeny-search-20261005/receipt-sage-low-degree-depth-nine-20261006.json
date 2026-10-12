@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "protocol_id": "p256-isogeny-search-exploratory-v1",
+  "status": "verified_exploratory_low_degree_depth_nine",
+  "claim": "Resuming the low-degree frontier through depth nine added 240 explicit curves with no overlap against the prior 386-curve union. All additions received a CPU-separated matched-native screen; all six exploratory hits failed an independent holdout.",
+  "run_completed_at": "2026-10-06T16:04:46Z",
+  "source": {
+    "pr_parent_remote_commit": "74876a3a944e64c981d4773e7d574a1b3db3fcd7",
+    "local_parent_commit": "1e58b462ec37fe3e20e792086b5990e1c617eff4",
+    "manifest": "source-sage-low-degree-depth-nine-20261006.sha256",
+    "manifest_sha256": "585f17d02de0072b9bf2c22fca951ae958f9e591103cb10c646c7df1b37bb656"
+  },
+  "runtime": {
+    "sage_image": "sagemath/sagemath:10.6",
+    "sage_image_digest": "sha256:19995db6194f4a4bab18ce9a88556fd15b9ed5e916b4504fefe618a7796ddbdb",
+    "native_release_binary_sha256": "768fb614af10bcd3990b8373194713b5406051149ea9b627c01b5e1e4f0a9e5d",
+    "cpu_affinity": {
+      "native_screen_and_holdout": "CPU 0 via taskset -c 0; inherited by child benchmark processes",
+      "concurrent_class_group_process": "CPU 4 via Docker cpuset",
+      "sage_frontier_extension": "CPU 3 via Docker cpuset",
+      "frequency_stability": "not independently verified"
+    }
+  },
+  "commands": {
+    "search": "sage -python scripts/extend_sage_low_degree.py --input results/sage-low-degree-depth-seven-20261006/candidates-delta.json --ells 3,5,11,13 --target-depth 9 --max-new-nodes 1000 --output results/sage-low-degree-depth-nine-20261006/candidates-delta.json",
+    "assemble": "python3 scripts/assemble_sage_low_degree_depth_nine.py",
+    "native_screen": "taskset -c 0 python3 scripts/run_native_screen.py --binary NATIVE_BINARY --candidates results/sage-low-degree-depth-nine-20261006/candidates-delta.json --block-size 6 --seconds 0.5 --rotations 1 --warmup-seconds 0.05 --output-dir results/sage-low-degree-depth-nine-20261006/native-screen",
+    "holdout": "taskset -c 0 p256_isogeny_native_bench --candidates DELTA_REGISTRY --candidate-id SIX_SCREENING_HITS --seconds 2 --trials 30 --warmup-seconds 0.2 --output results/sage-low-degree-depth-nine-20261006/holdout.json",
+    "verify": "python3 scripts/verify_sage_low_degree_depth_nine.py"
+  },
+  "artifacts": {
+    "results/sage-low-degree-depth-seven-20261006/retained-union.json": "2b65e8f8646287894648c9387a0d2752c9af32609906b2bdb57e3138610bb80f",
+    "results/sage-low-degree-depth-nine-20261006/candidates-delta.json": "9f77376505be7ec59ef690b1c44ade39110d0b19b5b9e6943ed801451ae37098",
+    "results/sage-low-degree-depth-nine-20261006/native-screen/screening-summary.json": "3d7d1789186a7308fe27b207f2d818ce3611b9bccba7f548ac3fd980a18a8672",
+    "results/sage-low-degree-depth-nine-20261006/holdout.json": "add46897c34c83fa951a27a5e9ccc21e8ec8a89fcb7b43f50f4d4df59b496fb0",
+    "results/sage-low-degree-depth-nine-20261006/retained-union.json": "af1cd0c48594dc1caa0eb22de3803793f7943d097e80d360051e363d0689beb8",
+    "results/sage-low-degree-depth-nine-20261006/summary.md": "e104466711cb447ab9da229f89ca3c2c7baf38070f2ad3dfaf142502da512aab"
+  },
+  "search": {
+    "ells": [3, 5, 11, 13],
+    "input_depth": 7,
+    "target_depth": 9,
+    "new_depth_counts": {"8": 112, "9": 128},
+    "new_non_root_curves": 240,
+    "overlap_with_prior_union": 0,
+    "combined_unique_curves_including_p256": 626,
+    "explicit_paths_verified": true,
+    "exceptional_automorphisms_found": false
+  },
+  "screening": {
+    "new_neighbors": 240,
+    "blocks": 40,
+    "seconds_per_trial": 0.5,
+    "complete_position_rotations_per_block": 1,
+    "candidate_trials": 1680,
+    "all_linear_relations_verified": true,
+    "unadjusted_screening_hits": 6,
+    "screening_point_estimate_range": [1.0447964562411796, 1.0750882965995578]
+  },
+  "holdout": {
+    "candidates": 6,
+    "seconds_per_trial": 2.0,
+    "trials_per_candidate": 30,
+    "all_linear_relations_verified": true,
+    "reproduced_speedups": 0,
+    "largest_point_estimate": {
+      "paired_relative_iteration_speed": 1.031163800643176,
+      "paired_relative_iteration_speed_95_percent_ci": [0.9974803251180413, 1.0659847186770823]
+    }
+  },
+  "combined_native_coverage": {
+    "explicit_curves_including_p256": 626,
+    "non_root_curves_with_matched_native_measurement": 625,
+    "reproducible_speedups": 0
+  },
+  "cost_accounting": {
+    "discovery_and_reusable_precomputation_seconds": 102.3280867600115,
+    "native_screen_block_wall_seconds_total": 1091.40741545,
+    "holdout_wall_seconds": 432.084934803,
+    "per_instance_mapping": "explicit formulas retained for P and Q; evaluation was not timed for the 240 additions",
+    "amortization": "no end-to-end estimate because per-key mapping for the added paths was not measured"
+  },
+  "limitations": [
+    "the traversal stops at depth nine and uses only edge degrees 3, 5, 11, and 13",
+    "the 626-curve explicit registry is not the entire P-256 isogeny class",
+    "CPU affinity was separated but frequency stability was not independently verified",
+    "the screens measure generic rho iteration cost rather than completing a full P-256 collision",
+    "per-key mapping cost was not measured for the 240 additions"
+  ],
+  "decision": "No candidate advances. All six unadjusted screening hits failed the fresh 30-trial holdout; all 625 retained non-root curves have matched native measurements and zero reproducible iteration-rate improvements."
+}

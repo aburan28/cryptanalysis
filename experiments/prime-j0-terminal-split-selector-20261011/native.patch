@@ -1,0 +1,150 @@
+--- a/src/bin/eisenstein_fixed/unit_orbit_windows.rs
++++ b/src/bin/eisenstein_fixed/unit_orbit_windows.rs
+@@ -5389,6 +5389,16 @@
+     (path.proxy, path.part_count, !path.baseline, norm, a, b, path.parts)
+ }
+ 
++fn split_terminal_better(option: &SplitTerminalPath, current: &SplitTerminalPath) -> bool {
++    let first = (option.proxy, option.part_count, !option.baseline);
++    let second = (current.proxy, current.part_count, !current.baseline);
++    if first != second { return first < second; }
++    if option.representative == current.representative {
++        return option.parts < current.parts;
++    }
++    split_terminal_rank(option) < split_terminal_rank(current)
++}
++
+ fn split_terminal_paths(
+     representative: (Signed192, Signed192), baseline: bool, tables: &DualRhoTables,
+ ) -> Vec<SplitTerminalPath> {
+@@ -5449,23 +5459,44 @@
+     }).collect()
+ }
+ 
+-fn split_terminal_fixed_corners(k: [u64; 4]) -> [(Signed192, Signed192); 4] {
++fn split_terminal_add_twos_384(mut left: [u64; 6], right: [u64; 6]) -> [u64; 6] {
++    let mut carry = 0u128;
++    for index in 0..6 {
++        let sum = u128::from(left[index]) + u128::from(right[index]) + carry;
++        left[index] = sum as u64;
++        carry = sum >> 64;
++    }
++    left
++}
++
++fn split_terminal_fixed_corners(k: [u64; 4]) ->
++    ([(Signed192, Signed192); 4], (Signed192, Signed192)) {
+     LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
+-    let (floor_w, _) = super::reciprocal_cell_limbs_from_words_512(k, &super::RECIP_V1);
+-    let (floor_v, _) = super::reciprocal_cell_limbs_from_words_512(k, &super::RECIP_MINUS_W1);
++    let (floor_w, hw) = super::reciprocal_cell_limbs_from_words_512(k, &super::RECIP_V1);
++    let (floor_v, hv) = super::reciprocal_cell_limbs_from_words_512(k, &super::RECIP_MINUS_W1);
+     let basis = &*super::FIXED_SCALAR_LATTICE;
+-    std::array::from_fn(|corner| {
+-        let (dw, dv) = [(0, 0), (1, 0), (0, 1), (1, 1)][corner];
+-        let qw = super::add_one_192(floor_w, dw);
+-        let qv = super::add_one_192(floor_v, dv);
+-        let a = super::add_384([k[0], k[1], k[2], k[3], 0, 0],
+-                               super::mul_192(qv, basis.u1));
+-        let a = super::sub_384(a, super::mul_192(qw, basis.w0));
+-        let b = super::sub_384(super::mul_192(qw, basis.minus_w1),
+-                               super::mul_192(qv, basis.v1));
++    let widen = |limbs: [u64; 3]| [limbs[0], limbs[1], limbs[2], 0, 0, 0];
++    let a00 = super::sub_384(
++        super::add_384([k[0], k[1], k[2], k[3], 0, 0],
++                       super::mul_192(floor_v, basis.u1)),
++        super::mul_192(floor_w, basis.w0));
++    let b00 = super::sub_384(super::mul_192(floor_w, basis.minus_w1),
++                             super::mul_192(floor_v, basis.v1));
++    let a10 = super::sub_384(a00, widen(basis.w0));
++    let b10 = split_terminal_add_twos_384(b00, widen(basis.minus_w1));
++    let a01 = split_terminal_add_twos_384(a00, widen(basis.u1));
++    let b01 = super::sub_384(b00, widen(basis.v1));
++    let a11 = split_terminal_add_twos_384(a10, widen(basis.u1));
++    let b11 = super::sub_384(b10, widen(basis.v1));
++    let corners = [(a00, b00), (a10, b10), (a01, b01), (a11, b11)].map(|(a, b)| {
+         (super::signed_192_from_twos_complement(a),
+          super::signed_192_from_twos_complement(b))
+-    })
++    });
++    let baseline = match super::certified_corner_from_fraction_limb(hw, hv) {
++        Some(index) => corners[index],
++        None => super::hexagonal_certified_fixed_choice_words(k).0,
++    };
++    (corners, baseline)
+ }
+ 
+ fn multiply_u256_tau_split_terminal(
+@@ -5477,17 +5508,14 @@
+     } else {
+         super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
+     };
+-    let baseline = super::hexagonal_certified_fixed_choice_words(residue.0).0;
+-    let corners = split_terminal_fixed_corners(residue.0);
++    let (corners, baseline) = split_terminal_fixed_corners(residue.0);
+     assert!(corners.contains(&baseline));
+     let tables = &*DUAL_RHO_TABLES;
+     let mut best: Option<SplitTerminalPath> = None;
+     for rep in corners {
+         for option in split_terminal_paths(rep, rep == baseline, tables) {
+             if best.as_ref().is_none_or(|current|
+-                option.proxy < current.proxy ||
+-                (option.proxy == current.proxy &&
+-                 split_terminal_rank(&option) < split_terminal_rank(current))) {
++                split_terminal_better(&option, current)) {
+                 best = Some(option);
+             }
+         }
+@@ -7501,6 +7529,52 @@
+ 
+ 
+ 
++
++    #[test]
++    fn split_terminal_incremental_corners_match_direct_formula() {
++        let panel: serde_json::Value = serde_json::from_str(include_str!(concat!(
++            env!("CARGO_MANIFEST_DIR"), "/split-terminal-inputs.json"
++        ))).unwrap();
++        let scalars = panel["scalars_hex"].as_array().unwrap();
++        let mut inputs: Vec<[u64; 4]> = scalars.iter().map(|text| {
++            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
++            super::super::scalar_words_256(&scalar).unwrap()
++        }).collect();
++        inputs.extend([[0u64; 4], [1, 0, 0, 0], [u64::MAX; 4]]);
++        for (index, words) in inputs.into_iter().enumerate() {
++            let scalar = super::super::Uint(words);
++            let reduced = if bool::from(scalar.ct_lt(&super::super::SCALAR_ORDER_WORDS)) {
++                scalar
++            } else {
++                super::super::U256::sbb(&scalar, &super::super::SCALAR_ORDER_WORDS).0
++            };
++            let (corners, baseline) = split_terminal_fixed_corners(reduced.0);
++            let (fw, _) = super::super::reciprocal_cell_limbs_from_words_512(
++                reduced.0, &super::super::RECIP_V1);
++            let (fv, _) = super::super::reciprocal_cell_limbs_from_words_512(
++                reduced.0, &super::super::RECIP_MINUS_W1);
++            let basis = &*super::super::FIXED_SCALAR_LATTICE;
++            let direct = std::array::from_fn(|corner| {
++                let (dw, dv) = [(0, 0), (1, 0), (0, 1), (1, 1)][corner];
++                let qw = super::super::add_one_192(fw, dw);
++                let qv = super::super::add_one_192(fv, dv);
++                let a = super::super::sub_384(
++                    super::super::add_384([reduced.0[0], reduced.0[1], reduced.0[2],
++                                           reduced.0[3], 0, 0],
++                                          super::super::mul_192(qv, basis.u1)),
++                    super::super::mul_192(qw, basis.w0));
++                let b = super::super::sub_384(
++                    super::super::mul_192(qw, basis.minus_w1),
++                    super::super::mul_192(qv, basis.v1));
++                (super::super::signed_192_from_twos_complement(a),
++                 super::super::signed_192_from_twos_complement(b))
++            });
++            assert_eq!(corners, direct, "corners {index}");
++            assert_eq!(baseline,
++                       super::super::hexagonal_certified_fixed_choice_words(reduced.0).0,
++                       "baseline {index}");
++        }
++    }
+ 
+     #[test]
+     fn split_terminal_selector_matches_frozen_panel_and_binary_points() {

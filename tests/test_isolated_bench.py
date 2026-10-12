@@ -1,17 +1,21 @@
 """Contract tests for the host-independent parts of the benchmark runner."""
 
+import contextlib
 import importlib.util
 import copy
-import io
+import fcntl
 import json
 import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
+import threading
 import unittest
-from unittest import mock
 
 
 SOURCE = Path(__file__).resolve().parents[1] / "scripts" / "isolated_bench.py"
+GENERATOR = SOURCE.with_name("make_j0_isolated_manifest.py")
 SPEC = importlib.util.spec_from_file_location("isolated_bench", SOURCE)
 bench = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(bench)
@@ -48,47 +52,6 @@ class IsolatedBenchTests(unittest.TestCase):
         self.assertTrue(any("steal" in issue for issue in issues))
         self.assertTrue(any("context switches" in issue for issue in issues))
 
-    def test_fixed_frequency_requires_a_matching_host_and_absent_cpufreq(self):
-        with tempfile.TemporaryDirectory() as dirname:
-            root = Path(dirname)
-            fixed, issue = bench.frequency_state(4, "g5g.metal", "aarch64", root)
-            self.assertIsNone(issue)
-            self.assertEqual(fixed["mode"], "aws_graviton2_hardware_fixed")
-            for instance_type, architecture in ((None, "aarch64"),
-                                                ("g5g.16xlarge", "aarch64"),
-                                                ("g5g.metal", "x86_64")):
-                state, issue = bench.frequency_state(4, instance_type, architecture, root)
-                self.assertIsNone(state["mode"])
-                self.assertIsNotNone(issue)
-            freq = root / "cpu4" / "cpufreq"
-            freq.mkdir(parents=True)
-            state, issue = bench.frequency_state(4, "g5g.metal", "aarch64", root)
-            self.assertIsNone(state["mode"])
-            self.assertIsNotNone(issue)
-            (freq / "scaling_governor").write_text("performance\n")
-            (freq / "scaling_min_freq").write_text("2500000\n")
-            (freq / "scaling_max_freq").write_text("2500000\n")
-            state, issue = bench.frequency_state(4, None, "x86_64", root)
-            self.assertIsNone(issue)
-            self.assertEqual(state["mode"], "cpufreq_fixed")
-            (freq / "scaling_min_freq").write_text("1000000\n")
-            state, issue = bench.frequency_state(4, "g5g.metal", "aarch64", root)
-            self.assertIsNone(state["mode"])
-            self.assertIsNotNone(issue)
-
-    def test_instance_type_requires_imdsv2_token(self):
-        with mock.patch.object(bench.urllib.request, "build_opener") as factory:
-            opener = factory.return_value
-            opener.open.side_effect = [io.BytesIO(b"test-token"), io.BytesIO(b"g5g.metal")]
-            self.assertEqual(bench.ec2_instance_type(), "g5g.metal")
-            token_request = opener.open.call_args_list[0].args[0]
-            type_request = opener.open.call_args_list[1].args[0]
-            self.assertEqual(token_request.get_method(), "PUT")
-            self.assertEqual(type_request.get_header("X-aws-ec2-metadata-token"), "test-token")
-            self.assertEqual(factory.call_args.args[0].proxies, {})
-            opener.open.side_effect = OSError("IMDS unavailable")
-            self.assertIsNone(bench.ec2_instance_type())
-
     def test_pair_fields_and_single_worker(self):
         with tempfile.TemporaryDirectory() as dirname:
             root = Path(dirname)
@@ -97,112 +60,49 @@ class IsolatedBenchTests(unittest.TestCase):
             binary.chmod(0o755)
             manifest = {"schema": 1, "workdir": str(root), "timeout_s": 1,
                         "measurement_boundary": "self reported online_ms",
-                        "pair_fields": ["target_x"],
+                        "pair_fields": ["target_x"], "result_field": "scalar",
                         "artifacts": [str(binary)],
                         "isolation": {"cpus": "4", "execution_cpu": 4, "mem_nodes": "0",
                                       "cgroup": "/sys/fs/cgroup/bench"},
-                        "cases": [{"id": "t0", "reference": [str(binary)],
+                        "cases": [{"id": "t0", "expected_fields": {"target_x": "9"},
+                                   "expected_result": "7",
+                                   "reference": [str(binary)],
                                    "candidate": [str(binary)]}]}
             bench.require_manifest(manifest)
+            manifest["metric_field"] = "prep_ms"
+            with self.assertRaises(ValueError):
+                bench.require_manifest(manifest)
+            manifest["measurement_kind"] = "table_preparation"
+            bench.require_manifest(manifest)
+            manifest["metric_field"] = "../prep_ms"
+            with self.assertRaises(ValueError):
+                bench.require_manifest(manifest)
+            manifest.pop("metric_field")
+            manifest.pop("measurement_kind")
+            manifest["cases"][0]["candidate"].append("7")
+            with self.assertRaises(ValueError):
+                bench.require_manifest(manifest)
+            manifest["cases"][0]["candidate"].pop()
             manifest["pair_fields"] = []
             with self.assertRaises(ValueError):
                 bench.require_manifest(manifest)
-            with bench.only_worker(root):
-                with self.assertRaises(RuntimeError):
-                    with bench.only_worker(root):
-                        pass
-
-    def test_tier1_manifest_is_explicit_and_receipt_is_hashed(self):
-        with tempfile.TemporaryDirectory() as dirname:
-            root = Path(dirname)
-            binary = root / "bench"
-            binary.write_text("#!/bin/sh\nexit 0\n")
-            binary.chmod(0o755)
-            receipt = root / "allocation.json"
-            receipt.write_text('{"provider":"runpod","id":"pod-1"}\n')
-            manifest = {"schema": 1, "measurement_tier": "tier1_instance",
-                        "workdir": str(root), "timeout_s": 1,
-                        "measurement_boundary": "internal online_ms",
-                        "pair_fields": ["target_x"], "result_field": "scalar",
-                        "artifacts": [str(binary), str(receipt)],
-                        "allocation": {"provider": "runpod", "instance_id": "pod-1",
-                                       "receipt": str(receipt)},
-                        "isolation": {"cpus": "4", "execution_cpu": 4},
-                        "cases": [{"id": "t0", "expected_fields": {"target_x": "9"},
-                                   "expected_result": "7", "reference": [str(binary)],
-                                   "candidate": [str(binary)]}]}
-            self.assertEqual(bench.require_manifest(manifest), ({4}, set(), None))
-            for change in (lambda m: m["artifacts"].remove(str(receipt)),
-                           lambda m: m["isolation"].update({"cgroup": "/sys/fs/cgroup/bench"}),
-                           lambda m: m.pop("allocation"),
-                           lambda m: m.update({"measurement_tier": "tier2"})):
-                altered = copy.deepcopy(manifest)
-                change(altered)
-                with self.assertRaises(ValueError):
-                    bench.require_manifest(altered)
-
-    def test_tier1_counter_events_invalidate_and_irq_is_observed(self):
-        before = {"cpu_stat": {"nr_throttled": 0},
-                  "memory_events": {"oom": 0},
-                  "per_cpu": {4: {"irq": 0, "softirq": 0, "steal": 0}}}
-        after = copy.deepcopy(before)
-        after["per_cpu"][4]["irq"] = 1
-        self.assertEqual(bench.tier1_noise(before, after), [])
-        after["cpu_stat"]["nr_throttled"] = 1
-        after["memory_events"]["oom"] = 1
-        self.assertEqual(len(bench.tier1_noise(before, after)), 2)
-
-    def test_tier1_requires_repeated_consistent_pairs_for_claim(self):
-        with tempfile.TemporaryDirectory() as dirname:
-            root = Path(dirname)
-            binary = root / "bench"
-            binary.write_text("#!/bin/sh\nexit 0\n")
-            binary.chmod(0o755)
-            receipt = root / "allocation.json"
-            receipt.write_text("{}\n")
-            manifest = {"schema": 1, "measurement_tier": "tier1_instance",
-                        "workdir": str(root), "timeout_s": 1,
-                        "measurement_boundary": "internal online_ms",
-                        "pair_fields": ["target_x"], "result_field": "scalar",
-                        "artifacts": [str(binary), str(receipt)],
-                        "allocation": {"provider": "runpod", "instance_id": "pod-1",
-                                       "receipt": str(receipt)},
-                        "isolation": {"cpus": "4", "execution_cpu": 4},
-                        "repetitions": 8,
-                        "cases": [{"id": "t0", "expected_fields": {"target_x": "9"},
-                                   "expected_result": "7", "reference": [str(binary), "reference"],
-                                   "candidate": [str(binary), "candidate"]}]}
-            original_preflight, original_run = bench.preflight, bench.one_run
+            old_lock = bench.HOST_LOCK_PATH
+            bench.HOST_LOCK_PATH = root / "host.lock"
             try:
-                bench.preflight = lambda _: {"ok": True, "problems": [], "evidence": {}}
-                def fake_run(argv, _manifest, _cpus, _nodes, _cgroup, _folder, serial):
-                    return {"serial": serial, "status": "valid", "issues": [],
-                            "online_ms": 2.0 if argv[-1] == "reference" else 1.0,
-                            "fields": {"target_x": "9", "scalar": "7"}}
-                bench.one_run = fake_run
-                result = bench.execute(manifest, root / "passing")
-                self.assertEqual(result["measurement_tier"], "tier1_instance")
-                self.assertTrue(result["speedup_claim_eligible"])
-                self.assertGreater(result["tier1_bootstrap95_by_pair"][0], 1)
-                manifest["repetitions"] = 4
-                result = bench.execute(manifest, root / "too_few")
-                self.assertFalse(result["speedup_claim_eligible"])
-                manifest["repetitions"] = 8
-                def mixed_run(argv, _manifest, _cpus, _nodes, _cgroup, _folder, serial):
-                    row = fake_run(argv, _manifest, _cpus, _nodes, _cgroup, _folder, serial)
-                    if argv[-1] == "candidate" and serial > 8:
-                        row["online_ms"] = 4.0
-                    return row
-                bench.one_run = mixed_run
-                result = bench.execute(manifest, root / "mixed")
-                self.assertFalse(result["speedup_claim_eligible"])
+                with bench.only_worker(root):
+                    with self.assertRaises(RuntimeError):
+                        with bench.only_worker(root):
+                            pass
             finally:
-                bench.preflight, bench.one_run = original_preflight, original_run
+                bench.HOST_LOCK_PATH = old_lock
 
     def test_output_parser_uses_timed_row(self):
         fields = bench.output_fields("setup\ncurve=c online_ms=12.5 verified=1 target_x=9\ndone")
         self.assertEqual(fields["online_ms"], "12.5")
         self.assertEqual(fields["target_x"], "9")
+        prep = bench.output_fields("setup\ncurve=c prep_ms=4.5 verified=1\ndone",
+                                   "prep_ms")
+        self.assertEqual(prep["prep_ms"], "4.5")
 
     def test_provisioning_key_is_not_in_benchmark_environment(self):
         previous = os.environ.get("RUNPOD_API_KEY")
@@ -224,11 +124,13 @@ class IsolatedBenchTests(unittest.TestCase):
             executable.chmod(0o755)
             manifest = {"schema": 1, "workdir": str(root), "timeout_s": 1,
                         "measurement_boundary": "internal online_ms",
-                        "pair_fields": ["target_x"],
+                        "pair_fields": ["target_x"], "result_field": "scalar",
                         "artifacts": [str(executable)],
                         "isolation": {"cpus": "99999", "execution_cpu": 99999,
                                       "mem_nodes": "0", "cgroup": "/sys/fs/cgroup/no-such-partition"},
-                        "cases": [{"id": "t0", "reference": [str(executable)],
+                        "cases": [{"id": "t0", "expected_fields": {"target_x": "9"},
+                                   "expected_result": "7",
+                                   "reference": [str(executable)],
                                    "candidate": [str(executable)]}]}
             db = bench.database(root)
             for job_id in ("a", "b"):
@@ -236,14 +138,75 @@ class IsolatedBenchTests(unittest.TestCase):
                            (job_id, "queued", 1 if job_id == "a" else 2,
                             json.dumps(manifest)))
             db.close()
-            bench.serve(root, once=True)
+            old_lock = bench.HOST_LOCK_PATH
+            bench.HOST_LOCK_PATH = root / "host.lock"
+            try:
+                bench.serve(root, once=True)
+            finally:
+                bench.HOST_LOCK_PATH = old_lock
             db = bench.database(root)
             self.assertEqual(db.execute("SELECT status FROM jobs WHERE id='a'").fetchone()[0], "rejected")
             self.assertEqual(db.execute("SELECT status FROM jobs WHERE id='b'").fetchone()[0], "queued")
             self.assertFalse(marker.exists())
             self.assertFalse((root / "results" / "a" / "runs.jsonl").exists())
 
-    def test_pair_mismatch_cannot_produce_speedup(self):
+    def test_shared_job_lock_waits_for_other_launcher(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            root = Path(dirname)
+            lock_path = root / "experiment-runs.lock"
+            db = bench.database(root)
+            db.execute("INSERT INTO jobs(id,status,created_ns,manifest) VALUES(?,?,?,?)",
+                       ("a", "queued", 1, "{}"))
+            db.close()
+            entered = threading.Event()
+            started = threading.Event()
+            original_execute = bench.execute
+            original_host_lock = bench.HOST_LOCK_PATH
+            original_job_slot = bench.job_slot
+
+            def fake_execute(_manifest, _output):
+                started.set()
+                return {"status": "rejected"}
+
+            @contextlib.contextmanager
+            def observed_job_slot(path):
+                entered.set()
+                with original_job_slot(path):
+                    yield
+
+            bench.execute = fake_execute
+            bench.job_slot = observed_job_slot
+            bench.HOST_LOCK_PATH = root / "host.lock"
+            worker = threading.Thread(target=bench.serve,
+                                      args=(root,),
+                                      kwargs={"once": True, "shared_job_lock": lock_path})
+            try:
+                with lock_path.open("a+") as other_launcher:
+                    fcntl.flock(other_launcher, fcntl.LOCK_EX)
+                    worker.start()
+                    self.assertTrue(entered.wait(2))
+                    worker.join(0.2)
+                    self.assertTrue(worker.is_alive())
+                    self.assertFalse(started.is_set())
+                    check = bench.database(root)
+                    self.assertEqual(check.execute("SELECT status FROM jobs WHERE id='a'")
+                                     .fetchone()[0], "queued")
+                    check.close()
+                worker.join(2)
+                self.assertFalse(worker.is_alive())
+                self.assertTrue(started.is_set())
+                check = bench.database(root)
+                self.assertEqual(check.execute("SELECT status FROM jobs WHERE id='a'")
+                                 .fetchone()[0], "rejected")
+                check.close()
+            finally:
+                if worker.ident is not None:
+                    worker.join(2)
+                bench.execute = original_execute
+                bench.HOST_LOCK_PATH = original_host_lock
+                bench.job_slot = original_job_slot
+
+    def test_shared_wrong_target_or_answer_cannot_produce_speedup(self):
         with tempfile.TemporaryDirectory() as dirname:
             root = Path(dirname)
             binary = root / "bench"
@@ -251,29 +214,90 @@ class IsolatedBenchTests(unittest.TestCase):
             binary.chmod(0o755)
             manifest = {"schema": 1, "workdir": str(root), "timeout_s": 1,
                         "measurement_boundary": "internal online_ms",
-                        "pair_fields": ["target_x"],
+                        "pair_fields": ["target_x"], "result_field": "scalar",
                         "artifacts": [str(binary)],
                         "isolation": {"cpus": "4", "execution_cpu": 4,
                                       "mem_nodes": "0", "cgroup": "/sys/fs/cgroup/bench"},
-                        "cases": [{"id": "t0", "reference": [str(binary), "reference"],
+                        "cases": [{"id": "t0", "expected_fields": {"target_x": "1"},
+                                   "expected_result": "7",
+                                   "reference": [str(binary), "reference"],
                                    "candidate": [str(binary), "candidate"]}]}
             original_preflight, original_run = bench.preflight, bench.one_run
             try:
                 bench.preflight = lambda _: {"ok": True, "problems": [], "evidence": {}}
-                def fake_run(argv, _manifest, _cpus, _nodes, _cgroup, _folder, serial):
+                for wrong in ("target", "answer", "none"):
+                    def fake_run(argv, _manifest, _cpus, _nodes, _cgroup, _folder, serial):
+                        reference = argv[-1] == "reference"
+                        return {"serial": serial, "status": "valid", "issues": [],
+                                "online_ms": 2.0 if reference else 1.0,
+                                "fields": {"target_x": "2" if wrong == "target" else "1",
+                                           "scalar": "8" if wrong == "answer" else "7"}}
+                    bench.one_run = fake_run
+                    summary = bench.execute(manifest, root / wrong)
+                    pair = json.loads((root / wrong / "pairs.jsonl").read_text())
+                    if wrong == "none":
+                        self.assertEqual(summary["status"], "completed")
+                        self.assertEqual(summary["paired_speedup"], 2.0)
+                        self.assertEqual(pair["status"], "valid")
+                    else:
+                        self.assertEqual(summary["status"], "invalid")
+                        self.assertIsNone(summary["paired_speedup"])
+                        self.assertEqual(pair["status"], "invalid")
+                        self.assertIn("target_x" if wrong == "target" else "expected_result",
+                                      pair["issues"][0])
+                manifest["metric_field"] = "prep_ms"
+                manifest["measurement_kind"] = "table_preparation"
+                def fake_prep_run(argv, _manifest, _cpus, _nodes, _cgroup, _folder,
+                                  serial):
                     reference = argv[-1] == "reference"
                     return {"serial": serial, "status": "valid", "issues": [],
-                            "online_ms": 2.0 if reference else 1.0,
-                            "fields": {"target_x": "1" if reference else "2"}}
-                bench.one_run = fake_run
-                summary = bench.execute(manifest, root / "result")
+                            "online_ms": None,
+                            "metric_ms": 3.0 if reference else 1.0,
+                            "fields": {"target_x": "1", "scalar": "7"}}
+                bench.one_run = fake_prep_run
+                summary = bench.execute(manifest, root / "preparation")
+                self.assertEqual(summary["paired_speedup"], 3.0)
+                self.assertEqual(summary["metric_field"], "prep_ms")
+                self.assertEqual(summary["measurement_kind"], "table_preparation")
             finally:
                 bench.preflight, bench.one_run = original_preflight, original_run
-            self.assertEqual(summary["status"], "invalid")
-            self.assertIsNone(summary["paired_speedup"])
-            pair = json.loads((root / "result" / "pairs.jsonl").read_text())
-            self.assertEqual(pair["status"], "invalid")
-            self.assertIn("target_x", pair["issues"][0])
+
+    def test_j0_manifest_passes_only_public_target_to_solver(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            root = Path(dirname)
+            binary = root / "fixture"
+            binary.write_text(
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "assert sys.argv[1] == '--print-target'\n"
+                "print('curve=' + sys.argv[2] + ' p=2305843009213693951 b=5 '"
+                "'order=51131959441 base_x=1 base_y=2 '"
+                "'target_x=987654321 target_y=123456789 '"
+                "'fixture_scalar=' + sys.argv[3])\n")
+            binary.chmod(0o755)
+            for name in ("CMakeLists.txt", "src/curve.c", "src/ec_tau.c",
+                         "experiments/prime-j0-tau-20260930/large-rho-20261002/bench_rho_large.c",
+                         "scripts/make_j0_isolated_manifest.py", "scripts/isolated_bench.py"):
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("fixture\n")
+            output = root / "panel.json"
+            subprocess.run(
+                [sys.executable, str(GENERATOR), "--reference", str(binary),
+                 "--candidate", str(binary), "--workdir", str(root),
+                 "--cgroup", "/sys/fs/cgroup/benchmark-isolated",
+                 "--cpus", "4-5", "--execution-cpu", "4", "--mem-nodes", "0",
+                 "--targets-36", "1", "--targets-37", "0", "--targets-46", "0",
+                 "--output", str(output)],
+                check=True, capture_output=True, text=True)
+            manifest = json.loads(output.read_text())
+            bench.require_manifest(manifest)
+            case = manifest["cases"][0]
+            self.assertEqual(case["expected_fields"]["target_x"], "987654321")
+            self.assertEqual(case["reference"], case["candidate"])
+            self.assertEqual(case["reference"][1:4],
+                             ["--public-target", "j0-36", "1"])
+            self.assertNotIn(case["expected_result"], case["reference"])
 
 
 if __name__ == "__main__":

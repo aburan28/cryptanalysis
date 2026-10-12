@@ -19,6 +19,7 @@ on:
       - 'experiments/ic-candidate-catalog/**'
       - '.github/workflows/independent-replay.yml'
   push:
+    branches: [main]
     paths:
       - 'experiments/groebner-perf-20260924/round26/**'
       - 'experiments/groebner-perf-20260924/round25/**'
@@ -40,10 +41,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Install numerical dependency
