@@ -18,13 +18,23 @@ on:
       - "suite/**"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   replay:
     name: Locked Rust differential public-point replay
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout exact triggering revision
+        run: |
+          set -euo pipefail
+          git init -q .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --quiet --no-tags --depth=1 origin "${GITHUB_REF}"
+          git -c advice.detachedHead=false checkout -q --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
       - name: Check independent scalar panel
         run: |
           python3 experiments/prime-j0-axis152-xyzz-20261012/holdout.py --check
