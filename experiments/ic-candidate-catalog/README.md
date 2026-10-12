@@ -1,5 +1,10 @@
 # Index-calculus candidate catalog
 
+[Curve and artifact storage](CURVE_STORAGE.md) and
+[typed curve links](curve-links/README.md) explain the ICV1/EC1 crosswalk,
+large factor bases, exact isogeny links, and explicit unknown trait statuses.
+The [curve YAML](curves.yaml) is mirrored in crypto's `docs/curves/ic/`.
+
 This directory contains **1,000 design proposals**, not 1,000 measured attacks.
 The [complete N13 follow-up](measurements/2026-09-25/COMPLETE_N13.md) has an
 exact candidate derived from the `Q1` axes and 20 paired one-target toy DLP
@@ -44,6 +49,13 @@ The 50 ms budget comes from the shifted-base solver smoke; both 50 ms and
 1,000 ms N13 first-witness SAT variants now have stage receipts, but neither
 produced a verified decomposition in the frozen stream.
 
+The [quotient-pair stage proposal registry](../ecc2k130-quotient-pair-probe-20260926/stage_proposals.json)
+reserves `Q1001`–`Q1006` for a matched canonicalization comparison on exact
+N53, N83, and N131 curves. These six records are separate from the generated
+1,000-proposal design matrix. Their full IC collection, matrix, and target
+descent stages remain unresolved; the [stage runs](../ecc2k130-quotient-pair-probe-20260926/stage_runs.jsonl)
+have `candidate_id: null` and do not issue an `IC1` result.
+
 ## Evidence-linked profiles
 
 | Profile | Field | Factor base and arity | Evidence state |
@@ -58,6 +70,12 @@ produced a verified decomposition in the frozen stream.
 | `n131_poly_d24_m6` | N131 | Polynomial subspace d=24, m=6 | 1,024-x uniform density sample estimates about 3.90 million usable points (95% interval 3.29–4.61 million); exact base and end-to-end costs unknown. |
 | `n131_iso2_d28_m5` | N131 | Proposed degree-2 isogeny search, codomain d=28, m=5 | Screened: the degree-2 codomain is isomorphic to the source; no different-curve route. |
 | `n131_iso3_d28_m5` | N131 | Proposed degree-3 isogeny search, codomain d=28, m=5 | Screened: no rational degree-3 isogeny over `GF(2^131)`. |
+| `n131_onb_hw2_m4` | N131 | Normal-basis Hamming weight ≤2, m=4 | Construction code exists; exact base count for this proposal is unresolved. |
+| `n131_onb_hw3_m5` | N131 | Normal-basis Hamming weight ≤3, m=5 | Construction code exists; exact base count for this proposal is unresolved. |
+| `n131_poly_d28_m5` | N131 | Polynomial subspace d=28, m=5 | One exact trace-zero W28 policy has 268,436,324 source or 268,465,880 first-descendant usable points and roughly 134 million sign-folded columns; natural m5 PDP yield and end-to-end costs remain unknown. |
+| `n131_poly_d24_m6` | N131 | Polynomial subspace d=24, m=6 | One exact trace-zero W24 policy has 16,786,464 source or 16,772,828 first-descendant usable points. Its [source W24/m6 SAT control](../ecc2k130-w24-natural-pdp-20261005/RESULT.md) hit 100,002 conflicts unpinned; [witness localization](../ecc2k130-w24-natural-pdp-20261005/DIAGNOSTIC_RESULT.md) verified SAT only with both inverse and intermediate values pinned. The [functional S3 follow-up](../ecc2k130-w24-functional-s3-20261006/RESULT.md) did not pass the bounded planted solver gate and has an independently verified satisfying XCNF assignment. The natural target was not run. Natural yield and a complete IC run remain unmeasured. Other d24 bases remain unresolved. |
+| `n131_iso2_d28_m5` | N131 | Proposed degree-2 isogeny search, codomain d=28, m=5 | Search only: no explicit map or codomain base. |
+| `n131_iso3_d28_m5` | N131 | Proposed degree-3 isogeny search, codomain d=28, m=5 | Search only: no explicit map or codomain base. |
 
 `N131` is the field degree for ECC2K-130; its subgroup order has 130 bits.
 `fb6`, `fb30`, `fb23320`, `fb26`, and `fb3668` count distinct usable points before orbit
@@ -80,6 +98,87 @@ cannot add subgroup points. This does not make the m=4 and m=5 PDP proposals
 equivalent: their decomposition systems and costs still differ.
 None of these counts licenses copying a base to another curve, isogeny codomain,
 field representation, or factor-base recipe.
+
+The [exact ECC2K-130 degree-263 capacity gate](../ecc2k130-263-capacity-gate-20261004/RESULT.md)
+puts necessary actual-base thresholds next to the `n131_poly_d28_m5` and
+`n131_poly_d24_m6` proposals. At 1% one-shot uniform-target support, even
+the collision-free multiset bound requires 60,591,280 points for m5 or
+4,121,293 for m6. These are prerequisites, not actual `fb` counts or
+measured relation yields. The gate leaves both proposals unactivated and
+identifies actual `B`, orbit columns and held-out natural PDP/rank cost as
+the next measurements.
+
+The [degree-263 order and two-summand screen](../ecc2k130-263-endo-degree-20261008/RESULT.md)
+proves the descendant's smallest nonscalar endomorphism degree is 121,046
+and gives an exact 1% uniform-target two-sum threshold of
+3,689,348,814,741,910,323 usable points. Even a fully closed 262-point
+orbit policy needs at least 14,081,484,025,732,483 columns at that
+threshold. This focuses the four-policy experiment on the higher-arity
+PDP and priced transported action, using the frozen actual-base inputs.
+
+The [exact paired W24 census](../ecc2k130-263-w24-exact-base-20261005/RESULT.md)
+now supplies actual `B` and sign-folded columns for one explicit trace-zero
+base on both source and first degree-263 descendant. Both pass the W24/m6
+1% *necessary* size gate; neither has a measured ordinary-query yield or
+rank. The same exact counts tighten the W24/m5 one-shot support upper bound
+to about `1.63e-5`, below the 1% objective. The records remain proposals
+with `candidate_id: null` until the missing stages and exact manifest are
+resolved.
+
+The [exact paired W28 census](../ecc2k130-263-w28-exact-base-20261005/RESULT.md)
+now supplies actual `B` and sign-folded columns for the competing W28/m5
+policy. Both curves pass its 1% *necessary* size threshold; the exact
+descendant density gain is only +0.005505234 percentage points, far below
+the predeclared two-point material-gain gate. The same counts bound W28/m4
+one-shot uniform-target support near `3.18e-7`. At W28/m5, a raw
+17-byte-per-column log vector would exceed 2.28 GB before matrix or solver
+costs. These remain counting-only proposals with `candidate_id: null`.
+
+The [equal-size W24 four-policy input gate](../ecc2k130-263-equal-w24-workload-20261005/RESULT.md)
+freezes `Q1420` on the exact degree-263 route: source-prefix and native
+descendant bases each have `B=16,772,828` before sign folding, and the
+primary workload ID `eee7f6ee5f6b` contains exactly one target. Full mask
+streams, sampled point maps, and public fixture scalars have independent
+replays. Natural W24/m6 PDP yield, useful rank, and complete DLP costs remain
+unmeasured; this is an input activation gate, not an `IC1` result.
+The [functional W24/m6 solver gate](../ecc2k130-w24-functional-s3-20261006/RESULT.md)
+removed free inverse and S3-intermediate witnesses but enlarged the planted
+XCNF 20.448-fold; CryptoMiniSat timed out at 30 seconds while an independent
+full-clause/XOR certificate and Sage group replay proved that exact planted
+formula satisfiable. This is a bounded solver-stage result only. It favors
+smaller algebraic or target-adaptive PDP formulations before another N131
+ordinary-query attempt, without ranking the four frozen factor-base policies.
+
+The [equal-size W24 orbit-column audit](../ecc2k130-equal-w24-orbit-columns-20261005/RESULT.md)
+restricts the full source Frobenius partition to the separately frozen
+8,386,414-class source prefix. It saves only 2,066 potential columns
+(0.0246351%). Checked Sage confirms the degree-263 native codomain has
+`j != j²`, so direct coordinate Frobenius is not its endomorphism; any
+transport-induced quotient still needs a priced implementation. This is
+matrix geometry for proposal `Q1420`, not a PDP or IC speed result.
+An [independent W24 intersection certificate](../ecc2k130-w24-orbit-occupancy-20261009/RESULT.md)
+replays all 130 Frobenius powers with integer and checked-Sage arithmetic;
+the prior 8,384,348-column exact source count remains the decision input.
+It freezes an independent full reciprocal-overlap replay to close the
+remaining verification gap in that count.
+
+The [exact W24/m6 tuple-capacity screen](../ecc2k130-263-w24-mitm-capacity-20261005/RESULT.md)
+parks a **full materialized raw-point** 2+4 pair index and 3+3 triple index
+for all four equal-size policies under the 4-GiB envelope. Even a fictional
+one-bit slot for each distinct-point tuple exceeds that memory by 4,094×
+for pairs and 22,888,519,604× for triples. This is a count of enumeration
+states, not distinct sums or an algebraic-solver lower bound. Implicit and
+target-adaptive PDP methods, natural-query yield, and full-rank recovery
+remain the active gates; `candidate_id` stays null.
+
+The [degree-263 transport-cost stage](../ecc2k130-263-transport-cost-20261005/RESULT.md)
+then checked 256 point maps on that frozen workload. The primary target's
+forward and inverse route calls took 45.721 and 42.531 ms in the checked
+Sage path on an unisolated host; these are stage observations, not complete
+IC online times. Future four-policy PDP comparisons must charge the needed
+target map and independently account for factor-base transport or pullback
+construction. Source/transported and native/pullback preserve sum membership
+exactly; only two base choices offer distinct yield hypotheses.
 
 ## Code reviewed for the design axes
 
@@ -161,6 +260,167 @@ It also reserves degree-2 edges over the binary field as characteristic-prime
 isogenies without a conventional `2`-volcano up/down label.
 
 ## Choosing what to run
+
+The [exact W24 Frobenius-orbit scan](../ecc2k130-263-w24-orbit-columns-20261005/RESULT.md)
+found only 2,066 potential column savings among 8,393,232 signed columns
+of the original source base (0.0246151%). The source-transported copy has
+the same group partition. Explicitly closing W24 under Frobenius would
+instead form a different, mathematically 2,198,485,492-point base with
+8,391,166 orbit representatives. The [seed-plus-exponent gate](../ecc2k130-orbit-closed-w24-seed-20261006/RESULT.md)
+now verifies field-coordinate membership on 120 frozen controls and eight
+cofactor-projected group controls, with exact operation counts. Arbitrary
+subgroup-point recognition and m5 PDP/rank costs remain unmeasured. The
+unchanged W24 quotient is deprioritized;
+the orbit-closed W24/m5 policy remains a `candidate_id: null` proposal,
+separate from both the original W24/m6 and W28/m5 policies.
+The [normal-basis barrel gate](../ecc2k130-w24-normal-barrel-20261006/RESULT.md)
+now supplies a checked 8-layer exponent-selector circuit and both full
+conversion matrices for that implicit W24/m5 proposal. Its 120 round trips
+and 1,200 Frobenius rotations pass independent Sage replay, but the five-leaf
+front end alone costs 5,240 muxes and 49,115 direct conversion XORs. The
+exponent-range constraint and complete Boolean/Semaev solver remain absent;
+there is no ordinary PDP yield or target-online result.
+The [unknown-witness orbit-closed W24/m5 SAT gate](../ecc2k130-orbit-w24-m5-sat-20261006/RESULT.md)
+then built a complete 142,303-variable native-XOR formula from five hidden
+seed masks and exponents. The frozen planted target's known witness satisfies
+every archived clause and XOR row, but CryptoMiniSat returned
+`INDETERMINATE` after 100,001 conflicts without a model. The ordinary
+single-target gate remained closed. This is a bounded failure of that SAT
+encoding, not a natural-yield estimate or a no-go for other PDP methods.
+The [first-leaf Frobenius-gauge follow-up](../ecc2k130-orbit-w24-m5-gauge-20261006/RESULT.md)
+added exactly eight unit clauses to the byte-matched parent XCNF. An
+independent row check confirms the archived planted witness still satisfies
+the formula, yet CryptoMiniSat recovered no unknown witness at either
+100,000 or 2,000,000 conflicts. The ordinary-query gate therefore remains
+closed; prioritize a structurally different, bounded implicit PDP screen
+over further expansion of this exact SAT encoding.
+
+The [Q1421 normal-weight-four source-base protocol](../ecc2k130-normal-weight4-base-20261009/PROTOCOL.md)
+defines a Frobenius-stable six-summand factor-base policy on the exact
+polynomial-basis ECC2K-130 source curve, using the independently verified
+131-coordinate normal basis. Its [completed census result](../ecc2k130-normal-weight4-base-20261009/RESULT.md)
+replays all 89,440 cyclic orbits of 11,716,640 raw weight-four parameters and
+finds 44,824 rational orbits, no in-base reciprocal pairs, `B=11,743,888`
+usable subgroup points, and `K=44,824` potential signed-Frobenius columns.
+Checked Sage independently matches every count and digest and verifies
+sampled group points and Frobenius actions. Both frozen count gates pass; the
+next test is a matched ordinary-query six-summand PDP comparison at equal
+actual `B` against the four Q1420 geometries. Q1421 remains a proposal with
+`candidate_id: null` until the full pipeline is specified and measured,
+separate from the sampled type-II normal-basis weight-six four-summand policy
+and from Q1420.
+
+The [Q1420/Q1421 equal-B six-policy input gate](../ecc2k130-normal4-equalb-m6-20261010/PROTOCOL.md)
+fixes `B=11,743,888` for source W24, transported W24, descendant-native
+W24, its pullback, normal4 source, and transported normal4. It binds the
+verified degree-263 route and Q1420 one-target public point, specifies
+deterministic W24 mask prefixes and 65,536 target-independent ordinary
+queries, and requires checked-Sage point/map replay before a paired
+six-summand PDP screen. The [verified input result](../ecc2k130-normal4-equalb-m6-20261010/RESULT.md)
+records both W24 prefix digests, all 256 fixed point/map controls, a matched
+65,536-query source/descendant public-point stream with independent checked-Sage
+replay, and the bound one-target point. Its
+[configuration](../ecc2k130-normal4-equalb-m6-20261010/CONFIG.json)
+retains `candidate_id: null` while PDP, rank, final matrix, and target stages
+are pending.
+
+The [exact equal-B source-leaf m6 gate](../ecc2k130-equalb-m6-leaf-circuit-20261010/RESULT.md)
+now constructs matched native-XOR six-summand circuits for source W24 and
+normal4 with two multiplication equations and one trace equation per exact
+rational leaf. Checked Sage replays all 192 frozen source-point controls and
+both planted six-point chains; pinned SAT positive/negative controls also
+pass. On the first frozen ordinary public query, both CryptoMiniSat attempts
+entered search and reached their 150-second external cap with
+`BOUNDED_UNKNOWN` status. The checked order-four torsion witness gives four
+distinct raw x-target lifts of the same projected `[4]Q` relation. The next
+paired gate must charge all four lifts per query and compare independently
+verified relations and novel rank, with this exact circuit as its control.
+This is a PDP-stage proposal with `candidate_id: null`.
+
+The [exact four-lift equal-B m6 gate](../ecc2k130-equalb-four-lift-pdp-20261010/RESULT.md)
+puts all four checked raw x-preimages of one projected ordinary query into
+one native-XOR formula for each source geometry. Four SAT and four UNSAT
+target-mux controls and independent Sage lift replay pass. Both W24 and
+normal4 entered CryptoMiniSat search and returned `BOUNDED_UNKNOWN` at the
+frozen internal cap; the raw conflict and restart counts are retained. An
+exact restriction of the verified W24 orbit map gives 5,869,878 potential
+source columns at the common `B=11,743,888`, versus 44,824 for normal4.
+This prioritizes a verified ordinary normal4 relation/rank gate with a W24
+control while preserving all target-dependent attempts and the final-matrix
+cost. The complete IC pipeline remains an unactivated proposal.
+
+The [balanced-S3 equal-B m6 gate](../ecc2k130-equalb-balanced-s3-20261010/RESULT.md)
+reorganizes those six exact leaves into three pair sums and a final two-link
+tree. Independent checked Sage replay passes both planted point chains and
+Boolean-root controls. Each all-lift formula saves 1,030 variables, 131
+ordinary clauses, and 899 native XORs against the target-first circuit.
+The normal4 and W24 ordinary-query searches both entered live search and
+reached their frozen external wall cap with `BOUNDED_UNKNOWN`; raw restart
+tables and independent audits distinguish this from a solver launch failure.
+The static reduction is small, so the next PDP gate compares exact four-hot
+encodings of normal4's weight-four supports, with W24 retained as a paired
+reference. Verified ordinary relations and novel rank remain the promotion
+measure; `candidate_id` is still `null`.
+
+The [normal4 selector gate](../ecc2k130-normal4-support-index-20261010/RESULT.md)
+corrects the support-position width to eight bits and compares both an exact
+four-threshold counter and four ordered support indices against the frozen
+balanced formula. Checked Sage passes 128 frozen points and a position-130
+leaf; 11 native-XOR SAT controls pass. The counter saves 93,654 variables
+(17.451%) and 181,914 ordinary clauses (30.320%) in the full m6 formula,
+without adding XORs. Its formula is smaller than the support-index formula
+in all three XCNF dimensions. Both ordinary query-zero searches reached the
+150-second external guard with `BOUNDED_UNKNOWN` and independent live-search
+audits. The counter becomes the normal4 circuit baseline, while relation
+yield and rank remain unmeasured; held-out N131 four-policy prefixes await a
+relation-producing PDP. The next independent gates are the degree-263
+exceptional-input transport proof and charged n53 compact-orbit recovery.
+
+The [equal-B Gaussian-matrix gate](../ecc2k130-equalb-gauss-gate-20261010/RESULT.md)
+replayed the exact normal4-counter and W24-balanced four-lift query under
+matched CryptoMiniSat default and raised Gaussian limits. The raised limit
+admitted 8,262-by-13,084 components and recorded active elimination, while
+peak RSS rose 3.6–3.9-fold and all four guarded searches remained
+`BOUNDED_UNKNOWN`. The first sandboxed launch is preserved as four
+`PRODUCER_FAILURE` rows; the corrected R2 launch and independent raw-log
+audit are linked from the result. That observation motivated the controlled
+two-versus-five matrix-count gate below. `candidate_id` remains `null`
+pending verified relations and rank.
+
+The [two-repeat Gaussian matrix-count result](../ecc2k130-equalb-gauss-count-20261010/RESULT.md)
+kept those exact XCNFs, four raw lifts of public query zero, large
+row/column limits, solver binary, and resource caps fixed. Two/five paired
+sampled-RSS ratios were 0.695 and 0.473 for normal4, and 0.614 and 0.525
+for W24. All eight cells reached the external guard with `BOUNDED_UNKNOWN`;
+W24/two printed positive elimination calls once, while normal4/two had no
+elimination summary, leaving the full activity gate unresolved. The next
+separately frozen gate is a longer single-Q0 normal4/two run with a complete
+five-matrix control. The held-out 16/256-query screen remains gated on a
+verified ordinary relation or an independently justified solver-policy change.
+
+The [preregistered cold full-rank one-target control](../ecc2k130-cold-fullrank-20261006/RESULT.md)
+assigns canonical `IC1`/workload/run IDs to independently replayed n37 and n41
+four-summand exact-support recoveries; its n53 cell is a preserved 180-second
+timeout with no emitted target. On the unisolated host, corrected exclusive cold
+costs were 556.629 ms (n37) and 28,308.249 ms (n41), while the n41 support
+index alone cost 25,902.961 ms. The pinned producer's published online timer
+double-counted final solving and solution validation; the archived verifier
+recomputes exclusive phase costs. These are stage diagnostics, not controlled
+speedups or evidence for n131. A separate merged `crypto` compact-orbit
+[n41/n53 cold panel](https://github.com/aburan28/crypto/pull/1338) and
+[base-size panel](https://github.com/aburan28/crypto/pull/1353) now supply
+independently replayed full-rank n53 controls on different source-curve bases.
+The [retrospective trace audit](../ecc2k130-n53-compact-evidence-20261010/RESULT.md)
+pins those inputs and shows that the n53 K220 collector's 22 most costly
+rank rows used 34.8261% of its 18,413,613 probes. Its six timing repeats
+share one byte-identical rank stream. The [fixed-base restart follow-up](https://github.com/aburan28/crypto/pull/1626)
+held the exact 23,320-point K220 base fixed and tested a selected 400,000-probe
+cap on a new held-out public point over six independent rank seeds. Its median
+paired probe reduction was 5.189% and median paired complete-cold cost ratio
+was 1.020, so it missed both advancement conditions. All IC and same-point
+rho cells independently verified the target scalar. The next producer test
+should target cost per support probe or the pair-root index; the
+signed-expanded n53 timeout remains a separate, censored configuration.
 
 Screen the 1,000 proposals in stages rather than launch 1,000 complete DLPs.
 First materialize and replay factor bases, then benchmark PDPs on identical

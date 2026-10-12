@@ -70,6 +70,16 @@ def recipes_in(rel: str) -> dict[str, set[tuple]]:
     return out
 
 
+def doc_digests(doc: dict) -> set[str]:
+    """Digests one archive row satisfies: the record digest and, when the row
+    carries points, the enumerated-set digest (refs.archived matches either)."""
+    got = {doc["factor_base_sha256"]}
+    enum = (doc.get("factor_base") or {}).get("enumerated_set_sha256")
+    if isinstance(enum, str) and refs.HEX64.fullmatch(enum):
+        got.add(enum)
+    return got
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("experiments", nargs="+", help="experiment directories, repository-relative")

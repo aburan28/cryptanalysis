@@ -1,0 +1,82 @@
+{
+  "schema": "surface-integration-checks/v1",
+  "run_id": "surface-tools-integration-20261011",
+  "scope": "correctness and fixture reproduction only; no performance measurement",
+  "host": {
+    "os": "Linux",
+    "kernel": "6.18.44",
+    "architecture": "x86_64",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)"
+  },
+  "repositories": [
+    {
+      "repository": "aburan28/crypto",
+      "base_commit": "de6ff17ad4608d94f6eb9e934b2483f6f291ed69",
+      "branch": "codex/ecdlp-surfaces-rust-20261011",
+      "commands": [
+        {
+          "command": "tools/ecdlp-surfaces/check.sh",
+          "exit_status": 0,
+          "release_tests_passed": 13,
+          "format_passed": true,
+          "clippy_warnings_denied_passed": true,
+          "committed_example_replay_passed": true,
+          "invalid_input_controls_passed": true
+        },
+        {
+          "command": "cargo test --release --offline --locked (docs/ecdlp-surfaces/certificates)",
+          "exit_status": 0,
+          "release_tests_passed": 3
+        },
+        {
+          "command": "cargo clippy --offline --all-targets -- -D warnings (docs/ecdlp-surfaces/certificates)",
+          "exit_status": 0
+        }
+      ]
+    },
+    {
+      "repository": "aburan28/cryptanalysis",
+      "base_commit": "50224bbeca118d1c8ef7433f7c4887ee181b58a9",
+      "branch": "codex/ecdlp-surfaces-rust-20261011",
+      "commands": [
+        {
+          "command": "tools/ecdlp-surfaces/check.sh",
+          "exit_status": 0,
+          "release_tests_passed": 13,
+          "format_passed": true,
+          "clippy_warnings_denied_passed": true,
+          "committed_example_replay_passed": true,
+          "invalid_input_controls_passed": true
+        },
+        {
+          "command": "cargo test --release --offline --locked (docs/ecdlp-surfaces/certificates)",
+          "exit_status": 0,
+          "release_tests_passed": 3
+        },
+        {
+          "command": "cargo clippy --offline --all-targets -- -D warnings (docs/ecdlp-surfaces/certificates)",
+          "exit_status": 0
+        }
+      ]
+    }
+  ],
+  "global_checks": [
+    {
+      "command": "cargo test --release --lib --locked (crypto root)",
+      "exit_status": 101,
+      "status": "blocked_by_existing_syntax_errors",
+      "source_unchanged": true
+    },
+    {
+      "command": "conductor check --summary <tool integration> --scope path:tools/ecdlp-surfaces --scope path:README.md --scope path:.github/workflows/ecdlp-surfaces.yml --scope path:docs/ecdlp-surfaces",
+      "exit_status": 127,
+      "status": "command_not_installed"
+    },
+    {
+      "command": "gh api user --jq .login",
+      "exit_status": 1,
+      "status": "HTTP 401 Bad credentials"
+    }
+  ],
+  "remote_delivery": "not_pushed; no PR created"
+}

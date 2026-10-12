@@ -1,0 +1,29 @@
+{
+  "schema": "taskq.task-spec/v1",
+  "queue": "ca-gpu-sm120",
+  "kind": "command",
+  "source": {
+    "repo": "cryptanalysis",
+    "commit": "0000000000000000000000000000000000000000",
+    "sparse_paths": ["src", "include", "tools", "cuda", "cmake", "cloud/taskq"]
+  },
+  "command": {
+    "argv": ["python3", "cloud/taskq/ca_ecdlp_job.py",
+             "--ca", "build/taskq-cuda-sm120/ca",
+             "--instance", "cloud/taskq/instances/p48-b111.json",
+             "--alg", "gpu-rho", "--seed", "1",
+             "--", "--backend", "cuda", "--device", "0"],
+    "setup": [
+      ["cmake", "-S", ".", "-B", "build/taskq-cuda-sm120", "-DCMAKE_BUILD_TYPE=Release",
+       "-DCA_BUILD_TESTS=OFF", "-DCA_BUILD_SHARED=OFF",
+       "-DCA_CUDA=ON", "-DCA_CUDA_ARCHITECTURES=120",
+       "-DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc"],
+      ["cmake", "--build", "build/taskq-cuda-sm120", "--target", "ca", "-j", "8"],
+      ["build/taskq-cuda-sm120/ca", "gpu-info"]
+    ]
+  },
+  "limits": {"timeout_seconds": 900, "setup_timeout_seconds": 3600},
+  "placement": {"require_labels": {"gpu": "sm120"}},
+  "verify": {"builtin": "certificate"},
+  "labels": {"instance": "p48-b111", "solver": "ca solve --alg gpu-rho --backend cuda", "submitted_by": "example"}
+}

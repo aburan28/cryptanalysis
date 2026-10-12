@@ -1,0 +1,348 @@
+--- a/src/bin/eisenstein_fixed.rs
++++ b/src/bin/eisenstein_fixed.rs
+@@ -3580 +3580 @@
+-    if (123..=160).contains(&unit_orbit_format) {
++    if (123..=161).contains(&unit_orbit_format) {
+@@ -3583 +3583 @@
+-    if (124..=160).contains(&unit_orbit_format) {
++    if (124..=161).contains(&unit_orbit_format) {
+@@ -3629 +3629 @@
+-    let scalar_words = (125..=160).contains(&unit_orbit_format)
++    let scalar_words = (125..=161).contains(&unit_orbit_format)
+@@ -3633 +3633,5 @@
+-    let actual = if unit_orbit_format == 160 {
++    let actual = if unit_orbit_format == 161 {
++        unit_orbit_windows::multiply_u256_tau_power2_tau2_gauge_xyzz_tau(
++            scalar_words.expect("three-image radix-1024 requires unsigned 256-bit scalar")
++        ).0
++    } else if unit_orbit_format == 160 {
+@@ -3825 +3829,3 @@
+-    let mode = if unit_orbit_format == 160 {
++    let mode = if unit_orbit_format == 161 {
++        "unit_orbit_u256_tau_power2_tau2_gauge_xyzz_tau_fixed"
++    } else if unit_orbit_format == 160 {
+@@ -4028,0 +4035,2 @@
++            || args[0].starts_with("--check-scalar-unit-orbit-u256-tau-power2-tau2-gauge-xyzz-tau")
++            || args[0].starts_with("--benchmark-scalar-unit-orbit-u256-tau-power2-tau2-gauge-xyzz-tau")
+@@ -4085 +4093,3 @@
+-        let format = if args[0].contains("unit-orbit-u256-tau-power2-residual-gauge-xyzz-tau-fixed-fixture") {
++        let format = if args[0].contains("unit-orbit-u256-tau-power2-tau2-gauge-xyzz-tau-fixed-fixture") {
++            161
++        } else if args[0].contains("unit-orbit-u256-tau-power2-residual-gauge-xyzz-tau-fixed-fixture") {
+@@ -4329,0 +4340,2 @@
++            || args[0] == "--benchmark-scalar-unit-orbit-u256-tau-power2-tau2-gauge-xyzz-tau-fixed-case"
++            || args[0] == "--check-scalar-unit-orbit-u256-tau-power2-tau2-gauge-xyzz-tau-fixed-case"
+@@ -4425 +4437,3 @@
+-            if args[0].contains("unit-orbit-u256-tau-power2-residual-gauge-xyzz-tau") {
++            if args[0].contains("unit-orbit-u256-tau-power2-tau2-gauge-xyzz-tau") {
++                161
++            } else if args[0].contains("unit-orbit-u256-tau-power2-residual-gauge-xyzz-tau") {
+--- a/src/bin/eisenstein_fixed/unit_orbit_windows.rs
++++ b/src/bin/eisenstein_fixed/unit_orbit_windows.rs
+@@ -33,0 +34,4 @@
++const POWER2_TAU2_FULL_ATLAS: &[u8] = include_bytes!(concat!(
++    env!("CARGO_MANIFEST_DIR"), "/atlas-r1024-full-tau2.bin"));
++const POWER2_TAU2_TERMINAL_ATLAS: &[u8] = include_bytes!(concat!(
++    env!("CARGO_MANIFEST_DIR"), "/atlas-r1024-terminal-tau2.bin"));
+@@ -1777,0 +1782,143 @@
++struct Power2Tau2FullAtlas {
++    codes: &'static [u8],
++    seeds: &'static [u8],
++}
++
++impl Power2Tau2FullAtlas {
++    fn from_bytes(bytes: &'static [u8]) -> Self {
++        assert_eq!(&bytes[..4], b"T103");
++        let seed_count = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
++        assert_eq!(seed_count, 73_417);
++        let code_bytes = 4 * 1024 * 1024;
++        assert_eq!(bytes.len(), 8 + code_bytes + 4 * seed_count);
++        let atlas = Self { codes: &bytes[8..8 + code_bytes],
++                           seeds: &bytes[8 + code_bytes..] };
++        assert_eq!(&atlas.seeds[..4], &[0, 0, 0, 0]);
++        for ra in 0..1024 {
++            for rb in 0..1024 {
++                let (digit, _, _, _) = atlas.digit_residue(ra, rb);
++                assert!(norm(digit) <= 1024 * 1024);
++            }
++        }
++        atlas
++    }
++
++    fn seed_digits(&self) -> Vec<(i16, i16)> {
++        self.seeds.chunks_exact(4).map(|chunk| {
++            (i16::from_le_bytes(chunk[..2].try_into().unwrap()),
++             i16::from_le_bytes(chunk[2..].try_into().unwrap()))
++        }).collect()
++    }
++
++    fn digit_residue(&self, ra: usize, rb: usize) -> ((i32, i32), usize, usize, usize) {
++        assert!(ra < 1024 && rb < 1024);
++        let offset = 4 * (ra * 1024 + rb);
++        let code = u32::from_le_bytes(self.codes[offset..offset + 4].try_into().unwrap()) as usize;
++        let (seed_id, exponent, unit_code) = (code >> 5, (code >> 3) & 3, code & 7);
++        assert!(seed_id < self.seeds.len() / 4 && exponent <= 2 && unit_code < 6);
++        let offset = 4 * seed_id;
++        let seed = (
++            i16::from_le_bytes(self.seeds[offset..offset + 2].try_into().unwrap()) as i32,
++            i16::from_le_bytes(self.seeds[offset + 2..offset + 4].try_into().unwrap()) as i32,
++        );
++        let digit = match exponent {
++            0 => seed,
++            1 => (-3 * seed.1, seed.0 + 3 * seed.1),
++            2 => {
++                let first = (-3 * seed.1, seed.0 + 3 * seed.1);
++                (-3 * first.1, first.0 + 3 * first.1)
++            }
++            _ => unreachable!(),
++        };
++        let digit = unit_images(digit)[unit_code];
++        assert_eq!((digit.0.rem_euclid(1024) as usize,
++                    digit.1.rem_euclid(1024) as usize), (ra, rb));
++        (digit, seed_id, exponent, unit_code)
++    }
++}
++
++struct Tau2TerminalResidualAtlas {
++    rows: &'static [u8],
++    codes: &'static [u8],
++    seeds: &'static [u8],
++    b_min: i32,
++    b_max: i32,
++}
++
++impl Tau2TerminalResidualAtlas {
++    fn from_bytes(bytes: &'static [u8]) -> Self {
++        assert_eq!(&bytes[..4], b"R103");
++        let bound = u16::from_le_bytes(bytes[4..6].try_into().unwrap());
++        let b_min = i16::from_le_bytes(bytes[6..8].try_into().unwrap()) as i32;
++        let b_max = i16::from_le_bytes(bytes[8..10].try_into().unwrap()) as i32;
++        let seed_count = u32::from_le_bytes(bytes[10..14].try_into().unwrap()) as usize;
++        let pair_count = u32::from_le_bytes(bytes[14..18].try_into().unwrap()) as usize;
++        assert_eq!((bound, b_min, b_max, seed_count, pair_count),
++                   (149, -172, 172, 9_288, 80_521));
++        assert_eq!(&bytes[18..20], &[0, 0]);
++        let row_bytes = 8 * (b_max - b_min + 1) as usize;
++        let code_bytes = 4 * pair_count;
++        assert_eq!(bytes.len(), 20 + row_bytes + code_bytes + 4 * seed_count);
++        let atlas = Self { rows: &bytes[20..20 + row_bytes],
++                           codes: &bytes[20 + row_bytes..20 + row_bytes + code_bytes],
++                           seeds: &bytes[20 + row_bytes + code_bytes..],
++                           b_min, b_max };
++        assert_eq!(&atlas.seeds[..4], &[0, 0, 0, 0]);
++        let mut offset = 0usize;
++        for b in b_min..=b_max {
++            let (a_min, length, row_offset) = atlas.row(b);
++            assert_eq!(row_offset, offset);
++            for a in a_min..a_min + length as i32 {
++                let (digit, _, _, _) = atlas.digit_exact(a, b);
++                assert_eq!(digit, (a, b));
++            }
++            offset += length;
++        }
++        assert_eq!(offset, pair_count);
++        atlas
++    }
++
++    fn row(&self, b: i32) -> (i32, usize, usize) {
++        assert!((self.b_min..=self.b_max).contains(&b));
++        let row = &self.rows[8 * (b - self.b_min) as usize..][..8];
++        (i16::from_le_bytes(row[..2].try_into().unwrap()) as i32,
++         u16::from_le_bytes(row[2..4].try_into().unwrap()) as usize,
++         u32::from_le_bytes(row[4..8].try_into().unwrap()) as usize)
++    }
++
++    fn seed_digits(&self) -> Vec<(i16, i16)> {
++        self.seeds.chunks_exact(4).map(|chunk| {
++            (i16::from_le_bytes(chunk[..2].try_into().unwrap()),
++             i16::from_le_bytes(chunk[2..].try_into().unwrap()))
++        }).collect()
++    }
++
++    fn digit_exact(&self, a: i32, b: i32) -> ((i32, i32), usize, usize, usize) {
++        assert!(norm((a, b)) < 149 * 149);
++        let (a_min, length, offset) = self.row(b);
++        assert!(a >= a_min && (a - a_min) < length as i32);
++        let code_offset = 4 * (offset + (a - a_min) as usize);
++        let code = u32::from_le_bytes(
++            self.codes[code_offset..code_offset + 4].try_into().unwrap()) as usize;
++        let (seed_id, exponent, unit_code) = (code >> 5, (code >> 3) & 3, code & 7);
++        assert!(seed_id < self.seeds.len() / 4 && exponent <= 2 && unit_code < 6);
++        let seed_offset = 4 * seed_id;
++        let seed = (
++            i16::from_le_bytes(self.seeds[seed_offset..seed_offset + 2].try_into().unwrap()) as i32,
++            i16::from_le_bytes(self.seeds[seed_offset + 2..seed_offset + 4].try_into().unwrap()) as i32,
++        );
++        let digit = match exponent {
++            0 => seed,
++            1 => (-3 * seed.1, seed.0 + 3 * seed.1),
++            2 => {
++                let first = (-3 * seed.1, seed.0 + 3 * seed.1);
++                (-3 * first.1, first.0 + 3 * first.1)
++            }
++            _ => unreachable!(),
++        };
++        let digit = unit_images(digit)[unit_code];
++        assert_eq!(digit, (a, b));
++        (digit, seed_id, exponent, unit_code)
++    }
++}
++
+@@ -2510,0 +2658,35 @@
++
++struct Power2Tau2Tables {
++    full: Power2Tau2FullAtlas,
++    terminal: Tau2TerminalResidualAtlas,
++    windows: Vec<Box<[U256Affine]>>,
++    retained_bytes: usize,
++}
++
++impl Power2Tau2Tables {
++    fn new() -> Self {
++        let full = Power2Tau2FullAtlas::from_bytes(POWER2_TAU2_FULL_ATLAS);
++        let terminal = Tau2TerminalResidualAtlas::from_bytes(POWER2_TAU2_TERMINAL_ATLAS);
++        let mut windows = Vec::with_capacity(13);
++        let mut base = Jacobian::generator();
++        for index in 0..13 {
++            let seeds = if index == 12 { terminal.seed_digits() }
++                        else { full.seed_digits() };
++            windows.push(build_u256_window(&seeds, base));
++            if index < 12 {
++                for _ in 0..10 { base = base.double(); }
++            }
++        }
++        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
++        assert_eq!(entries, 890_292);
++        assert_eq!(size_of::<U256Affine>(), 64);
++        let retained_bytes = entries * size_of::<U256Affine>()
++            + POWER2_TAU2_FULL_ATLAS.len() + POWER2_TAU2_TERMINAL_ATLAS.len()
++            + size_of::<Self>() + windows.capacity() * size_of::<Box<[U256Affine]>>();
++        assert!(retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES < 63_000_000);
++        Self { full, terminal, windows, retained_bytes }
++    }
++}
++
++static POWER2_TAU2_TABLES: LazyLock<Power2Tau2Tables> =
++    LazyLock::new(Power2Tau2Tables::new);
+@@ -2758,0 +2941,6 @@
++    if format == 61 {
++        std::sync::LazyLock::force(&super::EXACT_RECIPROCAL_CHECK);
++        std::sync::LazyLock::force(&super::FIXED_SCALAR_LATTICE);
++        std::sync::LazyLock::force(&U256_BETA_CANONICAL);
++        return POWER2_TAU2_TABLES.retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES;
++    }
+@@ -4259,0 +4448,72 @@
++    (point, representative, nonidentity.saturating_sub(1),
++     tables.retained_bytes + SOLINAS_UNIT_CONSTANT_BYTES,
++     fallback, corner, gauge_products)
++}
++
++pub(super) fn multiply_u256_tau_power2_tau2_gauge_xyzz_tau(
++    scalar_words: [u64; 4],
++) -> (String, (Signed192, Signed192), usize, usize, bool, usize, usize) {
++    let scalar = super::Uint(scalar_words);
++    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
++        scalar
++    } else {
++        super::U256::sbb(&scalar, &super::SCALAR_ORDER_WORDS).0
++    };
++    let (representative, fallback, corner) =
++        super::hexagonal_certified_fixed_choice_words(residue.0);
++    let tables: &'static Power2Tau2Tables = &*POWER2_TAU2_TABLES;
++    let (mut a, mut b) = representative;
++    let mut choices = [(0usize, 0usize, 0usize); 13];
++    let mut nonidentity = 0usize;
++    for choice in choices.iter_mut().take(12) {
++        let ra = a.rem_euclid_power_of_two(10);
++        let rb = b.rem_euclid_power_of_two(10);
++        let (digit, seed_id, exponent, unit_code) = tables.full.digit_residue(ra, rb);
++        a = a.sub(Signed192::from_i32(digit.0)).div_exact_power_of_two(10);
++        b = b.sub(Signed192::from_i32(digit.1)).div_exact_power_of_two(10);
++        *choice = (seed_id, exponent, unit_code);
++        nonidentity += usize::from(seed_id != 0);
++        debug_assert!(norm(digit) <= 1024 * 1024);
++    }
++    let terminal_pair = (a.to_small_i32(), b.to_small_i32());
++    assert!(norm(terminal_pair) < 149 * 149, "terminal residual norm bound");
++    let (digit, seed_id, exponent, unit_code) =
++        tables.terminal.digit_exact(terminal_pair.0, terminal_pair.1);
++    assert_eq!(digit, terminal_pair);
++    choices[12] = (seed_id, exponent, unit_code);
++    nonidentity += usize::from(seed_id != 0);
++
++    let mut buckets = [U256XYZZ::identity(); 3];
++    let mut gauge_products = 0usize;
++    for exponent in 0..3 {
++        let mut gauge = None;
++        for power in [1usize, 2, 0] {
++            if !choices.iter().any(|&(seed, bucket, unit)|
++                                   seed != 0 && bucket == exponent && unit / 2 == power) {
++                continue;
++            }
++            if let Some(previous) = gauge {
++                let delta = (previous + 3 - power) % 3;
++                if delta != 0 && !buckets[exponent].is_identity() {
++                    buckets[exponent] = buckets[exponent].rotate_power_solinas(delta);
++                    gauge_products += 1;
++                }
++            }
++            gauge = Some(power);
++            for (index, &(seed_id, bucket, unit_code)) in choices.iter().enumerate() {
++                if seed_id == 0 || bucket != exponent || unit_code / 2 != power { continue; }
++                buckets[exponent] = buckets[exponent].add_mixed(
++                    tables.windows[index][seed_id].unit_solinas(unit_code & 1));
++            }
++        }
++        if let Some(power) = gauge {
++            if power != 0 && !buckets[exponent].is_identity() {
++                buckets[exponent] = buckets[exponent].rotate_power_solinas(power);
++                gauge_products += 1;
++            }
++        }
++    }
++    assert!(gauge_products <= 6);
++    let point = buckets[0].add_xyzz(
++        buckets[1].add_xyzz(buckets[2].tau()).tau()
++    ).affine_hex_binary_inverse();
+@@ -6210 +6470 @@
+-            env!("CARGO_MANIFEST_DIR"), "/fresh-inputs.json"
++            env!("CARGO_MANIFEST_DIR"), "/power2-residual-fresh-inputs.json"
+@@ -6241,0 +6502,38 @@
++                 control_additions, control_gauge_products);
++    }
++
++    #[test]
++    fn power2_tau2_matches_fresh_panel_and_two_image_control() {
++        let panel: serde_json::Value = serde_json::from_str(include_str!(concat!(
++            env!("CARGO_MANIFEST_DIR"), "/fresh-inputs.json"
++        ))).unwrap();
++        let scalars = panel["scalars_hex"].as_array().unwrap();
++        assert_eq!(scalars.len(), 4096);
++        let mut additions = 0usize;
++        let mut gauge_products = 0usize;
++        let mut control_additions = 0usize;
++        let mut control_gauge_products = 0usize;
++        for (index, text) in scalars.iter().enumerate() {
++            let scalar = BigInt::parse_bytes(text.as_str().unwrap().as_bytes(), 16).unwrap();
++            let words = super::super::scalar_words_256(&scalar).unwrap();
++            let candidate = multiply_u256_tau_power2_tau2_gauge_xyzz_tau(words);
++            let control = multiply_u256_tau_power2_residual_gauge_xyzz_tau(words);
++            assert_eq!(candidate.0, control.0, "point {index}");
++            assert_eq!(candidate.1, control.1, "representative {index}");
++            assert_eq!((candidate.4, candidate.5), (control.4, control.5),
++                       "representative metadata {index}");
++            assert_eq!(candidate.3, warm_format(61));
++            assert!(candidate.2 <= 12 && candidate.6 <= 6, "bounds {index}");
++            additions += candidate.2;
++            gauge_products += candidate.6;
++            control_additions += control.2;
++            control_gauge_products += control.6;
++            if index < 128 {
++                let reduced = &scalar % &SCALAR_LATTICE.n;
++                assert_eq!(candidate.0, independent_binary_point(&reduced).affine_hex(),
++                           "independent binary {index}");
++            }
++        }
++        assert_eq!((additions, gauge_products), (49_151, 18_186));
++        println!("power2_tau2_cases={} retained_bytes={} additions={} gauge_products={} control_additions={} control_gauge_products={}",
++                 scalars.len(), warm_format(61), additions, gauge_products,

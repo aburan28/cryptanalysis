@@ -1,0 +1,33 @@
+# taskq worker for cryptanalysis GPU jobs (queue ca-gpu-sm120).
+#
+# CUDA 12.8 devel, the toolkit the repository targets for sm_120 (Blackwell;
+# cloud/README.md, cloud/fleet.json, the Modal `cuda` image), plus the taskq
+# worker and the C toolchain. Tasks build `ca` with -DCA_CUDA=ON
+# -DCA_CUDA_ARCHITECTURES=120 in their `setup` steps. ecc2k130's clmad kernels
+# need the CUDA 13.3 compiler instead; that is not in this image.
+#
+#   docker build -f cloud/taskq/Dockerfile.gpu -t ghcr.io/aburan28/cryptanalysis-taskq-gpu:dev \
+#       --build-arg TASKQ_IMAGE=ghcr.io/aburan28/cryptanalysis-taskq-gpu:dev cloud/taskq
+FROM nvidia/cuda:12.8.1-devel-ubuntu24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git ca-certificates build-essential cmake python3 python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+
+# Ubuntu 24.04's python3 is 3.12; the venv keeps pip off the system site.
+ARG TASKQ_REF=main
+RUN python3 -m venv /opt/taskq \
+    && /opt/taskq/bin/pip install --no-cache-dir \
+        "taskq[mcp] @ git+https://github.com/aburan28/crypto.git@${TASKQ_REF}#subdirectory=taskq"
+ENV PATH=/opt/taskq/bin:${PATH} \
+    CUDA_HOME=/usr/local/cuda
+
+ARG TASKQ_IMAGE=""
+ENV TASKQ_IMAGE=${TASKQ_IMAGE}
+
+# uid 10001 matches the Helm chart's securityContext.
+RUN useradd -m -u 10001 taskq && mkdir -p /var/cache/taskq && chown taskq /var/cache/taskq
+USER taskq
+ENTRYPOINT ["taskq"]
+CMD ["worker", "--queue", "ca-gpu-sm120", "--label", "gpu=sm120"]

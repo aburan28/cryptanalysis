@@ -13,7 +13,8 @@ the benchmark subprocesses alone enter the isolated partition.
 The strict preflight requires a physical Linux host with administrative
 control, an empty cgroup v2 `cpuset.cpus.partition=isolated` partition whose
 exclusive effective CPU and NUMA sets match the manifest, full SMT sibling
-coverage, `nohz_full` on those CPUs, a fixed CPU frequency, no CPU
+coverage, `cgroup.events populated 0` across descendants, `nohz_full` on
+those CPUs, a fixed `performance` frequency, no CPU
 quota, no overlapping effective IRQ affinity, a housekeeping-only service
 affinity, and `numactl`. Version 1 pins each benchmark process and all its
 threads to **one declared logical CPU** inside the isolated partition and
@@ -35,14 +36,6 @@ guide](https://docs.kernel.org/admin-guide/cpu-isolation.html) explains tick,
 RCU, IRQ, and SMT considerations. The runner checks the effective state,
 not just the requested configuration.
 
-Frequency is established either by an exposed `cpufreq` policy with the
-`performance` governor and equal minimum and maximum frequencies, or by the
-specific AWS `g5g.metal` hardware whose [Graviton processor frequency is fixed](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/processor_state_control.html).
-The latter path requires an ARM64 host, no `cpufreq` policy directory, and
-an exact `g5g.metal` instance-type response from IMDSv2. The preflight receipt
-records which path passed. A missing metadata response or a partially exposed
-`cpufreq` policy fails the gate; other isolation and noise checks still apply.
-
 The benchmark executable owns the `online_ms` interval. The manifest must
 describe that timer's boundary; the runner cannot infer it from process
 launch. The runner also records outer elapsed time, executable SHA-256,
@@ -62,10 +55,8 @@ executable's timer and correctness check.
    with `cpuset.cpus`, `cpuset.cpus.exclusive`, and `cpuset.mems` set to the
    chosen resources. Verify the corresponding `.effective` files and
    `cpuset.cpus.isolated` readback. Keep the service outside that partition.
-3. Where `cpufreq` is available, set the selected CPUs' `performance` governor
-   and equal minimum and maximum frequency. On `g5g.metal`, keep IMDSv2
-   available so the runner can attest the fixed-frequency hardware. Remove
-   CPU quotas from the benchmark cgroup and its
+3. Set the selected CPUs' `performance` governor and equal minimum and
+   maximum frequency. Remove CPU quotas from the benchmark cgroup and its
    ancestors. Install `numactl` and the same compiler/runtime used for both
    variants. These changes should be made by the host administrator because
    they affect all workloads on that machine.
@@ -93,7 +84,23 @@ python3 /workspace/cryptanalysis/scripts/isolated_bench.py --queue-root /workspa
 
 `serve` holds both a queue lock and a fixed host-wide lock under `/run/lock`
 for its whole lifetime. A second server, even with a different queue
-directory, or a direct run refuses to start. Keep the SQLite queue on a
+directory, or a direct run refuses to start. If the host also uses the
+`exp-run` launcher, start the service with its existing serial lock:
+
+```sh
+python3 /workspace/cryptanalysis/scripts/isolated_bench.py \
+  --queue-root /workspace/isolated-bench \
+  --shared-job-lock /workspace/experiment-runs/.serial.lock serve
+```
+
+The service takes this shared `flock` for each complete benchmark job,
+including preflight and result writing, then releases it before the next
+job. A job remains `queued` while another launcher holds the lock. The
+same option applies to a direct `run`. This coordinates with existing
+`exp-run` jobs, including jobs queued before the service starts, because
+their launch scripts already hold that file during execution. Use one
+lock file on a local filesystem for every launcher on the host; a launcher
+that skips it is outside the one-job guarantee. Keep the SQLite queue on a
 single-host local filesystem; SQLite WAL and file locks are not a
 distributed scheduler. The service marks any job left `running` after a crash
 as `interrupted`; it never silently resumes a partial panel. It takes queued
@@ -133,8 +140,14 @@ cc -O3 -std=c11 -Iinclude experiments/prime-j0-tau-20260930/large-rho-20261002/b
 ```
 
 Build and correctness checks are outside the online timer. Generate the
-exact 160-target panel from the
-frozen scalar law with [make_j0_isolated_manifest.py](../scripts/make_j0_isolated_manifest.py):
+exact 160-target panel from the frozen scalar law with
+[make_j0_isolated_manifest.py](../scripts/make_j0_isolated_manifest.py).
+The generator calls each executable's `--print-target` fixture mode, checks
+that both produce the same public point, and freezes the expected scalar in
+the manifest. The timed `--public-target` command receives the point
+coordinates and walk seed, with no expected scalar in its arguments. Its
+`online_ms` covers the rho solve and independent point replay; fixture
+construction stays outside that interval:
 
 ```sh
 python3 scripts/make_j0_isolated_manifest.py \
@@ -161,3 +174,57 @@ was run on a heavily loaded Mac. Its timing ratios remain exploratory until
 replayed through a qualifying isolated host. Historical results elsewhere
 in the repository need an isolation audit before they are treated as
 controlled performance claims.
+
+## Frozen manifest and result contract
+
+Each `cases` entry is one previously unseen target. Freeze its exact input
+point in `expected_fields`; the reference and candidate must both echo those
+fields in the final timed output row. The runner rejects a pair even when
+both programs report the same wrong target. The executable must print
+`online_ms=<positive number> verified=1` and a result field after checking its
+answer. The runner also compares that result to the frozen `expected_result`
+in the manifest; keep that expected answer out of the solver command line.
+The runner records the complete stdout/stderr and hashes the listed
+source/build artifacts and each executable. For example:
+
+```json
+{
+  "schema": 1,
+  "workdir": "/workspace/cryptanalysis",
+  "isolation": {
+    "cgroup": "/sys/fs/cgroup/benchmark-isolated",
+    "cpus": "4-5",
+    "execution_cpu": 4,
+    "mem_nodes": "0"
+  },
+  "artifacts": ["/workspace/cryptanalysis/src/solver.c"],
+  "timeout_s": 120,
+  "repetitions": 3,
+  "measurement_boundary": "First target-dependent step through scalar replay",
+  "pair_fields": ["curve", "target_x", "target_y"],
+  "result_field": "scalar",
+  "cases": [
+    {
+      "id": "target-0",
+      "expected_fields": {"curve": "curve-id", "target_x": "123", "target_y": "456"},
+      "expected_result": "789",
+      "reference": ["/workspace/bin/reference", "--target", "target-0"],
+      "candidate": ["/workspace/bin/candidate", "--target", "target-0"]
+    }
+  ]
+}
+```
+
+The CPU and NUMA IDs above are examples; choose them from verified host
+topology. All paths must be absolute paths on the benchmark host. The
+benchmark's internal online timer and correctness replay need source review:
+this service cannot infer their boundaries or prove `verified=1` on its own.
+For Sage manifests, use the absolute checked repository `sage` launcher and
+save its `--runtime-info` receipt before measurement, as required by
+[AGENTS.md](../AGENTS.md).
+
+For IC comparisons, retain candidate, workload, and run IDs plus the stage
+accounting required by AGENTS.md. Report the exact paired one-target online
+interval and the same target point for rho and IC. Historical CPU ratios
+without an equivalent isolation receipt remain exploratory until replayed
+under a qualifying host.

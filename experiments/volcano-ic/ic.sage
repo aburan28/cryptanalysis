@@ -37,12 +37,13 @@ class Field:
             for j in range(k):
                 conv[i + j] += u[i] * w[j]
         self.C = conv                                          # x1 x2
-        self.A = self.linear(self.sqMatrix(), conv)            # (x1 x2)^2
-        sq = self.sqMatrix()
+        sq = self.sqMatrix()  # constant for the lifetime of this field
+        self.A = self.linear(sq, conv)                         # (x1 x2)^2
         x1 = [u[i] if i < k else self.B(0) for i in range(n)]
         x2 = [w[i] if i < k else self.B(0) for i in range(n)]
         self.S = [a + c for a, c in zip(self.linear(sq, x1), self.linear(sq, x2))]  # x1^2 + x2^2
         self.u, self.w = u, w
+        self._zero = self.B(0)
 
     def vec(self, e):
         v = e.polynomial().list()
@@ -113,9 +114,22 @@ class Curve:
         # y = x w with w^2 + w = x + a + b/x^2, solvable iff the trace is 0;
         # n is odd, so the half-trace gives w.
         self.fb = {}
-        for c in range(1, 2 ** fld.k):
-            x = fld.fromBits([(c >> i) & 1 for i in range(fld.k)])
-            rhs = x + a + b / x ** 2
+        # One inversion per nonzero x is unnecessary: compute the entire
+        # inverse table in a single batch, then reuse it for b/x^2.
+        xs = [fld.fromBits([(c >> i) & 1 for i in range(fld.k)])
+              for c in range(1, 2 ** fld.k)]
+        prefix = []
+        acc = F(1)
+        for x in xs:
+            prefix.append(acc)
+            acc *= x
+        inv_acc = 1 / acc
+        inverses = [None] * len(xs)
+        for i in range(len(xs) - 1, -1, -1):
+            inverses[i] = inv_acc * prefix[i]
+            inv_acc *= xs[i]
+        for x, inv_x in zip(xs, inverses):
+            rhs = x + a + b * inv_x ** 2
             if rhs.trace() != 0:
                 continue
             w = halfTrace(rhs, fld.n)

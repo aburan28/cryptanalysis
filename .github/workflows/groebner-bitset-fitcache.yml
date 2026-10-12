@@ -1,0 +1,42 @@
+name: Groebner certified F4 bitset eligibility cache
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  exact:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    env:
+      CXX: clang++
+      GROEBNER_PHASE_REFERENCE_ROOT: ${{ github.workspace }}
+      GROEBNER_F4_REFERENCE_ROOT: ${{ github.workspace }}
+      FITCACHE_EVIDENCE_ROOT: ${{ github.workspace }}/../f4-fitcache-evidence
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Build and independently audit frozen reference
+        run: python experiments/groebner-perf-20260924/round112/run_validation.py --output "$FITCACHE_EVIDENCE_ROOT/reference"
+      - name: Build baseline and cached-eligibility F4
+        run: |
+          python experiments/groebner-perf-20260924/round119/build.py --reference-root "$GITHUB_WORKSPACE"
+          python experiments/groebner-perf-20260924/round122/build.py --reference-root "$GITHUB_WORKSPACE"
+      - name: Check exact proofs and complete queries
+        run: |
+          python experiments/groebner-perf-20260924/round122/panel.py --reference-report "$FITCACHE_EVIDENCE_ROOT/reference/panel/report.json" --output "$FITCACHE_EVIDENCE_ROOT/fitcache"
+          python experiments/groebner-perf-20260924/round122/test_large.py --output "$FITCACHE_EVIDENCE_ROOT/large-proof.json"
+          python experiments/groebner-perf-20260924/round122/profile.py --reference-root "$GITHUB_WORKSPACE" --reference-report "$FITCACHE_EVIDENCE_ROOT/reference/panel/report.json" --output "$FITCACHE_EVIDENCE_ROOT/paired" --reps 3
+      - name: Retain exact results and failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: groebner-fitcache-${{ matrix.os }}
+          path: ${{ github.workspace }}/../f4-fitcache-evidence
+          if-no-files-found: error
