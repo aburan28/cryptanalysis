@@ -1,0 +1,64 @@
+{
+  "kind": "q1480_midpoint_conditioned_pair_feasibility_design",
+  "proposal_id": "Q1480",
+  "candidate_id": null,
+  "run_id": null,
+  "isogeny": "none",
+  "question": "Can a midpoint-conditioned exact pair-feasibility rule reach an unpinned four-point relation on Q1438's exact N53 W<=4 and N83 W<=6 production bases without materializing an S5 polynomial or a pair table?",
+  "parent_solver": "Q1479 target-conditioned partial-midpoint solver",
+  "input_policy": "Reuse Q1438's archived free-partner controls and ordinary CNF/variable-map/target files byte for byte, plus Q1476's two pinned sorted correctness controls. Preserve each source workload ID, public point, curve ID, actual usable base count, folded column count, and base digest. The Q1476 pinned controls use different, explicitly named bases and are correctness controls only.",
+  "production_bases": {
+    "53": {
+      "curve_id": "EC1N53Ckb1hf77aab617904",
+      "normal_basis_weight_bound": 4,
+      "factor_base_actual_B": 324042,
+      "folded_columns_K": 3057,
+      "factor_base_enumerated_set_sha256": "9e12afb51aaf2bbf47640554ce88b3653903375c33489ce8b1e07abe6a649cae"
+    },
+    "83": {
+      "curve_id": "EC1N83Ckb1h876c2921cb64",
+      "normal_basis_weight_bound": 6,
+      "factor_base_actual_B": 408131750,
+      "folded_columns_K": 2458625,
+      "factor_base_enumerated_set_sha256": "c1ee6d1064935976fc0d3e479f895fe4832722b5991ba148a6d6cb003b76330d"
+    }
+  },
+  "method": {
+    "summands_m": 4,
+    "stage_code": "PDP4hybrid",
+    "solver_family": "compact chained-S3 native SAT with exact field oracle",
+    "left_pair_domain_cap": 4096,
+    "conditioned_pair_feasibility_cap_per_side": 16384,
+    "decision_order": "target selector, left leaves until at most 4096 left-pair completions, second midpoint, right leaves, remaining left leaves and midpoints",
+    "rule": "When the target selector and second midpoint are fixed and both partial leaf-pair completion products are at most 16384, derive every first-midpoint root of S3(second_midpoint,target,first_midpoint), respecting any assigned first-midpoint bits. Test the right pair against the fixed second midpoint by direct S3 evaluation, and the left pair against each candidate first midpoint by direct S3 evaluation. Stop each side on its first supporting completion. If either side has no support, learn a rejection guarded by all assigned selector, four-leaf and midpoint bits used. Retain Q1479's earlier target-conditioned partial first-pair domain rule.",
+    "soundness_boundary": "Both pair completion sets include every nonzero normal-basis weight-valid raw x value consistent with the current trail. Direct S3 evaluation is only an x-coordinate necessary condition and ignores rational lifts, distinct folded columns, signs and subgroup projection, so a rejection is sound while a support hit requires full independent replay.",
+    "cache_policy": "cold native process per case; Q1479 root cache and 64-entry partial-midpoint domain cache preserved; conditioned feasibility states keyed by selected target and every assigned leaf/midpoint mask"
+  },
+  "run_order": [
+    "n53_q1476_pinned",
+    "n83_q1476_pinned",
+    "n53_q1438_free_partner",
+    "n83_q1438_free_partner",
+    "n53_q1438_ordinary",
+    "n83_q1438_ordinary"
+  ],
+  "limits": {
+    "native_wall_seconds_per_case": 60,
+    "external_safeguard_seconds_per_case": 75,
+    "sat_conflicts_per_case": 1000000,
+    "partial_midpoint_domain_cache_entries": 64
+  },
+  "controls": [
+    "an independent small-field exhaustive check of conditioned feasibility and guarded rejection",
+    "Q1476's two pinned sorted models remain independently verified",
+    "Q1438's known-witness free-partner controls are kept distinct from ordinary-query yield"
+  ],
+  "measurements": [
+    "exact native field mul/sqr/inv, S3 root calls, and direct S3 evaluations",
+    "exact CaDiCaL propagations, decisions, conflicts, domain builds, conditioned eligibility, support hits and guarded rejections",
+    "native and external wall time, peak child RSS, all failures and censored results",
+    "independently replayed public four-point relations and distinct folded columns"
+  ],
+  "claim_limit": "One ordinary target per degree cannot estimate natural relation yield. The fixed Q1438 N83 ordinary target has no prior representation proof, so a capped no-hit result is censored rather than negative mathematical evidence. A successful stage alone is not a complete IC1 pipeline or a degree-131 solve projection.",
+  "promotion_gate": "Publish frozen source/input/binary/runtime hashes before the six runs. Keep complete degree-131 log2 work null until successful ordinary relations, useful-row rates and every other pipeline phase are measured or bounded; challenge dispatch remains closed unless the complete solve is credibly below 2^61."
+}
