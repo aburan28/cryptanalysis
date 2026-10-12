@@ -1,0 +1,45 @@
+name: prime-j0-radix919-terminal-unit
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/prime-j0-radix919-terminal-unit.yml"
+      - "experiments/prime-j0-radix919-terminal-unit-20261012/**"
+      - "experiments/prime-j0-secp256k1-native/radix943_screen.py"
+      - "experiments/prime-j0-secp256k1-native/unit_orbit_windows_screen.py"
+      - "experiments/prime-j0-pareto-tree-20261012/plans.py"
+      - "experiments/prime-j0-pareto-tree-20261012/plans.bin"
+      - "experiments/prime-j0-sector-digit-20261010/fresh-inputs.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  proof:
+    name: Lean terminal and orbit certificate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install elan for pinned Lean
+        run: |
+          set -euo pipefail
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Build and audit the theorem modules
+        run: |
+          set -euo pipefail
+          python3 experiments/prime-j0-radix919-terminal-unit-20261012/check.py --check
+
+  design:
+    name: Frozen design and full residue replay
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Replay the radix atlas and source model
+        run: |
+          set -euo pipefail
+          python3 experiments/prime-j0-radix919-terminal-unit-20261012/screen.py --check
