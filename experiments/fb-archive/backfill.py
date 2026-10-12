@@ -61,7 +61,6 @@ def collect(obj, inherited: tuple | None, out: dict[str, set[tuple]]) -> None:
 def recipes_in(rel: str) -> dict[str, set[tuple]]:
     text = refs.read_text(refs.ROOT / rel)
     out: dict[str, set[tuple]] = {}
-    if refs.KEY not in text:
     if not any(k in text for k in refs.KEYS):
         return out
     try:
