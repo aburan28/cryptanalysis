@@ -23,7 +23,8 @@ panels, not a wall-time speedup.
 main-tree native source. `replay.py` checks binary/source hashes, compares
 native points against independent fixtures, and keeps raw panel hashes.
 The fourth fixture, `holdout.json`, was generated after source commit
-`e1080fba6` and is disjoint from the design set and prior panels.
+`2f7d0704d` (the rebased source-freeze commit) and is disjoint from the design
+set and prior panels.
 `replay.json` retains semantic and output hashes; `local-build.json` retains
 macOS binary and compiler hashes. The same four-panel semantic receipt passed
 in an offline Linux ARM64 container, rebuilt with Rust 1.93.1; its image,
