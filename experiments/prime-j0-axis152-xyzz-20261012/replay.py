@@ -13,7 +13,7 @@ import subprocess
 HERE = Path(__file__).resolve().parent
 PARENT = HERE.parent / "prime-j0-axis152-20261012"
 MODULE = Path("experiments/prime-j0-secp256k1-native/src/bin/eisenstein_fixed/unit_orbit_windows.rs")
-FIXTURES = (PARENT / "holdout2.json", HERE / "holdout.json")
+FIXTURES = (PARENT / "holdout2.json", HERE / "holdout.json", HERE / "holdout2.json")
 
 
 def digest(path: Path) -> str:
@@ -76,8 +76,9 @@ def run(reference: Path, candidate: Path, reference_record: Path,
     semantic = {
         "schema": 1, "status": "native_xyzz_matches_jacobian_and_independent_points",
         "panels": panels,
-        "reference_compiled_module_sha256": digest(ref_module),
-        "candidate_compiled_module_sha256": digest(cand_module),
+        "base_module_sha256": ref["base_module_sha256"],
+        "axis152_overlay_source_sha256": ref["overlay_module_sha256"],
+        "transformed_overlay_source_sha256": cand["transformed_overlay_source_sha256"],
         "source_sha256": digest(Path(__file__)),
         "transform_sha256": digest(HERE / "native_overlay_xyzz.py"),
     }
@@ -86,6 +87,8 @@ def run(reference: Path, candidate: Path, reference_record: Path,
                                      capture_output=True, text=True).stdout.strip(),
              "reference_binary_sha256": digest(reference),
              "candidate_binary_sha256": digest(candidate),
+             "reference_compiled_module_sha256": digest(ref_module),
+             "candidate_compiled_module_sha256": digest(cand_module),
              "reference_overlay_record_sha256": digest(reference_record),
              "candidate_overlay_record_sha256": digest(candidate_record)}
     return semantic, local

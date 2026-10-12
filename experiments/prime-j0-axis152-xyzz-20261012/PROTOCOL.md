@@ -32,3 +32,15 @@ copied parent module. A Linux CI job rebuilds both locked binaries and
 rechecks the saved semantic receipt. CPU timing ratios require the
 repository's isolated benchmark service and a host that passes its
 preflight; this replay checks correctness and the formula-level change.
+
+## Portability amendment before the second new panel
+
+The first replay receipt included a hash of the generated Rust module,
+whose `include!` path embeds the local checkout and cannot match Linux.
+The candidate evaluator and first new input panel remain frozen. The
+checker now binds the portable base and included-source hashes in its
+semantic receipt and keeps generated-module hashes in the local build
+receipt. Freeze this revised checker and `holdout2.py` before drawing
+seed `20261012232`. The second new panel must be disjoint from all three
+listed prior controls, including this experiment's first holdout, and
+pass the same exact reference/candidate/independent-point gate.
