@@ -167,7 +167,109 @@ theorem native_reciprocals_floor :
     subgroupOrder*nativeRecipMinusW1 ≤
       (fractionBase*fractionTail)*(-basisW.2) ∧
       (fractionBase*fractionTail)*(-basisW.2) <
-        subgroupOrder*(nativeRecipMinusW1+1) := by decide
+      subgroupOrder*(nativeRecipMinusW1+1) := by decide
+
+-- A floor reciprocal returns the exact integer quotient whenever the true
+-- product has a positive remainder and the truncation cannot consume one
+-- full scaled remainder unit. This does not assume primality of n.
+theorem reciprocal_quotient_positive_remainder
+    (n L c R k q rem delta : Int)
+    (hn : 0 < n) (hL : 0 < L) (hk : 0 ≤ k)
+    (hdivision : k*c = n*q+rem)
+    (hrem : 0 < rem ∧ rem < n)
+    (hreciprocal : L*c = n*R+delta)
+    (hdelta : 0 ≤ delta)
+    (hsmall : k*delta < L) :
+    (k*R)/L = q := by
+  have hLrem : L ≤ L*rem := by
+    have hm := Int.mul_le_mul_of_nonneg_left (show (1 : Int) ≤ rem by omega)
+      (by omega : 0 ≤ L)
+    simpa using hm
+  have hid : n*(k*R) = n*(q*L)+L*rem-k*delta := by
+    grind +ring
+  have hlowMul : n*(q*L) ≤ n*(k*R) := by
+    rw [hid]
+    omega
+  have hlow : q*L ≤ k*R :=
+    Int.le_of_mul_le_mul_left hlowMul hn
+  have hremUpper := Int.mul_lt_mul_of_pos_left hrem.2 hL
+  rw [Int.mul_comm L n] at hremUpper
+  have hkdelta : 0 ≤ k*delta := Int.mul_nonneg hk hdelta
+  have hhighEq : n*((q+1)*L) = n*(q*L)+n*L := by grind +ring
+  have hhighMul : n*(k*R) < n*((q+1)*L) := by
+    rw [hid, hhighEq]
+    omega
+  have hhigh : k*R < (q+1)*L :=
+    Int.lt_of_mul_lt_mul_left hhighMul (by omega)
+  apply (Int.ediv_eq_iff_of_pos hL).2
+  constructor
+  · exact hlow
+  · have hEq : (q+1)*L = q*L+L := by grind +ring
+    rw [hEq] at hhigh
+    exact hhigh
+
+-- An explicit Bezout identity suffices for the nonzero remainder needed
+-- above; no primality oracle is used by this lemma.
+theorem positive_product_remainder_of_bezout
+    (n c k u v : Int)
+    (hn : 0 < n) (hk : 0 < k) (hkN : k < n)
+    (hbez : c*u+n*v=1) :
+    0 < (k*c)%n := by
+  have hnonneg := Int.emod_nonneg (k*c) (by omega : n ≠ 0)
+  by_cases hzero : (k*c)%n=0
+  · obtain ⟨t, ht⟩ := Int.dvd_of_emod_eq_zero hzero
+    have hkdiv : k = n*(u*t+v*k) := by grind +ring
+    have hmod : k%n=0 := Int.emod_eq_zero_of_dvd ⟨u*t+v*k, hkdiv⟩
+    have hself : k%n=k := Int.emod_eq_of_lt (by omega) hkN
+    omega
+  · omega
+
+theorem native_coefficient_bezout :
+    basisV.2 *
+        93315342734088478194468943808457753085541896514852243494941512349958024398345 +
+      subgroupOrder * (-244517761065088206286623414864222006362) = 1 ∧
+    (-basisW.2) *
+        113859244173077282785050241834804787623472567142703998078252165831100869442129 +
+      subgroupOrder * (-361775997307656764103407721907293435543) = 1 := by decide
+
+theorem reciprocal_quotient_from_bezout
+    (n L c R k u v : Int)
+    (hn : 0 < n) (hL : 0 < L)
+    (hk : 0 ≤ k) (hkN : k < n)
+    (hbez : c*u+n*v=1)
+    (hfloorLo : n*R ≤ L*c)
+    (hfloorHi : L*c < n*(R+1))
+    (hcapacity : n*n < L) :
+    (k*R)/L = (k*c)/n := by
+  by_cases hk0 : k=0
+  · subst k
+    simp
+  · have hkpos : 0 < k := by omega
+    let q := (k*c)/n
+    let rem := (k*c)%n
+    let delta := L*c-n*R
+    have hdivision : k*c = n*q+rem := by
+      have h := Int.emod_add_ediv_mul (k*c) n
+      dsimp [q, rem]
+      grind +ring
+    have hremLo : 0 < rem :=
+      positive_product_remainder_of_bezout n c k u v hn hkpos hkN hbez
+    have hremHi : rem < n := Int.emod_lt_of_pos (k*c) hn
+    have hfloorHi' : L*c < n*R+n := by
+      have heq : n*(R+1)=n*R+n := by grind +ring
+      rw [heq] at hfloorHi
+      exact hfloorHi
+    have hdelta0 : 0 ≤ delta := by dsimp [delta]; omega
+    have hdeltaN : delta < n := by dsimp [delta]; omega
+    have hkd : k*delta < k*n :=
+      Int.mul_lt_mul_of_pos_left hdeltaN hkpos
+    have hkn : k*n < n*n := by
+      have h := Int.mul_lt_mul_of_pos_left hkN hn
+      simpa [Int.mul_comm] using h
+    have hsmall : k*delta < L := by omega
+    exact reciprocal_quotient_positive_remainder n L c R k q rem delta
+      hn hL hk hdivision ⟨hremLo,hremHi⟩
+      (by dsimp [delta]; grind +ring) hdelta0 hsmall
 
 theorem reduced_scalar_below_fraction_tail (k : Int)
     (hk : k < subgroupOrder) : k < fractionTail := by
@@ -1461,6 +1563,35 @@ theorem floor_representative_scaled_coordinates (k qw qv : Int) :
 def exactFloorW (k : Int) : Int := k*basisV.2 / subgroupOrder
 def exactFloorV (k : Int) : Int := -k*basisW.2 / subgroupOrder
 
+-- Both copied native seven-word constants recover the mathematical floor
+-- quotients for every reduced nonnegative scalar, including zero.
+theorem native_reciprocal_quotients_exact (k : Int)
+    (hk : 0 ≤ k) (hkN : k < subgroupOrder) :
+    (k*nativeRecipV1)/(fractionBase*fractionTail) = exactFloorW k ∧
+    (k*nativeRecipMinusW1)/(fractionBase*fractionTail) = exactFloorV k := by
+  have hn : 0 < subgroupOrder := by decide
+  have hL : 0 < fractionBase*fractionTail := by decide
+  have hcapacity : subgroupOrder*subgroupOrder <
+      fractionBase*fractionTail := by decide
+  have hrec := native_reciprocals_floor
+  have hbez := native_coefficient_bezout
+  constructor
+  · have h := reciprocal_quotient_from_bezout subgroupOrder
+      (fractionBase*fractionTail) basisV.2 nativeRecipV1 k
+      93315342734088478194468943808457753085541896514852243494941512349958024398345
+      (-244517761065088206286623414864222006362)
+      hn hL hk hkN hbez.1 hrec.1 hrec.2.1 hcapacity
+    exact h
+  · have h := reciprocal_quotient_from_bezout subgroupOrder
+      (fractionBase*fractionTail) (-basisW.2) nativeRecipMinusW1 k
+      113859244173077282785050241834804787623472567142703998078252165831100869442129
+      (-361775997307656764103407721907293435543)
+      hn hL hk hkN hbez.2 hrec.2.2.1 hrec.2.2.2 hcapacity
+    have hnum : k*(-basisW.2) = -k*basisW.2 := by grind +ring
+    rw [hnum] at h
+    exact h
+
+
 theorem exact_floor_remainder_bounds (n a : Int) (hn : 0 < n) :
     0 ≤ a - (a/n)*n ∧ a - (a/n)*n < n := by
   have hrem : a - (a/n)*n = a % n := by
@@ -1862,6 +1993,11 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms corner_score_norm_identity
 #print axioms four_corner_minimum_has_hex_strips
 #print axioms native_reciprocals_floor
+#print axioms reciprocal_quotient_positive_remainder
+#print axioms positive_product_remainder_of_bezout
+#print axioms native_coefficient_bezout
+#print axioms reciprocal_quotient_from_bezout
+#print axioms native_reciprocal_quotients_exact
 #print axioms fraction_base_width
 #print axioms reduced_scalar_below_fraction_tail
 #print axioms exact_product_high_fraction_decomposition

@@ -81,6 +81,7 @@ word algorithm.
 | The final modeled four-pass array's high words, fractional word, and low remainder are the exact division outputs of the scalar-times-reciprocal product | `four_scalar_word_output_bounded` | Checked under the same bounded-word hypotheses; native Rust correspondence open |
 | An indexed pass preserves bounded output words and has zero final carry when its exact total fits in the array | `schoolbook_outer_at_bounds`, `schoolbook_outer_at_zero_carry_of_capacity`, `schoolbook_outer_at_no_overflow` | Checked and used by the four-pass theorem |
 | Floor-reciprocal bound and exact product limbs enclose the true scaled cell coordinate within two high-fraction units | `reciprocal_high_fraction_interval` | Checked, conditional on the reciprocal bound and product decomposition |
+| Both copied seven-word reciprocal constants recover the exact integer cell quotients for every reduced scalar | `reciprocal_quotient_positive_remainder`, `positive_product_remainder_of_bezout`, `native_coefficient_bezout`, `reciprocal_quotient_from_bezout`, `native_reciprocal_quotients_exact` | Checked for all `0≤k<subgroupOrder`; native word-loop output correspondence open |
 | Two-unit high-fraction uncertainty gives the classifier score ranges; strict separation certifies a minimum | `fraction_limb_score_intervals`, `strictly_separated_interval_certifies_minimum` | Checked, conditional on the limb interval |
 | The native four-interval classifier's strict winner minimizes all exact four-corner scores and lies inside the six Voronoi support strips | `fraction_corner_certificate`, `fraction_corner_certified_hex_strips` | Checked for normalized cell coordinates and two coordinate enclosures; native Rust-to-model and fallback links open |
 | A normalized four-corner minimum yields the actual representative's six-neighbor inequalities when its scaled lattice-coordinate identity holds; the certified branch supplies that minimum from its high-fraction intervals | `four_corner_minimum_six_neighbors`, `corner_score_scaled`, `fraction_corner_certified_six_neighbors` | Checked for the secp256k1 lattice with explicit coordinate and interval hypotheses; native word and fallback links open |
@@ -108,6 +109,15 @@ parameters are arbitrary integers; the native values are `B=2^64` and
 `L=2^448`. `native_reciprocals_floor` checks the two seven-word constants
 from the native chooser against the exact floor inequalities; `check.py`
 compares all fourteen Lean and Rust words before building.
+`native_reciprocal_quotients_exact` proves the quotient identity for both
+production constants and every reduced scalar. A generic lemma bounds the
+reciprocal truncation using the positive remainder of `k*c` modulo the
+subgroup order. Two explicit Bézout certificates prove that remainder is
+nonzero for `0<k<subgroupOrder`; the checked
+`subgroupOrder²<2^512` bound makes the truncation smaller than one scaled
+unit. The `k=0` case is handled directly. The proof needs no primality
+oracle. The native four-by-seven-word loop and returned high words still
+need correspondence with the checked integer product.
 `reduced_scalar_below_fraction_tail` discharges the scalar-range premise.
 `fraction_corner_certificate` instantiates the native four interval bounds,
 including the asymmetric `(1,1)` upper bound, and proves that every strict
