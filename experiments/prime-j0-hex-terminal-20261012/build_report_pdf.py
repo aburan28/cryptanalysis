@@ -127,9 +127,10 @@ def build(output: Path) -> None:
         "enclosure, fraction-score intervals and strict separation, Cauchy digit "
         "support, fifteen-step reconstruction, "
         "and conditional terminal inclusion. lean-build.txt retains the build and "
-        "axiom audit output. The fixed reciprocal constants and native 512-bit "
-        "limb product have not yet been proved to satisfy the enclosure hypotheses "
-        "for every reduced scalar, and the exact "
+        "axiom audit output. Lean checks both native reciprocal constants against "
+        "the floor inequalities and the reduced-scalar range; check.py matches all "
+        "fourteen words to the Rust source. The native 512-bit limb product still "
+        "needs a proof of its exact decomposition, and the "
         "fallback remains to be composed with the four-corner theorem; the finite "
         "11,023-orbit census also lacks a Lean cardinality theorem. The exact exit "
         "criteria are in problems/prime-j0-hex-terminal-formal-coverage.md."))

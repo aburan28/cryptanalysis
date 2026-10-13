@@ -137,6 +137,38 @@ theorem four_corner_minimum_has_hex_strips (x y d : Int) (corner : Nat)
     omega
 
 def fractionBase : Int := 18446744073709551616
+def fractionTail : Int := (2 : Int)^448
+
+-- Little-endian words copied from RECIP_V1 and RECIP_MINUS_W1 in
+-- eisenstein_fixed.rs. Keeping the words in the statement makes changes to
+-- either production constant visible to this certificate.
+def nativeRecipV1 : Int :=
+  0x44180e526536385c + fractionBase*0x46683369b37d7630 +
+  fractionBase^2*0x1571b4ae8ac47f71 +
+  fractionBase^3*0x221208ac9df506c6 +
+  fractionBase^4*0x6f547fa90abfe4c4 +
+  fractionBase^5*0xe4437ed6010e8828 + fractionBase^6*0x0
+
+def nativeRecipMinusW1 : Int :=
+  0x06dfcbca80313b00 + fractionBase*0x30e98f407e1a0fa2 +
+  fractionBase^2*0xfe04d548d0a02fa2 +
+  fractionBase^3*0x5fbc92c10fddd145 +
+  fractionBase^4*0x57c1108d9d44cfd9 +
+  fractionBase^5*0x14ca50f7a8e2f3f6 + fractionBase^6*0x1
+
+theorem native_reciprocals_floor :
+    subgroupOrder*nativeRecipV1 ≤ (fractionBase*fractionTail)*basisV.2 ∧
+      (fractionBase*fractionTail)*basisV.2 <
+        subgroupOrder*(nativeRecipV1+1) ∧
+    subgroupOrder*nativeRecipMinusW1 ≤
+      (fractionBase*fractionTail)*(-basisW.2) ∧
+      (fractionBase*fractionTail)*(-basisW.2) <
+        subgroupOrder*(nativeRecipMinusW1+1) := by decide
+
+theorem reduced_scalar_below_fraction_tail (k : Int)
+    (hk : k < subgroupOrder) : k < fractionTail := by
+  have hbound : subgroupOrder < fractionTail := by decide
+  omega
 
 -- A floor reciprocal R, its exact product limbs, and k smaller than one
 -- fractional limb imply a two-unit enclosure of the true scaled coordinate.
@@ -439,6 +471,8 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms closest_neighbor_inner
 #print axioms corner_score_norm_identity
 #print axioms four_corner_minimum_has_hex_strips
+#print axioms native_reciprocals_floor
+#print axioms reduced_scalar_below_fraction_tail
 #print axioms reciprocal_high_fraction_interval
 #print axioms fraction_limb_score_intervals
 #print axioms strictly_separated_interval_certifies_minimum

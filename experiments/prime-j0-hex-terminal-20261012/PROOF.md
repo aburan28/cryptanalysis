@@ -58,6 +58,7 @@ rebuild the actual modules and audit every listed declaration with
 | --- | --- | --- |
 | Three lattice-neighbor norms equal `r` | `PrimeJ0HexTerminal.neighbor_norms` | Checked |
 | Minimum among four floor/ceiling corners lies in all three Voronoi strips | `corner_score_norm_identity`, `four_corner_minimum_has_hex_strips` | Checked |
+| Both committed seven-word reciprocals satisfy the exact floor inequalities; every reduced scalar is below the 448-bit fraction tail | `native_reciprocals_floor`, `reduced_scalar_below_fraction_tail` | Checked; `check.py` compares the Lean words with the native arrays |
 | Floor-reciprocal bound and exact product limbs enclose the true scaled cell coordinate within two high-fraction units | `reciprocal_high_fraction_interval` | Checked, conditional on the reciprocal bound and product decomposition |
 | Two-unit high-fraction uncertainty gives the classifier score ranges; strict separation certifies a minimum | `fraction_limb_score_intervals`, `strictly_separated_interval_certifies_minimum` | Checked, conditional on the limb interval |
 | Cauchy identity and digit support | `inner_cauchy_identity`, `digit_inner_bound`, `support_certificate` | Checked |
@@ -78,9 +79,13 @@ of the classifier's interval geometry is checked. The
 `reciprocal_high_fraction_interval` theorem derives the two-unit enclosure
 from a floor-reciprocal inequality and exact product-limb decomposition. Its
 parameters are arbitrary integers; the native values are `B=2^64` and
-`L=2^448`. Proving that the fixed native reciprocal constants and 512-bit
-word product satisfy those hypotheses, handling the exact fallback, and
-composing the branches with `sixNeighborsClosest` remain open. The
+`L=2^448`. `native_reciprocals_floor` checks the two seven-word constants
+from the native chooser against the exact floor inequalities; `check.py`
+compares all fourteen Lean and Rust words before building.
+`reduced_scalar_below_fraction_tail` discharges the scalar-range premise.
+Proving that the native 512-bit word product satisfies the exact decomposition,
+handling the fallback, and composing the branches with `sixNeighborsClosest`
+remain open. The
 formalization is partial at that implementation bridge. The open obligations
 and their exit criteria are in
 [the problem record](../../problems/prime-j0-hex-terminal-formal-coverage.md).
