@@ -44,3 +44,30 @@ holdout is generated. The holdout must replay the selected point sum through
 an independent point implementation and a native tree evaluator before a
 correctness or performance result is promoted. Controlled wall time needs
 the repository's isolated benchmark receipt.
+
+The native tree source and calibration controls were frozen at
+`b9b7e3cdbac7aafe1517f00dc90afdf50962a577` before `holdout.py`
+generated the fresh 512-scalar fixture. The source overlays a disposable
+native checkout with `native_overlay_tree.py`; it does not modify the
+serial evaluator. Rebuild the serial reference with the parent experiment's
+`native_overlay_hex.py`. `native-receipt.json` and
+`serial-native-receipt.json` bind both binaries to source and overlay hashes.
+The two raw `holdout-*.jsonl` files retain every case, including additions,
+rotations, retained bytes, and point output. `check_holdout.py` checks both
+streams against the fixture and reconstructs every selected gauge to compare
+per-case operation counts with the frozen model. Run:
+
+```sh
+python3 experiments/prime-j0-hex-tree-20261013/holdout.py --check
+python3 experiments/prime-j0-hex-tree-20261013/check_holdout.py
+python3 experiments/prime-j0-hex-tree-20261013/edge_cases.py
+python3 experiments/prime-j0-hex-tree-20261013/check_edges.py
+```
+
+The exact abstract group-sum proof is in `GaugeTree.lean`. Rebuild and audit
+the printed axioms with the pinned toolchain:
+
+```sh
+cd experiments/prime-j0-gauge-tree-20261012
+ELAN_TOOLCHAIN=leanprover/lean4:v4.34.1 lean GaugeTree.lean
+```
