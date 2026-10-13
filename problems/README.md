@@ -7,13 +7,9 @@ explain the gap and what would let the work move past it.
 
 ## Index
 
-No problem records have been added yet; remove this sentence when adding the
-first record. This is a new tracking directory, not
-an assertion that the repository has no unresolved blockers. Add a row when
-creating a record; keep resolved and superseded records in the index.
-
 | Problem | Status | What it blocks | What would unblock it |
 | --- | --- | --- | --- |
+| [Fixed-width chooser and terminal census formal coverage](prime-j0-hex-terminal-formal-coverage.md) | Investigating | Full Lean coverage of the secp256k1 Voronoi terminal table | All-scalar chooser theorem and checked finite census |
 
 ## Add or update a problem
 

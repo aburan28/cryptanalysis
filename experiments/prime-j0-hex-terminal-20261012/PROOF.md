@@ -1,6 +1,6 @@
 # Voronoi-clipped radix-256 terminal table
 
-The secp256k1 fixed-base evaluator uses fifteen ordinary radix-256 unit-orbit
+The opt-in secp256k1 fixed-base evaluator uses fifteen ordinary radix-256 unit-orbit
 windows and one directly indexed terminal table. Intersecting the previous
 terminal norm disk with the nearest-representative Voronoi strips reduces the
 terminal table from 13,314 to **11,023 point entries**. The complete table has
@@ -74,4 +74,6 @@ and fraction classifier used by the production chooser are covered by the
 earlier exact reciprocal work and independently screened here. A Lean
 statement tying that native word-level classifier to the four-corner minimum
 and `sixNeighborsClosest` remains open; the formalization is partial at that
-implementation bridge. No theorem uses an assumed conclusion or custom axiom.
+implementation bridge. The open obligations and their exit criteria are in
+[the problem record](../../problems/prime-j0-hex-terminal-formal-coverage.md).
+No theorem uses an assumed conclusion or custom axiom.
