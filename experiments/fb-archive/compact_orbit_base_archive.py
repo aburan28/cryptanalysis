@@ -13,6 +13,7 @@ EXP = ROOT / 'experiments/n83-compact-orbit-size-sweep-20261012'
 EXP_K899 = ROOT / 'experiments/n83-compact-orbit-k899-20261012'
 EXP_K900 = ROOT / 'experiments/n83-packed-root-k900-20261013'
 EXP_CAPACITY = ROOT / 'experiments/n83-packed-root-capacity-20261013'
+EXP_PANEL_16G = ROOT / 'experiments/n83-packed-root-panel-16g-20261013'
 
 
 def sha(path):
@@ -20,7 +21,9 @@ def sha(path):
 
 
 def build_doc(k):
-    if k in (1200, 1271):
+    if k in (1000, 1100):
+        source = EXP_PANEL_16G
+    elif k in (1200, 1271):
         source = EXP_CAPACITY
     elif k == 900:
         source = EXP_K900
@@ -84,7 +87,7 @@ def main():
     parser.add_argument('--verify-only', action='store_true')
     args = parser.parse_args()
     preserve_crlf = b'\r\n' in fbarchive.INDEX.read_bytes()
-    for k in (600, 800, 899, 900, 1200, 1271):
+    for k in (600, 800, 899, 900, 1000, 1100, 1200, 1271):
         doc = build_doc(k)
         if args.verify_only:
             matching = [row for row in fbarchive.read_index()
