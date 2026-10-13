@@ -64,12 +64,12 @@ rebuild the actual modules and audit every listed declaration with
 | One modeled word step preserves weighted value and keeps its output word and carry bounded | `schoolbook_word_step` | Checked for the exact arithmetic step used in the native inner loop |
 | A modeled inner pass over reciprocal words preserves the full weighted value and 64-bit bounds | `schoolbook_pass_value`, `schoolbook_pass_bounds` | Checked for an arbitrary finite word list; native array/outer-loop link open |
 | A list of bounded base-`B` words represents an integer in `[0,B^length)` | `word_value_bounds` | Checked for arbitrary finite word lists |
-| A bounded four-word scalar prefix times a bounded seven-word reciprocal fits below `B^11` | `word_values_product_fits`, `four_word_prefix_product_fits` | Checked for every prefix offset and `B>1`; matching each intermediate array to its prefix product remains open |
+| A bounded four-word scalar prefix times a bounded seven-word reciprocal fits below `B^11` | `word_values_product_fits`, `four_word_prefix_product_fits`, `four_scalar_prefix_capacity` | Checked for every prefix offset and `B>1` |
 | Carry propagation preserves weighted value and word bounds; zero carry leaves trailing words unchanged | `carry_pass_value`, `carry_pass_zero`, `carry_pass_bounds` | Checked for an arbitrary finite trailing list |
 | A complete modeled pass preserves length and word bounds and adds one shifted scalar-word multiple of the reciprocal | `schoolbook_whole_pass_value`, `schoolbook_whole_pass_length`, `schoolbook_whole_pass_bounds`, `shifted_schoolbook_pass_value` | Checked for arbitrary prefix, reciprocal-word list, and suffix; native four-iteration array mapping open |
 | Indexing an eleven-word product array by a scalar-word offset selects the reciprocal-sized slice and preserves exact weighted value and array length | `schoolbook_outer_at_value`, `schoolbook_outer_at_length` | Checked for any offset whose reciprocal-sized slice fits; overflow exclusion open |
-| Four indexed passes at offsets 0 through 3 compose into the four-word scalar times the seven-word reciprocal | `four_scalar_word_product` | Checked conditional on zero carry after each pass; proving zero carry from the fixed-width bounds remains open |
-| An indexed pass preserves bounded output words and has zero final carry when its exact total fits in the array | `schoolbook_outer_at_bounds`, `schoolbook_outer_at_zero_carry_of_capacity`, `schoolbook_outer_at_no_overflow` | Checked; four scalar-prefix capacity inequalities remain open |
+| Four indexed passes at offsets 0 through 3 have zero final carry and produce the exact four-word scalar times the seven-word reciprocal | `four_scalar_word_product_bounded` | Checked for bounded four scalar words, seven bounded reciprocal words, and `B>1`; modeled list algorithm |
+| An indexed pass preserves bounded output words and has zero final carry when its exact total fits in the array | `schoolbook_outer_at_bounds`, `schoolbook_outer_at_zero_carry_of_capacity`, `schoolbook_outer_at_no_overflow` | Checked and used by the four-pass theorem |
 | Floor-reciprocal bound and exact product limbs enclose the true scaled cell coordinate within two high-fraction units | `reciprocal_high_fraction_interval` | Checked, conditional on the reciprocal bound and product decomposition |
 | Two-unit high-fraction uncertainty gives the classifier score ranges; strict separation certifies a minimum | `fraction_limb_score_intervals`, `strictly_separated_interval_certifies_minimum` | Checked, conditional on the limb interval |
 | Cauchy identity and digit support | `inner_cauchy_identity`, `digit_inner_bound`, `support_certificate` | Checked |
@@ -112,11 +112,10 @@ shifted-pass theorems compose these operations and retain the weighted-value,
 length, and word-bound invariants for one outer iteration. `schoolbookOuterAt`
 uses the native `take`/`drop` offset and reciprocal-sized `zip` slice, and its
 checked theorem proves one indexed pass adds the exact positional product
-while retaining the eleven-word array length. `four_scalar_word_product`
-composes the exact increments for all four offsets into `k·R`; its four
-zero-carry hypotheses follow from `schoolbook_outer_at_no_overflow` once each
-intermediate array is identified with its scalar-prefix product. Lean now
-checks that every such four-word prefix times a seven-word reciprocal is below
-`B^11`, as well as the output-word and carry bounds. The intermediate-array
-equalities and identification of returned high-word indices with the exact
-quotient and fractional word remain open.
+while retaining the eleven-word array length. `four_scalar_word_product_bounded`
+proves the four modeled passes have zero final carry and compute `k·R` for
+all bounded four-word scalars and seven-word reciprocals. Its proof checks
+the intermediate-array prefix-product equalities, capacity, and output-word
+bounds at every offset. The native Rust loop still needs an explicit
+formal correspondence with this list model, and its returned high-word indices
+must be identified with the exact quotient and fractional word.

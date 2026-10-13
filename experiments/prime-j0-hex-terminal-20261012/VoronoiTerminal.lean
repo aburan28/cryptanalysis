@@ -370,6 +370,50 @@ theorem four_word_prefix_product_fits (B : Int)
     have hpow := Int.pow_lt_pow_of_lt hB hlt
     omega
 
+theorem four_scalar_prefix_values (B a0 a1 a2 a3 : Int) :
+    let digits := [a0, a1, a2, a3]
+    wordValue B (digits.take 1) = a0 ∧
+    wordValue B (digits.take 2) = a0 + B*a1 ∧
+    wordValue B (digits.take 3) = a0 + B*a1 + B^2*a2 ∧
+    wordValue B (digits.take 4) =
+      a0 + B*a1 + B^2*a2 + B^3*a3 := by
+  dsimp
+  simp [wordValue]
+  grind +ring
+
+theorem four_scalar_prefix_capacity (B a0 a1 a2 a3 : Int)
+    (reciprocal : List Int) (hB : 1 < B)
+    (hrecLen : reciprocal.length = 7)
+    (ha0 : boundedWord B a0) (ha1 : boundedWord B a1)
+    (ha2 : boundedWord B a2) (ha3 : boundedWord B a3)
+    (hrec : ∀ word ∈ reciprocal, boundedWord B word) :
+    let R := wordValue B reciprocal
+    a0*R < B^11 ∧
+    (a0+B*a1)*R < B^11 ∧
+    (a0+B*a1+B^2*a2)*R < B^11 ∧
+    (a0+B*a1+B^2*a2+B^3*a3)*R < B^11 := by
+  let digits := [a0, a1, a2, a3]
+  have hdigits : ∀ word ∈ digits, boundedWord B word := by
+    intro word hw
+    simp [digits] at hw
+    rcases hw with h | h | h | h
+    · subst word; exact ha0
+    · subst word; exact ha1
+    · subst word; exact ha2
+    · subst word; exact ha3
+  have hp1 := four_word_prefix_product_fits B digits reciprocal 1 hB
+    (by simp [digits]) hrecLen hdigits hrec
+  have hp2 := four_word_prefix_product_fits B digits reciprocal 2 hB
+    (by simp [digits]) hrecLen hdigits hrec
+  have hp3 := four_word_prefix_product_fits B digits reciprocal 3 hB
+    (by simp [digits]) hrecLen hdigits hrec
+  have hp4 := four_word_prefix_product_fits B digits reciprocal 4 hB
+    (by simp [digits]) hrecLen hdigits hrec
+  have hv := four_scalar_prefix_values B a0 a1 a2 a3
+  dsimp [digits] at hp1 hp2 hp3 hp4
+  dsimp at hv ⊢
+  grind
+
 theorem schoolbook_pass_bounds (B a carry : Int)
     (xs : List (Int × Int))
     (hB : 0 < B) (ha : boundedWord B a)
@@ -803,6 +847,94 @@ theorem four_scalar_word_product (B a0 a1 a2 a3 : Int)
   rw [he3, he2, he1, he0]
   simp [z, wordValue] <;> grind +ring
 
+theorem four_scalar_word_product_bounded (B a0 a1 a2 a3 : Int)
+    (reciprocal : List Int) (hB : 1 < B)
+    (hrecLen : reciprocal.length = 7)
+    (ha0 : boundedWord B a0) (ha1 : boundedWord B a1)
+    (ha2 : boundedWord B a2) (ha3 : boundedWord B a3)
+    (hrec : ∀ word ∈ reciprocal, boundedWord B word) :
+    let z := List.replicate 11 (0 : Int)
+    let p0 := schoolbookOuterAt B a0 z reciprocal 0
+    let p1 := schoolbookOuterAt B a1 p0.1 reciprocal 1
+    let p2 := schoolbookOuterAt B a2 p1.1 reciprocal 2
+    let p3 := schoolbookOuterAt B a3 p2.1 reciprocal 3
+    p0.2 = 0 ∧ p1.2 = 0 ∧ p2.2 = 0 ∧ p3.2 = 0 ∧
+    wordValue B p3.1 =
+      (a0+B*a1+B^2*a2+B^3*a3)*wordValue B reciprocal := by
+  intro z p0 p1 p2 p3
+  have hB0 : 0 < B := by omega
+  have hzlen : z.length = 11 := by simp [z]
+  have hzval : wordValue B z = 0 := word_value_replicate_zero B 11
+  have hzwords : ∀ word ∈ z, boundedWord B word := by
+    intro word hw
+    have hzero : word = 0 := by simpa [z] using hw
+    subst word
+    exact ⟨by omega, hB0⟩
+  have hcaps := four_scalar_prefix_capacity B a0 a1 a2 a3 reciprocal
+    hB hrecLen ha0 ha1 ha2 ha3 hrec
+  rcases hcaps with ⟨hcap0, hcap1, hcap2, hcap3⟩
+  have hc0 : p0.2 = 0 := by
+    apply schoolbook_outer_at_no_overflow B a0 z reciprocal 0
+      hB0 ha0 hzwords hrec (by omega)
+    rw [hzval, hzlen]
+    simpa using hcap0
+  have hb0 := schoolbook_outer_at_bounds B a0 z reciprocal 0
+    hB0 ha0 hzwords hrec
+  have hp0len : p0.1.length = 11 := by
+    rw [show p0 = schoolbookOuterAt B a0 z reciprocal 0 from rfl]
+    rw [schoolbook_outer_at_length B a0 z reciprocal 0 (by omega)]
+    exact hzlen
+  have he0 := schoolbook_outer_at_no_carry B a0 z reciprocal 0
+    hB0 (by omega) hc0
+  have hp0val : wordValue B p0.1 = a0*wordValue B reciprocal := by
+    change wordValue B p0.1 = _ at he0
+    rw [hzval] at he0
+    simpa using he0
+  have hc1 : p1.2 = 0 := by
+    apply schoolbook_outer_at_no_overflow B a1 p0.1 reciprocal 1
+      hB0 ha1 hb0.1 hrec (by omega)
+    rw [hp0val, hp0len]
+    grind +ring
+  have hb1 := schoolbook_outer_at_bounds B a1 p0.1 reciprocal 1
+    hB0 ha1 hb0.1 hrec
+  have hp1len : p1.1.length = 11 := by
+    rw [show p1 = schoolbookOuterAt B a1 p0.1 reciprocal 1 from rfl]
+    rw [schoolbook_outer_at_length B a1 p0.1 reciprocal 1 (by omega)]
+    exact hp0len
+  have he1 := schoolbook_outer_at_no_carry B a1 p0.1 reciprocal 1
+    hB0 (by omega) hc1
+  have hp1val : wordValue B p1.1 =
+      (a0+B*a1)*wordValue B reciprocal := by
+    change wordValue B p1.1 = _ at he1
+    rw [hp0val] at he1
+    grind +ring
+  have hc2 : p2.2 = 0 := by
+    apply schoolbook_outer_at_no_overflow B a2 p1.1 reciprocal 2
+      hB0 ha2 hb1.1 hrec (by omega)
+    rw [hp1val, hp1len]
+    grind +ring
+  have hb2 := schoolbook_outer_at_bounds B a2 p1.1 reciprocal 2
+    hB0 ha2 hb1.1 hrec
+  have hp2len : p2.1.length = 11 := by
+    rw [show p2 = schoolbookOuterAt B a2 p1.1 reciprocal 2 from rfl]
+    rw [schoolbook_outer_at_length B a2 p1.1 reciprocal 2 (by omega)]
+    exact hp1len
+  have he2 := schoolbook_outer_at_no_carry B a2 p1.1 reciprocal 2
+    hB0 (by omega) hc2
+  have hp2val : wordValue B p2.1 =
+      (a0+B*a1+B^2*a2)*wordValue B reciprocal := by
+    change wordValue B p2.1 = _ at he2
+    rw [hp1val] at he2
+    grind +ring
+  have hc3 : p3.2 = 0 := by
+    apply schoolbook_outer_at_no_overflow B a3 p2.1 reciprocal 3
+      hB0 ha3 hb2.1 hrec (by omega)
+    rw [hp2val, hp2len]
+    grind +ring
+  have hproduct := four_scalar_word_product B a0 a1 a2 a3
+    reciprocal hB0 hrecLen hc0 hc1 hc2 hc3
+  exact ⟨hc0, hc1, hc2, hc3, hproduct⟩
+
 -- A floor reciprocal R, its exact product limbs, and k smaller than one
 -- fractional limb imply a two-unit enclosure of the true scaled coordinate.
 -- Here B = 2^64 and L = 2^448 in the native 512-bit product.
@@ -1115,6 +1247,8 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms word_value_bounds
 #print axioms word_values_product_fits
 #print axioms four_word_prefix_product_fits
+#print axioms four_scalar_prefix_values
+#print axioms four_scalar_prefix_capacity
 #print axioms schoolbook_pass_bounds
 #print axioms carry_pass_value
 #print axioms carry_pass_length
@@ -1134,6 +1268,7 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms schoolbook_outer_at_no_overflow
 #print axioms word_value_replicate_zero
 #print axioms four_scalar_word_product
+#print axioms four_scalar_word_product_bounded
 #print axioms reciprocal_high_fraction_interval
 #print axioms fraction_limb_score_intervals
 #print axioms strictly_separated_interval_certifies_minimum
