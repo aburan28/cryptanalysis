@@ -286,6 +286,15 @@ theorem schoolbook_pass_value (B a carry : Int) (xs : List (Int × Int))
         pairSecondValue, sum] at htail ⊢
       grind +ring [Int.pow_succ]
 
+theorem schoolbook_pass_length (B a carry : Int)
+    (xs : List (Int × Int)) :
+    (schoolbookPass B a xs carry).1.length = xs.length := by
+  induction xs generalizing carry with
+  | nil => simp [schoolbookPass]
+  | cons head rest ih =>
+      rcases head with ⟨word, coeff⟩
+      simp [schoolbookPass, ih]
+
 def boundedWord (B word : Int) : Prop := 0 ≤ word ∧ word < B
 
 theorem schoolbook_pass_bounds (B a carry : Int)
@@ -321,6 +330,190 @@ theorem schoolbook_pass_bounds (B a carry : Int)
           exact ⟨hstep.1, hstep.2.1⟩
         · exact htail.1 w hmem
       · exact htail.2
+
+-- Propagate a completed inner pass's carry through the remaining array
+-- words. Processing all trailing words is equivalent to the native loop's
+-- early stop once the carry reaches zero, proved below.
+def carryPass (B : Int) : List Int → Int → List Int × Int
+  | [], carry => ([], carry)
+  | word::rest, carry =>
+      let sum := word + carry
+      let tail := carryPass B rest (sum / B)
+      ((sum % B)::tail.1, tail.2)
+
+theorem carry_pass_value (B carry : Int) (xs : List Int)
+    (hB : 0 < B) :
+    let out := carryPass B xs carry
+    wordValue B out.1 + out.2*B^xs.length =
+      wordValue B xs + carry := by
+  induction xs generalizing carry with
+  | nil => simp [carryPass, wordValue]
+  | cons word rest ih =>
+      let sum := word + carry
+      have hdiv := Int.emod_add_ediv_mul sum B
+      have htail := ih (carry := sum / B)
+      dsimp [carryPass, wordValue, sum] at htail ⊢
+      grind +ring [Int.pow_succ]
+
+theorem carry_pass_length (B carry : Int) (xs : List Int) :
+    (carryPass B xs carry).1.length = xs.length := by
+  induction xs generalizing carry with
+  | nil => simp [carryPass]
+  | cons word rest ih => simp [carryPass, ih]
+
+theorem carry_pass_zero (B : Int) (xs : List Int)
+    (hxs : ∀ word ∈ xs, boundedWord B word) :
+    carryPass B xs 0 = (xs, 0) := by
+  induction xs with
+  | nil => simp [carryPass]
+  | cons word rest ih =>
+      have hw := hxs word (by simp)
+      have hrest : ∀ w ∈ rest, boundedWord B w := by
+        intro w hmem
+        exact hxs w (by simp [hmem])
+      have hmod : word % B = word := Int.emod_eq_of_lt hw.1 hw.2
+      have hdiv : word / B = 0 := Int.ediv_eq_zero_of_lt hw.1 hw.2
+      simp [carryPass, hmod, hdiv, ih hrest]
+
+theorem carry_pass_bounds (B carry : Int) (xs : List Int)
+    (hB : 0 < B) (hc : boundedWord B carry)
+    (hxs : ∀ word ∈ xs, boundedWord B word) :
+    let out := carryPass B xs carry
+    (∀ word ∈ out.1, boundedWord B word) ∧
+      boundedWord B out.2 := by
+  induction xs generalizing carry with
+  | nil => simp [carryPass, hc]
+  | cons word rest ih =>
+      have hw := hxs word (by simp)
+      have hrest : ∀ w ∈ rest, boundedWord B w := by
+        intro w hmem
+        exact hxs w (by simp [hmem])
+      let sum := word + carry
+      have hstep := schoolbook_word_step B 0 0 word carry 0
+        hB (by omega) hB (by omega) hB hw.1 hw.2 hc.1 hc.2
+      simp at hstep
+      have htail := ih (carry := sum / B)
+        ⟨hstep.2.2.1, hstep.2.2.2.1⟩ hrest
+      dsimp [carryPass, boundedWord, sum] at hstep htail ⊢
+      constructor
+      · intro w hmem
+        rcases List.mem_cons.mp hmem with heq | hin
+        · subst w
+          exact ⟨hstep.1, hstep.2.1⟩
+        · exact htail.1 w hin
+      · exact htail.2
+
+theorem word_value_append (B : Int) (xs ys : List Int) :
+    wordValue B (xs ++ ys) =
+      wordValue B xs + B^xs.length * wordValue B ys := by
+  induction xs with
+  | nil => simp [wordValue]
+  | cons word rest ih =>
+      simp only [List.cons_append, List.length_cons, wordValue]
+      rw [ih]
+      grind +ring [Int.pow_succ]
+
+def schoolbookWholePass (B a : Int)
+    (xs : List (Int × Int)) (suffix : List Int) : List Int × Int :=
+  let inner := schoolbookPass B a xs 0
+  let finish := carryPass B suffix inner.2
+  (inner.1 ++ finish.1, finish.2)
+
+theorem schoolbook_whole_pass_value (B a : Int)
+    (xs : List (Int × Int)) (suffix : List Int)
+    (hB : 0 < B) :
+    let out := schoolbookWholePass B a xs suffix
+    wordValue B out.1 + out.2*B^(xs.length+suffix.length) =
+      pairFirstValue B xs + B^xs.length*wordValue B suffix +
+        a*pairSecondValue B xs := by
+  have hinner := schoolbook_pass_value B a 0 xs hB
+  cases hI : schoolbookPass B a xs 0 with
+  | mk innerWords innerCarry =>
+    have hfinish := carry_pass_value B innerCarry suffix hB
+    have hlen := schoolbook_pass_length B a 0 xs
+    cases hF : carryPass B suffix innerCarry with
+    | mk tailWords finalCarry =>
+      simp only [hI, Prod.fst, Prod.snd] at hinner hlen
+      simp only [hF, Prod.fst, Prod.snd] at hfinish
+      dsimp [schoolbookWholePass]
+      simp only [hI, hF, Prod.fst, Prod.snd]
+      rw [word_value_append, hlen, Int.pow_add]
+      grind +ring
+
+theorem schoolbook_whole_pass_length (B a : Int)
+    (xs : List (Int × Int)) (suffix : List Int) :
+    (schoolbookWholePass B a xs suffix).1.length =
+      xs.length + suffix.length := by
+  cases hI : schoolbookPass B a xs 0 with
+  | mk innerWords innerCarry =>
+    cases hF : carryPass B suffix innerCarry with
+    | mk tailWords finalCarry =>
+      have hlenInner := schoolbook_pass_length B a 0 xs
+      have hlenTail := carry_pass_length B innerCarry suffix
+      simp only [hI, Prod.fst] at hlenInner
+      simp only [hF, Prod.fst] at hlenTail
+      simp [schoolbookWholePass, hI, hF, List.length_append,
+        hlenInner, hlenTail]
+
+theorem schoolbook_whole_pass_bounds (B a : Int)
+    (xs : List (Int × Int)) (suffix : List Int)
+    (hB : 0 < B) (ha : boundedWord B a)
+    (hxs : ∀ pair ∈ xs,
+      boundedWord B pair.1 ∧ boundedWord B pair.2)
+    (hsuffix : ∀ word ∈ suffix, boundedWord B word) :
+    let out := schoolbookWholePass B a xs suffix
+    (∀ word ∈ out.1, boundedWord B word) ∧
+      boundedWord B out.2 := by
+  have hinner := schoolbook_pass_bounds B a 0 xs hB ha
+    ⟨by omega, hB⟩ hxs
+  cases hI : schoolbookPass B a xs 0 with
+  | mk innerWords innerCarry =>
+    simp only [hI, Prod.fst, Prod.snd] at hinner
+    have hfinish := carry_pass_bounds B innerCarry suffix hB
+      hinner.2 hsuffix
+    cases hF : carryPass B suffix innerCarry with
+    | mk tailWords finalCarry =>
+      simp only [hF, Prod.fst, Prod.snd] at hfinish
+      dsimp [schoolbookWholePass]
+      simp only [hI, hF, Prod.fst, Prod.snd]
+      constructor
+      · intro word hmem
+        rcases List.mem_append.mp hmem with hin | htail
+        · exact hinner.1 word hin
+        · exact hfinish.1 word htail
+      · exact hfinish.2
+
+theorem pair_first_value_map (B : Int) (xs : List (Int × Int)) :
+    wordValue B (xs.map Prod.fst) = pairFirstValue B xs := by
+  induction xs with
+  | nil => simp [wordValue, pairFirstValue]
+  | cons head rest ih =>
+      rcases head with ⟨word, coeff⟩
+      simp [wordValue, pairFirstValue, ih]
+
+-- One outer iteration starts at a shifted array offset. Its prefix is
+-- unchanged; the inner pass and carry propagation update the suffix.
+theorem shifted_schoolbook_pass_value (B a : Int)
+    (preWords : List Int) (xs : List (Int × Int))
+    (suffix : List Int) (hB : 0 < B) :
+    let out := schoolbookWholePass B a xs suffix
+    wordValue B (preWords ++ out.1) +
+        out.2*B^(preWords.length+xs.length+suffix.length) =
+      wordValue B (preWords ++ xs.map Prod.fst ++ suffix) +
+        a*B^preWords.length*pairSecondValue B xs := by
+  have hwhole := schoolbook_whole_pass_value B a xs suffix hB
+  have hlen := schoolbook_whole_pass_length B a xs suffix
+  cases hOut : schoolbookWholePass B a xs suffix with
+  | mk outWords outCarry =>
+    simp only [hOut, Prod.fst, Prod.snd] at hwhole hlen
+    dsimp
+    rw [word_value_append B preWords outWords]
+    rw [List.append_assoc]
+    rw [word_value_append B preWords (xs.map Prod.fst ++ suffix)]
+    rw [word_value_append B (xs.map Prod.fst) suffix]
+    rw [pair_first_value_map]
+    simp only [List.length_map]
+    grind +ring [Int.pow_add]
 
 -- A floor reciprocal R, its exact product limbs, and k smaller than one
 -- fractional limb imply a two-unit enclosure of the true scaled coordinate.
@@ -630,7 +823,18 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms schoolbook_muladd_fits_double_word
 #print axioms schoolbook_word_step
 #print axioms schoolbook_pass_value
+#print axioms schoolbook_pass_length
 #print axioms schoolbook_pass_bounds
+#print axioms carry_pass_value
+#print axioms carry_pass_length
+#print axioms carry_pass_zero
+#print axioms carry_pass_bounds
+#print axioms word_value_append
+#print axioms schoolbook_whole_pass_value
+#print axioms schoolbook_whole_pass_length
+#print axioms schoolbook_whole_pass_bounds
+#print axioms pair_first_value_map
+#print axioms shifted_schoolbook_pass_value
 #print axioms reciprocal_high_fraction_interval
 #print axioms fraction_limb_score_intervals
 #print axioms strictly_separated_interval_certifies_minimum

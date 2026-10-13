@@ -130,9 +130,9 @@ def build(output: Path) -> None:
         "axiom audit output. Lean checks both native reciprocal constants against "
         "the floor inequalities and the reduced-scalar range; check.py matches all "
         "fourteen words to the Rust source. Lean also checks exact-product "
-        "extraction and weighted-value and 64-bit bounds across a modeled inner "
-        "word pass. The native shifted outer-array iterations and carry "
-        "propagation still need to be connected to that model; the "
+        "extraction, bounded carry propagation, and one complete shifted outer "
+        "pass over arbitrary words. The four native eleven-word array iterations "
+        "and returned indices still need to be mapped to that model; the "
         "fallback remains to be composed with the four-corner theorem; the finite "
         "11,023-orbit census also lacks a Lean cardinality theorem. The exact exit "
         "criteria are in problems/prime-j0-hex-terminal-formal-coverage.md."))

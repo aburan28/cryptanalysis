@@ -63,6 +63,8 @@ rebuild the actual modules and audit every listed declaration with
 | A native 64-bit multiply-add step fits in 128 bits | `fraction_base_width`, `schoolbook_muladd_fits_double_word` | Checked for 64-bit word inputs and carry |
 | One modeled word step preserves weighted value and keeps its output word and carry bounded | `schoolbook_word_step` | Checked for the exact arithmetic step used in the native inner loop |
 | A modeled inner pass over reciprocal words preserves the full weighted value and 64-bit bounds | `schoolbook_pass_value`, `schoolbook_pass_bounds` | Checked for an arbitrary finite word list; native array/outer-loop link open |
+| Carry propagation preserves weighted value and word bounds; zero carry leaves trailing words unchanged | `carry_pass_value`, `carry_pass_zero`, `carry_pass_bounds` | Checked for an arbitrary finite trailing list |
+| A complete modeled pass preserves length and word bounds and adds one shifted scalar-word multiple of the reciprocal | `schoolbook_whole_pass_value`, `schoolbook_whole_pass_length`, `schoolbook_whole_pass_bounds`, `shifted_schoolbook_pass_value` | Checked for arbitrary prefix, reciprocal-word list, and suffix; native four-iteration array mapping open |
 | Floor-reciprocal bound and exact product limbs enclose the true scaled cell coordinate within two high-fraction units | `reciprocal_high_fraction_interval` | Checked, conditional on the reciprocal bound and product decomposition |
 | Two-unit high-fraction uncertainty gives the classifier score ranges; strict separation certifies a minimum | `fraction_limb_score_intervals`, `strictly_separated_interval_certifies_minimum` | Checked, conditional on the limb interval |
 | Cauchy identity and digit support | `inner_cauchy_identity`, `digit_inner_bound`, `support_certificate` | Checked |
@@ -99,7 +101,10 @@ and remainder bounds when its input is the exact integer product.
 `schoolbook_word_step` proves the low-word/carry update preserves weighted
 value, and `schoolbook_pass_value` plus `schoolbook_pass_bounds` extend that
 identity and 64-bit bounds across an arbitrary list of reciprocal words.
-The native eleven-word array still needs a verified mapping to this list pass,
-including its shifted outer iterations and post-pass carry propagation. The
-returned high words must then be identified with the exact product quotient
-and fractional word.
+`carry_pass_value` handles the trailing carry, while `carry_pass_zero` proves
+that the native loop may stop when carry reaches zero. The whole-pass and
+shifted-pass theorems compose these operations and retain the weighted-value,
+length, and word-bound invariants for one outer iteration. The native
+eleven-word array still needs a verified mapping to four such shifted passes,
+including exact slices and the returned high-word indices. Those indices must
+then be identified with the exact product quotient and fractional word.
