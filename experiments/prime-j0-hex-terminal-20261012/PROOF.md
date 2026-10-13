@@ -53,6 +53,14 @@ The pinned toolchain is `leanprover/lean4:v4.34.1`. Run
 `python3 experiments/prime-j0-hex-terminal-20261012/check.py --check` to
 rebuild the actual modules and audit every listed declaration with
 `#print axioms`. `lean-build.txt` retains the build output and source hashes.
+Run `python3 experiments/prime-j0-hex-terminal-20261012/verify_native_reciprocal_loop.py --check`
+to compile the exact extracted native function and compare its four returned
+words with an independent unbounded-integer product. The
+`native-reciprocal-loop.json` receipt freezes the source/function hashes,
+compiler and host architecture, 5,197 deterministic inputs and output digest.
+This executable control covers the observed native function on that panel;
+the Lean declarations below state the universal properties of the modeled
+word algorithm.
 
 | Mathematical step | Lean declaration | Status |
 | --- | --- | --- |

@@ -146,6 +146,11 @@ def build(output: Path) -> None:
         "criteria are in problems/prime-j0-hex-terminal-formal-coverage.md."))
     story.append(p("Native replay and placement", "SectionCustom"))
     story.append(p(
+        "An exact-source wrapper compiled the native reciprocal word loop and "
+        "matched all 5,197 deterministic cases against an independent Python "
+        "integer product, including carry-heavy patterns and both production "
+        "reciprocals. native-reciprocal-loop.json retains source, compiler, input, "
+        "and output hashes. "
         "The source-frozen post-commit holdout has 512 distinct scalars disjoint from prior "
         "panels. Four 512-case panels match independently computed points on macOS ARM64; "
         "the same semantic receipt passed after offline Linux ARM64 Docker VM rebuild. "
