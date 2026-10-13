@@ -160,6 +160,14 @@ def nativeRecipMinusW1 : Int :=
   fractionBase^4*0x57c1108d9d44cfd9 +
   fractionBase^5*0x14ca50f7a8e2f3f6 + fractionBase^6*0x1
 
+def nativeRecipV1Words : List Int :=
+  [0x44180e526536385c, 0x46683369b37d7630, 0x1571b4ae8ac47f71,
+   0x221208ac9df506c6, 0x6f547fa90abfe4c4, 0xe4437ed6010e8828, 0x0]
+
+def nativeRecipMinusW1Words : List Int :=
+  [0x06dfcbca80313b00, 0x30e98f407e1a0fa2, 0xfe04d548d0a02fa2,
+   0x5fbc92c10fddd145, 0x57c1108d9d44cfd9, 0x14ca50f7a8e2f3f6, 0x1]
+
 theorem native_reciprocals_floor :
     subgroupOrder*nativeRecipV1 ≤ (fractionBase*fractionTail)*basisV.2 ∧
       (fractionBase*fractionTail)*basisV.2 <
@@ -425,6 +433,16 @@ theorem schoolbook_pass_length (B a carry : Int)
       simp [schoolbookPass, ih]
 
 def boundedWord (B word : Int) : Prop := 0 ≤ word ∧ word < B
+
+theorem native_reciprocal_word_lists :
+    nativeRecipV1Words.length = 7 ∧
+    wordValue fractionBase nativeRecipV1Words = nativeRecipV1 ∧
+    (∀ word ∈ nativeRecipV1Words, boundedWord fractionBase word) ∧
+    nativeRecipMinusW1Words.length = 7 ∧
+    wordValue fractionBase nativeRecipMinusW1Words = nativeRecipMinusW1 ∧
+    (∀ word ∈ nativeRecipMinusW1Words, boundedWord fractionBase word) := by
+  simp [nativeRecipV1Words, nativeRecipMinusW1Words, nativeRecipV1,
+    nativeRecipMinusW1, boundedWord, wordValue, fractionBase] <;> decide
 
 theorem word_value_bounds (B : Int) (xs : List Int)
     (hB : 0 < B)
@@ -1591,6 +1609,55 @@ theorem native_reciprocal_quotients_exact (k : Int)
     rw [hnum] at h
     exact h
 
+-- The high three limbs produced by both complete modeled word products are
+-- the exact lattice-cell floor quotients for every reduced four-word scalar.
+theorem modeled_native_reciprocal_high_quotients
+    (a0 a1 a2 a3 : Int)
+    (ha0 : boundedWord fractionBase a0)
+    (ha1 : boundedWord fractionBase a1)
+    (ha2 : boundedWord fractionBase a2)
+    (ha3 : boundedWord fractionBase a3)
+    (hkN : a0 + fractionBase*a1 + fractionBase^2*a2 +
+      fractionBase^3*a3 < subgroupOrder) :
+    let k := a0 + fractionBase*a1 + fractionBase^2*a2 +
+      fractionBase^3*a3
+    ∃ highW highV : List Int,
+      highW.length = 3 ∧ highV.length = 3 ∧
+      wordValue fractionBase highW = exactFloorW k ∧
+      wordValue fractionBase highV = exactFloorV k := by
+  intro k
+  have hB : 1 < fractionBase := by decide
+  have hwords := native_reciprocal_word_lists
+  have hW := four_scalar_word_output_bounded fractionBase a0 a1 a2 a3
+    nativeRecipV1Words hB hwords.1 ha0 ha1 ha2 ha3 hwords.2.2.1
+  have hV := four_scalar_word_output_bounded fractionBase a0 a1 a2 a3
+    nativeRecipMinusW1Words hB hwords.2.2.2.1
+    ha0 ha1 ha2 ha3 hwords.2.2.2.2.2
+  dsimp at hW hV
+  rcases hW with ⟨_, highW, hlenW, _, _, hquotW, _, _⟩
+  rcases hV with ⟨_, highV, hlenV, _, _, hquotV, _, _⟩
+  have hk : 0 ≤ k := by
+    dsimp [k]
+    have hb1 : 0 ≤ fractionBase := by decide
+    have hb2 : 0 ≤ fractionBase^2 := by decide
+    have hb3 : 0 ≤ fractionBase^3 := by decide
+    have h1 := Int.mul_nonneg hb1 ha1.1
+    have h2 := Int.mul_nonneg hb2 ha2.1
+    have h3 := Int.mul_nonneg hb3 ha3.1
+    exact Int.add_nonneg (Int.add_nonneg (Int.add_nonneg ha0.1 h1) h2) h3
+  have hfloor := native_reciprocal_quotients_exact k hk hkN
+  have hB7 : fractionBase^7 = fractionTail := by decide
+  have hdiv (R : Int) : (k*R / fractionBase^7)/fractionBase =
+      (k*R)/(fractionBase*fractionTail) := by
+    rw [hB7, Int.ediv_ediv_of_nonneg (by decide : 0 ≤ fractionTail)]
+    rw [Int.mul_comm fractionTail fractionBase]
+  have hvalW := hwords.2.1
+  have hvalV := hwords.2.2.2.2.1
+  rw [hvalW, hdiv] at hquotW
+  rw [hvalV, hdiv] at hquotV
+  exact ⟨highW, highV, hlenW, hlenV,
+    hquotW.symm.trans hfloor.1, hquotV.symm.trans hfloor.2⟩
+
 
 theorem exact_floor_remainder_bounds (n a : Int) (hn : 0 < n) :
     0 ≤ a - (a/n)*n ∧ a - (a/n)*n < n := by
@@ -1998,12 +2065,14 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms native_coefficient_bezout
 #print axioms reciprocal_quotient_from_bezout
 #print axioms native_reciprocal_quotients_exact
+#print axioms modeled_native_reciprocal_high_quotients
 #print axioms fraction_base_width
 #print axioms reduced_scalar_below_fraction_tail
 #print axioms exact_product_high_fraction_decomposition
 #print axioms product_quotient_remainder_from_words
 #print axioms schoolbook_muladd_fits_double_word
 #print axioms schoolbook_word_step
+#print axioms native_reciprocal_word_lists
 #print axioms schoolbook_pass_value
 #print axioms schoolbook_pass_length
 #print axioms word_value_bounds

@@ -82,6 +82,7 @@ word algorithm.
 | An indexed pass preserves bounded output words and has zero final carry when its exact total fits in the array | `schoolbook_outer_at_bounds`, `schoolbook_outer_at_zero_carry_of_capacity`, `schoolbook_outer_at_no_overflow` | Checked and used by the four-pass theorem |
 | Floor-reciprocal bound and exact product limbs enclose the true scaled cell coordinate within two high-fraction units | `reciprocal_high_fraction_interval` | Checked, conditional on the reciprocal bound and product decomposition |
 | Both copied seven-word reciprocal constants recover the exact integer cell quotients for every reduced scalar | `reciprocal_quotient_positive_remainder`, `positive_product_remainder_of_bezout`, `native_coefficient_bezout`, `reciprocal_quotient_from_bezout`, `native_reciprocal_quotients_exact` | Checked for all `0≤k<subgroupOrder`; native word-loop output correspondence open |
+| Both source-synced reciprocal word lists, passed through the complete modeled four-word products, produce high three-word values equal to the exact cell quotients | `native_reciprocal_word_lists`, `modeled_native_reciprocal_high_quotients` | Checked for all bounded four-word representations of reduced scalars; native Rust array-loop correspondence open |
 | Two-unit high-fraction uncertainty gives the classifier score ranges; strict separation certifies a minimum | `fraction_limb_score_intervals`, `strictly_separated_interval_certifies_minimum` | Checked, conditional on the limb interval |
 | The native four-interval classifier's strict winner minimizes all exact four-corner scores and lies inside the six Voronoi support strips | `fraction_corner_certificate`, `fraction_corner_certified_hex_strips` | Checked for normalized cell coordinates and two coordinate enclosures; native Rust-to-model and fallback links open |
 | A normalized four-corner minimum yields the actual representative's six-neighbor inequalities when its scaled lattice-coordinate identity holds; the certified branch supplies that minimum from its high-fraction intervals | `four_corner_minimum_six_neighbors`, `corner_score_scaled`, `fraction_corner_certified_six_neighbors` | Checked for the secp256k1 lattice with explicit coordinate and interval hypotheses; native word and fallback links open |
@@ -116,8 +117,12 @@ subgroup order. Two explicit Bézout certificates prove that remainder is
 nonzero for `0<k<subgroupOrder`; the checked
 `subgroupOrder²<2^512` bound makes the truncation smaller than one scaled
 unit. The `k=0` case is handled directly. The proof needs no primality
-oracle. The native four-by-seven-word loop and returned high words still
-need correspondence with the checked integer product.
+oracle. `native_reciprocal_word_lists` identifies the two copied seven-word
+arrays with the exact reciprocal integers and checks every word bound.
+`modeled_native_reciprocal_high_quotients` composes those arrays, the complete
+four-pass product model, high-word extraction, and the exact quotient result
+for every reduced four-word scalar. The compiled Rust loop and returned array
+indices still need correspondence with that model.
 `reduced_scalar_below_fraction_tail` discharges the scalar-range premise.
 `fraction_corner_certificate` instantiates the native four interval bounds,
 including the asymmetric `(1,1)` upper bound, and proves that every strict

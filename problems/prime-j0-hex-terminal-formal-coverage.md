@@ -57,5 +57,6 @@ The first condition would close the all-scalar inclusion proof. The second would
 - 2026-10-12: Lean checked the determinant and Cramer identity for arbitrary floor quotients, all four corner offsets, and Euclidean remainder bounds for exact quotients. The composed certified theorem now discharges the coordinate identity and normalized-cell premises; native returned-word correspondence, high-fraction intervals, and fallback remain open.
 - 2026-10-12: Lean checked equality between each corner's scaled actual norm and quadratic cell score, an exact four-way norm selector, and its six-neighbor guarantee for every integer scalar. Native tuple-sort/returned-pair correspondence remains open.
 - 2026-10-12: Lean checked exact floor-quotient equality for both copied seven-word reciprocals and every `0≤k<subgroupOrder`. The proof uses two explicit Bézout identities, positive product remainders, and the 512-bit capacity inequality; native loop/output correspondence remains open.
+- 2026-10-12: Lean checked `native_reciprocal_word_lists` and `modeled_native_reciprocal_high_quotients`: both source-synced reciprocal lists, through the complete modeled four-word product, produce high three-word values equal to the exact cell quotients for every reduced scalar. The compiled Rust loop and return indices still need formal correspondence with the model.
 
 Unresolved.

@@ -33,9 +33,9 @@ def check_native_reciprocals() -> str:
     """Bind the Lean literal words to the two arrays executed by Rust."""
     native = NATIVE_SOURCE.read_text()
     lean = MODULES[-1].read_text()
-    names = (("RECIP_V1", "nativeRecipV1"),
-             ("RECIP_MINUS_W1", "nativeRecipMinusW1"))
-    for rust_name, lean_name in names:
+    names = (("RECIP_V1", "nativeRecipV1", "nativeRecipV1Words"),
+             ("RECIP_MINUS_W1", "nativeRecipMinusW1", "nativeRecipMinusW1Words"))
+    for rust_name, lean_name, list_name in names:
         rust_match = re.search(
             rf"const {rust_name}: \[u64; 7\] = \[(.*?)\];", native, re.DOTALL)
         lean_match = re.search(
@@ -48,6 +48,14 @@ def check_native_reciprocals() -> str:
             r"0x[0-9a-fA-F]+", lean_match.group(1))]
         if len(rust_words) != 7 or rust_words != lean_words:
             raise RuntimeError(f"native/Lean reciprocal mismatch: {rust_name}")
+        list_match = re.search(
+            rf"def {list_name}\s*:\s*List Int :=\s*\[(.*?)\]", lean, re.DOTALL)
+        if list_match is None:
+            raise RuntimeError(f"missing modeled reciprocal words: {list_name}")
+        list_words = [int(word, 0) for word in re.findall(
+            r"0x[0-9a-fA-F]+", list_match.group(1))]
+        if list_words != rust_words:
+            raise RuntimeError(f"native/Lean word-list mismatch: {rust_name}")
     return sha256(NATIVE_SOURCE.read_bytes()).hexdigest()
 
 
