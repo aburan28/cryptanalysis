@@ -59,9 +59,9 @@ receipt. The expanded points are not materialized in the archive.
 ## N83 `a=1` compact-orbit bases
 
 `compact_orbit_base_archive.py` archives the exact K600, K800, K899, K900,
-K1200, and K1271 factor bases used by the nested compact-orbit IC experiments.
+K1000, K1100, K1200, and K1271 factor bases used by the nested compact-orbit IC experiments.
 Each entry stores its full sorted set of 99,600, 132,800, 149,234, 149,400,
-199,200, or 210,986 decimal-encoded subgroup points, the exact
+166,000, 182,600, 199,200, or 210,986 decimal-encoded subgroup points, the exact
 candidate `factor_base` record, field and curve records, column
 representatives, and hashes of the ordered base dump and independent
 full-base replay. The compressed payloads use the existing Git chunk format
