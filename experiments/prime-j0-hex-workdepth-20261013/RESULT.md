@@ -37,6 +37,20 @@ The join-path score charges each addition its full Solinas call count along
 the tree. It does not resolve dependencies between operations inside the
 addition formulas, so it is not a field-operation critical path.
 
+`dag_depth.py` expands the ordinary affine-pair, mixed, and XYZZ formulas
+into coordinate-level multiplication dependencies. On the same fresh
+512-scalar panel, its aggregate longest kernel-call chain is **23,552** for
+serial, **6,796** for the greedy tree, and **7,587** for the low-work tree.
+The low-work tree therefore uses 2.63% fewer modeled and instrumented join
+calls than serial while reducing this formula-derived chain score by 67.79%;
+the greedy tree has a 10.43% shorter chain score than the low-work tree.
+`dag-depth.json` records the input and plan hashes. This second score is
+computed from the source formulas with additions treated as zero-depth and
+one Solinas multiplication or square as one depth unit. It does not include
+binary inversion, CPU scheduling, or memory latency. The native operation
+counter validates work totals on every tested case; the coordinate-level
+dependency model remains a source-derived diagnostic.
+
 An instrumented replay counted calls to the native Solinas multiplication
 kernel, including squares, for every fresh holdout and boundary scalar. The
 tree's join interval made **75,775 calls across 512 cases**, exactly the

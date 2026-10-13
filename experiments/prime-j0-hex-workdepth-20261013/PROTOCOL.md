@@ -78,3 +78,21 @@ instrumented binary and source hashes. Replay with:
 ```sh
 python3 experiments/prime-j0-hex-workdepth-20261013/check_opcount.py
 ```
+
+`dag_depth.py` supplies a separate coordinate-level kernel-call DAG model.
+Every field multiplication or square has output depth
+`max(input depths)+1`; additions and subtractions take the maximum of their
+inputs. A gauge rotation increases only the x-coordinate depth. The script
+mirrors the ordinary branches of `add_affine_pair`, `add_mixed`, and
+`add_xyzz` in `unit_orbit_windows.rs`, tracking x, y, zz, and zzz separately.
+It treats the first serial `identity.add_mixed` as the native `from_affine`
+return. The final affine inversion is outside this score. Every one of the
+969 count patterns is checked for agreement with the frozen plan work
+totals, and the fresh panel's modeled work is matched to the instrumented
+native calls. This is a source-derived diagnostic; a Lean bridge from the
+Rust formula DAG to these Python recurrences is still open. Reproduce it
+with:
+
+```sh
+python3 experiments/prime-j0-hex-workdepth-20261013/dag_depth.py
+```
