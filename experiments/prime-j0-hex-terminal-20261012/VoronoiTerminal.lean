@@ -139,6 +139,10 @@ theorem four_corner_minimum_has_hex_strips (x y d : Int) (corner : Nat)
 def fractionBase : Int := 18446744073709551616
 def fractionTail : Int := (2 : Int)^448
 
+theorem fraction_base_width :
+    0 < fractionBase ∧ fractionBase*fractionBase = (2 : Int)^128 := by
+  decide
+
 -- Little-endian words copied from RECIP_V1 and RECIP_MINUS_W1 in
 -- eisenstein_fixed.rs. Keeping the words in the statement makes changes to
 -- either production constant visible to this certificate.
@@ -169,6 +173,51 @@ theorem reduced_scalar_below_fraction_tail (k : Int)
     (hk : k < subgroupOrder) : k < fractionTail := by
   have hbound : subgroupOrder < fractionTail := by decide
   omega
+
+-- Extract the high quotient, high fractional word, and seven lower words
+-- from an exact product. The native routine returns the corresponding array
+-- entries; proving that its loop computes this exact P is a separate bridge.
+theorem exact_product_high_fraction_decomposition (P B L : Int)
+    (hB : 0 < B) (hL : 0 < L) :
+    let q := (P / L) / B
+    let h := (P / L) % B
+    let low := P % L
+    P = (B*L)*q + L*h + low ∧
+      0 ≤ low ∧ low < L ∧ 0 ≤ h ∧ h < B := by
+  have h1 := Int.emod_add_ediv_mul P L
+  have h2 := Int.emod_add_ediv_mul (P / L) B
+  dsimp
+  constructor
+  · grind +ring
+  constructor
+  · exact Int.emod_nonneg _ (by omega)
+  constructor
+  · exact Int.emod_lt_of_pos _ hL
+  constructor
+  · exact Int.emod_nonneg _ (by omega)
+  · exact Int.emod_lt_of_pos _ hB
+
+-- One native inner-loop multiply-add fits in u128: its four inputs are
+-- 64-bit words, and the incoming carry is also a 64-bit word.
+theorem schoolbook_muladd_fits_double_word
+    (B a b word carry : Int)
+    (hB : 0 < B)
+    (ha0 : 0 ≤ a) (haB : a < B)
+    (hb0 : 0 ≤ b) (hbB : b < B)
+    (hw0 : 0 ≤ word) (hwB : word < B)
+    (hc0 : 0 ≤ carry) (hcB : carry < B) :
+    0 ≤ a*b + word + carry ∧
+      a*b + word + carry < B*B := by
+  have hmul0 := Int.mul_nonneg ha0 hb0
+  have h1 := Int.mul_le_mul_of_nonneg_right
+    (by omega : a ≤ B-1) hb0
+  have h2 := Int.mul_le_mul_of_nonneg_left
+    (by omega : b ≤ B-1) (by omega : 0 ≤ B-1)
+  have hpoly : (B-1)*(B-1)+2*(B-1) = B*B-1 := by
+    grind +ring
+  constructor
+  · omega
+  · omega
 
 -- A floor reciprocal R, its exact product limbs, and k smaller than one
 -- fractional limb imply a two-unit enclosure of the true scaled coordinate.
@@ -472,7 +521,10 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms corner_score_norm_identity
 #print axioms four_corner_minimum_has_hex_strips
 #print axioms native_reciprocals_floor
+#print axioms fraction_base_width
 #print axioms reduced_scalar_below_fraction_tail
+#print axioms exact_product_high_fraction_decomposition
+#print axioms schoolbook_muladd_fits_double_word
 #print axioms reciprocal_high_fraction_interval
 #print axioms fraction_limb_score_intervals
 #print axioms strictly_separated_interval_certifies_minimum

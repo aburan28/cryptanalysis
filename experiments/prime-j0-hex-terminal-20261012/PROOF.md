@@ -59,6 +59,8 @@ rebuild the actual modules and audit every listed declaration with
 | Three lattice-neighbor norms equal `r` | `PrimeJ0HexTerminal.neighbor_norms` | Checked |
 | Minimum among four floor/ceiling corners lies in all three Voronoi strips | `corner_score_norm_identity`, `four_corner_minimum_has_hex_strips` | Checked |
 | Both committed seven-word reciprocals satisfy the exact floor inequalities; every reduced scalar is below the 448-bit fraction tail | `native_reciprocals_floor`, `reduced_scalar_below_fraction_tail` | Checked; `check.py` compares the Lean words with the native arrays |
+| Exact product splits into high quotient, high fractional word, and seven lower words with bounded remainders | `exact_product_high_fraction_decomposition` | Checked for an exact integer product |
+| A native 64-bit multiply-add step fits in 128 bits | `fraction_base_width`, `schoolbook_muladd_fits_double_word` | Checked for 64-bit word inputs and carry |
 | Floor-reciprocal bound and exact product limbs enclose the true scaled cell coordinate within two high-fraction units | `reciprocal_high_fraction_interval` | Checked, conditional on the reciprocal bound and product decomposition |
 | Two-unit high-fraction uncertainty gives the classifier score ranges; strict separation certifies a minimum | `fraction_limb_score_intervals`, `strictly_separated_interval_certifies_minimum` | Checked, conditional on the limb interval |
 | Cauchy identity and digit support | `inner_cauchy_identity`, `digit_inner_bound`, `support_certificate` | Checked |
@@ -83,10 +85,17 @@ parameters are arbitrary integers; the native values are `B=2^64` and
 from the native chooser against the exact floor inequalities; `check.py`
 compares all fourteen Lean and Rust words before building.
 `reduced_scalar_below_fraction_tail` discharges the scalar-range premise.
-Proving that the native 512-bit word product satisfies the exact decomposition,
-handling the fallback, and composing the branches with `sixNeighborsClosest`
-remain open. The
-formalization is partial at that implementation bridge. The open obligations
+Proving that the native 512-bit word loop encodes the exact product, handling
+the fallback, and composing the branches with `sixNeighborsClosest` remain
+open. The formalization is partial at that implementation bridge. The open obligations
 and their exit criteria are in
 [the problem record](../../problems/prime-j0-hex-terminal-formal-coverage.md).
 No theorem uses an assumed conclusion or custom axiom.
+
+`exact_product_high_fraction_decomposition` proves the required decomposition
+and remainder bounds when its input is the exact integer product. The native
+array still needs a loop invariant proving that its eleven output words encode
+that product and that the returned high words match the quotient and fractional
+word. `schoolbook_muladd_fits_double_word` proves each inner `u128` sum stays
+below `2^128` when its incoming carry and stored word are 64-bit values; a
+loop proof must establish that carry premise at every iteration.

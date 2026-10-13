@@ -129,8 +129,9 @@ def build(output: Path) -> None:
         "and conditional terminal inclusion. lean-build.txt retains the build and "
         "axiom audit output. Lean checks both native reciprocal constants against "
         "the floor inequalities and the reduced-scalar range; check.py matches all "
-        "fourteen words to the Rust source. The native 512-bit limb product still "
-        "needs a proof of its exact decomposition, and the "
+        "fourteen words to the Rust source. Lean also checks extraction from an "
+        "exact product and the 64-to-128-bit inner multiply-add bound. The native "
+        "loop still needs an invariant for the exact product and carry; the "
         "fallback remains to be composed with the four-corner theorem; the finite "
         "11,023-orbit census also lacks a Lean cardinality theorem. The exact exit "
         "criteria are in problems/prime-j0-hex-terminal-formal-coverage.md."))
