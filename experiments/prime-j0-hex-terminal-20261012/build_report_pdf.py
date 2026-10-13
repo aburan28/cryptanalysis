@@ -123,10 +123,12 @@ def build(output: Path) -> None:
     story.append(p("Checked proof and open bridge", "SectionCustom"))
     story.append(p(
         "Lean 4.34.1 checks the lattice-neighbor norms, exact four-corner score identity, "
-        "minimum-corner Voronoi strips, Cauchy digit support, fifteen-step reconstruction, "
+        "minimum-corner Voronoi strips, two-unit fraction-score intervals and strict "
+        "separation, Cauchy digit support, fifteen-step reconstruction, "
         "and conditional terminal inclusion. lean-build.txt retains the build and "
-        "axiom audit output. The word-level reciprocal classifier has not yet been "
-        "composed with the four-corner theorem for every reduced scalar; the finite "
+        "axiom audit output. The native 512-bit limb product has not yet been proved "
+        "to satisfy the two-unit interval for every reduced scalar, and its exact "
+        "fallback remains to be composed with the four-corner theorem; the finite "
         "11,023-orbit census also lacks a Lean cardinality theorem. The exact exit "
         "criteria are in problems/prime-j0-hex-terminal-formal-coverage.md."))
     story.append(p("Native replay and placement", "SectionCustom"))
@@ -143,8 +145,8 @@ def build(output: Path) -> None:
         "The available RunPod service is serial but its Docker/cgroup-v1 host has no isolated "
         "CPU partition or nohz_full set and currently has an active CryptoMiniSat job. "
         "The incidental audit wall and CPU times do not support an online speedup. "
-        "The next proof step is a Lean interval theorem for the high fractional limbs "
-        "of certified_corner_from_fraction_limb, followed by the exact fallback bridge."))
+        "The next proof step connects the exact 512-bit limb product to the checked "
+        "two-unit interval theorem, then handles the fallback branch."))
     story.append(p("Canonical graphs and reproduction", "SectionCustom"))
     story.append(p(
         "Checked prime-j0-cost-aware-chain/orbit-graph-inputs.json, "

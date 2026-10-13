@@ -136,6 +136,77 @@ theorem four_corner_minimum_has_hex_strips (x y d : Int) (corner : Nat)
     simp only [cornerScore, cornerResidual] at h0 h1 h2 h3 ⊢
     omega
 
+def fractionBase : Int := 18446744073709551616
+
+-- The native classifier uses the high 64-bit fraction limbs. These are
+-- exactly its score intervals after allowing two units of coordinate error.
+theorem fraction_limb_score_intervals (n hw hv x y : Int)
+    (hx0 : hw*n ≤ x) (hx2 : x ≤ (hw+2)*n)
+    (hy0 : hv*n ≤ y) (hy2 : y ≤ (hv+2)*n) :
+    let a10 := fractionBase - 2*hw + hv
+    let a01 := fractionBase + hw - 2*hv
+    let a11 := fractionBase - hw - hv
+    n*(a10-4) ≤ fractionBase*n - 2*x + y ∧
+      fractionBase*n - 2*x + y ≤ n*(a10+2) ∧
+    n*(a01-4) ≤ fractionBase*n + x - 2*y ∧
+      fractionBase*n + x - 2*y ≤ n*(a01+2) ∧
+    n*(a11-4) ≤ fractionBase*n - x - y ∧
+      fractionBase*n - x - y ≤ n*a11 := by
+  have hx2' : x ≤ hw*n + 2*n := by
+    have h : (hw+2)*n = hw*n+2*n := by grind +ring
+    rw [h] at hx2
+    exact hx2
+  have hy2' : y ≤ hv*n + 2*n := by
+    have h : (hv+2)*n = hv*n+2*n := by grind +ring
+    rw [h] at hy2
+    exact hy2
+  dsimp
+  constructor
+  · have h : n*(fractionBase-2*hw+hv-4) =
+        fractionBase*n - 2*(hw*n) + hv*n - 4*n := by grind +ring
+    rw [h]
+    omega
+  constructor
+  · have h : n*(fractionBase-2*hw+hv+2) =
+        fractionBase*n - 2*(hw*n) + hv*n + 2*n := by grind +ring
+    rw [h]
+    omega
+  constructor
+  · have h : n*(fractionBase+hw-2*hv-4) =
+        fractionBase*n + hw*n - 2*(hv*n) - 4*n := by grind +ring
+    rw [h]
+    omega
+  constructor
+  · have h : n*(fractionBase+hw-2*hv+2) =
+        fractionBase*n + hw*n - 2*(hv*n) + 2*n := by grind +ring
+    rw [h]
+    omega
+  constructor
+  · have h : n*(fractionBase-hw-hv-4) =
+        fractionBase*n - hw*n - hv*n - 4*n := by grind +ring
+    rw [h]
+    omega
+  · have h : n*(fractionBase-hw-hv) =
+        fractionBase*n - hw*n - hv*n := by grind +ring
+    rw [h]
+    omega
+
+theorem strictly_separated_interval_certifies_minimum
+    (n : Int) (score lo hi : Fin 4 → Int) (winner : Fin 4)
+    (hn : 0 < n)
+    (hlo : ∀ i, n*lo i ≤ score i)
+    (hhi : ∀ i, score i ≤ n*hi i)
+    (hsep : ∀ j, j ≠ winner → hi winner < lo j) :
+    ∀ j, score winner ≤ score j := by
+  intro j
+  by_cases heq : j = winner
+  · subst j
+    omega
+  · have hlt := Int.mul_lt_mul_of_pos_left (hsep j heq) hn
+    have hw := hhi winner
+    have hj := hlo j
+    omega
+
 theorem inner_cauchy_identity (z v : Pair) :
     4 * norm z * norm v - (twiceInner z v)^2 =
       3 * (z.1*v.2 - z.2*v.1)^2 := by
@@ -318,6 +389,8 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms closest_neighbor_inner
 #print axioms corner_score_norm_identity
 #print axioms four_corner_minimum_has_hex_strips
+#print axioms fraction_limb_score_intervals
+#print axioms strictly_separated_interval_certifies_minimum
 #print axioms digit_inner_bound
 #print axioms decode_inner_bound
 #print axioms terminal_inner_bound
