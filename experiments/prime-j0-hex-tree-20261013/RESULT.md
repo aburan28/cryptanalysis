@@ -15,13 +15,14 @@ records for zero through sixteen selected points. Its maximum recorded
 product depth is 50. `plans.json` pins the table hash and source revisions.
 
 The serial model reproduced the existing native 512-scalar panel's 7,679
-additions and 1,021 rotations exactly. That panel is a calibration control;
-it was available before this tree schedule. The new tree has not yet been
-implemented in the native evaluator or replayed on an unseen scalar panel.
-The depth and product totals are operation-model results, with recoding,
+additions and 1,021 rotations exactly. The native gauge-tree evaluator now
+replays all 512 points of that same existing fixture and records 7,679
+additions and 1,909 rotations, matching the tree model. It also replays all
+512 points of the earlier hex-terminal holdout. These are calibration
+controls available before the tree source was frozen. The depth and product
+totals are operation-model results, with recoding,
 table lookup, exceptional paths, plan lookup, memory traffic, and affine
 recovery outside the model. No CPU wall-time result is inferred.
 
-The next gate is a native implementation using the frozen plan table,
-followed by independent point replay on a newly generated disjoint panel
-and matched complete-operation timing on a qualifying isolated host.
+The next gate is independent point replay on a newly generated disjoint
+panel, followed by matched complete-operation timing on a qualifying host.
