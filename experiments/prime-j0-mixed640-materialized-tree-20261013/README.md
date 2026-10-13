@@ -7,7 +7,11 @@ frozen 4,096-scalar panel, this changes the source-formula model from
 scalar on average). The 64-case affine replay in `model.py` independently
 checks the resulting points against binary scalar multiplication. This is
 an operation model and correctness experiment; complete-operation timing is
-still open.
+still open. A native implementation in `native_variant.rs` builds both seed
+images from the corresponding window bases and joins their selected affine
+points through a balanced XYZZ tree. Its 64-scalar test passed against the
+existing mixed-radix evaluator and independent binary multiplication;
+`native-receipt.json` binds the generated source and test binary.
 
 The prior mixed-radix atlas emits `(seed, exponent, unit)` with exponent in
 `{0,1}`. For each window and seed that occurs with exponent 1, prepare the
@@ -21,8 +25,7 @@ uses tau's group-homomorphism law and commutation with the six unit actions.
 under exactly those hypotheses. The proof does not yet instantiate the
 secp256k1 point type or the Rust field arithmetic; this bridge remains a
 formalization obligation. The pinned Lean receipt records the actual build
-and `#print axioms` output. The native evaluator for this combined candidate
-has not yet been built, so the current model must not be called a measured
+and `#print axioms` output. Native correctness does not establish a measured
 speedup.
 
 | Format | Distinct point slots | Point and atlas bytes | Modeled calls, 4,096 scalars |
@@ -49,8 +52,16 @@ one leaf in the tau bucket. It excludes table construction, recoding,
 affine recovery, memory traffic, and host wall time. The extra table can lose
 on cache traffic despite its arithmetic saving.
 
-The next gate is a native source overlay that materializes both compressed
-orbits, replays unseen points, and instruments the actual join and tau calls.
+The first native prototype retains a paired 192-byte record for **every**
+seed slot. Its point and atlas payload is 84,446,460 bytes; it establishes
+the recoder, prepared-tau point law, and join schedule, but does not yet
+realize the sparse 82,326,396-byte table in the model. The pinned source
+snapshot predates the canonical Solinas XYZZ backend, so this prototype
+uses the existing Montgomery XYZZ formulas. `native_overlay.py` reconstructs
+that source snapshot and applies the new code in a disposable crate.
+
+The next gate is a sparse table implementation, a disjoint native holdout,
+and executed join/tau call instrumentation.
 Compare the full operation on a host that passes the repository's isolated
 benchmark preflight before making a CPU speed claim.
 
@@ -59,4 +70,6 @@ Reproduce the current receipts:
 ```sh
 python3 experiments/prime-j0-mixed640-materialized-tree-20261013/model.py
 (cd experiments/prime-j0-mixed640-materialized-tree-20261013 && lean TauMaterialization.lean)
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/native_overlay.py /private/tmp/mixed640-native-replay
+(cd /private/tmp/mixed640-native-replay && cargo test --offline --locked --release --bin eisenstein_fixed fresh_64_matches_independent_binary -- --nocapture)
 ```
