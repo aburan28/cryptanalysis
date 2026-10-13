@@ -1035,6 +1035,64 @@ theorem four_scalar_word_product_bounded (B a0 a1 a2 a3 : Int)
     reciprocal hB0 hrecLen hc0 hc1 hc2 hc3
   exact ⟨hc0, hc1, hc2, hc3, hproduct⟩
 
+theorem four_scalar_word_output_bounded (B a0 a1 a2 a3 : Int)
+    (reciprocal : List Int) (hB : 1 < B)
+    (hrecLen : reciprocal.length = 7)
+    (ha0 : boundedWord B a0) (ha1 : boundedWord B a1)
+    (ha2 : boundedWord B a2) (ha3 : boundedWord B a3)
+    (hrec : ∀ word ∈ reciprocal, boundedWord B word) :
+    let z := List.replicate 11 (0 : Int)
+    let p0 := schoolbookOuterAt B a0 z reciprocal 0
+    let p1 := schoolbookOuterAt B a1 p0.1 reciprocal 1
+    let p2 := schoolbookOuterAt B a2 p1.1 reciprocal 2
+    let p3 := schoolbookOuterAt B a3 p2.1 reciprocal 3
+    let P := (a0+B*a1+B^2*a2+B^3*a3)*wordValue B reciprocal
+    ∃ fraction high, high.length = 3 ∧
+      p3.2 = 0 ∧ p3.1 = p3.1.take 7 ++ fraction::high ∧
+      (P / B^7) / B = wordValue B high ∧
+      (P / B^7) % B = fraction ∧
+      P % B^7 = wordValue B (p3.1.take 7) := by
+  intro z p0 p1 p2 p3 P
+  have hB0 : 0 < B := by omega
+  have hzlen : z.length = 11 := by simp [z]
+  have hzwords : ∀ word ∈ z, boundedWord B word := by
+    intro word hw
+    have hzero : word = 0 := by simpa [z] using hw
+    subst word
+    exact ⟨by omega, hB0⟩
+  have hb0 := schoolbook_outer_at_bounds B a0 z reciprocal 0
+    hB0 ha0 hzwords hrec
+  have hp0len : p0.1.length = 11 := by
+    rw [show p0 = schoolbookOuterAt B a0 z reciprocal 0 from rfl]
+    rw [schoolbook_outer_at_length B a0 z reciprocal 0 (by omega)]
+    exact hzlen
+  have hb1 := schoolbook_outer_at_bounds B a1 p0.1 reciprocal 1
+    hB0 ha1 hb0.1 hrec
+  have hp1len : p1.1.length = 11 := by
+    rw [show p1 = schoolbookOuterAt B a1 p0.1 reciprocal 1 from rfl]
+    rw [schoolbook_outer_at_length B a1 p0.1 reciprocal 1 (by omega)]
+    exact hp0len
+  have hb2 := schoolbook_outer_at_bounds B a2 p1.1 reciprocal 2
+    hB0 ha2 hb1.1 hrec
+  have hp2len : p2.1.length = 11 := by
+    rw [show p2 = schoolbookOuterAt B a2 p1.1 reciprocal 2 from rfl]
+    rw [schoolbook_outer_at_length B a2 p1.1 reciprocal 2 (by omega)]
+    exact hp1len
+  have hb3 := schoolbook_outer_at_bounds B a3 p2.1 reciprocal 3
+    hB0 ha3 hb2.1 hrec
+  have hp3len : p3.1.length = 11 := by
+    rw [show p3 = schoolbookOuterAt B a3 p2.1 reciprocal 3 from rfl]
+    rw [schoolbook_outer_at_length B a3 p2.1 reciprocal 3 (by omega)]
+    exact hp2len
+  have hproduct := four_scalar_word_product_bounded B a0 a1 a2 a3
+    reciprocal hB hrecLen ha0 ha1 ha2 ha3 hrec
+  have hparts := eleven_word_output_from_bounded B p3.1 hB0 hp3len hb3.1
+  rcases hparts with ⟨fraction, high, hhigh, hsplit, hq, hf, hlow⟩
+  have hval : wordValue B p3.1 = P := hproduct.2.2.2.2
+  rw [hval] at hq hf hlow
+  exact ⟨fraction, high, hhigh, hproduct.2.2.2.1,
+    hsplit, hq, hf, hlow⟩
+
 -- A floor reciprocal R, its exact product limbs, and k smaller than one
 -- fractional limb imply a two-unit enclosure of the true scaled coordinate.
 -- Here B = 2^64 and L = 2^448 in the native 512-bit product.
@@ -1373,6 +1431,7 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms word_value_replicate_zero
 #print axioms four_scalar_word_product
 #print axioms four_scalar_word_product_bounded
+#print axioms four_scalar_word_output_bounded
 #print axioms reciprocal_high_fraction_interval
 #print axioms fraction_limb_score_intervals
 #print axioms strictly_separated_interval_certifies_minimum

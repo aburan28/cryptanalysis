@@ -70,6 +70,7 @@ rebuild the actual modules and audit every listed declaration with
 | A complete modeled pass preserves length and word bounds and adds one shifted scalar-word multiple of the reciprocal | `schoolbook_whole_pass_value`, `schoolbook_whole_pass_length`, `schoolbook_whole_pass_bounds`, `shifted_schoolbook_pass_value` | Checked for arbitrary prefix, reciprocal-word list, and suffix; native four-iteration array mapping open |
 | Indexing an eleven-word product array by a scalar-word offset selects the reciprocal-sized slice and preserves exact weighted value and array length | `schoolbook_outer_at_value`, `schoolbook_outer_at_length` | Checked for any offset whose reciprocal-sized slice fits; overflow exclusion open |
 | Four indexed passes at offsets 0 through 3 have zero final carry and produce the exact four-word scalar times the seven-word reciprocal | `four_scalar_word_product_bounded` | Checked for bounded four scalar words, seven bounded reciprocal words, and `B>1`; modeled list algorithm |
+| The final modeled four-pass array's high words, fractional word, and low remainder are the exact division outputs of the scalar-times-reciprocal product | `four_scalar_word_output_bounded` | Checked under the same bounded-word hypotheses; native Rust correspondence open |
 | An indexed pass preserves bounded output words and has zero final carry when its exact total fits in the array | `schoolbook_outer_at_bounds`, `schoolbook_outer_at_zero_carry_of_capacity`, `schoolbook_outer_at_no_overflow` | Checked and used by the four-pass theorem |
 | Floor-reciprocal bound and exact product limbs enclose the true scaled cell coordinate within two high-fraction units | `reciprocal_high_fraction_interval` | Checked, conditional on the reciprocal bound and product decomposition |
 | Two-unit high-fraction uncertainty gives the classifier score ranges; strict separation certifies a minimum | `fraction_limb_score_intervals`, `strictly_separated_interval_certifies_minimum` | Checked, conditional on the limb interval |
@@ -118,7 +119,8 @@ proves the four modeled passes have zero final carry and compute `k·R` for
 all bounded four-word scalars and seven-word reciprocals. Its proof checks
 the intermediate-array prefix-product equalities, capacity, and output-word
 bounds at every offset. The native Rust loop still needs an explicit
-formal correspondence with this list model. `eleven_word_output_from_bounded`
-identifies the modeled high three words, word 7, and low seven words with the
-exact quotient, high fractional word, and low remainder; the native Rust
-return-index correspondence remains open.
+formal correspondence with this list model. `four_scalar_word_output_bounded`
+composes the exact product and output extraction into one theorem: the modeled
+high three words, word 7, and low seven words equal the quotient, high
+fractional word, and low remainder of `k·R`. The native Rust return-index
+correspondence remains open.
