@@ -33,3 +33,15 @@ The design and earlier holdout panels were known during schedule design;
 their rows remain calibration controls. The product model excludes plan
 lookup, memory effects, recoding, exceptional branches, and affine recovery.
 Complete-operation CPU performance awaits an isolated host measurement.
+
+An instrumented replay counted calls to the native Solinas multiplication
+kernel, including squares, for every fresh holdout and boundary scalar. The
+tree's join interval made **75,775 calls across 512 cases**, exactly the
+modeled work total with zero per-case discrepancies. Affine recovery made
+2,048 further calls, four per nonidentity point; no calls occurred between
+case reset and the join interval. All seven boundary scalars matched their
+modeled join count, including zero with no kernel calls. The counter is
+limited to `u256_mul_solinas_with` and the single-threaded fixture CLI; the
+binary inversion, integer recoder, table traffic, and wall time are separate
+costs. `opcount-receipt.json` binds the instrumented binary, overlay, raw
+rows, and per-case checker.

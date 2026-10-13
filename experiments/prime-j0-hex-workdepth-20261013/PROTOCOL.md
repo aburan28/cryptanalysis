@@ -62,3 +62,16 @@ python3 experiments/prime-j0-hex-workdepth-20261013/check.py \
   experiments/prime-j0-hex-workdepth-20261013/holdout-receipt.json
 python3 experiments/prime-j0-hex-workdepth-20261013/compare.py
 ```
+
+`instrument_overlay.py` builds a disposable evaluator that increments one
+counter at entry to `u256_mul_solinas_with`, including its square wrapper.
+The CLI resets the counter for each case. The tree records join calls before
+affine recovery and recovery calls after it. This counter covers the
+single-threaded fixture path and does not change the curve formulas or
+schedule. `check_opcount.py` compares each join count with the frozen model
+and each point with the independent fixture. Its saved receipt pins the
+instrumented binary and source hashes. Replay with:
+
+```sh
+python3 experiments/prime-j0-hex-workdepth-20261013/check_opcount.py
+```
