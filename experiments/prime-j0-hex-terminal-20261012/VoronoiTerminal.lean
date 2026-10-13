@@ -1429,6 +1429,93 @@ def sixNeighborsClosest (start : Pair) : Prop :=
   (norm start ≤ norm (add start basisSum) ∧
     norm start ≤ norm (sub start basisSum))
 
+theorem equilateral_basis_determinant :
+    basisW.1*basisV.2 - basisW.2*basisV.1 = subgroupOrder := by decide
+
+-- Cramer's rule for the two floor quotients, stated independently of any
+-- particular reciprocal implementation or scalar-range assumption.
+theorem floor_cell_scaled_generic (w v : Pair) (n k qw qv : Int)
+    (hdet : w.1*v.2 - w.2*v.1 = n) :
+    scale n (k-qw*w.1-qv*v.1, -qw*w.2-qv*v.2) =
+      add (scale (k*v.2-qw*n) w) (scale (-k*w.2-qv*n) v) := by
+  rcases w with ⟨w0,w1⟩
+  rcases v with ⟨v0,v1⟩
+  simp [scale, add] at *
+  constructor <;> grind +ring
+
+def floorCellCoordinates (k qw qv : Int) : Pair :=
+  (k*basisV.2 - qw*subgroupOrder,
+   -k*basisW.2 - qv*subgroupOrder)
+
+def floorRepresentative (k qw qv : Int) : Pair :=
+  (k-qw*basisW.1-qv*basisV.1,
+   -qw*basisW.2-qv*basisV.2)
+
+theorem floor_representative_scaled_coordinates (k qw qv : Int) :
+    scale subgroupOrder (floorRepresentative k qw qv) =
+      add (scale (floorCellCoordinates k qw qv).1 basisW)
+          (scale (floorCellCoordinates k qw qv).2 basisV) := by
+  exact floor_cell_scaled_generic basisW basisV subgroupOrder k qw qv
+    equilateral_basis_determinant
+
+def exactFloorW (k : Int) : Int := k*basisV.2 / subgroupOrder
+def exactFloorV (k : Int) : Int := -k*basisW.2 / subgroupOrder
+
+theorem exact_floor_remainder_bounds (n a : Int) (hn : 0 < n) :
+    0 ≤ a - (a/n)*n ∧ a - (a/n)*n < n := by
+  have hrem : a - (a/n)*n = a % n := by
+    rw [Int.emod_def]
+    grind +ring
+  rw [hrem]
+  exact ⟨Int.emod_nonneg a (by omega), Int.emod_lt_of_pos a hn⟩
+
+theorem exact_floor_cell_bounds (k : Int) :
+    0 ≤ (floorCellCoordinates k (exactFloorW k) (exactFloorV k)).1 ∧
+      (floorCellCoordinates k (exactFloorW k) (exactFloorV k)).1 < subgroupOrder ∧
+    0 ≤ (floorCellCoordinates k (exactFloorW k) (exactFloorV k)).2 ∧
+      (floorCellCoordinates k (exactFloorW k) (exactFloorV k)).2 < subgroupOrder := by
+  have hn : 0 < subgroupOrder := by decide
+  have hw := exact_floor_remainder_bounds subgroupOrder (k*basisV.2) hn
+  have hv := exact_floor_remainder_bounds subgroupOrder (-k*basisW.2) hn
+  dsimp [floorCellCoordinates, exactFloorW, exactFloorV] at *
+  omega
+
+def cornerOffsetW : Nat → Int
+  | 1 | 3 => 1
+  | _ => 0
+
+def cornerOffsetV : Nat → Int
+  | 2 | 3 => 1
+  | _ => 0
+
+def cornerRepresentative (k qw qv : Int) (corner : Nat) : Pair :=
+  floorRepresentative k (qw + cornerOffsetW corner) (qv + cornerOffsetV corner)
+
+theorem corner_residual_floor_coordinates (k qw qv : Int) (corner : Nat)
+    (hc : corner < 4) :
+    cornerResidual (floorCellCoordinates k qw qv).1
+        (floorCellCoordinates k qw qv).2 subgroupOrder corner =
+      floorCellCoordinates k (qw + cornerOffsetW corner)
+        (qv + cornerOffsetV corner) := by
+  have hcases : corner = 0 ∨ corner = 1 ∨ corner = 2 ∨ corner = 3 := by omega
+  rcases hcases with h | h | h | h
+  all_goals
+    subst corner
+    simp [cornerResidual, floorCellCoordinates, cornerOffsetW, cornerOffsetV]
+  all_goals grind +ring
+
+theorem corner_representative_scaled_coordinates (k qw qv : Int) (corner : Nat)
+    (hc : corner < 4) :
+    scale subgroupOrder (cornerRepresentative k qw qv corner) =
+      add (scale (cornerResidual (floorCellCoordinates k qw qv).1
+          (floorCellCoordinates k qw qv).2 subgroupOrder corner).1 basisW)
+          (scale (cornerResidual (floorCellCoordinates k qw qv).1
+          (floorCellCoordinates k qw qv).2 subgroupOrder corner).2 basisV) := by
+  have h := floor_representative_scaled_coordinates k
+    (qw + cornerOffsetW corner) (qv + cornerOffsetV corner)
+  rw [← corner_residual_floor_coordinates k qw qv corner hc] at h
+  exact h
+
 theorem equilateral_basis_inner_values :
     twiceInner basisW basisW = 2*subgroupOrder ∧
     twiceInner basisV basisW = -subgroupOrder ∧
@@ -1540,6 +1627,60 @@ theorem fraction_corner_certified_six_neighbors
   exact four_corner_minimum_six_neighbors start x y winner.val
     hx hy winner.isLt hmin hscaled
 
+-- The floor-quotient-to-representative coordinate identity is discharged
+-- here for every four-corner offset; only the native word-loop/output link
+-- and its stated high-fraction interval hypotheses remain external.
+theorem certified_corner_representative_six_neighbors
+    (k qw qv hw hv : Int) (winner : Fin 4)
+    (hx : 0 ≤ (floorCellCoordinates k qw qv).1 ∧
+      (floorCellCoordinates k qw qv).1 ≤ subgroupOrder)
+    (hy : 0 ≤ (floorCellCoordinates k qw qv).2 ∧
+      (floorCellCoordinates k qw qv).2 ≤ subgroupOrder)
+    (hx0 : hw*subgroupOrder ≤
+      fractionBase*(floorCellCoordinates k qw qv).1)
+    (hx2 : fractionBase*(floorCellCoordinates k qw qv).1 ≤
+      (hw+2)*subgroupOrder)
+    (hy0 : hv*subgroupOrder ≤
+      fractionBase*(floorCellCoordinates k qw qv).2)
+    (hy2 : fractionBase*(floorCellCoordinates k qw qv).2 ≤
+      (hv+2)*subgroupOrder)
+    (hsep : ∀ j : Fin 4, j ≠ winner →
+      fractionCornerUpper hw hv winner < fractionCornerLower hw hv j) :
+    sixNeighborsClosest (cornerRepresentative k qw qv winner.val) := by
+  exact fraction_corner_certified_six_neighbors
+    (cornerRepresentative k qw qv winner.val)
+    (floorCellCoordinates k qw qv).1 (floorCellCoordinates k qw qv).2
+    hw hv winner hx hy hx0 hx2 hy0 hy2 hsep
+    (corner_representative_scaled_coordinates k qw qv winner.val winner.isLt)
+
+-- For mathematical floor quotients, Euclidean remainder bounds also supply
+-- the normalized-cell hypotheses. The native reciprocal output must still
+-- be proved equal to these quotients and to the reported high limbs.
+theorem exact_floor_certified_six_neighbors
+    (k hw hv : Int) (winner : Fin 4)
+    (hx0 : hw*subgroupOrder ≤
+      fractionBase*(floorCellCoordinates k (exactFloorW k) (exactFloorV k)).1)
+    (hx2 : fractionBase*(floorCellCoordinates k (exactFloorW k) (exactFloorV k)).1 ≤
+      (hw+2)*subgroupOrder)
+    (hy0 : hv*subgroupOrder ≤
+      fractionBase*(floorCellCoordinates k (exactFloorW k) (exactFloorV k)).2)
+    (hy2 : fractionBase*(floorCellCoordinates k (exactFloorW k) (exactFloorV k)).2 ≤
+      (hv+2)*subgroupOrder)
+    (hsep : ∀ j : Fin 4, j ≠ winner →
+      fractionCornerUpper hw hv winner < fractionCornerLower hw hv j) :
+    sixNeighborsClosest
+      (cornerRepresentative k (exactFloorW k) (exactFloorV k) winner.val) := by
+  have hb := exact_floor_cell_bounds k
+  have hx : 0 ≤ (floorCellCoordinates k (exactFloorW k) (exactFloorV k)).1 ∧
+      (floorCellCoordinates k (exactFloorW k) (exactFloorV k)).1 ≤ subgroupOrder := by
+    omega
+  have hy : 0 ≤ (floorCellCoordinates k (exactFloorW k) (exactFloorV k)).2 ∧
+      (floorCellCoordinates k (exactFloorW k) (exactFloorV k)).2 ≤ subgroupOrder := by
+    omega
+  exact certified_corner_representative_six_neighbors k
+    (exactFloorW k) (exactFloorV k) hw hv winner
+    hx hy hx0 hx2 hy0 hy2 hsep
+
 def terminalDomain (top : Pair) : Prop :=
   3 * norm top ≤ topCap ∧
   -hexLimit ≤ twiceInner top basisW ∧
@@ -1626,11 +1767,20 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms strictly_separated_interval_certifies_minimum
 #print axioms fraction_corner_certificate
 #print axioms fraction_corner_certified_hex_strips
+#print axioms equilateral_basis_determinant
+#print axioms floor_cell_scaled_generic
+#print axioms floor_representative_scaled_coordinates
+#print axioms exact_floor_remainder_bounds
+#print axioms exact_floor_cell_bounds
+#print axioms corner_residual_floor_coordinates
+#print axioms corner_representative_scaled_coordinates
 #print axioms equilateral_basis_inner_values
 #print axioms inner_second_add
 #print axioms four_corner_minimum_six_neighbors
 #print axioms corner_score_scaled
 #print axioms fraction_corner_certified_six_neighbors
+#print axioms certified_corner_representative_six_neighbors
+#print axioms exact_floor_certified_six_neighbors
 #print axioms digit_inner_bound
 #print axioms decode_inner_bound
 #print axioms terminal_inner_bound

@@ -84,6 +84,7 @@ word algorithm.
 | Two-unit high-fraction uncertainty gives the classifier score ranges; strict separation certifies a minimum | `fraction_limb_score_intervals`, `strictly_separated_interval_certifies_minimum` | Checked, conditional on the limb interval |
 | The native four-interval classifier's strict winner minimizes all exact four-corner scores and lies inside the six Voronoi support strips | `fraction_corner_certificate`, `fraction_corner_certified_hex_strips` | Checked for normalized cell coordinates and two coordinate enclosures; native Rust-to-model and fallback links open |
 | A normalized four-corner minimum yields the actual representative's six-neighbor inequalities when its scaled lattice-coordinate identity holds; the certified branch supplies that minimum from its high-fraction intervals | `four_corner_minimum_six_neighbors`, `corner_score_scaled`, `fraction_corner_certified_six_neighbors` | Checked for the secp256k1 lattice with explicit coordinate and interval hypotheses; native word and fallback links open |
+| Exact floor quotients and all four corner offsets satisfy the scaled lattice-coordinate identity; Euclidean remainders place their cell coordinates in the required range | `equilateral_basis_determinant`, `floor_cell_scaled_generic`, `floor_representative_scaled_coordinates`, `corner_representative_scaled_coordinates`, `exact_floor_cell_bounds`, `exact_floor_certified_six_neighbors` | Checked for arbitrary integer scalar; matching native returned words and high fractions remains open |
 | Cauchy identity and digit support | `inner_cauchy_identity`, `digit_inner_bound`, `support_certificate` | Checked |
 | Nearest-neighbor inequalities imply three Voronoi strips | `closest_neighbor_inner` | Checked |
 | Fifteen-step reconstruction and terminal strip bound | `terminal_inner_bound` | Checked |
@@ -118,8 +119,15 @@ of `W,V` to convert all six strip inequalities into comparisons between the
 actual representative and its six lattice neighbors. `corner_score_scaled`
 then removes the high-fraction scaling, and
 `fraction_corner_certified_six_neighbors` composes the certified classifier
-with that lattice result. Its explicit scaled-coordinate identity must still
-be established for the native floor quotients and returned fixed-width pair.
+with that lattice result. `floor_cell_scaled_generic` proves the exact Cramer
+identity for arbitrary floor quotients, using the checked determinant of `W,V`.
+`corner_representative_scaled_coordinates` carries it through all four native
+corner offsets. For the exact quotient definitions, `exact_floor_cell_bounds`
+derives normalized cell coordinates from Euclidean remainder bounds, and
+`exact_floor_certified_six_neighbors` composes these facts with the certified
+branch. The remaining native link must identify the returned words with these
+exact quotients and pair coordinates, and establish their high-fraction
+intervals.
 Proving that the native 512-bit word loop encodes the exact product, handling
 the fallback, and composing the branches with `sixNeighborsClosest` remain
 open. The formalization is partial at that implementation bridge. The open obligations
