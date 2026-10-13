@@ -1,11 +1,19 @@
 # Voronoi-clipped fixed-base scalar table
 
-The secp256k1 radix-256 fixed-base table now uses **174,883 point entries**:
+The opt-in secp256k1 radix-256 fixed-base evaluator builds **174,883 point entries**:
 15 ordinary windows with 10,924 entries each and an 11,023-entry direct
 terminal table. The prior direct-terminal format uses 177,174 entries.
 The native opt-in evaluator retains 11,505,936 bytes and passed its
 65,536-residue atlas audit. It retains the same fifteen digit recodes and
 at most sixteen selected points per scalar.
+
+The [source-linked report](REPORT-2026-10-12.md) and
+[three-page PDF](REPORT-2026-10-12.pdf) include the pipeline diagram,
+quantitative storage graph, exact receipts, open checks, and canonical-graph
+review. The paired [macOS](storage-macos.json) and
+[Linux container](storage-linux.json) execution manifests record exposed
+hardware, affinity, cgroup limits, co-runners, and page-placement availability
+alongside the deterministic table-accounting outputs.
 
 The exact construction and proof map are in [PROOF.md](PROOF.md). The
 `search.json` census gives 66,133 admissible terminal pairs; `screen.json`
