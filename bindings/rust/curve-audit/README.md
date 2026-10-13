@@ -81,4 +81,5 @@ The next backend should verify prime-field point counts at 192–252 bits
 with a reproducible certificate, then add extension-field arithmetic and
 cover/isogeny transfer modules. Protocol and implementation attacks require
 the actual parser, scalar multiplication and oracle behavior as inputs;
-their rows expose those evidence requirements today.
+their rows expose those evidence requirements today. The exact acceptance
+criteria and next control are tracked in the [large-field audit problem](../../../problems/curve-audit-large-field-certificates-and-extension-transfer.md).

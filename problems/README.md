@@ -10,6 +10,7 @@ explain the gap and what would let the work move past it.
 | Problem | Status | What it blocks | What would unblock it |
 | --- | --- | --- | --- |
 | [Fixed-width chooser and terminal census formal coverage](prime-j0-hex-terminal-formal-coverage.md) | Investigating | Full Lean coverage of the secp256k1 Voronoi terminal table | All-scalar chooser theorem and checked finite census |
+| [Large-field curve-audit certificates and extension transfer](curve-audit-large-field-certificates-and-extension-transfer.md) | Open | Independent 192–252-bit orders and extension-field cover/isogeny assessment | Replayable order certificates, field arithmetic, exact maps and subgroup checks |
 
 ## Add or update a problem
 

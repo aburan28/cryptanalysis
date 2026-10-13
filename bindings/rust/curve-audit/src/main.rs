@@ -282,9 +282,31 @@ fn audit(
                     json!({"c":c,"equation":"v^2=F(u^2+c)","degree":2,"destination_field":"original_field"}));
             }
             if input.a.is_zero() || input.b.is_zero() {
-                set(&mut checks,"glv_endomorphism","structural_candidate",
-                    "j=0 or j=1728 special automorphisms are present; a subgroup eigenvalue and measured orbit quotient are still required.",
-                    json!({"j_family":if input.a.is_zero() {"j0"} else {"j1728"}}));
+                let j0 = input.a.is_zero();
+                let required_modulus = if j0 { 3u32 } else { 4u32 };
+                let rational_automorphism = &input.p % required_modulus == BigUint::one();
+                set(
+                    &mut checks,
+                    "glv_endomorphism",
+                    if rational_automorphism {
+                        if prime_status == Primality::ProvenPrime {
+                            "structural_candidate"
+                        } else {
+                            "geometry_conditional"
+                        }
+                    } else {
+                        "unassessed"
+                    },
+                    if rational_automorphism {
+                        "The required root of unity is rational under the prime-field assumption; a subgroup eigenvalue and measured orbit quotient remain required."
+                    } else {
+                        "The simple j=0 or j=1728 automorphism is not rational over this field; other endomorphisms remain unassessed."
+                    },
+                    json!({"j_family":if j0 {"j0"} else {"j1728"},
+                        "required_p_modulus":required_modulus,
+                        "required_p_residue":1,
+                        "rational_special_automorphism":rational_automorphism}),
+                );
             }
         }
     }
@@ -335,25 +357,6 @@ fn audit(
                 factors,
             );
         }
-        if supported && gcd(input.p.clone(), r.clone()) == BigUint::one() {
-            let k = embedding_degree(&input.p, r, max_k);
-            derived["embedding_degree_within_bound"] = json!(k);
-            for id in [
-                "mov_weil_pairing",
-                "frey_ruck_tate_pairing",
-                "minimal_pairing_field",
-            ] {
-                if let Some(k) = k {
-                    set(&mut checks,id,"structural_candidate",
-                        "The modular embedding-degree condition holds; an explicit nondegenerate selected-subgroup transfer and target-field cost remain required.",
-                        json!({"k":k,"r_divides_p_to_k_minus_one":true}));
-                } else {
-                    set(&mut checks,id,"not_found_within_bound",
-                        format!("No k <= {max_k} satisfies r | p^k-1; larger degrees were not searched."),
-                        json!({"max_k":max_k}));
-                }
-            }
-        }
         if let Some(n) = &exact_order {
             validation["selected_order_divides_curve_order"] = json!(n % r == BigUint::zero());
             if n % r != BigUint::zero() {
@@ -372,6 +375,31 @@ fn audit(
                 json!(claimed % r == BigUint::zero());
             if claimed % r != BigUint::zero() {
                 invalid = true;
+            }
+        }
+        let selected_group_ready = validation["r_times_generator_is_infinity"] == true
+            && (r_prime != Primality::ProvenComposite || exact_generator_order);
+        if supported
+            && !invalid
+            && selected_group_ready
+            && gcd(input.p.clone(), r.clone()) == BigUint::one()
+        {
+            let k = embedding_degree(&input.p, r, max_k);
+            derived["embedding_degree_within_bound"] = json!(k);
+            for id in [
+                "mov_weil_pairing",
+                "frey_ruck_tate_pairing",
+                "minimal_pairing_field",
+            ] {
+                if let Some(k) = k {
+                    set(&mut checks,id,"structural_candidate",
+                        "The generator is annihilated by the selected order and the modular embedding-degree condition holds; exact subgroup order, nondegenerate transfer and target-field cost remain required where unproved.",
+                        json!({"k":k,"r_divides_p_to_k_minus_one":true}));
+                } else {
+                    set(&mut checks,id,"not_found_within_bound",
+                        format!("No k <= {max_k} satisfies r | p^k-1; larger degrees were not searched."),
+                        json!({"max_k":max_k}));
+                }
             }
         }
     }
@@ -569,7 +597,28 @@ mod tests {
         let bytes = serde_json::to_vec(&value).unwrap();
         let report = fixture(&bytes, 6);
         assert_eq!(report["validation"]["r_times_generator_is_infinity"], false);
+        assert_eq!(status(&report, "mov_weil_pairing"), "unassessed");
         assert_eq!(report["verdict"], "invalid_parameters");
+    }
+
+    #[test]
+    fn glv_special_automorphisms_require_rational_roots_of_unity() {
+        for (p, a, b, expected) in [
+            (5, 0, 1, "unassessed"),
+            (7, 0, 1, "structural_candidate"),
+            (5, 1, 0, "structural_candidate"),
+            (7, 1, 0, "unassessed"),
+        ] {
+            let input = json!({"schema":"ca.curve_input.v1", "field":{"characteristic":p.to_string(),"degree":1},
+                "curve":{"model":"short_weierstrass","a":a.to_string(),"b":b.to_string()}});
+            let bytes = serde_json::to_vec(&input).unwrap();
+            let report = fixture(&bytes, 6);
+            assert_eq!(
+                status(&report, "glv_endomorphism"),
+                expected,
+                "p={p}, a={a}, b={b}"
+            );
+        }
     }
 
     #[test]
