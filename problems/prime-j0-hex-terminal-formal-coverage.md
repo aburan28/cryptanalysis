@@ -58,5 +58,6 @@ The first condition would close the all-scalar inclusion proof. The second would
 - 2026-10-12: Lean checked equality between each corner's scaled actual norm and quadratic cell score, an exact four-way norm selector, and its six-neighbor guarantee for every integer scalar. Native tuple-sort/returned-pair correspondence remains open.
 - 2026-10-12: Lean checked exact floor-quotient equality for both copied seven-word reciprocals and every `0≤k<subgroupOrder`. The proof uses two explicit Bézout identities, positive product remainders, and the 512-bit capacity inequality; native loop/output correspondence remains open.
 - 2026-10-12: Lean checked `native_reciprocal_word_lists` and `modeled_native_reciprocal_high_quotients`: both source-synced reciprocal lists, through the complete modeled four-word product, produce high three-word values equal to the exact cell quotients for every reduced scalar. The compiled Rust loop and return indices still need formal correspondence with the model.
+- 2026-10-12: Lean checked `eleven_word_return_indices` and `eleven_word_return_values`: list positions 7 and 8–10 select the fraction and three high words, with their values equal to the exact quotient and fractional division of any bounded eleven-word product. The native Rust array-to-list correspondence remains open.
 
 Unresolved.

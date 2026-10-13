@@ -725,6 +725,24 @@ theorem eleven_word_split (words : List Int)
       rw [hdrop] at hsplit
       exact hsplit
 
+-- The four reads in the native return expression select word 7 and the
+-- high three words of the eleven-word product, in little-endian order.
+theorem eleven_word_return_indices (words : List Int)
+    (hlen : words.length = 11) :
+    ∃ fraction high, high.length = 3 ∧
+      words = words.take 7 ++ fraction::high ∧
+      words[7]? = some fraction ∧
+      words[8]? = high[0]? ∧
+      words[9]? = high[1]? ∧
+      words[10]? = high[2]? := by
+  rcases eleven_word_split words hlen with ⟨fraction, high, hhigh, hsplit⟩
+  have hlowLen : (words.take 7).length = 7 := by
+    simp [List.length_take, hlen]
+  refine ⟨fraction, high, hhigh, hsplit, ?_, ?_, ?_, ?_⟩
+  all_goals
+    rw [hsplit]
+    simp [List.getElem?_append_right, hlowLen]
+
 theorem eleven_word_output_from_bounded (B : Int) (words : List Int)
     (hB : 0 < B) (hlen : words.length = 11)
     (hwords : ∀ word ∈ words, boundedWord B word) :
@@ -749,6 +767,31 @@ theorem eleven_word_output_from_bounded (B : Int) (words : List Int)
   rw [← hsplit] at hparts
   exact ⟨fraction, high, hhigh, hsplit, hparts.2.1,
     hparts.2.2.1, hparts.2.2.2⟩
+
+theorem eleven_word_return_values (B : Int) (words : List Int)
+    (hB : 0 < B) (hlen : words.length = 11)
+    (hwords : ∀ word ∈ words, boundedWord B word) :
+    wordValue B ((words.drop 8).take 3) =
+      (wordValue B words / B^7) / B ∧
+    words[7]? = some ((wordValue B words / B^7) % B) := by
+  rcases eleven_word_output_from_bounded B words hB hlen hwords with
+    ⟨fraction, high, hhigh, hsplit, hq, hf, _⟩
+  have hlowLen : (words.take 7).length = 7 := by
+    simp [List.length_take, hlen]
+  have hreturn : (words.drop 8).take 3 = high := by
+    have hdropLow : (words.take 7).drop 8 = [] :=
+      List.drop_eq_nil_of_le (by omega)
+    rw [hsplit]
+    simp [List.drop_append, hlowLen, hdropLow,
+      List.take_of_length_le (by omega : high.length ≤ 3)]
+  have hfraction : words[7]? = some fraction := by
+    rw [hsplit]
+    simp [List.getElem?_append_right, hlowLen]
+  constructor
+  · rw [hreturn]
+    exact hq.symm
+  · rw [hfraction]
+    exact congrArg some hf.symm
 
 def schoolbookWholePass (B a : Int)
     (xs : List (Int × Int)) (suffix : List Int) : List Int × Int :=
@@ -2088,7 +2131,9 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms word_value_append
 #print axioms eleven_word_product_output
 #print axioms eleven_word_split
+#print axioms eleven_word_return_indices
 #print axioms eleven_word_output_from_bounded
+#print axioms eleven_word_return_values
 #print axioms schoolbook_whole_pass_value
 #print axioms schoolbook_whole_pass_length
 #print axioms schoolbook_whole_pass_bounds
