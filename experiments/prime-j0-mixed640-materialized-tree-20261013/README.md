@@ -11,7 +11,13 @@ still open. A native implementation in `native_variant.rs` builds both seed
 images from the corresponding window bases and joins their selected affine
 points through a balanced XYZZ tree. Its 64-scalar test passed against the
 existing mixed-radix evaluator and independent binary multiplication;
-`native-receipt.json` binds the generated source and test binary.
+source was then frozen at `3be9b655855595f41757ae3c18f1100129ffb0b6`
+before drawing a disjoint 128-scalar panel. The fresh native replay matched
+all 128 independently generated affine points and a separate native binary
+scalar oracle. `holdout.json`, `holdout-native.log`, and `native-receipt.json`
+bind that execution. A separate instrumented build checked each tree against
+`10n-14` wrapper calls, recording exactly **16,128 calls** across the 128
+cases (126 each); see `opcount-native.log` and `opcount-receipt.json`.
 
 The prior mixed-radix atlas emits `(seed, exponent, unit)` with exponent in
 `{0,1}`. For each window and seed that occurs with exponent 1, prepare the
@@ -60,8 +66,10 @@ snapshot predates the canonical Solinas XYZZ backend, so this prototype
 uses the existing Montgomery XYZZ formulas. `native_overlay.py` reconstructs
 that source snapshot and applies the new code in a disposable crate.
 
-The next gate is a sparse table implementation, a disjoint native holdout,
-and executed join/tau call instrumentation.
+The next gate is a paired native reference/candidate comparison on the same
+fresh panel with complete operation accounting, followed by the 64-byte tau
+entry and sparse-table variants. The current instrumented interval covers
+tree joins only; the source model supplies the two-bucket reference count.
 Compare the full operation on a host that passes the repository's isolated
 benchmark preflight before making a CPU speed claim.
 
@@ -72,4 +80,8 @@ python3 experiments/prime-j0-mixed640-materialized-tree-20261013/model.py
 (cd experiments/prime-j0-mixed640-materialized-tree-20261013 && lean TauMaterialization.lean)
 python3 experiments/prime-j0-mixed640-materialized-tree-20261013/native_overlay.py /private/tmp/mixed640-native-replay
 (cd /private/tmp/mixed640-native-replay && cargo test --offline --locked --release --bin eisenstein_fixed fresh_64_matches_independent_binary -- --nocapture)
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/holdout.py --check
+(cd /private/tmp/mixed640-native-replay && MIXED640_HOLDOUT=/absolute/path/to/holdout.json cargo test --offline --locked --release --bin eisenstein_fixed source_frozen_holdout_matches_independent_binary -- --nocapture)
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/native_opcount.py /private/tmp/mixed640-opcount-replay
+(cd /private/tmp/mixed640-opcount-replay && MIXED640_HOLDOUT=/absolute/path/to/holdout.json cargo test --offline --locked --release --bin eisenstein_fixed source_frozen_holdout_matches_independent_binary -- --nocapture)
 ```
