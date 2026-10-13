@@ -136,7 +136,10 @@ def build(output: Path) -> None:
         "reciprocal product under bounded-word inputs. The checked modeled "
         "loop includes all intermediate prefix-product equalities and the "
         "eleven-word capacity proof. Formal correspondence to the native "
-        "Rust loop and identification of its returned words remain open; the "
+        "Rust loop remains open. Lean identifies the modeled high three words, "
+        "word seven, and low seven words with the exact quotient, fractional "
+        "word, and remainder; the native return-index correspondence remains "
+        "open. The "
         "fallback remains to be composed with the four-corner theorem; the finite "
         "11,023-orbit census also lacks a Lean cardinality theorem. The exact exit "
         "criteria are in problems/prime-j0-hex-terminal-formal-coverage.md."))

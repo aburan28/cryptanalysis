@@ -60,6 +60,7 @@ rebuild the actual modules and audit every listed declaration with
 | Minimum among four floor/ceiling corners lies in all three Voronoi strips | `corner_score_norm_identity`, `four_corner_minimum_has_hex_strips` | Checked |
 | Both committed seven-word reciprocals satisfy the exact floor inequalities; every reduced scalar is below the 448-bit fraction tail | `native_reciprocals_floor`, `reduced_scalar_below_fraction_tail` | Checked; `check.py` compares the Lean words with the native arrays |
 | Exact product splits into high quotient, high fractional word, and seven lower words with bounded remainders | `exact_product_high_fraction_decomposition` | Checked for an exact integer product |
+| The high three words, word 7, and low seven words of any bounded eleven-word product are exactly the quotient, high fractional word, and remainder | `product_quotient_remainder_from_words`, `eleven_word_product_output`, `eleven_word_split`, `eleven_word_output_from_bounded` | Checked for the modeled array value; native Rust return-index correspondence open |
 | A native 64-bit multiply-add step fits in 128 bits | `fraction_base_width`, `schoolbook_muladd_fits_double_word` | Checked for 64-bit word inputs and carry |
 | One modeled word step preserves weighted value and keeps its output word and carry bounded | `schoolbook_word_step` | Checked for the exact arithmetic step used in the native inner loop |
 | A modeled inner pass over reciprocal words preserves the full weighted value and 64-bit bounds | `schoolbook_pass_value`, `schoolbook_pass_bounds` | Checked for an arbitrary finite word list; native array/outer-loop link open |
@@ -117,5 +118,7 @@ proves the four modeled passes have zero final carry and compute `k·R` for
 all bounded four-word scalars and seven-word reciprocals. Its proof checks
 the intermediate-array prefix-product equalities, capacity, and output-word
 bounds at every offset. The native Rust loop still needs an explicit
-formal correspondence with this list model, and its returned high-word indices
-must be identified with the exact quotient and fractional word.
+formal correspondence with this list model. `eleven_word_output_from_bounded`
+identifies the modeled high three words, word 7, and low seven words with the
+exact quotient, high fractional word, and low remainder; the native Rust
+return-index correspondence remains open.

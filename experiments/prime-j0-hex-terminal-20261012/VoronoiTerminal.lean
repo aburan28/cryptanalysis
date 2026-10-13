@@ -197,6 +197,33 @@ theorem exact_product_high_fraction_decomposition (P B L : Int)
   · exact Int.emod_nonneg _ (by omega)
   · exact Int.emod_lt_of_pos _ hB
 
+theorem product_quotient_remainder_from_words
+    (P B L Q H low : Int)
+    (hB : 0 < B) (hL : 0 < L)
+    (hP : P = L*(B*Q+H)+low)
+    (hH0 : 0 ≤ H) (hHB : H < B)
+    (hlow0 : 0 ≤ low) (hlowL : low < L) :
+    (P/L)/B = Q ∧ (P/L)%B = H ∧ P%L = low := by
+  have hquot : P/L = B*Q+H := by
+    rw [Int.ediv_eq_iff_of_pos hL]
+    rw [hP]
+    grind +ring
+  have hhigh : (P/L)/B = Q := by
+    rw [hquot, Int.ediv_eq_iff_of_pos hB]
+    grind +ring
+  have hfrac : (P/L)%B = H := by
+    have hdiv := Int.emod_add_ediv_mul (B*Q+H) B
+    rw [hquot]
+    have hhigh' : (B*Q+H)/B = Q := by simpa [hquot] using hhigh
+    rw [hhigh'] at hdiv
+    grind +ring
+  have hlow : P%L = low := by
+    have hdiv := Int.emod_add_ediv_mul P L
+    rw [hquot] at hdiv
+    rw [hP] at hdiv ⊢
+    grind +ring
+  exact ⟨hhigh, hfrac, hlow⟩
+
 -- One native inner-loop multiply-add fits in u128: its four inputs are
 -- 64-bit words, and the incoming carry is also a 64-bit word.
 theorem schoolbook_muladd_fits_double_word
@@ -529,6 +556,79 @@ theorem word_value_append (B : Int) (xs ys : List Int) :
       simp only [List.cons_append, List.length_cons, wordValue]
       rw [ih]
       grind +ring [Int.pow_succ]
+
+theorem eleven_word_product_output (B fraction : Int)
+    (low high : List Int)
+    (hB : 0 < B) (hLowLen : low.length = 7)
+    (hHighLen : high.length = 3)
+    (hlow : ∀ word ∈ low, boundedWord B word)
+    (hfrac : boundedWord B fraction) :
+    let words := low ++ fraction::high
+    let P := wordValue B words
+    let L := B^7
+    words.length = 11 ∧
+    (P/L)/B = wordValue B high ∧
+    (P/L)%B = fraction ∧ P%L = wordValue B low := by
+  have hlowValue := word_value_bounds B low hB hlow
+  have hL : 0 < B^7 := Int.pow_pos hB
+  have hP : wordValue B (low ++ fraction::high) =
+      B^7*(B*wordValue B high+fraction)+wordValue B low := by
+    rw [word_value_append, hLowLen]
+    simp only [wordValue]
+    grind +ring
+  have hparts := product_quotient_remainder_from_words
+    (wordValue B (low ++ fraction::high)) B (B^7)
+    (wordValue B high) fraction (wordValue B low)
+    hB hL hP hfrac.1 hfrac.2 hlowValue.1
+    (by simpa [hLowLen] using hlowValue.2)
+  dsimp
+  constructor
+  · simp [List.length_append, hLowLen, hHighLen]
+  · exact hparts
+
+theorem eleven_word_split (words : List Int)
+    (hlen : words.length = 11) :
+    ∃ fraction high, high.length = 3 ∧
+      words = words.take 7 ++ fraction::high := by
+  have htail : (words.drop 7).length = 4 := by
+    simp [List.length_drop]
+    omega
+  cases hdrop : words.drop 7 with
+  | nil =>
+      simp [hdrop] at htail
+  | cons fraction high =>
+      have hhigh : high.length = 3 := by
+        simp [hdrop] at htail
+        omega
+      refine ⟨fraction, high, hhigh, ?_⟩
+      have hsplit := (List.take_append_drop 7 words).symm
+      rw [hdrop] at hsplit
+      exact hsplit
+
+theorem eleven_word_output_from_bounded (B : Int) (words : List Int)
+    (hB : 0 < B) (hlen : words.length = 11)
+    (hwords : ∀ word ∈ words, boundedWord B word) :
+    ∃ fraction high, high.length = 3 ∧
+      words = words.take 7 ++ fraction::high ∧
+      ((wordValue B words / B^7) / B = wordValue B high) ∧
+      ((wordValue B words / B^7) % B = fraction) ∧
+      wordValue B words % B^7 = wordValue B (words.take 7) := by
+  rcases eleven_word_split words hlen with ⟨fraction, high, hhigh, hsplit⟩
+  have hlowLen : (words.take 7).length = 7 := by
+    simp [List.length_take, hlen]
+  have hlow : ∀ word ∈ words.take 7, boundedWord B word := by
+    intro word hw
+    exact hwords word (List.mem_of_mem_take hw)
+  have hfrac : boundedWord B fraction := by
+    apply hwords fraction
+    rw [hsplit]
+    simp
+  have hparts := eleven_word_product_output B fraction (words.take 7)
+    high hB hlowLen hhigh hlow hfrac
+  dsimp at hparts
+  rw [← hsplit] at hparts
+  exact ⟨fraction, high, hhigh, hsplit, hparts.2.1,
+    hparts.2.2.1, hparts.2.2.2⟩
 
 def schoolbookWholePass (B a : Int)
     (xs : List (Int × Int)) (suffix : List Int) : List Int × Int :=
@@ -1240,6 +1340,7 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms fraction_base_width
 #print axioms reduced_scalar_below_fraction_tail
 #print axioms exact_product_high_fraction_decomposition
+#print axioms product_quotient_remainder_from_words
 #print axioms schoolbook_muladd_fits_double_word
 #print axioms schoolbook_word_step
 #print axioms schoolbook_pass_value
@@ -1255,6 +1356,9 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms carry_pass_zero
 #print axioms carry_pass_bounds
 #print axioms word_value_append
+#print axioms eleven_word_product_output
+#print axioms eleven_word_split
+#print axioms eleven_word_output_from_bounded
 #print axioms schoolbook_whole_pass_value
 #print axioms schoolbook_whole_pass_length
 #print axioms schoolbook_whole_pass_bounds
