@@ -515,6 +515,89 @@ theorem shifted_schoolbook_pass_value (B a : Int)
     simp only [List.length_map]
     grind +ring [Int.pow_add]
 
+-- The native eleven-word array is split at the scalar-word offset.  Zip
+-- pairs the next reciprocal-sized segment with the seven fixed reciprocal
+-- words; the rest of the array receives the propagated carry.
+def schoolbookOuterAt (B a : Int) (words reciprocal : List Int)
+    (offset : Nat) : List Int × Int :=
+  let preWords := words.take offset
+  let segment := (words.drop offset).take reciprocal.length
+  let suffix := words.drop (offset + reciprocal.length)
+  let out := schoolbookWholePass B a (List.zip segment reciprocal) suffix
+  (preWords ++ out.1, out.2)
+
+theorem schoolbook_outer_at_value (B a : Int)
+    (words reciprocal : List Int) (offset : Nat)
+    (hB : 0 < B)
+    (hlen : offset + reciprocal.length ≤ words.length) :
+    let out := schoolbookOuterAt B a words reciprocal offset
+    wordValue B out.1 + out.2 * B^words.length =
+      wordValue B words + a * B^offset * wordValue B reciprocal := by
+  let preWords := words.take offset
+  let segment := (words.drop offset).take reciprocal.length
+  let suffix := words.drop (offset + reciprocal.length)
+  let xs := List.zip segment reciprocal
+  have hoff : offset ≤ words.length := by omega
+  have hseg : segment.length = reciprocal.length := by
+    simp [segment, List.length_take, List.length_drop]
+    omega
+  have hfst : xs.map Prod.fst = segment := by
+    simp [xs, List.map_fst_zip, hseg]
+  have hsnd : xs.map Prod.snd = reciprocal := by
+    simp [xs, List.map_snd_zip, hseg]
+  have hxlen : xs.length = reciprocal.length := by
+    simp [xs, hseg]
+  have hprelen : preWords.length = offset := by
+    simp [preWords, List.length_take, Nat.min_eq_left hoff]
+  have htail : words.drop offset = segment ++ suffix := by
+    calc
+      words.drop offset =
+          (words.drop offset).take reciprocal.length ++
+            (words.drop offset).drop reciprocal.length :=
+        (List.take_append_drop reciprocal.length (words.drop offset)).symm
+      _ = segment ++ suffix := by
+        simp [segment, suffix, List.drop_drop, Nat.add_comm]
+  have hsplit : words = preWords ++ segment ++ suffix := by
+    calc
+      words = words.take offset ++ words.drop offset :=
+        (List.take_append_drop offset words).symm
+      _ = preWords ++ segment ++ suffix := by
+        rw [htail]
+        simp [preWords, List.append_assoc]
+  have hlen : words.length = preWords.length + xs.length + suffix.length := by
+    rw [hsplit]
+    simp [hxlen, hseg]
+    omega
+  have hcoeff : pairSecondValue B xs = wordValue B reciprocal := by
+    rw [← hsnd]
+    induction xs with
+    | nil => simp [pairSecondValue, wordValue]
+    | cons head rest ih =>
+        rcases head with ⟨word, coeff⟩
+        simp [pairSecondValue, wordValue, ih]
+  have hstep := shifted_schoolbook_pass_value B a preWords xs suffix hB
+  dsimp [schoolbookOuterAt, preWords, segment, suffix, xs]
+  rw [← hlen, hfst, ← hsplit, hprelen, hcoeff] at hstep
+  exact hstep
+
+theorem schoolbook_outer_at_length (B a : Int)
+    (words reciprocal : List Int) (offset : Nat)
+    (hlen : offset + reciprocal.length ≤ words.length) :
+    (schoolbookOuterAt B a words reciprocal offset).1.length =
+      words.length := by
+  let preWords := words.take offset
+  let segment := (words.drop offset).take reciprocal.length
+  let suffix := words.drop (offset + reciprocal.length)
+  let xs := List.zip segment reciprocal
+  have hseg : segment.length = reciprocal.length := by
+    simp [segment, List.length_take, List.length_drop]
+    omega
+  have hpass := schoolbook_whole_pass_length B a xs suffix
+  dsimp [schoolbookOuterAt]
+  simp [preWords, segment, suffix, xs, hpass, hseg,
+    List.length_take, List.length_drop]
+  omega
+
 -- A floor reciprocal R, its exact product limbs, and k smaller than one
 -- fractional limb imply a two-unit enclosure of the true scaled coordinate.
 -- Here B = 2^64 and L = 2^448 in the native 512-bit product.
@@ -835,6 +918,8 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms schoolbook_whole_pass_bounds
 #print axioms pair_first_value_map
 #print axioms shifted_schoolbook_pass_value
+#print axioms schoolbook_outer_at_value
+#print axioms schoolbook_outer_at_length
 #print axioms reciprocal_high_fraction_interval
 #print axioms fraction_limb_score_intervals
 #print axioms strictly_separated_interval_certifies_minimum
