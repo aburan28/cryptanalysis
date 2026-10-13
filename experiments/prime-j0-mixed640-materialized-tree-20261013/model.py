@@ -45,6 +45,7 @@ def main():
     source = PARENT / "fresh-inputs.json"
     scalars = json.loads(source.read_bytes())["scalars_hex"]
     histogram = Counter()
+    rotated_tau_terms = 0
     replay_count = 64
     output_hash = sha256()
     for case, scalar_hex in enumerate(scalars):
@@ -57,6 +58,7 @@ def main():
             digit, seed_id, exponent, unit = atlas.decode(a, b)
             if seed_id:
                 choices.append((index, seed_id, exponent, unit))
+                rotated_tau_terms += int(exponent == 1 and unit // 2 != 0)
             a, b = (a - digit[0]) // radix, (b - digit[1]) // radix
         assert (a, b) == (0, 0)
         counts = (sum(e == 0 for _, _, e, _ in choices),
@@ -102,7 +104,12 @@ def main():
               "two_bucket_join_and_tau_calls": two_bucket_calls,
               "unified_tree_join_calls": unified_calls,
               "saved_calls": two_bucket_calls - unified_calls,
+              "rotated_tau_terms": rotated_tau_terms,
+              "hybrid_64byte_tau_join_and_rotation_calls": unified_calls + rotated_tau_terms,
+              "hybrid_saved_calls": two_bucket_calls - unified_calls - rotated_tau_terms,
               "two_bucket_96byte_point_and_atlas_bytes": slots * 96 + atlas_bytes,
+              "hybrid_96byte_base_64byte_tau_and_atlas_bytes":
+                  slots * 96 + tau_slots * 64 + atlas_bytes,
               "unified_96byte_point_and_atlas_bytes": (slots + tau_slots) * 96 + atlas_bytes,
               "excluded": ["table_construction", "recoding", "memory_traffic",
                            "affine_recovery", "host_wall_time"]}
@@ -115,6 +122,7 @@ def main():
     print(json.dumps({k: record[k] for k in ("cases", "affine_replay_cases",
                                           "point_slots", "tau_image_slots",
                                           "two_bucket_join_and_tau_calls",
+                                          "hybrid_64byte_tau_join_and_rotation_calls",
                                           "unified_tree_join_calls", "saved_calls")}, sort_keys=True))
 
 

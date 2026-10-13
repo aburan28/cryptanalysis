@@ -25,9 +25,10 @@ and `#print axioms` output. The native evaluator for this combined candidate
 has not yet been built, so the current model must not be called a measured
 speedup.
 
-| Format | Distinct point slots | 96-byte point and atlas bytes | Modeled calls, 4,096 scalars |
+| Format | Distinct point slots | Point and atlas bytes | Modeled calls, 4,096 scalars |
 | --- | ---: | ---: | ---: |
 | Two tau buckets, compressed orbit | 415,190 | 44,588,220 | 552,976 |
+| One tree, 64-byte tau entries | 808,296 | 69,747,004 | 534,629 |
 | One tree with pre-tau entries | 808,296 | 82,326,396 | 516,096 |
 
 The second table has 393,106 extra pre-tau entries, only for seed IDs actually
@@ -36,7 +37,11 @@ table builder can form these entries from `tau(base)` for each window, using
 the same seed multiples as the ordinary table; this needs one tau transform
 per window base and a second table-building pass, rather than a tau transform
 for every seed. Both passes and the compressed-orbit x preparation belong to
-cold setup accounting. The
+cold setup accounting. The middle row stores the extra tau points as ordinary
+64-byte affine pairs and rotates their x-coordinate at selection when its
+unit has a nonzero beta power. On the frozen panel, 18,533 tau terms require
+that one-call rotation. It saves 18,347 calls against the two-bucket format
+while using 12,579,392 fewer bytes than the fully compressed tau table. The
 model charges 6/10/14 calls for affine/one-affine/projective tree joins, 14
 for the two-bucket final projective join, and 6 multiplies plus 3 squares for
 the old project's runtime tau map. It accounts for the four rare cases with
