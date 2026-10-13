@@ -123,16 +123,41 @@ def build(output: Path) -> None:
     story.append(p("Checked proof and open bridge", "SectionCustom"))
     story.append(p(
         "Lean 4.34.1 checks the lattice-neighbor norms, exact four-corner score identity, "
-        "minimum-corner Voronoi strips, two-unit fraction-score intervals and strict "
-        "separation, Cauchy digit support, fifteen-step reconstruction, "
+        "minimum-corner Voronoi strips, a reciprocal/product two-unit coordinate "
+        "enclosure, fraction-score intervals and a composed theorem taking a "
+        "strict classifier winner into all six Voronoi strips and actual "
+        "lattice-neighbor inequalities. Exact floor quotients and all four "
+        "corner offsets satisfy the checked scaled-coordinate identity; "
+        "Euclidean remainders establish normalized cell bounds. "
+        "A checked four-way norm selector returns a six-neighbor representative "
+        "for every integer scalar; actual and cell norm rankings agree. "
+        "Lean also checks Cauchy digit support, fifteen-step reconstruction, "
         "and conditional terminal inclusion. lean-build.txt retains the build and "
-        "axiom audit output. The native 512-bit limb product has not yet been proved "
-        "to satisfy the two-unit interval for every reduced scalar, and its exact "
-        "fallback remains to be composed with the four-corner theorem; the finite "
+        "axiom audit output. Lean proves both native reciprocal constants give "
+        "the exact cell quotients for every reduced scalar, using explicit "
+        "Bezout identities and the 512-bit capacity bound; check.py matches all "
+        "fourteen words to the Rust source. Lean also checks exact-product "
+        "extraction, bounded carry propagation, and an indexed outer pass "
+        "over the native offset and reciprocal-sized array slice. Four such "
+        "passes have zero final carry and compute the exact scalar-times-"
+        "reciprocal product under bounded-word inputs. The checked modeled "
+        "loop includes all intermediate prefix-product equalities and the "
+        "eleven-word capacity proof. The source-synced seven-word lists "
+        "compose with that model: for every reduced four-word scalar, both "
+        "modeled high-word outputs equal the exact cell quotients. Lean also "
+        "proves list positions 7 and 8-10 select the fraction and high words. "
+        "The native Rust array still needs a formal list-model bridge. The Rust "
+        "fallback tuple sort and returned pair still need "
+        "correspondence with the checked norm-first selector; the finite "
         "11,023-orbit census also lacks a Lean cardinality theorem. The exact exit "
         "criteria are in problems/prime-j0-hex-terminal-formal-coverage.md."))
     story.append(p("Native replay and placement", "SectionCustom"))
     story.append(p(
+        "An exact-source wrapper compiled the native reciprocal word loop and "
+        "matched all 5,197 deterministic cases against an independent Python "
+        "integer product, including carry-heavy patterns and both production "
+        "reciprocals. native-reciprocal-loop.json retains source, compiler, input, "
+        "and output hashes. "
         "The source-frozen post-commit holdout has 512 distinct scalars disjoint from prior "
         "panels. Four 512-case panels match independently computed points on macOS ARM64; "
         "the same semantic receipt passed after offline Linux ARM64 Docker VM rebuild. "
@@ -146,7 +171,8 @@ def build(output: Path) -> None:
         "CPU partition or nohz_full set and currently has an active CryptoMiniSat job. "
         "The incidental audit wall and CPU times do not support an online speedup. "
         "The next proof step connects the exact 512-bit limb product to the checked "
-        "two-unit interval theorem, then handles the fallback branch."))
+        "two-unit interval theorem, then maps the Rust fallback sort to its "
+        "checked norm-first selector."))
     story.append(p("Canonical graphs and reproduction", "SectionCustom"))
     story.append(p(
         "Checked prime-j0-cost-aware-chain/orbit-graph-inputs.json, "

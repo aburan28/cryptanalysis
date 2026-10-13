@@ -20,6 +20,7 @@ MODULES = (
     EXP / "prime-j0-power2-direct-terminal-20261012/TopBound.lean",
     HERE / "VoronoiTerminal.lean",
 )
+NATIVE_SOURCE = EXP / "prime-j0-secp256k1-native/src/bin/eisenstein_fixed.rs"
 OUTPUTS = ("TerminalUnit", "LegacyDigitCover", "TopBound", "VoronoiTerminal")
 ALLOWED_AXIOMS = {"propext", "Classical.choice", "Quot.sound"}
 AXIOM_LINE = re.compile(
@@ -28,7 +29,38 @@ AXIOM_LINE = re.compile(
 )
 
 
+def check_native_reciprocals() -> str:
+    """Bind the Lean literal words to the two arrays executed by Rust."""
+    native = NATIVE_SOURCE.read_text()
+    lean = MODULES[-1].read_text()
+    names = (("RECIP_V1", "nativeRecipV1", "nativeRecipV1Words"),
+             ("RECIP_MINUS_W1", "nativeRecipMinusW1", "nativeRecipMinusW1Words"))
+    for rust_name, lean_name, list_name in names:
+        rust_match = re.search(
+            rf"const {rust_name}: \[u64; 7\] = \[(.*?)\];", native, re.DOTALL)
+        lean_match = re.search(
+            rf"def {lean_name} : Int :=(.*?)(?=\ndef |\ntheorem )", lean, re.DOTALL)
+        if rust_match is None or lean_match is None:
+            raise RuntimeError(f"missing reciprocal source for {rust_name}")
+        rust_words = [int(word, 0) for word in re.findall(
+            r"0x[0-9a-fA-F]+|\b[0-9]+\b", rust_match.group(1))]
+        lean_words = [int(word, 0) for word in re.findall(
+            r"0x[0-9a-fA-F]+", lean_match.group(1))]
+        if len(rust_words) != 7 or rust_words != lean_words:
+            raise RuntimeError(f"native/Lean reciprocal mismatch: {rust_name}")
+        list_match = re.search(
+            rf"def {list_name}\s*:\s*List Int :=\s*\[(.*?)\]", lean, re.DOTALL)
+        if list_match is None:
+            raise RuntimeError(f"missing modeled reciprocal words: {list_name}")
+        list_words = [int(word, 0) for word in re.findall(
+            r"0x[0-9a-fA-F]+", list_match.group(1))]
+        if list_words != rust_words:
+            raise RuntimeError(f"native/Lean word-list mismatch: {rust_name}")
+    return sha256(NATIVE_SOURCE.read_bytes()).hexdigest()
+
+
 def build_receipt() -> str:
+    native_sha = check_native_reciprocals()
     toolchain = (HERE / "lean-toolchain").read_text().strip()
     env = os.environ.copy()
     env["ELAN_TOOLCHAIN"] = toolchain
@@ -36,7 +68,8 @@ def build_receipt() -> str:
                              check=True, capture_output=True, text=True).stdout.strip()
     if not version.startswith("Lean (version 4.34.1,"):
         raise RuntimeError(f"wrong Lean version: {version}")
-    records = [f"toolchain={toolchain}", "lean_release=4.34.1"]
+    records = [f"toolchain={toolchain}", "lean_release=4.34.1",
+               f"sha256 {NATIVE_SOURCE.relative_to(ROOT)}: {native_sha}"]
     with tempfile.TemporaryDirectory(prefix="hex-terminal-lean-") as work:
         env["LEAN_PATH"] = work
         for source, name in zip(MODULES, OUTPUTS, strict=True):

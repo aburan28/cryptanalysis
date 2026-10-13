@@ -30,9 +30,10 @@ panels, not a wall-time speedup.
 `native_overlay_hex.py` builds a disposable opt-in binary from the pinned
 main-tree native source. `replay.py` checks binary/source hashes, compares
 native points against independent fixtures, and keeps raw panel hashes.
-The fourth fixture, `holdout.json`, was generated after source commit
-`2f7d0704d` (the rebased source-freeze commit) and is disjoint from the design
-set and prior panels.
+The fourth fixture, `holdout.json`, was generated after the candidate source
+was frozen and is disjoint from the design set and prior panels. The fixture
+records its generator, scalar-stream, and disjointness hashes; `replay.json`
+records the executed source hashes.
 `replay.json` retains semantic and output hashes; `local-build.json` retains
 macOS binary and compiler hashes. The same four-panel semantic receipt passed
 in an offline Linux ARM64 container, rebuilt with Rust 1.93.1; its image,
