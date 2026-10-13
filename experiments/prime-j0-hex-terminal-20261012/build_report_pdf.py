@@ -124,7 +124,8 @@ def build(output: Path) -> None:
     story.append(p(
         "Lean 4.34.1 checks the lattice-neighbor norms, exact four-corner score identity, "
         "minimum-corner Voronoi strips, a reciprocal/product two-unit coordinate "
-        "enclosure, fraction-score intervals and strict separation, Cauchy digit "
+        "enclosure, fraction-score intervals and a composed theorem taking a "
+        "strict classifier winner into all six Voronoi strips, Cauchy digit "
         "support, fifteen-step reconstruction, "
         "and conditional terminal inclusion. lean-build.txt retains the build and "
         "axiom audit output. Lean checks both native reciprocal constants against "

@@ -1212,6 +1212,84 @@ theorem strictly_separated_interval_certifies_minimum
     have hj := hlo j
     omega
 
+-- These are the four exact intervals tested by the native fractional-limb
+-- classifier, including its asymmetric upper bound for the (1,1) corner.
+def fractionCornerLower (hw hv : Int) (corner : Fin 4) : Int :=
+  match corner.val with
+  | 0 => 0
+  | 1 => fractionBase - 2*hw + hv - 4
+  | 2 => fractionBase + hw - 2*hv - 4
+  | _ => fractionBase - hw - hv - 4
+
+def fractionCornerUpper (hw hv : Int) (corner : Fin 4) : Int :=
+  match corner.val with
+  | 0 => 0
+  | 1 => fractionBase - 2*hw + hv + 2
+  | 2 => fractionBase + hw - 2*hv + 2
+  | _ => fractionBase - hw - hv
+
+-- A native strict-separation success identifies an actual minimum of the
+-- four exact norm scores; the rejected/tie path has a separate exact fallback.
+theorem fraction_corner_certificate (n hw hv x y : Int) (winner : Fin 4)
+    (hn : 0 < n)
+    (hx0 : hw*n ≤ x) (hx2 : x ≤ (hw+2)*n)
+    (hy0 : hv*n ≤ y) (hy2 : y ≤ (hv+2)*n)
+    (hsep : ∀ j : Fin 4, j ≠ winner →
+      fractionCornerUpper hw hv winner < fractionCornerLower hw hv j) :
+    ∀ j : Fin 4, cornerScore x y (fractionBase*n) winner.val ≤
+      cornerScore x y (fractionBase*n) j.val := by
+  have h := fraction_limb_score_intervals n hw hv x y hx0 hx2 hy0 hy2
+  dsimp at h
+  rcases h with ⟨h10lo, h10hi, h01lo, h01hi, h11lo, h11hi⟩
+  have hlo : ∀ i : Fin 4,
+      n * fractionCornerLower hw hv i ≤ cornerScore x y (fractionBase*n) i.val := by
+    intro ⟨i, hi⟩
+    have hcases : i = 0 ∨ i = 1 ∨ i = 2 ∨ i = 3 := by omega
+    rcases hcases with h0 | h1 | h2 | h3
+    · subst i; simp [fractionCornerLower, cornerScore]
+    · subst i; simpa [fractionCornerLower, cornerScore] using h10lo
+    · subst i; simpa [fractionCornerLower, cornerScore] using h01lo
+    · subst i; simpa [fractionCornerLower, cornerScore] using h11lo
+  have hhi : ∀ i : Fin 4,
+      cornerScore x y (fractionBase*n) i.val ≤ n * fractionCornerUpper hw hv i := by
+    intro ⟨i, hi⟩
+    have hcases : i = 0 ∨ i = 1 ∨ i = 2 ∨ i = 3 := by omega
+    rcases hcases with h0 | h1 | h2 | h3
+    · subst i; simp [fractionCornerUpper, cornerScore]
+    · subst i; simpa [fractionCornerUpper, cornerScore] using h10hi
+    · subst i; simpa [fractionCornerUpper, cornerScore] using h01hi
+    · subst i; simpa [fractionCornerUpper, cornerScore] using h11hi
+  exact strictly_separated_interval_certifies_minimum n
+    (fun i => cornerScore x y (fractionBase*n) i.val)
+    (fractionCornerLower hw hv) (fractionCornerUpper hw hv)
+    winner hn hlo hhi hsep
+
+-- The certified branch therefore lands in the six Voronoi support strips
+-- required by the terminal digit bound, for the complete normalized cell.
+theorem fraction_corner_certified_hex_strips
+    (n hw hv x y : Int) (winner : Fin 4)
+    (hn : 0 < n)
+    (hx : 0 ≤ x ∧ x ≤ fractionBase*n)
+    (hy : 0 ≤ y ∧ y ≤ fractionBase*n)
+    (hx0 : hw*n ≤ x) (hx2 : x ≤ (hw+2)*n)
+    (hy0 : hv*n ≤ y) (hy2 : y ≤ (hv+2)*n)
+    (hsep : ∀ j : Fin 4, j ≠ winner →
+      fractionCornerUpper hw hv winner < fractionCornerLower hw hv j) :
+    let d := fractionBase*n;
+    let z := cornerResidual x y d winner.val;
+    -d ≤ 2*z.1-z.2 ∧ 2*z.1-z.2 ≤ d ∧
+    -d ≤ 2*z.2-z.1 ∧ 2*z.2-z.1 ≤ d ∧
+    -d ≤ z.1+z.2 ∧ z.1+z.2 ≤ d := by
+  have hmin := fraction_corner_certificate n hw hv x y winner
+    hn hx0 hx2 hy0 hy2 hsep
+  have hmin' : ∀ j < 4,
+      cornerScore x y (fractionBase*n) winner.val ≤
+        cornerScore x y (fractionBase*n) j := by
+    intro j hj
+    exact hmin ⟨j, hj⟩
+  exact four_corner_minimum_has_hex_strips x y (fractionBase*n) winner.val
+    hx.1 hx.2 hy.1 hy.2 winner.isLt hmin'
+
 theorem inner_cauchy_identity (z v : Pair) :
     4 * norm z * norm v - (twiceInner z v)^2 =
       3 * (z.1*v.2 - z.2*v.1)^2 := by
@@ -1435,6 +1513,8 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms reciprocal_high_fraction_interval
 #print axioms fraction_limb_score_intervals
 #print axioms strictly_separated_interval_certifies_minimum
+#print axioms fraction_corner_certificate
+#print axioms fraction_corner_certified_hex_strips
 #print axioms digit_inner_bound
 #print axioms decode_inner_bound
 #print axioms terminal_inner_bound

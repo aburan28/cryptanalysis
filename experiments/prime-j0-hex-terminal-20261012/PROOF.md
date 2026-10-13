@@ -82,6 +82,7 @@ word algorithm.
 | An indexed pass preserves bounded output words and has zero final carry when its exact total fits in the array | `schoolbook_outer_at_bounds`, `schoolbook_outer_at_zero_carry_of_capacity`, `schoolbook_outer_at_no_overflow` | Checked and used by the four-pass theorem |
 | Floor-reciprocal bound and exact product limbs enclose the true scaled cell coordinate within two high-fraction units | `reciprocal_high_fraction_interval` | Checked, conditional on the reciprocal bound and product decomposition |
 | Two-unit high-fraction uncertainty gives the classifier score ranges; strict separation certifies a minimum | `fraction_limb_score_intervals`, `strictly_separated_interval_certifies_minimum` | Checked, conditional on the limb interval |
+| The native four-interval classifier's strict winner minimizes all exact four-corner scores and lies inside the six Voronoi support strips | `fraction_corner_certificate`, `fraction_corner_certified_hex_strips` | Checked for normalized cell coordinates and two coordinate enclosures; native Rust-to-model and fallback links open |
 | Cauchy identity and digit support | `inner_cauchy_identity`, `digit_inner_bound`, `support_certificate` | Checked |
 | Nearest-neighbor inequalities imply three Voronoi strips | `closest_neighbor_inner` | Checked |
 | Fifteen-step reconstruction and terminal strip bound | `terminal_inner_bound` | Checked |
@@ -104,6 +105,13 @@ parameters are arbitrary integers; the native values are `B=2^64` and
 from the native chooser against the exact floor inequalities; `check.py`
 compares all fourteen Lean and Rust words before building.
 `reduced_scalar_below_fraction_tail` discharges the scalar-range premise.
+`fraction_corner_certificate` instantiates the native four interval bounds,
+including the asymmetric `(1,1)` upper bound, and proves that every strict
+classifier winner minimizes the exact corner scores. The composed
+`fraction_corner_certified_hex_strips` theorem carries that winner through
+`four_corner_minimum_has_hex_strips` for any normalized cell with both
+two-unit coordinate enclosures. This closes the certified classifier's
+interval-to-geometry step under its stated inputs.
 Proving that the native 512-bit word loop encodes the exact product, handling
 the fallback, and composing the branches with `sixNeighborsClosest` remain
 open. The formalization is partial at that implementation bridge. The open obligations
