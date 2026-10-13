@@ -18,6 +18,13 @@ scalar oracle. `holdout.json`, `holdout-native.log`, and `native-receipt.json`
 bind that execution. A separate instrumented build checked each tree against
 `10n-14` wrapper calls, recording exactly **16,128 calls** across the 128
 cases (126 each); see `opcount-native.log` and `opcount-receipt.json`.
+A paired diagnostic on those same 128 scalars counted **18,304** generic
+field calls and **478** Solinas gauge rotations in the existing grouped
+mixed-radix evaluator, versus **16,128** generic field calls and zero
+rotations in the pre-tau tree. Both paths returned the same verified points.
+The new tree saves 2,176 generic calls (17 per scalar) and 478 rotations in
+these executed group-evaluation intervals. `pair-opcount-native.log` and
+`pair-opcount-receipt.json` bind the diagnostic source and binary.
 
 The prior mixed-radix atlas emits `(seed, exponent, unit)` with exponent in
 `{0,1}`. For each window and seed that occurs with exponent 1, prepare the
@@ -64,12 +71,17 @@ the recoder, prepared-tau point law, and join schedule, but does not yet
 realize the sparse 82,326,396-byte table in the model. The pinned source
 snapshot predates the canonical Solinas XYZZ backend, so this prototype
 uses the existing Montgomery XYZZ formulas. `native_overlay.py` reconstructs
-that source snapshot and applies the new code in a disposable crate.
+that source snapshot and applies the new code in a disposable crate. The
+existing grouped native reference stores 64-byte points and has 31,302,140
+point-plus-atlas bytes. The much larger candidate table makes a complete
+cache-aware comparison essential before any runtime conclusion.
 
-The next gate is a paired native reference/candidate comparison on the same
-fresh panel with complete operation accounting, followed by the 64-byte tau
-entry and sparse-table variants. The current instrumented interval covers
-tree joins only; the source model supplies the two-bucket reference count.
+The next gate is complete-operation accounting, including recoding, table
+lookup, memory traffic, and affine recovery, followed by the 64-byte tau
+entry and sparse-table variants. The paired instrumented intervals cover
+group evaluation from selected points through the final projective join;
+table setup, recoding, and affine recovery are recorded separately from this
+operation count.
 Compare the full operation on a host that passes the repository's isolated
 benchmark preflight before making a CPU speed claim.
 
@@ -84,4 +96,6 @@ python3 experiments/prime-j0-mixed640-materialized-tree-20261013/holdout.py --ch
 (cd /private/tmp/mixed640-native-replay && MIXED640_HOLDOUT=/absolute/path/to/holdout.json cargo test --offline --locked --release --bin eisenstein_fixed source_frozen_holdout_matches_independent_binary -- --nocapture)
 python3 experiments/prime-j0-mixed640-materialized-tree-20261013/native_opcount.py /private/tmp/mixed640-opcount-replay
 (cd /private/tmp/mixed640-opcount-replay && MIXED640_HOLDOUT=/absolute/path/to/holdout.json cargo test --offline --locked --release --bin eisenstein_fixed source_frozen_holdout_matches_independent_binary -- --nocapture)
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/native_pair_opcount.py /private/tmp/mixed640-pair-replay
+(cd /private/tmp/mixed640-pair-replay && MIXED640_HOLDOUT=/absolute/path/to/holdout.json cargo test --offline --locked --release --bin eisenstein_fixed source_frozen_holdout_matches_independent_binary -- --nocapture)
 ```
