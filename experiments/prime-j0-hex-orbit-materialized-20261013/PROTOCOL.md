@@ -8,6 +8,11 @@ This experiment materializes the automorphism orbit in a 96-byte entry:
 the three x-coordinates as `x`, `m - x`, and `-m`, applying the sign to y.
 All selected points are then actual global-gauge points. The same frozen
 tree shape joins them with gauge zero at every node.
+The two-x orbit representation already appears as `U256TwoXAffine` in this
+repository, and precomputed endomorphism x-images are used in
+[libsecp256k1](https://github.com/bitcoin-core/secp256k1/blob/master/src/ecmult_impl.h).
+The contribution tested here is its combination with this fixed hex-terminal
+recoder and the zero-gauge tree plan, under explicit memory and setup costs.
 
 `make_plans.py` transforms each of the preceding 969 plan records by
 retaining its join indices, setting join gauges and runtime rotations to
@@ -51,5 +56,10 @@ python3 experiments/prime-j0-hex-orbit-materialized-20261013/make_plans.py
 python3 experiments/prime-j0-hex-orbit-materialized-20261013/check.py \
   experiments/prime-j0-hex-dag-pareto-20261013/holdout.json \
   experiments/prime-j0-hex-orbit-materialized-20261013/calibration-native.jsonl
-cd experiments/prime-j0-hex-orbit-materialized-20261013 && lean OrbitCompression.lean
+(cd experiments/prime-j0-hex-orbit-materialized-20261013 && lean OrbitCompression.lean)
+python3 experiments/prime-j0-hex-orbit-materialized-20261013/holdout.py --check
+python3 experiments/prime-j0-hex-orbit-materialized-20261013/check.py \
+  experiments/prime-j0-hex-orbit-materialized-20261013/holdout.json \
+  experiments/prime-j0-hex-orbit-materialized-20261013/holdout-native.jsonl
+python3 experiments/prime-j0-hex-orbit-materialized-20261013/check_opcount.py
 ```
