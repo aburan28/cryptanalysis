@@ -83,6 +83,7 @@ word algorithm.
 | Floor-reciprocal bound and exact product limbs enclose the true scaled cell coordinate within two high-fraction units | `reciprocal_high_fraction_interval` | Checked, conditional on the reciprocal bound and product decomposition |
 | Two-unit high-fraction uncertainty gives the classifier score ranges; strict separation certifies a minimum | `fraction_limb_score_intervals`, `strictly_separated_interval_certifies_minimum` | Checked, conditional on the limb interval |
 | The native four-interval classifier's strict winner minimizes all exact four-corner scores and lies inside the six Voronoi support strips | `fraction_corner_certificate`, `fraction_corner_certified_hex_strips` | Checked for normalized cell coordinates and two coordinate enclosures; native Rust-to-model and fallback links open |
+| A normalized four-corner minimum yields the actual representative's six-neighbor inequalities when its scaled lattice-coordinate identity holds; the certified branch supplies that minimum from its high-fraction intervals | `four_corner_minimum_six_neighbors`, `corner_score_scaled`, `fraction_corner_certified_six_neighbors` | Checked for the secp256k1 lattice with explicit coordinate and interval hypotheses; native word and fallback links open |
 | Cauchy identity and digit support | `inner_cauchy_identity`, `digit_inner_bound`, `support_certificate` | Checked |
 | Nearest-neighbor inequalities imply three Voronoi strips | `closest_neighbor_inner` | Checked |
 | Fifteen-step reconstruction and terminal strip bound | `terminal_inner_bound` | Checked |
@@ -112,6 +113,13 @@ classifier winner minimizes the exact corner scores. The composed
 `four_corner_minimum_has_hex_strips` for any normalized cell with both
 two-unit coordinate enclosures. This closes the certified classifier's
 interval-to-geometry step under its stated inputs.
+`four_corner_minimum_six_neighbors` uses the exact equilateral inner products
+of `W,V` to convert all six strip inequalities into comparisons between the
+actual representative and its six lattice neighbors. `corner_score_scaled`
+then removes the high-fraction scaling, and
+`fraction_corner_certified_six_neighbors` composes the certified classifier
+with that lattice result. Its explicit scaled-coordinate identity must still
+be established for the native floor quotients and returned fixed-width pair.
 Proving that the native 512-bit word loop encodes the exact product, handling
 the fallback, and composing the branches with `sixNeighborsClosest` remain
 open. The formalization is partial at that implementation bridge. The open obligations

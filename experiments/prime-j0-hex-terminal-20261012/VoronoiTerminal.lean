@@ -1429,6 +1429,117 @@ def sixNeighborsClosest (start : Pair) : Prop :=
   (norm start ≤ norm (add start basisSum) ∧
     norm start ≤ norm (sub start basisSum))
 
+theorem equilateral_basis_inner_values :
+    twiceInner basisW basisW = 2*subgroupOrder ∧
+    twiceInner basisV basisW = -subgroupOrder ∧
+    twiceInner basisW basisV = -subgroupOrder ∧
+    twiceInner basisV basisV = 2*subgroupOrder := by decide
+
+theorem inner_second_add (z w v : Pair) :
+    twiceInner z (add w v) = twiceInner z w + twiceInner z v := by
+  rcases z with ⟨a,b⟩
+  rcases w with ⟨c,d⟩
+  rcases v with ⟨e,f⟩
+  simp [twiceInner, add]
+  grind +ring
+
+-- The four-corner norm minimum becomes the actual six-neighbor condition
+-- once the native floor quotients establish the scaled lattice coordinates.
+theorem four_corner_minimum_six_neighbors
+    (start : Pair) (x y : Int) (corner : Nat)
+    (hx : 0 ≤ x ∧ x ≤ subgroupOrder)
+    (hy : 0 ≤ y ∧ y ≤ subgroupOrder)
+    (hc : corner < 4)
+    (hmin : ∀ j < 4,
+      cornerScore x y subgroupOrder corner ≤ cornerScore x y subgroupOrder j)
+    (hscaled :
+      scale subgroupOrder start =
+        add (scale (cornerResidual x y subgroupOrder corner).1 basisW)
+            (scale (cornerResidual x y subgroupOrder corner).2 basisV)) :
+    sixNeighborsClosest start := by
+  let z := cornerResidual x y subgroupOrder corner
+  have hz := four_corner_minimum_has_hex_strips x y subgroupOrder corner
+    hx.1 hx.2 hy.1 hy.2 hc hmin
+  dsimp at hz
+  have hb := equilateral_basis_inner_values
+  have hW := congrArg (fun p : Pair => twiceInner p basisW) hscaled
+  have hV := congrArg (fun p : Pair => twiceInner p basisV) hscaled
+  simp only [inner_scale, inner_add, hb.1, hb.2.1] at hW
+  simp only [inner_scale, inner_add, hb.2.2.1, hb.2.2.2] at hV
+  have hW' : twiceInner start basisW = 2*z.1-z.2 := by
+    have heq : subgroupOrder * twiceInner start basisW =
+        subgroupOrder * (2*z.1-z.2) := by
+      calc
+        _ = (cornerResidual x y subgroupOrder corner).1 * (2*subgroupOrder) +
+              (cornerResidual x y subgroupOrder corner).2 * -subgroupOrder := hW
+        _ = subgroupOrder * (2*z.1-z.2) := by dsimp [z]; grind +ring
+    dsimp [subgroupOrder] at heq ⊢
+    omega
+  have hV' : twiceInner start basisV = 2*z.2-z.1 := by
+    have heq : subgroupOrder * twiceInner start basisV =
+        subgroupOrder * (2*z.2-z.1) := by
+      calc
+        _ = (cornerResidual x y subgroupOrder corner).1 * -subgroupOrder +
+              (cornerResidual x y subgroupOrder corner).2 * (2*subgroupOrder) := hV
+        _ = subgroupOrder * (2*z.2-z.1) := by dsimp [z]; grind +ring
+    dsimp [subgroupOrder] at heq ⊢
+    omega
+  have hS' : twiceInner start basisSum = z.1+z.2 := by
+    rw [show basisSum = add basisW basisV from rfl, inner_second_add,
+        hW', hV']
+    omega
+  dsimp [z] at hW' hV' hS'
+  have hn := neighbor_norms
+  dsimp [sixNeighborsClosest]
+  rw [norm_add_inner, norm_sub_inner, norm_add_inner, norm_sub_inner,
+      norm_add_inner, norm_sub_inner, hn.1, hn.2.1, hn.2.2,
+      hW', hV', hS']
+  omega
+
+theorem corner_score_scaled (x y d t : Int) (corner : Nat)
+    (hc : corner < 4) :
+    cornerScore (t*x) (t*y) (t*d) corner =
+      t * cornerScore x y d corner := by
+  have hcases : corner = 0 ∨ corner = 1 ∨ corner = 2 ∨ corner = 3 := by omega
+  rcases hcases with h | h | h | h
+  all_goals
+    subst corner
+    simp only [cornerScore]
+    grind +ring
+
+-- This is the certified chooser branch at the actual subgroup lattice:
+-- once its reciprocal words establish the high-fraction intervals and the
+-- floor quotients establish the exact scaled-coordinate identity, the
+-- selected representative is no farther than all six lattice neighbors.
+theorem fraction_corner_certified_six_neighbors
+    (start : Pair) (x y hw hv : Int) (winner : Fin 4)
+    (hx : 0 ≤ x ∧ x ≤ subgroupOrder)
+    (hy : 0 ≤ y ∧ y ≤ subgroupOrder)
+    (hx0 : hw*subgroupOrder ≤ fractionBase*x)
+    (hx2 : fractionBase*x ≤ (hw+2)*subgroupOrder)
+    (hy0 : hv*subgroupOrder ≤ fractionBase*y)
+    (hy2 : fractionBase*y ≤ (hv+2)*subgroupOrder)
+    (hsep : ∀ j : Fin 4, j ≠ winner →
+      fractionCornerUpper hw hv winner < fractionCornerLower hw hv j)
+    (hscaled :
+      scale subgroupOrder start =
+        add (scale (cornerResidual x y subgroupOrder winner.val).1 basisW)
+            (scale (cornerResidual x y subgroupOrder winner.val).2 basisV)) :
+    sixNeighborsClosest start := by
+  have hn : 0 < subgroupOrder := by decide
+  have hcert := fraction_corner_certificate subgroupOrder hw hv
+    (fractionBase*x) (fractionBase*y) winner hn hx0 hx2 hy0 hy2 hsep
+  have hmin : ∀ j < 4,
+      cornerScore x y subgroupOrder winner.val ≤ cornerScore x y subgroupOrder j := by
+    intro j hj
+    have h := hcert ⟨j,hj⟩
+    rw [corner_score_scaled x y subgroupOrder fractionBase winner.val winner.isLt,
+        corner_score_scaled x y subgroupOrder fractionBase j hj] at h
+    dsimp [fractionBase] at h
+    omega
+  exact four_corner_minimum_six_neighbors start x y winner.val
+    hx hy winner.isLt hmin hscaled
+
 def terminalDomain (top : Pair) : Prop :=
   3 * norm top ≤ topCap ∧
   -hexLimit ≤ twiceInner top basisW ∧
@@ -1515,6 +1626,11 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms strictly_separated_interval_certifies_minimum
 #print axioms fraction_corner_certificate
 #print axioms fraction_corner_certified_hex_strips
+#print axioms equilateral_basis_inner_values
+#print axioms inner_second_add
+#print axioms four_corner_minimum_six_neighbors
+#print axioms corner_score_scaled
+#print axioms fraction_corner_certified_six_neighbors
 #print axioms digit_inner_bound
 #print axioms decode_inner_bound
 #print axioms terminal_inner_bound
