@@ -11,8 +11,11 @@ it combines retained child schedules under each child's output gauge. The
 model charges six field products for an affine/affine join, ten for an
 affine/projective join, fourteen for a projective/projective join, and one
 for each gauge rotation. Within each output gauge, it retains the candidate
-with least modeled products plus rotations, breaking ties by dependency
-depth and rotations. A final gauge-zero rotation is charged when needed.
+with least modeled products plus rotations, breaking ties by weighted
+join-path score and rotations. A final gauge-zero rotation is charged when needed.
+The JSON field `depth` is this weighted join-path score: it charges the full
+6, 10, or 14 Solinas calls of each join along a path. It does not expand the
+field-operation DAG inside an addition formula and is not a measured latency.
 This is a finite operation-model search; its exact recurrence and all input
 patterns are executable in `optimize.py`. The existing abstract Lean theorem
 `PrimeJ0GaugeTree.reordered_tree_correct` supplies the conditional group-sum
