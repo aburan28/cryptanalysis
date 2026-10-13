@@ -129,6 +129,8 @@ def build(output: Path) -> None:
         "lattice-neighbor inequalities. Exact floor quotients and all four "
         "corner offsets satisfy the checked scaled-coordinate identity; "
         "Euclidean remainders establish normalized cell bounds. "
+        "A checked four-way norm selector returns a six-neighbor representative "
+        "for every integer scalar; actual and cell norm rankings agree. "
         "Lean also checks Cauchy digit support, fifteen-step reconstruction, "
         "and conditional terminal inclusion. lean-build.txt retains the build and "
         "axiom audit output. Lean checks both native reciprocal constants against "
@@ -144,8 +146,8 @@ def build(output: Path) -> None:
         "product with its modeled high three words, word seven, and low seven "
         "words as the exact quotient, fractional word, and remainder; the "
         "native return-index correspondence remains "
-        "open. The "
-        "fallback remains to be composed with the four-corner theorem; the finite "
+        "open. The Rust fallback tuple sort and returned pair still need "
+        "correspondence with the checked norm-first selector; the finite "
         "11,023-orbit census also lacks a Lean cardinality theorem. The exact exit "
         "criteria are in problems/prime-j0-hex-terminal-formal-coverage.md."))
     story.append(p("Native replay and placement", "SectionCustom"))
@@ -168,7 +170,8 @@ def build(output: Path) -> None:
         "CPU partition or nohz_full set and currently has an active CryptoMiniSat job. "
         "The incidental audit wall and CPU times do not support an online speedup. "
         "The next proof step connects the exact 512-bit limb product to the checked "
-        "two-unit interval theorem, then handles the fallback branch."))
+        "two-unit interval theorem, then maps the Rust fallback sort to its "
+        "checked norm-first selector."))
     story.append(p("Canonical graphs and reproduction", "SectionCustom"))
     story.append(p(
         "Checked prime-j0-cost-aware-chain/orbit-graph-inputs.json, "

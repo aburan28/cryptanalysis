@@ -1530,6 +1530,67 @@ theorem inner_second_add (z w v : Pair) :
   simp [twiceInner, add]
   grind +ring
 
+theorem norm_scale_exact (c : Int) (z : Pair) :
+    norm (scale c z) = c*c*norm z := by
+  rcases z with ⟨a,b⟩
+  simp [norm, scale]
+  grind +ring
+
+theorem norm_two_scaled_basis (x y : Int) (w v : Pair) :
+    norm (add (scale x w) (scale y v)) =
+      x*x*norm w + y*y*norm v + x*y*twiceInner w v := by
+  rcases w with ⟨a,b⟩
+  rcases v with ⟨c,d⟩
+  simp [norm, scale, add, twiceInner]
+  grind +ring
+
+-- For this equilateral kernel lattice, the exact norm of every integer
+-- representative is the scaled quadratic cell norm of its coordinates.
+theorem lattice_scaled_norm (start : Pair) (x y : Int)
+    (hscaled : scale subgroupOrder start =
+      add (scale x basisW) (scale y basisV)) :
+    subgroupOrder * norm start = x*x + y*y - x*y := by
+  have hnorm := congrArg norm hscaled
+  rw [norm_scale_exact, norm_two_scaled_basis] at hnorm
+  have hb := neighbor_norms
+  have hi := equilateral_basis_inner_values
+  rw [hb.1, hb.2.1, hi.2.2.1] at hnorm
+  dsimp [subgroupOrder] at hnorm ⊢
+  omega
+
+theorem corner_representative_norm_score (k qw qv : Int) (corner : Nat)
+    (hc : corner < 4) :
+    subgroupOrder * norm (cornerRepresentative k qw qv corner) =
+      cellNorm (floorCellCoordinates k qw qv).1
+        (floorCellCoordinates k qw qv).2 subgroupOrder corner := by
+  have hscaled := corner_representative_scaled_coordinates k qw qv corner hc
+  have hnorm := lattice_scaled_norm (cornerRepresentative k qw qv corner)
+    (cornerResidual (floorCellCoordinates k qw qv).1
+      (floorCellCoordinates k qw qv).2 subgroupOrder corner).1
+    (cornerResidual (floorCellCoordinates k qw qv).1
+      (floorCellCoordinates k qw qv).2 subgroupOrder corner).2 hscaled
+  simpa [cellNorm] using hnorm
+
+theorem norm_minimum_is_corner_score_minimum
+    (k qw qv : Int) (winner : Fin 4)
+    (hmin : ∀ j : Fin 4,
+      norm (cornerRepresentative k qw qv winner.val) ≤
+        norm (cornerRepresentative k qw qv j.val)) :
+    ∀ j < 4,
+      cornerScore (floorCellCoordinates k qw qv).1
+        (floorCellCoordinates k qw qv).2 subgroupOrder winner.val ≤
+      cornerScore (floorCellCoordinates k qw qv).1
+        (floorCellCoordinates k qw qv).2 subgroupOrder j := by
+  intro j hj
+  have h := Int.mul_le_mul_of_nonneg_left (hmin ⟨j,hj⟩)
+    (by decide : 0 ≤ subgroupOrder)
+  rw [corner_representative_norm_score k qw qv winner.val winner.isLt,
+      corner_representative_norm_score k qw qv j hj] at h
+  rw [corner_score_norm_identity _ _ _ winner.val winner.isLt,
+      corner_score_norm_identity _ _ _ j hj] at h
+  dsimp [subgroupOrder] at h ⊢
+  omega
+
 -- The four-corner norm minimum becomes the actual six-neighbor condition
 -- once the native floor quotients establish the scaled lattice coordinates.
 theorem four_corner_minimum_six_neighbors
@@ -1582,6 +1643,82 @@ theorem four_corner_minimum_six_neighbors
       norm_add_inner, norm_sub_inner, hn.1, hn.2.1, hn.2.2,
       hW', hV', hS']
   omega
+
+-- The exact four-corner fallback only needs its norm-first sorting guarantee:
+-- any first row of that order satisfies the six-neighbor theorem, regardless
+-- of the native secondary tie breakers.
+theorem fallback_norm_minimum_six_neighbors (k : Int) (winner : Fin 4)
+    (hmin : ∀ j : Fin 4,
+      norm (cornerRepresentative k (exactFloorW k) (exactFloorV k) winner.val) ≤
+        norm (cornerRepresentative k (exactFloorW k) (exactFloorV k) j.val)) :
+    sixNeighborsClosest
+      (cornerRepresentative k (exactFloorW k) (exactFloorV k) winner.val) := by
+  have hb := exact_floor_cell_bounds k
+  have hx : 0 ≤ (floorCellCoordinates k (exactFloorW k) (exactFloorV k)).1 ∧
+      (floorCellCoordinates k (exactFloorW k) (exactFloorV k)).1 ≤ subgroupOrder := by
+    omega
+  have hy : 0 ≤ (floorCellCoordinates k (exactFloorW k) (exactFloorV k)).2 ∧
+      (floorCellCoordinates k (exactFloorW k) (exactFloorV k)).2 ≤ subgroupOrder := by
+    omega
+  have hscore := norm_minimum_is_corner_score_minimum k
+    (exactFloorW k) (exactFloorV k) winner hmin
+  exact four_corner_minimum_six_neighbors
+    (cornerRepresentative k (exactFloorW k) (exactFloorV k) winner.val)
+    (floorCellCoordinates k (exactFloorW k) (exactFloorV k)).1
+    (floorCellCoordinates k (exactFloorW k) (exactFloorV k)).2
+    winner.val hx hy winner.isLt hscore
+    (corner_representative_scaled_coordinates k
+      (exactFloorW k) (exactFloorV k) winner.val winner.isLt)
+
+def lowerScoreCorner (score : Fin 4 → Int) (left right : Fin 4) : Fin 4 :=
+  if score right < score left then right else left
+
+theorem lower_score_corner_le_left (score : Fin 4 → Int) (left right : Fin 4) :
+    score (lowerScoreCorner score left right) ≤ score left := by
+  unfold lowerScoreCorner
+  split <;> omega
+
+theorem lower_score_corner_le_right (score : Fin 4 → Int) (left right : Fin 4) :
+    score (lowerScoreCorner score left right) ≤ score right := by
+  unfold lowerScoreCorner
+  split <;> omega
+
+def fourCornerArgmin (score : Fin 4 → Int) : Fin 4 :=
+  lowerScoreCorner score
+    (lowerScoreCorner score
+      (lowerScoreCorner score 0 1) 2) 3
+
+theorem four_corner_argmin_minimum (score : Fin 4 → Int) :
+    ∀ j : Fin 4, score (fourCornerArgmin score) ≤ score j := by
+  intro j
+  have h0 := lower_score_corner_le_left score (0 : Fin 4) 1
+  have h1 := lower_score_corner_le_right score (0 : Fin 4) 1
+  have h2 := lower_score_corner_le_left score (lowerScoreCorner score 0 1) 2
+  have h3 := lower_score_corner_le_right score (lowerScoreCorner score 0 1) 2
+  have h4 := lower_score_corner_le_left score
+    (lowerScoreCorner score (lowerScoreCorner score 0 1) 2) 3
+  have h5 := lower_score_corner_le_right score
+    (lowerScoreCorner score (lowerScoreCorner score 0 1) 2) 3
+  have hcases : j.val = 0 ∨ j.val = 1 ∨ j.val = 2 ∨ j.val = 3 := by omega
+  rcases hcases with hj | hj | hj | hj
+  all_goals
+    have heq : j = ⟨j.val, j.isLt⟩ := rfl
+    simp [hj] at heq
+    subst j
+    dsimp [fourCornerArgmin]
+    omega
+
+def exactFallbackWinner (k : Int) : Fin 4 :=
+  fourCornerArgmin (fun i =>
+    norm (cornerRepresentative k (exactFloorW k) (exactFloorV k) i.val))
+
+theorem exact_fallback_six_neighbors (k : Int) :
+    sixNeighborsClosest
+      (cornerRepresentative k (exactFloorW k) (exactFloorV k)
+        (exactFallbackWinner k).val) := by
+  exact fallback_norm_minimum_six_neighbors k (exactFallbackWinner k)
+    (four_corner_argmin_minimum (fun i =>
+      norm (cornerRepresentative k (exactFloorW k) (exactFloorV k) i.val)))
 
 theorem corner_score_scaled (x y d t : Int) (corner : Nat)
     (hc : corner < 4) :
@@ -1776,6 +1913,16 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms corner_representative_scaled_coordinates
 #print axioms equilateral_basis_inner_values
 #print axioms inner_second_add
+#print axioms norm_scale_exact
+#print axioms norm_two_scaled_basis
+#print axioms lattice_scaled_norm
+#print axioms corner_representative_norm_score
+#print axioms norm_minimum_is_corner_score_minimum
+#print axioms fallback_norm_minimum_six_neighbors
+#print axioms lower_score_corner_le_left
+#print axioms lower_score_corner_le_right
+#print axioms four_corner_argmin_minimum
+#print axioms exact_fallback_six_neighbors
 #print axioms four_corner_minimum_six_neighbors
 #print axioms corner_score_scaled
 #print axioms fraction_corner_certified_six_neighbors

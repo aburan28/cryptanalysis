@@ -85,6 +85,8 @@ word algorithm.
 | The native four-interval classifier's strict winner minimizes all exact four-corner scores and lies inside the six Voronoi support strips | `fraction_corner_certificate`, `fraction_corner_certified_hex_strips` | Checked for normalized cell coordinates and two coordinate enclosures; native Rust-to-model and fallback links open |
 | A normalized four-corner minimum yields the actual representative's six-neighbor inequalities when its scaled lattice-coordinate identity holds; the certified branch supplies that minimum from its high-fraction intervals | `four_corner_minimum_six_neighbors`, `corner_score_scaled`, `fraction_corner_certified_six_neighbors` | Checked for the secp256k1 lattice with explicit coordinate and interval hypotheses; native word and fallback links open |
 | Exact floor quotients and all four corner offsets satisfy the scaled lattice-coordinate identity; Euclidean remainders place their cell coordinates in the required range | `equilateral_basis_determinant`, `floor_cell_scaled_generic`, `floor_representative_scaled_coordinates`, `corner_representative_scaled_coordinates`, `exact_floor_cell_bounds`, `exact_floor_certified_six_neighbors` | Checked for arbitrary integer scalar; matching native returned words and high fractions remains open |
+| Each corner's actual Eisenstein norm equals its scaled quadratic cell norm; any minimum-norm corner has minimum exact score | `norm_scale_exact`, `norm_two_scaled_basis`, `lattice_scaled_norm`, `corner_representative_norm_score`, `norm_minimum_is_corner_score_minimum` | Checked for all four exact-quotient corners; no native sort correspondence assumed |
+| A concrete four-way norm selector returns a six-neighbor representative for every integer scalar | `four_corner_argmin_minimum`, `exact_fallback_six_neighbors` | Checked for the modeled exact fallback; native tuple sorting and returned-pair correspondence open |
 | Cauchy identity and digit support | `inner_cauchy_identity`, `digit_inner_bound`, `support_certificate` | Checked |
 | Nearest-neighbor inequalities imply three Voronoi strips | `closest_neighbor_inner` | Checked |
 | Fifteen-step reconstruction and terminal strip bound | `terminal_inner_bound` | Checked |
@@ -128,6 +130,13 @@ derives normalized cell coordinates from Euclidean remainder bounds, and
 branch. The remaining native link must identify the returned words with these
 exact quotients and pair coordinates, and establish their high-fraction
 intervals.
+`lattice_scaled_norm` and `corner_representative_norm_score` prove that each
+actual Eisenstein norm and the normalized cell score have the same ordering.
+`fourCornerArgmin` implements a four-way exact norm selector in Lean;
+`exact_fallback_six_neighbors` proves its selected representative satisfies
+the six-neighbor condition for every integer scalar. The native fallback
+sorts tuples with norm first, followed by tie breakers. Formal correspondence
+between that Rust ordering/returned pair and this model is still open.
 Proving that the native 512-bit word loop encodes the exact product, handling
 the fallback, and composing the branches with `sixNeighborsClosest` remain
 open. The formalization is partial at that implementation bridge. The open obligations
