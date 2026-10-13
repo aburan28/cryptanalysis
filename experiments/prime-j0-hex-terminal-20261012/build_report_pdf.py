@@ -135,8 +135,9 @@ def build(output: Path) -> None:
         "passes compose into the exact scalar-times-reciprocal product when "
         "each pass has zero final carry. Lean proves bounded output words "
         "and zero carry when an exact pass total fits in eleven words. "
-        "Proving that capacity bound for each scalar prefix and identifying "
-        "the returned words remain open; the "
+        "Every bounded four-word scalar prefix times a seven-word reciprocal "
+        "fits in eleven words. Linking each intermediate array to its prefix "
+        "product and identifying the returned words remain open; the "
         "fallback remains to be composed with the four-corner theorem; the finite "
         "11,023-orbit census also lacks a Lean cardinality theorem. The exact exit "
         "criteria are in problems/prime-j0-hex-terminal-formal-coverage.md."))

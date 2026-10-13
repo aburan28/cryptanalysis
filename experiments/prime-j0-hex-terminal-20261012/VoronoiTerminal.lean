@@ -325,6 +325,51 @@ theorem word_value_bounds (B : Int) (xs : List Int)
           grind +ring [Int.pow_succ]
         omega
 
+theorem word_values_product_fits (B : Int) (xs ys : List Int)
+    (hB : 0 < B)
+    (hxs : ∀ word ∈ xs, boundedWord B word)
+    (hys : ∀ word ∈ ys, boundedWord B word) :
+    0 ≤ wordValue B xs * wordValue B ys ∧
+      wordValue B xs * wordValue B ys < B^(xs.length+ys.length) := by
+  have hx := word_value_bounds B xs hB hxs
+  have hy := word_value_bounds B ys hB hys
+  have hp : 0 < B^ys.length := Int.pow_pos hB
+  have hupper1 := Int.mul_le_mul_of_nonneg_left
+    (show wordValue B ys ≤ B^ys.length by omega) hx.1
+  have hupper2 := Int.mul_lt_mul_of_pos_right hx.2 hp
+  constructor
+  · exact Int.mul_nonneg hx.1 hy.1
+  · rw [Int.pow_add]
+    omega
+
+theorem four_word_prefix_product_fits (B : Int)
+    (scalarWords reciprocal : List Int) (offset : Nat)
+    (hB : 1 < B)
+    (hscalarLen : scalarWords.length = 4)
+    (hrecLen : reciprocal.length = 7)
+    (hscalar : ∀ word ∈ scalarWords, boundedWord B word)
+    (hrec : ∀ word ∈ reciprocal, boundedWord B word) :
+    wordValue B (scalarWords.take offset) * wordValue B reciprocal <
+      B^11 := by
+  let preWords := scalarWords.take offset
+  have hpre : ∀ word ∈ preWords, boundedWord B word := by
+    intro word hw
+    exact hscalar word (List.mem_of_mem_take hw)
+  have hpreLen : preWords.length ≤ 4 := by
+    simp [preWords, List.length_take]
+    omega
+  have hp := word_values_product_fits B preWords reciprocal
+    (by omega) hpre hrec
+  have hsum : preWords.length + reciprocal.length ≤ 11 := by omega
+  change wordValue B preWords * wordValue B reciprocal < B^11
+  by_cases heq : preWords.length + reciprocal.length = 11
+  · have hpLt := hp.2
+    rw [heq] at hpLt
+    exact hpLt
+  · have hlt : preWords.length + reciprocal.length < 11 := by omega
+    have hpow := Int.pow_lt_pow_of_lt hB hlt
+    omega
+
 theorem schoolbook_pass_bounds (B a carry : Int)
     (xs : List (Int × Int))
     (hB : 0 < B) (ha : boundedWord B a)
@@ -1068,6 +1113,8 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms schoolbook_pass_value
 #print axioms schoolbook_pass_length
 #print axioms word_value_bounds
+#print axioms word_values_product_fits
+#print axioms four_word_prefix_product_fits
 #print axioms schoolbook_pass_bounds
 #print axioms carry_pass_value
 #print axioms carry_pass_length
