@@ -43,6 +43,8 @@ def main():
     assert verification['status'] == 'CENSORED_CAP'
     assert verification['censored_arms'] == ['K900']
     assert verification['checks']['K800_answer']
+    hardware = json.loads((HERE / 'hardware.json').read_text())
+    assert hardware['gpu']['measurement_class'] == 'cpu_only_secondary_control'
     assert sha(HERE / 'runs/K800/base.jsonl') == sha(PRIOR / 'runs/K800/base.jsonl')
     full_base_replay = json.loads((PRIOR / 'full_base_replay.json').read_text())
     assert full_base_replay['status'] == 'PASS'
@@ -59,6 +61,9 @@ def main():
              'G': ['6614244651398184860292015', '8868260410029249391539529'],
              'target_group': 'prime_order_r_subgroup'}
     curve_id = 'EC1N83Ckb1a1h' + digest({'field': field, 'curve': curve})[:12]
+    curve_sha256 = digest({'field': field, 'curve': curve})
+    curve_uid = 'urn:ec-record:1:sha256:' + curve_sha256
+    field_sha256 = digest(field)
     curve['curve_id'] = curve_id
     workload = {'schema_version': 1, 'curve_id': curve_id,
                 'target_count': 1, 'public_targets': [target],
@@ -72,6 +77,7 @@ def main():
                 for name in ('rho_before', 'rho_after')]
     rho_online_mean = sum(float(row['online_ms']) for row in rho_rows) / 2
     measurements = []
+    candidate_bindings = []
     for k in (800,):
         name = f'K{k}'
         arm = HERE / 'runs' / name
@@ -139,6 +145,10 @@ def main():
         }
         candidate_id = (f'IC1N83Ckb1a1fb{166 * k}PDP4rootRCguidedLAgaussTDdirectISO0h'
                         + digest(manifest)[:12])
+        candidate_sha256 = digest(manifest)
+        candidate_bindings.append({'candidate_id': candidate_id,
+            'candidate_uid': 'urn:ec-candidate:1:sha256:' + candidate_sha256,
+            'candidate_sha256': candidate_sha256, 'curve_uid': curve_uid})
         write_once(HERE / f'candidate_K{k}.json', {'candidate_id': candidate_id, **manifest})
         online_ms = float(target_row['target_ms'])
         phases = {key: target_row[key] for key in ('target_query_ms', 'target_pdp_ms',
@@ -148,6 +158,8 @@ def main():
             'run_id': f'{candidate_id}W{workload_id}R1',
             'status': 'verified_single_target',
             'curve_id': curve_id, 'actual_factor_base_points': 166 * k,
+            'curve_uid': curve_uid, 'field_sha256': field_sha256,
+            'candidate_uid': 'urn:ec-candidate:1:sha256:' + candidate_sha256,
             'effective_columns': k,
             'target': target, 'ic_online_ms': online_ms,
             'ic_online_phases_ms': phases,
@@ -167,10 +179,21 @@ def main():
             'exploratory_rho_over_ic_online_ratio': rho_online_mean / online_ms,
             'controlled_speedup': None,
             'host_tier': 'local_shared_exploratory',
+            'gpu': hardware['gpu'],
+            'hardware_receipt_sha256': sha(HERE / 'hardware.json'),
             'correctness_receipt_sha256': sha(HERE / 'verification.json'),
             'full_base_replay_sha256': sha(PRIOR / 'full_base_replay.json'),
         })
     write_once(HERE / 'measurements.json', measurements)
+    write_once(HERE / 'identity_bindings.json', {
+        'schema': 'n83_a1_identity_bindings_v1',
+        'curve_id': curve_id, 'curve_uid': curve_uid,
+        'curve_sha256': curve_sha256, 'field_sha256': field_sha256,
+        'workload_id': workload_id, 'candidate_bindings': candidate_bindings,
+        'rho_arms': [{'arm': name, 'curve_uid': curve_uid,
+                      'target_sha256': protocol['target_sha256']}
+                     for name in ('rho_before', 'rho_after')],
+    })
     write_once(HERE / 'censored_K900.json', {
         'arm': 'K900', 'candidate_id': None,
         'status': 'CENSORED_RSS_CAP',
@@ -180,6 +203,8 @@ def main():
         'run_id': None,
         'raw_execution_sha256': sha(HERE / 'runs/K900/execution.json'),
         'verification_sha256': sha(HERE / 'verification.json'),
+        'hardware_receipt_sha256': sha(HERE / 'hardware.json'),
+        'gpu': hardware['gpu'],
     })
     print(json.dumps({'curve_id': curve_id, 'workload_id': workload_id,
                       'candidate_ids': [row['candidate_id'] for row in measurements]}, indent=2))

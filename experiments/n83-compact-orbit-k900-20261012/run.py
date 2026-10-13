@@ -105,7 +105,24 @@ def main():
     assert rss_bytes(os.getpid()) > 0, 'process RSS polling is unavailable'
     assert json.loads((HERE / 'rho_config.json').read_text()) == protocol['rho_policy']
     assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=CRYPTO, text=True).strip() == protocol['source_commit']
+    assert subprocess.check_output(['git', 'status', '--porcelain=v1'],
+                                   cwd=CRYPTO, text=True).strip() == '', 'source checkout is dirty'
     ic, rho = BIN / 'koblitz_orbit_dlp_fast', BIN / 'n83_rho_optimization_eval'
+    build_environment = os.environ.copy()
+    for name in list(build_environment):
+        if (name in ('RUSTFLAGS', 'CARGO_ENCODED_RUSTFLAGS', 'CARGO_BUILD_TARGET')
+                or name.startswith('CARGO_PROFILE_')):
+            build_environment.pop(name)
+    build_environment['CARGO_TARGET_DIR'] = str(BIN.parent.parent)
+    build = subprocess.run(['cargo', 'build', '--release', '--locked', '--offline',
+                            '--example', ic.name, '--example', rho.name],
+                           cwd=CRYPTO, env=build_environment,
+                           text=True, capture_output=True)
+    with (HERE / 'build_stdout.txt').open('x') as out:
+        out.write(build.stdout)
+    with (HERE / 'build_stderr.txt').open('x') as err:
+        err.write(build.stderr)
+    assert build.returncode == 0, 'pinned clean-source build failed'
     assert ic.is_file() and rho.is_file()
     create_json(HERE / 'binary_manifest.json', {'ic_sha256': sha(ic), 'rho_sha256': sha(rho),
                                                  'protocol_sha256': sha(PROTOCOL),

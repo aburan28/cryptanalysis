@@ -153,7 +153,8 @@ def main():
     if len(rho_outcomes) == 2:
         checks['rho_same_walk_charges'] = rho_outcomes[0] == rho_outcomes[1]
     complete = all(checks.values()) and len(ic_ms) == 2 and len(rho_ms) == 2
-    valid_censored = (censored and len(rho_ms) == 2
+    valid_censored = (censored == ['K900'] and set(ic_ms) == {'K800'}
+        and len(rho_ms) == 2
         and all(details[name]['disposition'] in ('rss_cap', 'time_cap') for name in censored)
         and all(value for key, value in checks.items()
                 if not any(key == f'{name}_{suffix}' for name in censored
