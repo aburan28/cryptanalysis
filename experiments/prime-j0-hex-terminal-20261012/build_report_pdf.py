@@ -123,11 +123,13 @@ def build(output: Path) -> None:
     story.append(p("Checked proof and open bridge", "SectionCustom"))
     story.append(p(
         "Lean 4.34.1 checks the lattice-neighbor norms, exact four-corner score identity, "
-        "minimum-corner Voronoi strips, two-unit fraction-score intervals and strict "
-        "separation, Cauchy digit support, fifteen-step reconstruction, "
+        "minimum-corner Voronoi strips, a reciprocal/product two-unit coordinate "
+        "enclosure, fraction-score intervals and strict separation, Cauchy digit "
+        "support, fifteen-step reconstruction, "
         "and conditional terminal inclusion. lean-build.txt retains the build and "
-        "axiom audit output. The native 512-bit limb product has not yet been proved "
-        "to satisfy the two-unit interval for every reduced scalar, and its exact "
+        "axiom audit output. The fixed reciprocal constants and native 512-bit "
+        "limb product have not yet been proved to satisfy the enclosure hypotheses "
+        "for every reduced scalar, and the exact "
         "fallback remains to be composed with the four-corner theorem; the finite "
         "11,023-orbit census also lacks a Lean cardinality theorem. The exact exit "
         "criteria are in problems/prime-j0-hex-terminal-formal-coverage.md."))

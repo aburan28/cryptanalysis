@@ -138,6 +138,56 @@ theorem four_corner_minimum_has_hex_strips (x y d : Int) (corner : Nat)
 
 def fractionBase : Int := 18446744073709551616
 
+-- A floor reciprocal R, its exact product limbs, and k smaller than one
+-- fractional limb imply a two-unit enclosure of the true scaled coordinate.
+-- Here B = 2^64 and L = 2^448 in the native 512-bit product.
+theorem reciprocal_high_fraction_interval
+    (n k c R q h low B L : Int)
+    (hn : 0 < n) (hk : 0 ≤ k) (hkL : k < L)
+    (hB : 0 < B) (hL : 0 < L)
+    (hrecLo : n*R ≤ (B*L)*c)
+    (hrecHi : (B*L)*c < n*(R+1))
+    (hproduct : k*R = (B*L)*q + L*h + low)
+    (hlow : 0 ≤ low) (hlowL : low < L) :
+    n*(B*q+h) ≤ B*k*c ∧ B*k*c < n*(B*q+h+2) := by
+  have hrecHiLe : (B*L)*c ≤ n*(R+1) := by omega
+  have hpLo := Int.mul_le_mul_of_nonneg_left hrecLo hk
+  have hpHi := Int.mul_le_mul_of_nonneg_left hrecHiLe hk
+  have hpLo' : n*(k*R) ≤ (B*L)*(k*c) := by
+    calc
+      n*(k*R) = k*(n*R) := by grind +ring
+      _ ≤ k*((B*L)*c) := hpLo
+      _ = (B*L)*(k*c) := by grind +ring
+  have hpHi' : (B*L)*(k*c) ≤ n*(k*R+k) := by
+    calc
+      (B*L)*(k*c) = k*((B*L)*c) := by grind +ring
+      _ ≤ k*(n*(R+1)) := hpHi
+      _ = n*(k*R+k) := by grind +ring
+  have hscaledLo : L*(n*(B*q+h)) ≤ L*(B*k*c) := by
+    have hlowExtra : n*((B*L)*q+L*h) ≤
+        n*((B*L)*q+L*h+low) := by
+      exact Int.mul_le_mul_of_nonneg_left (by omega) (by omega)
+    calc
+      L*(n*(B*q+h)) = n*((B*L)*q+L*h) := by grind +ring
+      _ ≤ n*((B*L)*q+L*h+low) := hlowExtra
+      _ = n*(k*R) := by rw [hproduct]
+      _ ≤ (B*L)*(k*c) := hpLo'
+      _ = L*(B*k*c) := by grind +ring
+  have hsum : low+k < 2*L := by omega
+  have hscaledHi : L*(B*k*c) < L*(n*(B*q+h+2)) := by
+    have hhiExtra : n*((B*L)*q+L*h+low+k) <
+        n*((B*L)*q+L*h+2*L) := by
+      exact Int.mul_lt_mul_of_pos_left (by omega) hn
+    calc
+      L*(B*k*c) = (B*L)*(k*c) := by grind +ring
+      _ ≤ n*(k*R+k) := hpHi'
+      _ = n*((B*L)*q+L*h+low+k) := by rw [hproduct]
+      _ < n*((B*L)*q+L*h+2*L) := hhiExtra
+      _ = L*(n*(B*q+h+2)) := by grind +ring
+  constructor
+  · exact Int.le_of_mul_le_mul_left hscaledLo hL
+  · exact Int.lt_of_mul_lt_mul_left hscaledHi (by omega)
+
 -- The native classifier uses the high 64-bit fraction limbs. These are
 -- exactly its score intervals after allowing two units of coordinate error.
 theorem fraction_limb_score_intervals (n hw hv x y : Int)
@@ -389,6 +439,7 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms closest_neighbor_inner
 #print axioms corner_score_norm_identity
 #print axioms four_corner_minimum_has_hex_strips
+#print axioms reciprocal_high_fraction_interval
 #print axioms fraction_limb_score_intervals
 #print axioms strictly_separated_interval_certifies_minimum
 #print axioms digit_inner_bound
