@@ -219,6 +219,109 @@ theorem schoolbook_muladd_fits_double_word
   · omega
   · omega
 
+-- Replacing one product-array word by the low 64 bits of the multiply-add
+-- preserves its weighted integer value when the high bits are carried into
+-- the next position. The bounds supply the next inner-loop carry premise.
+theorem schoolbook_word_step
+    (B a b word carry : Int) (position : Nat)
+    (hB : 0 < B)
+    (ha0 : 0 ≤ a) (haB : a < B)
+    (hb0 : 0 ≤ b) (hbB : b < B)
+    (hw0 : 0 ≤ word) (hwB : word < B)
+    (hc0 : 0 ≤ carry) (hcB : carry < B) :
+    let sum := a*b + word + carry
+    0 ≤ sum % B ∧ sum % B < B ∧
+    0 ≤ sum / B ∧ sum / B < B ∧
+    (word+a*b+carry)*B^position =
+      (sum%B)*B^position + (sum/B)*B^(position+1) := by
+  have hfit := schoolbook_muladd_fits_double_word B a b word carry
+    hB ha0 haB hb0 hbB hw0 hwB hc0 hcB
+  have hdiv := Int.emod_add_ediv_mul (a*b+word+carry) B
+  dsimp
+  constructor
+  · exact Int.emod_nonneg _ (by omega)
+  constructor
+  · exact Int.emod_lt_of_pos _ hB
+  constructor
+  · exact Int.ediv_nonneg hfit.1 (by omega)
+  constructor
+  · exact Int.ediv_lt_of_lt_mul hB hfit.2
+  · grind +ring [Int.pow_succ]
+
+def wordValue (B : Int) : List Int → Int
+  | [] => 0
+  | word::rest => word + B*wordValue B rest
+
+def pairFirstValue (B : Int) : List (Int × Int) → Int
+  | [] => 0
+  | (word, _)::rest => word + B*pairFirstValue B rest
+
+def pairSecondValue (B : Int) : List (Int × Int) → Int
+  | [] => 0
+  | (_, coeff)::rest => coeff + B*pairSecondValue B rest
+
+-- This list pass has the same multiply-add, low-word store, and carry update
+-- as one inner pass of reciprocal_cell_limbs_from_words_512.
+def schoolbookPass (B a : Int) : List (Int × Int) → Int → List Int × Int
+  | [], carry => ([], carry)
+  | (word, coeff)::rest, carry =>
+      let sum := a*coeff + word + carry
+      let tail := schoolbookPass B a rest (sum / B)
+      ((sum % B)::tail.1, tail.2)
+
+theorem schoolbook_pass_value (B a carry : Int) (xs : List (Int × Int))
+    (hB : 0 < B) :
+    let out := schoolbookPass B a xs carry
+    wordValue B out.1 + out.2*B^xs.length =
+      pairFirstValue B xs + a*pairSecondValue B xs + carry := by
+  induction xs generalizing carry with
+  | nil =>
+      simp [schoolbookPass, wordValue, pairFirstValue, pairSecondValue]
+  | cons head rest ih =>
+      rcases head with ⟨word, coeff⟩
+      let sum := a*coeff + word + carry
+      have hdiv := Int.emod_add_ediv_mul sum B
+      have htail := ih (carry := sum / B)
+      dsimp [schoolbookPass, wordValue, pairFirstValue,
+        pairSecondValue, sum] at htail ⊢
+      grind +ring [Int.pow_succ]
+
+def boundedWord (B word : Int) : Prop := 0 ≤ word ∧ word < B
+
+theorem schoolbook_pass_bounds (B a carry : Int)
+    (xs : List (Int × Int))
+    (hB : 0 < B) (ha : boundedWord B a)
+    (hc : boundedWord B carry)
+    (hxs : ∀ pair ∈ xs,
+      boundedWord B pair.1 ∧ boundedWord B pair.2) :
+    let out := schoolbookPass B a xs carry
+    (∀ word ∈ out.1, boundedWord B word) ∧
+      boundedWord B out.2 := by
+  induction xs generalizing carry with
+  | nil =>
+      simp [schoolbookPass, hc]
+  | cons head rest ih =>
+      rcases head with ⟨word, coeff⟩
+      have hhead := hxs (word, coeff) (by simp)
+      have hrest : ∀ pair ∈ rest,
+          boundedWord B pair.1 ∧ boundedWord B pair.2 := by
+        intro pair hp
+        exact hxs pair (by simp [hp])
+      let sum := a*coeff + word + carry
+      have hstep := schoolbook_word_step B a coeff word carry 0
+        hB ha.1 ha.2 hhead.2.1 hhead.2.2 hhead.1.1 hhead.1.2
+        hc.1 hc.2
+      have htail := ih (carry := sum / B)
+        ⟨hstep.2.2.1, hstep.2.2.2.1⟩ hrest
+      dsimp [schoolbookPass, boundedWord, sum] at hstep htail ⊢
+      constructor
+      · intro w hw
+        rcases List.mem_cons.mp hw with heq | hmem
+        · subst w
+          exact ⟨hstep.1, hstep.2.1⟩
+        · exact htail.1 w hmem
+      · exact htail.2
+
 -- A floor reciprocal R, its exact product limbs, and k smaller than one
 -- fractional limb imply a two-unit enclosure of the true scaled coordinate.
 -- Here B = 2^64 and L = 2^448 in the native 512-bit product.
@@ -525,6 +628,9 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms reduced_scalar_below_fraction_tail
 #print axioms exact_product_high_fraction_decomposition
 #print axioms schoolbook_muladd_fits_double_word
+#print axioms schoolbook_word_step
+#print axioms schoolbook_pass_value
+#print axioms schoolbook_pass_bounds
 #print axioms reciprocal_high_fraction_interval
 #print axioms fraction_limb_score_intervals
 #print axioms strictly_separated_interval_certifies_minimum

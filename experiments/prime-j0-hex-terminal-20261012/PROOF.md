@@ -61,6 +61,8 @@ rebuild the actual modules and audit every listed declaration with
 | Both committed seven-word reciprocals satisfy the exact floor inequalities; every reduced scalar is below the 448-bit fraction tail | `native_reciprocals_floor`, `reduced_scalar_below_fraction_tail` | Checked; `check.py` compares the Lean words with the native arrays |
 | Exact product splits into high quotient, high fractional word, and seven lower words with bounded remainders | `exact_product_high_fraction_decomposition` | Checked for an exact integer product |
 | A native 64-bit multiply-add step fits in 128 bits | `fraction_base_width`, `schoolbook_muladd_fits_double_word` | Checked for 64-bit word inputs and carry |
+| One modeled word step preserves weighted value and keeps its output word and carry bounded | `schoolbook_word_step` | Checked for the exact arithmetic step used in the native inner loop |
+| A modeled inner pass over reciprocal words preserves the full weighted value and 64-bit bounds | `schoolbook_pass_value`, `schoolbook_pass_bounds` | Checked for an arbitrary finite word list; native array/outer-loop link open |
 | Floor-reciprocal bound and exact product limbs enclose the true scaled cell coordinate within two high-fraction units | `reciprocal_high_fraction_interval` | Checked, conditional on the reciprocal bound and product decomposition |
 | Two-unit high-fraction uncertainty gives the classifier score ranges; strict separation certifies a minimum | `fraction_limb_score_intervals`, `strictly_separated_interval_certifies_minimum` | Checked, conditional on the limb interval |
 | Cauchy identity and digit support | `inner_cauchy_identity`, `digit_inner_bound`, `support_certificate` | Checked |
@@ -93,9 +95,11 @@ and their exit criteria are in
 No theorem uses an assumed conclusion or custom axiom.
 
 `exact_product_high_fraction_decomposition` proves the required decomposition
-and remainder bounds when its input is the exact integer product. The native
-array still needs a loop invariant proving that its eleven output words encode
-that product and that the returned high words match the quotient and fractional
-word. `schoolbook_muladd_fits_double_word` proves each inner `u128` sum stays
-below `2^128` when its incoming carry and stored word are 64-bit values; a
-loop proof must establish that carry premise at every iteration.
+and remainder bounds when its input is the exact integer product.
+`schoolbook_word_step` proves the low-word/carry update preserves weighted
+value, and `schoolbook_pass_value` plus `schoolbook_pass_bounds` extend that
+identity and 64-bit bounds across an arbitrary list of reciprocal words.
+The native eleven-word array still needs a verified mapping to this list pass,
+including its shifted outer iterations and post-pass carry propagation. The
+returned high words must then be identified with the exact product quotient
+and fractional word.
