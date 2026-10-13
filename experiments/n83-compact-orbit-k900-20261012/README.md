@@ -1,4 +1,4 @@
-# N83 compact-orbit factor-base capacity screen
+# N83 compact-orbit factor-base capacity screen: CPU-only control
 
 **K800 completed a second verified one-target run; K900 crossed the frozen
 12 GiB RSS cap during root-index construction.** The K800 base dump is byte
@@ -6,9 +6,9 @@ identical to the prior K800 base, and its candidate identity remains
 `IC1N83Ckb1a1fb132800PDP4rootRCguidedLAgaussTDdirectISO0h97f37aa0f6fd`.
 The second public target has workload ID `dba72e7f8c63`. The K900 arm is a
 resource-censored attempt with a null target-online result and null candidate
-ID. It is not a comparison of two completed target solves.
+ID. The completed-candidate comparison is therefore censored at K900.
 
-| Second frozen public target, local shared Mac | K800 | K900 |
+| Second frozen public target, local Mac CPU-only secondary control | K800 | K900 |
 | --- | ---: | ---: |
 | Actual usable base points before folding | 132,800 | null; base dump absent |
 | Effective signed-Frobenius columns | 800 | planned 900 |
@@ -31,6 +31,12 @@ the [previous full-base replay](../n83-compact-orbit-size-sweep-20261012/full_ba
 byte for byte. The [canonical records](measurements.json) include K800's five
 exclusive target-online phases. [`censored_K900.json`](censored_K900.json)
 retains null candidate and online fields and binds the raw cap receipt.
+The [hardware and execution audit](hardware.json) binds every arm receipt to
+the Apple M4 Pro host and explicitly records unpinned CPU placement, unknown
+page placement and co-runners, and `gpu.devices: []`. It was collected after
+the run, so dynamic host counters that were not retained at execution remain
+null. This CPU-only control does not satisfy the repository's CUDA-host gate
+for primary IC measurements.
 
 The same tuned strong-rho reference solved this exact public point before and
 after the IC arms in 1,988.326 and 2,743.458 ms online. Both rho executions
@@ -39,6 +45,12 @@ variation and the shared host make local timing ratios exploratory; the
 controlled-speedup field remains null. The full fresh-process cost is kept
 separate from target-online time, which begins after the reusable index and
 factor-base logs are ready.
+The full [curve UID and candidate UID bindings](identity_bindings.json) use
+the unchanged canonical field, curve, and candidate preimages; the K800 row
+also retains the full UIDs. The K800 point-set digest is in the
+[factor-base archive](../fb-archive/README.md#n83-a1-compact-orbit-bases)
+alongside the earlier K600 set, with all points and the independent replay
+hashes retained in Git chunks.
 
 ## Why K899 is the next size
 
@@ -64,15 +76,23 @@ and 8 GiB slot arithmetic under Lean 4 v4.34.1. The proof map is:
 | `2²⁸` slots at 32 B use 8 GiB | `N83CompactOrbitCapacity.table_slot_bytes_at_boundary` | arithmetic only |
 
 The Rust loop bound, `next_power_of_two` call, and slot layout are source and
-compiled-layout checks, not Lean definitions. `lean CapacityBound.lean`
-passed with all three `#print axioms` outputs reporting no axioms.
-`lean4checker` was unavailable. The source is the clean public `crypto` commit
+compiled-layout checks, not Lean definitions. The [Lean build and axiom
+audit](proof_check.json) retains the exact command, toolchain, stdout, source
+hash, and core foundations; all three declarations report no axioms.
+`lean4checker` was unavailable. The [compiled slot-layout receipt](slot_layout_receipt.json)
+retains the exact-target Rust `size_of::<(u128,u64)>() = 32` check and compiler
+version. The source is the clean public `crypto` commit
 `6600c7c6c0cfbb6a9e4e596bf8c5cfa292fb269e`; exact source and binary
 hashes, run order, one public input, seeds, 12 rank threads, one target thread,
 40-minute IC cap, 60-second rho cap, and RSS cap are in the
 [frozen protocol](protocol.json), [binary manifest](binary_manifest.json),
 and [run receipts](runs/). The public target is in [`target.jsonl`](target.jsonl);
 its fixture scalar was held in a validation sidecar outside both worker inputs.
+The [post-run independent build audit](build_provenance.json) recompiled the
+clean pinned source and compared both executable hashes with the recorded
+ones. The original launcher checked the commit and source-file hashes; the
+current launcher also requires a clean tree and an offline Cargo build before
+future execution. The post-run audit is identified as such in its receipt.
 
 Replay the checks against the pinned clean source checkout:
 
@@ -80,6 +100,7 @@ Replay the checks against the pinned clean source checkout:
 N83_CRYPTO_REPO=/path/to/crypto-at-6600c7c6 python3 experiments/n83-compact-orbit-k900-20261012/verify.py
 python3 experiments/n83-compact-orbit-k900-20261012/verify_identities.py
 (cd experiments/n83-compact-orbit-k900-20261012 && lean CapacityBound.lean)
+python3 experiments/fb-archive/compact_orbit_base_archive.py --verify-only
 ```
 
 This run identifies K800 as the largest completed candidate in the current
