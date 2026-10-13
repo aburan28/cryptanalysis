@@ -297,6 +297,34 @@ theorem schoolbook_pass_length (B a carry : Int)
 
 def boundedWord (B word : Int) : Prop := 0 ≤ word ∧ word < B
 
+theorem word_value_bounds (B : Int) (xs : List Int)
+    (hB : 0 < B)
+    (hxs : ∀ word ∈ xs, boundedWord B word) :
+    0 ≤ wordValue B xs ∧ wordValue B xs < B^xs.length := by
+  induction xs with
+  | nil =>
+      simp [wordValue]
+  | cons word rest ih =>
+      have hw := hxs word (by simp)
+      have hrest : ∀ w ∈ rest, boundedWord B w := by
+        intro w hmem
+        exact hxs w (by simp [hmem])
+      have ht := ih hrest
+      have hmul0 := Int.mul_nonneg (by omega : 0 ≤ B) ht.1
+      have hmulLe := Int.mul_le_mul_of_nonneg_left
+        (show wordValue B rest ≤ B^rest.length - 1 by omega)
+        (by omega : 0 ≤ B)
+      have hw0 := hw.1
+      have hwB := hw.2
+      have hwLe : word ≤ B-1 := by omega
+      constructor
+      · simpa [wordValue] using (show 0 ≤ word + B*wordValue B rest by omega)
+      · simp only [List.length_cons, wordValue]
+        have hpoly : (B-1) + B*(B^rest.length-1) =
+            B^(rest.length+1)-1 := by
+          grind +ring [Int.pow_succ]
+        omega
+
 theorem schoolbook_pass_bounds (B a carry : Int)
     (xs : List (Int × Int))
     (hB : 0 < B) (ha : boundedWord B a)
@@ -598,6 +626,41 @@ theorem schoolbook_outer_at_length (B a : Int)
     List.length_take, List.length_drop]
   omega
 
+theorem schoolbook_outer_at_bounds (B a : Int)
+    (words reciprocal : List Int) (offset : Nat)
+    (hB : 0 < B) (ha : boundedWord B a)
+    (hwords : ∀ word ∈ words, boundedWord B word)
+    (hrec : ∀ word ∈ reciprocal, boundedWord B word) :
+    let out := schoolbookOuterAt B a words reciprocal offset
+    (∀ word ∈ out.1, boundedWord B word) ∧ boundedWord B out.2 := by
+  let preWords := words.take offset
+  let segment := (words.drop offset).take reciprocal.length
+  let suffix := words.drop (offset + reciprocal.length)
+  let xs := List.zip segment reciprocal
+  have hpre : ∀ w ∈ preWords, boundedWord B w := by
+    intro w hw
+    exact hwords w (List.mem_of_mem_take hw)
+  have hsegment : ∀ w ∈ segment, boundedWord B w := by
+    intro w hw
+    exact hwords w (List.mem_of_mem_drop (List.mem_of_mem_take hw))
+  have hsuffix : ∀ w ∈ suffix, boundedWord B w := by
+    intro w hw
+    exact hwords w (List.mem_of_mem_drop hw)
+  have hxs : ∀ pair ∈ xs,
+      boundedWord B pair.1 ∧ boundedWord B pair.2 := by
+    intro pair hp
+    rcases pair with ⟨w, c⟩
+    have hmem := List.of_mem_zip hp
+    exact ⟨hsegment w hmem.1, hrec c hmem.2⟩
+  have hpass := schoolbook_whole_pass_bounds B a xs suffix hB ha hxs hsuffix
+  dsimp [schoolbookOuterAt, preWords, segment, suffix, xs]
+  constructor
+  · intro w hw
+    rcases List.mem_append.mp hw with hp | ho
+    · exact hpre w hp
+    · exact hpass.1 w ho
+  · exact hpass.2
+
 theorem schoolbook_outer_at_no_carry (B a : Int)
     (words reciprocal : List Int) (offset : Nat)
     (hB : 0 < B)
@@ -609,6 +672,43 @@ theorem schoolbook_outer_at_no_carry (B a : Int)
   dsimp at h
   rw [hcarry] at h
   simpa using h
+
+theorem schoolbook_outer_at_zero_carry_of_capacity (B a : Int)
+    (words reciprocal : List Int) (offset : Nat)
+    (hB : 0 < B)
+    (hlen : offset + reciprocal.length ≤ words.length)
+    (hword : 0 ≤ wordValue B
+      (schoolbookOuterAt B a words reciprocal offset).1)
+    (hcarry : 0 ≤ (schoolbookOuterAt B a words reciprocal offset).2)
+    (hcapacity : wordValue B words +
+      a * B^offset * wordValue B reciprocal < B^words.length) :
+    (schoolbookOuterAt B a words reciprocal offset).2 = 0 := by
+  have hpow : 0 < B^words.length := Int.pow_pos hB
+  have hvalue := schoolbook_outer_at_value B a words reciprocal offset hB hlen
+  dsimp at hvalue
+  by_cases hzero : (schoolbookOuterAt B a words reciprocal offset).2 = 0
+  · exact hzero
+  · have hpositive : 1 ≤
+        (schoolbookOuterAt B a words reciprocal offset).2 := by omega
+    have hmul := Int.mul_le_mul_of_nonneg_right hpositive
+      (by omega : 0 ≤ B^words.length)
+    omega
+
+theorem schoolbook_outer_at_no_overflow (B a : Int)
+    (words reciprocal : List Int) (offset : Nat)
+    (hB : 0 < B) (ha : boundedWord B a)
+    (hwords : ∀ word ∈ words, boundedWord B word)
+    (hrec : ∀ word ∈ reciprocal, boundedWord B word)
+    (hlen : offset + reciprocal.length ≤ words.length)
+    (hcapacity : wordValue B words +
+      a * B^offset * wordValue B reciprocal < B^words.length) :
+    (schoolbookOuterAt B a words reciprocal offset).2 = 0 := by
+  have hb := schoolbook_outer_at_bounds B a words reciprocal offset
+    hB ha hwords hrec
+  have hv := word_value_bounds B
+    (schoolbookOuterAt B a words reciprocal offset).1 hB hb.1
+  exact schoolbook_outer_at_zero_carry_of_capacity B a words reciprocal
+    offset hB hlen hv.1 hb.2.1 hcapacity
 
 theorem word_value_replicate_zero (B : Int) (n : Nat) :
     wordValue B (List.replicate n 0) = 0 := by
@@ -967,6 +1067,7 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms schoolbook_word_step
 #print axioms schoolbook_pass_value
 #print axioms schoolbook_pass_length
+#print axioms word_value_bounds
 #print axioms schoolbook_pass_bounds
 #print axioms carry_pass_value
 #print axioms carry_pass_length
@@ -980,7 +1081,10 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms shifted_schoolbook_pass_value
 #print axioms schoolbook_outer_at_value
 #print axioms schoolbook_outer_at_length
+#print axioms schoolbook_outer_at_bounds
 #print axioms schoolbook_outer_at_no_carry
+#print axioms schoolbook_outer_at_zero_carry_of_capacity
+#print axioms schoolbook_outer_at_no_overflow
 #print axioms word_value_replicate_zero
 #print axioms four_scalar_word_product
 #print axioms reciprocal_high_fraction_interval

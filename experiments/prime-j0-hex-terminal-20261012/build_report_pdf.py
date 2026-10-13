@@ -133,8 +133,10 @@ def build(output: Path) -> None:
         "extraction, bounded carry propagation, and an indexed outer pass "
         "over the native offset and reciprocal-sized array slice. Four such "
         "passes compose into the exact scalar-times-reciprocal product when "
-        "each pass has zero final carry. Proving those carries vanish and "
-        "identifying the returned words remain open; the "
+        "each pass has zero final carry. Lean proves bounded output words "
+        "and zero carry when an exact pass total fits in eleven words. "
+        "Proving that capacity bound for each scalar prefix and identifying "
+        "the returned words remain open; the "
         "fallback remains to be composed with the four-corner theorem; the finite "
         "11,023-orbit census also lacks a Lean cardinality theorem. The exact exit "
         "criteria are in problems/prime-j0-hex-terminal-formal-coverage.md."))
