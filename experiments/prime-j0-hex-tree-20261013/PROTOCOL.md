@@ -17,22 +17,25 @@ by `a,b`; the index is
 `C(a+b+c+2,3) + a*(a+b+c+1) - a*(a-1)/2 + b`.
 
 Each 48-byte record contains fifteen three-byte `(i,j,gauge)` join slots,
-followed by used-step count, unit-rotation count, and product depth. The
+followed by used-step count, unit-rotation count, and weighted join-path score. The
 active-node list starts with `a` gauge-zero leaves, then `b` gauge-one and
 `c` gauge-two leaves. At a join, remove `j` then `i`, append the parent, and
 apply a final rotation if the root gauge is not zero. `make_plans.py`
 generates and independently replays every record. The table is 46,512
 bytes; a runtime implementation must count these retained bytes.
 
-The planner minimizes `(product dependency depth, products plus rotations,
+The planner minimizes `(weighted join-path score, products plus rotations,
 gauge, i, j)` at each join. Its ordinary-path product charges match the
 existing native formulas: affine/affine 6, affine/projective 10, and
 projective/projective 14. A gauge change costs one field product in this
 model. The serial reference charges 10 products per mixed addition after
 the first selected point and one per gauge rotation. The first point and
 the final affine recovery are common boundaries and excluded from these
-two model totals. The depth model counts the longest product-dependency
-chain; it is not a wall-time prediction. Exceptional point branches,
+two model totals. The score takes the longest tree path after charging each
+join its entire 6, 10, or 14 Solinas kernel calls and each gauge rotation one
+call. It does not expand individual formula dependencies, so the stored
+`product_depth` field is a weighted join-path score, not a field-operation
+critical path or wall-time prediction. Exceptional point branches,
 recoding, table access, plan lookup, and memory effects require native
 measurement.
 
