@@ -47,4 +47,9 @@ python3 experiments/prime-j0-hex-dag-pareto-20261013/make_plans.py
 python3 experiments/prime-j0-hex-dag-pareto-20261013/check.py \
   experiments/prime-j0-hex-workdepth-20261013/holdout.json \
   experiments/prime-j0-hex-dag-pareto-20261013/calibration-native.jsonl
+python3 experiments/prime-j0-hex-dag-pareto-20261013/holdout.py --check
+python3 experiments/prime-j0-hex-dag-pareto-20261013/check.py \
+  experiments/prime-j0-hex-dag-pareto-20261013/holdout.json \
+  experiments/prime-j0-hex-dag-pareto-20261013/holdout-native.jsonl
+python3 experiments/prime-j0-hex-dag-pareto-20261013/check_opcount.py
 ```
