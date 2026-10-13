@@ -44,3 +44,21 @@ python3 experiments/prime-j0-hex-workdepth-20261013/check.py \
   experiments/prime-j0-hex-workdepth-20261013/calibration-native.jsonl \
   experiments/prime-j0-hex-workdepth-20261013/calibration-receipt.json
 ```
+
+The source, plan table, native build, and calibration evidence were frozen
+at `89761521a9f7bb3ff93b5f7a169200c1331c53a0`. `holdout.py` derives
+its seed from that commit and excludes the design and prior panels. The
+fresh fixture is `holdout.json`; the three raw native output streams are
+`holdout-serial.jsonl`, `holdout-greedy.jsonl`, and `holdout-native.jsonl`.
+`compare.py` checks every row against the independently generated point,
+compares addition and rotation counts, and reconstructs both tree model
+totals. Replay the frozen result with:
+
+```sh
+python3 experiments/prime-j0-hex-workdepth-20261013/holdout.py --check
+python3 experiments/prime-j0-hex-workdepth-20261013/check.py \
+  experiments/prime-j0-hex-workdepth-20261013/holdout.json \
+  experiments/prime-j0-hex-workdepth-20261013/holdout-native.jsonl \
+  experiments/prime-j0-hex-workdepth-20261013/holdout-receipt.json
+python3 experiments/prime-j0-hex-workdepth-20261013/compare.py
+```
