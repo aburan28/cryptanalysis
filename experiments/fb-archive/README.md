@@ -58,9 +58,9 @@ receipt. The expanded points are not materialized in the archive.
 
 ## N83 `a=1` compact-orbit bases
 
-`compact_orbit_base_archive.py` archives the exact K600, K800, and K899 factor bases
+`compact_orbit_base_archive.py` archives the exact K600, K800, K899, and K900 factor bases
 used by the nested compact-orbit IC experiments. Each entry stores its full
-sorted set of 99,600, 132,800, or 149,234 decimal-encoded subgroup points, the exact
+sorted set of 99,600, 132,800, 149,234, or 149,400 decimal-encoded subgroup points, the exact
 candidate `factor_base` record, field and curve records, column
 representatives, and hashes of the ordered base dump and independent
 full-base replay. The compressed payloads use the existing Git chunk format
@@ -73,7 +73,7 @@ python3 experiments/fb-archive/compact_orbit_base_archive.py
 python3 experiments/fb-archive/compact_orbit_base_archive.py --verify-only
 ```
 
-The focused verify-only command checks all three archives against the committed
+The focused verify-only command checks all four archives against the committed
 source point sets and index rows. The repository-wide `fbarchive.py verify`
 currently reports three older unindexed archive files outside this family.
 
