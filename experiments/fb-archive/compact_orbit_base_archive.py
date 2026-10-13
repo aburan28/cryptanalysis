@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Archive the exact N83 K600/K800 compact-orbit point sets cited by IC1."""
+"""Archive the exact N83 K600/K800/K899 compact-orbit point sets cited by IC1."""
 
 import hashlib
 import argparse
@@ -10,6 +10,7 @@ import fbarchive
 
 ROOT = Path(__file__).resolve().parents[2]
 EXP = ROOT / 'experiments/n83-compact-orbit-size-sweep-20261012'
+EXP_K899 = ROOT / 'experiments/n83-compact-orbit-k899-20261012'
 
 
 def sha(path):
@@ -17,9 +18,10 @@ def sha(path):
 
 
 def build_doc(k):
-    candidate_path = EXP / f'candidate_K{k}.json'
-    base_path = EXP / 'runs' / f'K{k}' / 'base.jsonl'
-    replay_path = EXP / 'full_base_replay.json'
+    source = EXP_K899 if k == 899 else EXP
+    candidate_path = source / f'candidate_K{k}.json'
+    base_path = source / 'runs' / f'K{k}' / 'base.jsonl'
+    replay_path = source / 'full_base_replay.json'
     candidate = json.loads(candidate_path.read_text())
     base = json.loads(base_path.read_text())
     replay = json.loads(replay_path.read_text())
@@ -73,7 +75,7 @@ def main():
     parser.add_argument('--verify-only', action='store_true')
     args = parser.parse_args()
     preserve_crlf = b'\r\n' in fbarchive.INDEX.read_bytes()
-    for k in (600, 800):
+    for k in (600, 800, 899):
         doc = build_doc(k)
         if args.verify_only:
             matching = [row for row in fbarchive.read_index()

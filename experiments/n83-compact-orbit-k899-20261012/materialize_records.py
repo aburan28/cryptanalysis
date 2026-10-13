@@ -7,6 +7,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 PRIOR = HERE.parent / 'n83-compact-orbit-size-sweep-20261012'
+BUILD_PROVENANCE = HERE.parent / 'n83-compact-orbit-k900-20261012/build_provenance.json'
 R = 8569786107849059
 H = 1128547018
 N = 83
@@ -45,6 +46,11 @@ def main():
     assert verification['checks']['K800_answer']
     hardware = json.loads((HERE / 'hardware.json').read_text())
     assert hardware['gpu']['measurement_class'] == 'cpu_only_secondary_control'
+    provenance = json.loads(BUILD_PROVENANCE.read_text())
+    assert provenance['byte_identical'] is True
+    manifest = json.loads((HERE / 'binary_manifest.json').read_text())
+    assert provenance['executed_binary_sha256'] == {
+        'ic': manifest['ic_sha256'], 'rho': manifest['rho_sha256']}
     assert sha(HERE / 'runs/K800/base.jsonl') == sha(PRIOR / 'runs/K800/base.jsonl')
     full_base_replay = json.loads((PRIOR / 'full_base_replay.json').read_text())
     assert full_base_replay['status'] == 'PASS'
@@ -185,6 +191,7 @@ def main():
             'host_tier': 'local_shared_exploratory',
             'gpu': hardware['gpu'],
             'hardware_receipt_sha256': sha(HERE / 'hardware.json'),
+            'source_build_receipt_sha256': sha(BUILD_PROVENANCE),
             'correctness_receipt_sha256': sha(HERE / 'verification.json'),
             'full_base_replay_sha256': sha((PRIOR if k == 800 else HERE) / 'full_base_replay.json'),
         })

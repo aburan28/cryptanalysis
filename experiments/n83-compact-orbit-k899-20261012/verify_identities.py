@@ -9,6 +9,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 PRIOR = HERE.parent / 'n83-compact-orbit-size-sweep-20261012'
 ARCHIVE = HERE.parent / 'fb-archive'
+BUILD_PROVENANCE = HERE.parent / 'n83-compact-orbit-k900-20261012/build_provenance.json'
 
 
 def digest(value):
@@ -33,6 +34,11 @@ def main():
     assert hardware['gpu']['measurement_class'] == 'cpu_only_secondary_control'
     assert hardware['execution']['protocol_sha256'] == sha(HERE / 'protocol.json')
     assert hardware['execution']['binary_manifest_sha256'] == sha(HERE / 'binary_manifest.json')
+    provenance = json.loads(BUILD_PROVENANCE.read_text())
+    binaries = json.loads((HERE / 'binary_manifest.json').read_text())
+    assert provenance['byte_identical'] is True
+    assert provenance['executed_binary_sha256'] == provenance['rebuilt_binary_sha256'] == {
+        'ic': binaries['ic_sha256'], 'rho': binaries['rho_sha256']}
     for name, value in hardware['execution']['arm_execution_sha256'].items():
         assert value == sha(HERE / 'runs' / name / 'execution.json')
     identities = json.loads((HERE / 'identity_bindings.json').read_text())
@@ -62,6 +68,8 @@ def main():
         assert row['run_id'] == f'{candidate_id}W{workload_id}R1'
         assert row['actual_factor_base_points'] == 166 * k
         assert row['hardware_receipt_sha256'] == sha(hardware_path)
+        assert row['source_build_receipt_sha256'] == sha(BUILD_PROVENANCE)
+        assert row['gpu'] == hardware['gpu']
         assert row['correctness_receipt_sha256'] == sha(HERE / 'verification.json')
         replay_path = (PRIOR if k == 800 else HERE) / 'full_base_replay.json'
         replay = json.loads(replay_path.read_text())

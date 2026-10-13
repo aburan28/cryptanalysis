@@ -2,6 +2,7 @@
 """Replay every new K899 base point and label independently."""
 
 import hashlib
+import argparse
 import importlib.util
 import json
 import os
@@ -24,6 +25,9 @@ def pair(row):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--verify-only', action='store_true')
+    args = parser.parse_args()
     spec = importlib.util.spec_from_file_location('n83_base_replay_arithmetic', ARITHMETIC)
     arithmetic = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(arithmetic)
@@ -71,9 +75,17 @@ def main():
     receipt = {'status': 'PASS', 'scope': 'all dumped points, labels, subgroup reps, and orbit closure',
                'independent_arithmetic_sha256': sha(ARITHMETIC),
                'records': records, 'elapsed_s': time.monotonic() - started}
-    with (HERE / 'full_base_replay.json').open('x') as out:
-        json.dump(receipt, out, indent=2, sort_keys=True)
-        out.write('\n')
+    receipt_path = HERE / 'full_base_replay.json'
+    if args.verify_only:
+        frozen = json.loads(receipt_path.read_text())
+        assert frozen['status'] == receipt['status']
+        assert frozen['scope'] == receipt['scope']
+        assert frozen['independent_arithmetic_sha256'] == receipt['independent_arithmetic_sha256']
+        assert frozen['records'] == receipt['records']
+    else:
+        with receipt_path.open('x') as out:
+            json.dump(receipt, out, indent=2, sort_keys=True)
+            out.write('\n')
     print(json.dumps({'status': receipt['status'], 'records': records,
                       'elapsed_s': receipt['elapsed_s']}))
 
