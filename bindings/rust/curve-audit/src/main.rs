@@ -9,7 +9,7 @@ use num_bigint::BigUint;
 use num_traits::{One, ToPrimitive, Zero};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::{collections::HashSet, env, fs, process};
+use std::{collections::HashSet, env, fs, io::Read, process};
 
 const CRITERIA: &str = include_str!("../catalog/criteria.json");
 const ATTACK_MAP: &str = include_str!("../catalog/attack_map.json");
@@ -74,11 +74,20 @@ fn factor_json(n: &BigUint) -> Value {
         "remaining_cofactor":number(&remainder),"complete":complete,"trial_division_limit":10_000})
 }
 
-fn graph_lookup(path: &str, atlas_id: Option<&str>) -> Result<Value, String> {
-    let bytes = fs::read(path).map_err(|e| format!("cannot read graph: {e}"))?;
-    if bytes.len() > 25_000_000 {
-        return Err("graph exceeds 25 MiB".into());
+fn read_limited(path: &str, max_bytes: u64, label: &str) -> Result<Vec<u8>, String> {
+    let file = fs::File::open(path).map_err(|e| format!("cannot read {label}: {e}"))?;
+    let mut bytes = Vec::new();
+    file.take(max_bytes + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("cannot read {label}: {e}"))?;
+    if bytes.len() as u64 > max_bytes {
+        return Err(format!("{label} exceeds {max_bytes} bytes"));
     }
+    Ok(bytes)
+}
+
+fn graph_lookup(path: &str, atlas_id: Option<&str>) -> Result<Value, String> {
+    let bytes = read_limited(path, 25_000_000, "graph")?;
     let graph: Value =
         serde_json::from_slice(&bytes).map_err(|e| format!("invalid graph JSON: {e}"))?;
     let nodes = graph["nodes"].as_array().ok_or("graph.nodes missing")?;
@@ -452,7 +461,7 @@ fn run() -> Result<Value, String> {
         return Err("--point-count-limit cannot exceed 1000000".into());
     }
     let path = input_path.ok_or("--input is required")?;
-    let bytes = fs::read(path).map_err(|e| format!("cannot read input: {e}"))?;
+    let bytes = read_limited(path, 1_000_000, "input")?;
     let hash = sha256(&bytes);
     audit(input::parse(&bytes)?, hash, max_k, count_limit, graph)
 }
