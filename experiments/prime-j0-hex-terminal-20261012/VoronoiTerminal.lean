@@ -598,6 +598,66 @@ theorem schoolbook_outer_at_length (B a : Int)
     List.length_take, List.length_drop]
   omega
 
+theorem schoolbook_outer_at_no_carry (B a : Int)
+    (words reciprocal : List Int) (offset : Nat)
+    (hB : 0 < B)
+    (hlen : offset + reciprocal.length ≤ words.length)
+    (hcarry : (schoolbookOuterAt B a words reciprocal offset).2 = 0) :
+    wordValue B (schoolbookOuterAt B a words reciprocal offset).1 =
+      wordValue B words + a * B^offset * wordValue B reciprocal := by
+  have h := schoolbook_outer_at_value B a words reciprocal offset hB hlen
+  dsimp at h
+  rw [hcarry] at h
+  simpa using h
+
+theorem word_value_replicate_zero (B : Int) (n : Nat) :
+    wordValue B (List.replicate n 0) = 0 := by
+  induction n with
+  | zero => simp [wordValue]
+  | succ n ih => simp [List.replicate, wordValue, ih]
+
+-- Four native scalar words, at offsets 0, 1, 2, and 3, compose into the
+-- exact product as soon as each pass is shown to stay within eleven words.
+theorem four_scalar_word_product (B a0 a1 a2 a3 : Int)
+    (reciprocal : List Int) (hB : 0 < B)
+    (hrec : reciprocal.length = 7) :
+    let z := List.replicate 11 (0 : Int)
+    let p0 := schoolbookOuterAt B a0 z reciprocal 0
+    let p1 := schoolbookOuterAt B a1 p0.1 reciprocal 1
+    let p2 := schoolbookOuterAt B a2 p1.1 reciprocal 2
+    let p3 := schoolbookOuterAt B a3 p2.1 reciprocal 3
+    p0.2 = 0 → p1.2 = 0 → p2.2 = 0 → p3.2 = 0 →
+    wordValue B p3.1 =
+      (a0 + B*a1 + B^2*a2 + B^3*a3) * wordValue B reciprocal := by
+  intro z p0 p1 p2 p3 hc0 hc1 hc2 hc3
+  have hz : z.length = 11 := by simp [z]
+  have hp0 : p0.1.length = 11 := by
+    rw [show p0 = schoolbookOuterAt B a0 z reciprocal 0 from rfl]
+    rw [schoolbook_outer_at_length B a0 z reciprocal 0 (by omega)]
+    exact hz
+  have hp1 : p1.1.length = 11 := by
+    rw [show p1 = schoolbookOuterAt B a1 p0.1 reciprocal 1 from rfl]
+    rw [schoolbook_outer_at_length B a1 p0.1 reciprocal 1 (by omega)]
+    exact hp0
+  have hp2 : p2.1.length = 11 := by
+    rw [show p2 = schoolbookOuterAt B a2 p1.1 reciprocal 2 from rfl]
+    rw [schoolbook_outer_at_length B a2 p1.1 reciprocal 2 (by omega)]
+    exact hp1
+  have he0 := schoolbook_outer_at_no_carry B a0 z reciprocal 0 hB
+    (by omega) hc0
+  have he1 := schoolbook_outer_at_no_carry B a1 p0.1 reciprocal 1 hB
+    (by omega) hc1
+  have he2 := schoolbook_outer_at_no_carry B a2 p1.1 reciprocal 2 hB
+    (by omega) hc2
+  have he3 := schoolbook_outer_at_no_carry B a3 p2.1 reciprocal 3 hB
+    (by omega) hc3
+  change wordValue B p0.1 = _ at he0
+  change wordValue B p1.1 = _ at he1
+  change wordValue B p2.1 = _ at he2
+  change wordValue B p3.1 = _ at he3
+  rw [he3, he2, he1, he0]
+  simp [z, wordValue] <;> grind +ring
+
 -- A floor reciprocal R, its exact product limbs, and k smaller than one
 -- fractional limb imply a two-unit enclosure of the true scaled coordinate.
 -- Here B = 2^64 and L = 2^448 in the native 512-bit product.
@@ -920,6 +980,9 @@ theorem recoded_terminal_in_domain (start top : Pair) (digits : List Pair)
 #print axioms shifted_schoolbook_pass_value
 #print axioms schoolbook_outer_at_value
 #print axioms schoolbook_outer_at_length
+#print axioms schoolbook_outer_at_no_carry
+#print axioms word_value_replicate_zero
+#print axioms four_scalar_word_product
 #print axioms reciprocal_high_fraction_interval
 #print axioms fraction_limb_score_intervals
 #print axioms strictly_separated_interval_certifies_minimum

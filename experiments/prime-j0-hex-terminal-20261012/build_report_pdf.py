@@ -131,9 +131,10 @@ def build(output: Path) -> None:
         "the floor inequalities and the reduced-scalar range; check.py matches all "
         "fourteen words to the Rust source. Lean also checks exact-product "
         "extraction, bounded carry propagation, and an indexed outer pass "
-        "over the native offset and reciprocal-sized array slice. Four-pass "
-        "composition, overflow exclusion, and returned-word identification "
-        "remain open; the "
+        "over the native offset and reciprocal-sized array slice. Four such "
+        "passes compose into the exact scalar-times-reciprocal product when "
+        "each pass has zero final carry. Proving those carries vanish and "
+        "identifying the returned words remain open; the "
         "fallback remains to be composed with the four-corner theorem; the finite "
         "11,023-orbit census also lacks a Lean cardinality theorem. The exact exit "
         "criteria are in problems/prime-j0-hex-terminal-formal-coverage.md."))

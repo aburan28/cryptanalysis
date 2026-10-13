@@ -65,7 +65,8 @@ rebuild the actual modules and audit every listed declaration with
 | A modeled inner pass over reciprocal words preserves the full weighted value and 64-bit bounds | `schoolbook_pass_value`, `schoolbook_pass_bounds` | Checked for an arbitrary finite word list; native array/outer-loop link open |
 | Carry propagation preserves weighted value and word bounds; zero carry leaves trailing words unchanged | `carry_pass_value`, `carry_pass_zero`, `carry_pass_bounds` | Checked for an arbitrary finite trailing list |
 | A complete modeled pass preserves length and word bounds and adds one shifted scalar-word multiple of the reciprocal | `schoolbook_whole_pass_value`, `schoolbook_whole_pass_length`, `schoolbook_whole_pass_bounds`, `shifted_schoolbook_pass_value` | Checked for arbitrary prefix, reciprocal-word list, and suffix; native four-iteration array mapping open |
-| Indexing an eleven-word product array by a scalar-word offset selects the reciprocal-sized slice and preserves exact weighted value and array length | `schoolbook_outer_at_value`, `schoolbook_outer_at_length` | Checked for any offset whose reciprocal-sized slice fits; four-pass composition and overflow exclusion open |
+| Indexing an eleven-word product array by a scalar-word offset selects the reciprocal-sized slice and preserves exact weighted value and array length | `schoolbook_outer_at_value`, `schoolbook_outer_at_length` | Checked for any offset whose reciprocal-sized slice fits; overflow exclusion open |
+| Four indexed passes at offsets 0 through 3 compose into the four-word scalar times the seven-word reciprocal | `four_scalar_word_product` | Checked conditional on zero carry after each pass; proving zero carry from the fixed-width bounds remains open |
 | Floor-reciprocal bound and exact product limbs enclose the true scaled cell coordinate within two high-fraction units | `reciprocal_high_fraction_interval` | Checked, conditional on the reciprocal bound and product decomposition |
 | Two-unit high-fraction uncertainty gives the classifier score ranges; strict separation certifies a minimum | `fraction_limb_score_intervals`, `strictly_separated_interval_certifies_minimum` | Checked, conditional on the limb interval |
 | Cauchy identity and digit support | `inner_cauchy_identity`, `digit_inner_bound`, `support_certificate` | Checked |
@@ -108,6 +109,8 @@ shifted-pass theorems compose these operations and retain the weighted-value,
 length, and word-bound invariants for one outer iteration. `schoolbookOuterAt`
 uses the native `take`/`drop` offset and reciprocal-sized `zip` slice, and its
 checked theorem proves one indexed pass adds the exact positional product
-while retaining the eleven-word array length. Composition of the four passes,
-exclusion of final overflow carry, and identification of returned high-word
-indices with the exact quotient and fractional word remain open.
+while retaining the eleven-word array length. `four_scalar_word_product`
+composes the exact increments for all four offsets into `k·R`; its four
+zero-carry hypotheses still need to follow from the 64-bit word bounds and
+the product's eleven-word capacity. Identification of returned high-word
+indices with the exact quotient and fractional word remains open.
