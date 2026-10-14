@@ -151,17 +151,23 @@ static inline uint64_t coef_mod(int64_t v, uint64_t q)
     return m ? q - m : 0;
 }
 
+/* sum a[i] b[i] (mod q): products below 2^128 are summed exactly in three
+ * words and reduced once, instead of a 128-bit % every fourth term. */
+/* sum a[i] b[i] (mod q): products below 2^128 are summed exactly in three
+ * words and reduced once at the end, instead of a 128-bit % every fourth
+ * term. */
 static inline uint64_t vdot(const uint64_t *a, const uint64_t *b, uint32_t n, uint64_t q)
 {
-    /* each product < 2^128; four of them fit in 128 bits only if q < 2^62 */
     ca_u128 acc = 0;
-    uint64_t r = 0;
-    uint32_t chunk_mask = (q >> 62) ? 0u : 3u;
+    uint64_t top = 0;
     for (uint32_t i = 0; i < n; i++) {
-        acc += (ca_u128)a[i] * b[i];
-        if ((i & chunk_mask) == chunk_mask || i + 1 == n) { r = ca_addmod(r, (uint64_t)(acc % q), q); acc = 0; }
+        ca_u128 p = (ca_u128)a[i] * b[i];
+        acc += p;
+        top += acc < p;
     }
-    return r;
+    ca_u128 r = top % q;
+    r = ((r << 64) | (uint64_t)(acc >> 64)) % q;
+    return (uint64_t)(((r << 64) | (uint64_t)acc) % q);
 }
 
 /* v mod q for a signed 128-bit v, canonical. */
@@ -172,39 +178,150 @@ static inline uint64_t i128_mod(ca_i128 v, uint64_t q)
     return m ? q - m : 0;
 }
 
-/* y = A v (mod q) with one signed 128-bit accumulator per row: each term is
- * below 2^31 * 2^64 = 2^95 in size, so 2^31 of them cannot overflow, and a
- * row is flushed every 2^30 terms regardless.  (A v) mod q is what the old
- * positive/negative pair of accumulators computed, without its
- * data-dependent branch and with one reduction a row instead of two. */
-static void spmv(const ca_spmat *A, const uint64_t *v, uint64_t *y, uint64_t q)
+/* x mod q for a signed 64-bit x, canonical. */
+static inline uint64_t i64_mod(int64_t x, uint64_t q)
 {
+    if (x >= 0) return (uint64_t)x % q;
+    uint64_t m = ((uint64_t)0 - (uint64_t)x) % q;
+    return m ? q - m : 0;
+}
+
+/* How y = A v (mod q) may accumulate a row, decided once per matrix:
+ *   SPMV_I64   every partial row sum fits an int64_t (max|a| * (q-1) * the
+ *              longest row < 2^63): one 64-bit multiply-add a term;
+ *   SPMV_I128S q < 2^63, so each v fits an int64_t: one signed 64x64->128
+ *              multiply a term into a 128-bit accumulator;
+ *   SPMV_I128U anything else: 128x128 products.
+ * All three compute the exact integer row sum, so the residue is the same. */
+enum { SPMV_I64, SPMV_I128S, SPMV_I128U };
+
+static uint64_t spmat_maxabs(const ca_spmat *A)
+{
+    uint64_t maxabs = 0;
+    for (uint32_t k = 0; k < A->nnz; k++) {
+        int64_t v = A->val[k];
+        uint64_t a = (uint64_t)(v < 0 ? -v : v);
+        if (a > maxabs) maxabs = a;
+    }
+    return maxabs;
+}
+
+/* The accumulator for sums of at most MAXLEN terms a * v, |a| <= MAXABS,
+ * 0 <= v < q. */
+static int sum_mode(uint64_t maxabs, uint64_t maxlen, uint64_t q)
+{
+    ca_u128 bound = (ca_u128)maxabs * (q - 1);
+    if ((bound >> 64) == 0 && (ca_u128)(uint64_t)bound * maxlen < ((ca_u128)1 << 63)) return SPMV_I64;
+    return q < ((uint64_t)1 << 63) ? SPMV_I128S : SPMV_I128U;
+}
+
+/* for A v: the sums run along rows */
+static int spmv_mode(const ca_spmat *A, uint64_t q)
+{
+    uint32_t maxlen = 0;
     for (uint32_t i = 0; i < A->rows; i++) {
+        uint32_t len = A->row_ptr[i + 1] - A->row_ptr[i];
+        if (len > maxlen) maxlen = len;
+    }
+    return sum_mode(spmat_maxabs(A), maxlen, q);
+}
+
+/* for A^T w: the sums run down columns */
+static int spmtv_mode(const ca_spmat *A, uint64_t q)
+{
+    uint32_t *colw = calloc(A->cols ? A->cols : 1, sizeof(uint32_t));
+    if (!colw) return q < ((uint64_t)1 << 63) ? SPMV_I128S : SPMV_I128U;
+    uint32_t maxlen = 0;
+    for (uint32_t k = 0; k < A->nnz; k++) {
+        uint32_t c = ++colw[A->col[k]];
+        if (c > maxlen) maxlen = c;
+    }
+    free(colw);
+    return sum_mode(spmat_maxabs(A), maxlen, q);
+}
+
+/* y = A v (mod q).  In the 128-bit modes each term is below 2^31 * 2^64 =
+ * 2^95 in size, so 2^31 of them cannot overflow, and a row is flushed every
+ * 2^30 terms regardless.  One reduction a row. */
+static inline void spmv_impl(const ca_spmat *A, const uint64_t *v, uint64_t *y, uint64_t q,
+                             int mode)
+{
+    const uint32_t *rp = A->row_ptr, *col = A->col;
+    const int32_t *val = A->val;
+    for (uint32_t i = 0; i < A->rows; i++) {
+        uint32_t k = rp[i], end = rp[i + 1];
+        if (mode == SPMV_I64) {
+            int64_t acc = 0;
+            for (; k < end; k++) acc += (int64_t)val[k] * (int64_t)v[col[k]];
+            y[i] = i64_mod(acc, q);
+            continue;
+        }
         ca_i128 acc = 0;
-        uint32_t cnt = 0;
         uint64_t r = 0;
-        for (uint32_t k = A->row_ptr[i]; k < A->row_ptr[i + 1]; k++) {
-            acc += (ca_i128)A->val[k] * (ca_i128)v[A->col[k]];
-            if (++cnt == 1u << 30) { /* never in practice */
+        while (k < end) {
+            uint32_t stop = end - k > (1u << 30) ? k + (1u << 30) : end;
+            if (mode == SPMV_I128S) {
+                /* two accumulators: long (transposed) rows otherwise wait
+                 * on one add/adc chain */
+                ca_i128 acc2 = 0;
+                for (; k + 1 < stop; k += 2) {
+                    acc += (ca_i128)(int64_t)val[k] * (int64_t)v[col[k]];
+                    acc2 += (ca_i128)(int64_t)val[k + 1] * (int64_t)v[col[k + 1]];
+                }
+                if (k < stop) { acc += (ca_i128)(int64_t)val[k] * (int64_t)v[col[k]]; k++; }
+                acc += acc2;
+            } else {
+                for (; k < stop; k++) acc += (ca_i128)val[k] * (ca_i128)v[col[k]];
+            }
+            if (k < end) {
                 r = ca_addmod(r, i128_mod(acc, q), q);
                 acc = 0;
-                cnt = 0;
             }
         }
         y[i] = ca_addmod(r, i128_mod(acc, q), q);
     }
 }
 
-/* z = A^T w (mod q), one signed 128-bit accumulator per column: terms
- * are below 2^95 in size, so up to 2^31 rows fit. */
-static void spmtv(const ca_spmat *A, const uint64_t *w, uint64_t *z, uint64_t q, ca_i128 *acc)
+static void spmv(const ca_spmat *A, const uint64_t *v, uint64_t *y, uint64_t q, int mode)
 {
+    switch (mode) {
+    case SPMV_I64: spmv_impl(A, v, y, q, SPMV_I64); break;
+    case SPMV_I128S: spmv_impl(A, v, y, q, SPMV_I128S); break;
+    default: spmv_impl(A, v, y, q, SPMV_I128U); break;
+    }
+}
+
+/* z = A^T w (mod q) by scattering each row into per-column accumulators.
+ * MODE as for spmv, decided on A^T (column length bounds the sums).
+ * acc must hold A->cols ca_i128. */
+static void spmtv(const ca_spmat *A, const uint64_t *w, uint64_t *z, uint64_t q, int mode,
+                  void *accbuf)
+{
+    const uint32_t *rp = A->row_ptr, *col = A->col;
+    const int32_t *val = A->val;
+    if (mode == SPMV_I64) {
+        int64_t *acc = accbuf;
+        memset(acc, 0, A->cols * sizeof(int64_t));
+        for (uint32_t i = 0; i < A->rows; i++) {
+            int64_t wi = (int64_t)w[i];
+            if (!wi) continue;
+            for (uint32_t k = rp[i]; k < rp[i + 1]; k++) acc[col[k]] += (int64_t)val[k] * wi;
+        }
+        for (uint32_t j = 0; j < A->cols; j++) z[j] = i64_mod(acc[j], q);
+        return;
+    }
+    ca_i128 *acc = accbuf;
     memset(acc, 0, A->cols * sizeof(ca_i128));
     for (uint32_t i = 0; i < A->rows; i++) {
         uint64_t wi = w[i];
         if (!wi) continue;
-        for (uint32_t k = A->row_ptr[i]; k < A->row_ptr[i + 1]; k++)
-            acc[A->col[k]] += (ca_i128)A->val[k] * (ca_i128)wi;
+        if (mode == SPMV_I128S) {
+            for (uint32_t k = rp[i]; k < rp[i + 1]; k++)
+                acc[col[k]] += (ca_i128)(int64_t)val[k] * (int64_t)wi;
+        } else {
+            for (uint32_t k = rp[i]; k < rp[i + 1]; k++)
+                acc[col[k]] += (ca_i128)val[k] * (ca_i128)wi;
+        }
     }
     for (uint32_t j = 0; j < A->cols; j++) z[j] = i128_mod(acc[j], q);
 }
@@ -226,18 +343,23 @@ static ca_status lanczos(const ca_spmat *A, const uint64_t *b, uint64_t q, uint6
     uint64_t *w1 = calloc(n, sizeof(uint64_t));
     uint64_t *w2 = calloc(n, sizeof(uint64_t));
     uint64_t *Bw = calloc(n, sizeof(uint64_t));
-    ca_i128 *acc = malloc(n * sizeof(ca_i128));
+    void *accbuf = NULL;
+    const int mode_a = spmv_mode(A, q);
+    int mode_t = SPMV_I128U;
     ca_status rc = CA_ERR_SINGULAR;
-    if (!D || !Dp || !tmp_m || !bp || !w0 || !w1 || !w2 || !Bw || !acc) {
+    if (!D || !Dp || !tmp_m || !bp || !w0 || !w1 || !w2 || !Bw) {
         rc = CA_ERR_NOMEM;
         goto out;
     }
+    mode_t = spmtv_mode(A, q);
+    accbuf = malloc((n ? n : 1) * sizeof(ca_i128));
+    if (!accbuf) { rc = CA_ERR_NOMEM; goto out; }
     for (uint32_t i = 0; i < m; i++) {
         D[i] = 1 + ca_rng_below(rng, q - 1);
         Dp[i] = shoup ? shoup_pre(D[i], q) : 0;
     }
     for (uint32_t i = 0; i < m; i++) tmp_m[i] = ca_mulmod(D[i], b[i] % q, q);
-    spmtv(A, tmp_m, bp, q, acc);
+    spmtv(A, tmp_m, bp, q, mode_t, accbuf);
     memset(x, 0, n * sizeof(uint64_t));
     /* w_prev = w0 (i-1), w_cur = w1 (i) */
     uint64_t *w_prev = w0, *w_cur = w1, *w_next = w2;
@@ -246,13 +368,13 @@ static ca_status lanczos(const ca_spmat *A, const uint64_t *b, uint64_t q, uint6
     uint32_t it = 0;
     for (it = 0; it < n + 8; it++) {
         /* Bw = A^T D A w_cur */
-        spmv(A, w_cur, tmp_m, q);
+        spmv(A, w_cur, tmp_m, q, mode_a);
         if (shoup) {
             for (uint32_t i = 0; i < m; i++) tmp_m[i] = shoup_mul(tmp_m[i], D[i], Dp[i], q);
         } else {
             for (uint32_t i = 0; i < m; i++) tmp_m[i] = ca_mulmod(tmp_m[i], D[i], q);
         }
-        spmtv(A, tmp_m, Bw, q, acc);
+        spmtv(A, tmp_m, Bw, q, mode_t, accbuf);
         uint64_t wBw = vdot(w_cur, Bw, n, q);
         int zero = 1;
         for (uint32_t j = 0; j < n; j++) if (w_cur[j]) { zero = 0; break; }
@@ -289,7 +411,7 @@ static ca_status lanczos(const ca_spmat *A, const uint64_t *b, uint64_t q, uint6
     }
     if (rc == CA_OK) {
         /* verify A x == b */
-        spmv(A, x, tmp_m, q);
+        spmv(A, x, tmp_m, q, mode_a);
         for (uint32_t i = 0; i < m; i++) {
             if (tmp_m[i] != b[i] % q) { rc = CA_ERR_SINGULAR; break; }
         }
@@ -304,7 +426,7 @@ out:
     free(w1);
     free(w2);
     free(Bw);
-    free(acc);
+    free(accbuf);
     return rc;
 }
 
