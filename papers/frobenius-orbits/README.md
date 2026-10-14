@@ -8,8 +8,11 @@ phase `k` from the decomposition stage to the relation matrix, and benchmarks
 of what survives complete relation collection. It is framed as an
 algorithmic/engineering paper with proofs and reproducible measurements. It
 claims no ECDLP attack, no asymptotic statement, and no end-to-end advance over
-Pollard rho; every end-to-end row is slower than the matched signed-Frobenius
-rho and says so.
+Pollard rho. Every row that charges the index calculus's setup is slower than
+the matched signed-Frobenius rho. The isolated single-target rows where it is
+faster *online* (8.8–17.5× at r ≤ 2^47, 12.9–13.9× at n = 61) exclude that
+setup, and a Bernstein–Lange walk given the same precomputation is modelled to
+be 2–8× faster still (§7).
 
 **Status**: research draft, not peer-reviewed, not submitted, not posted.
 Anonymized for double-blind review; restore authors with `make deanonymize`
@@ -101,7 +104,19 @@ without TeX can open the paper.
 4. Decide whether to keep the `n = 19` Gröbner comparison as the only
    end-to-end positive row or to add a rho arm at `n = 19` so its `6.85×` is
    read against the right reference.
-5. Independent re-derivation of the numbers in Tables 1–8 from the cited
-   artefacts by someone who did not write the draft.
+5. ~~Independent re-derivation~~ — done 2026-10-14, with limited
+   independence (a separate AI agent session that did not write the draft,
+   not a human). See `review/rederivation-20261014.md`.
+   - Result: 56 MATCH, 13 MISMATCH, 3 DERIVED-ONLY, 0 UNSOURCED, in 72 rows.
+   - All 13 mismatches are corrected in this draft. Among them: the 18-byte
+     record table (2.27×, not 2.50×); the tier range (12.1–15.4× rho); the
+     n = 61 pipeline (330.7× rho, not 12–13×); and cross-experiment sentences
+     now name their experiments.
+   - The most important correction is to the claim that nothing beats rho
+     online. Isolated single-target rows at n = 41–61 show the index calculus
+     faster online with its setup excluded. §7, the abstract and §9 now give
+     both the online and the cold readings, plus the Bernstein–Lange model.
+   - Still weakly sourced: the variant C ns figures (a doc comment only) and
+     `tab:canon-cost` (a research-note table, no raw run record).
 6. Replace the `ecdlpconstant` companion citation with its ePrint number once
    it has one.
