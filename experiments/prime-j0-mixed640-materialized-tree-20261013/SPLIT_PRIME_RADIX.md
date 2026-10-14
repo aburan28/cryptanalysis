@@ -202,3 +202,38 @@ the transferred archive SHA-256 is
 All 16 invocations returned verified points, and artifacts, binaries, and
 runner stayed stable. This case gives no measured advantage for the shorter
 radix; host exclusivity was unproved.
+
+## Six-unit quotient compression
+
+The `--unit-fused` generator retains the norm-3301 base and groups its
+3,300 nonzero quotient residues into 550 orbits under the six Eisenstein
+units. Zero adds one seed. For each residue, the model records a canonical
+positive integer seed `m` and a unit code. The largest chosen `m` is 1,064;
+all six images preserve norm `m²`. Each of the 21 digit rows consequently
+stores 551 orbit seeds rather than 1,651 signed-integer entries.
+
+The native orbit point stores the three cube-root images of `x` and one
+`y`, so unit selection uses an indexed coordinate and optional sign change
+after lookup. Its digit rows hold 11,571 entries of 128 bytes each. Keeping
+the established fused terminal table and exact axis fallback gives
+**1,929,600 point payload bytes** before lookup arrays and metadata, versus
+2,667,456 point payload bytes in the fused signed-integer variant. The
+residue lookup identifies the seed, unit, digit-coordinate adjustment,
+and quotient adjustment; digit division uses one signed small radix
+division per step.
+
+`split_prime_radix.py` exhaustively covers all 3,301 residues, checks the
+maximum seed, pins the lookup digest, and reconstructs all 128 frozen
+scalar representatives. Every fixture recoding uses 22 nonzero point terms;
+the maximum observed terminal norm is 1,201. The uniform digit norm bound
+1,064² improves the written terminal estimate to
+`sqrt(N(z_21))<sqrt(n/3)/57²¹+1064/56<46`. The runtime retains the
+conservative 56-norm fused table and 663-coordinate fallback while this
+variant is tested. `SplitPrimeRadix.lean` proves norm preservation under
+the unit action, exact division for an arbitrary unit digit, and the
+numeric 46-norm and coordinate inequalities. Finite lookup coverage and
+the analytic nearest-cell bridge remain model-checked proof obligations.
+The generated native release test matched all 128 frozen points against
+independent binary multiplication locally and reported **1,950,422
+retained bytes** including the residue lookup and metadata. Its online
+cost remains to be measured against the signed-integer fused evaluator.

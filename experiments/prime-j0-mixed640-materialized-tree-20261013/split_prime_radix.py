@@ -114,6 +114,86 @@ def short_variant_screen(cases: list[dict], screen, initial_bound: int) -> dict:
     }
 
 
+def unit_variant_screen(cases: list[dict], screen,
+                        initial_bound: int) -> dict:
+    """Cover the split-prime quotient by six-unit orbits of integer seeds."""
+    def images(seed: int) -> list[tuple[int, int]]:
+        return [(seed, 0), (-seed, 0), (seed, -seed), (-seed, seed),
+                (-2 * seed, seed), (2 * seed, -seed)]
+
+    codes = [None] * NORM
+    codes[0] = (0, 0, 0, 0)
+    seeds = [0]
+    for seed in range(1, NORM // 2 + 1):
+        if codes[seed] is not None:
+            continue
+        index = len(seeds)
+        seeds.append(seed)
+        for unit, (da, db) in enumerate(images(seed)):
+            residue = (da + TAU_RESIDUE * db) % NORM
+            assert codes[residue] is None
+            assert norm((da, db)) == seed * seed
+            codes[residue] = (index, unit, da, db)
+    assert len(seeds) == 551 and max(seeds) == 1064
+    assert all(code is not None for code in codes)
+    assert screen.ORDER < 3 * 27**2 * 57**42
+    assert 2 * (56 * initial_bound + 1064 * 57**STEPS) < (
+        642 * 56 * 57**STEPS)
+    lut_digest = sha256()
+    for index, unit, da, db in codes:
+        for value in (index, unit, da, db):
+            lut_digest.update(value.to_bytes(4, "little", signed=True))
+
+    max_terminal_norm = 0
+    max_terminal_coords = [0, 0]
+    term_counts = Counter()
+    for case in cases:
+        scalar = int(case["scalar_hex"], 16) % screen.ORDER
+        pair = screen.representative(scalar)
+        current = pair
+        digits = []
+        for _ in range(STEPS):
+            a, b = current
+            index, unit, da, db = codes[(a + TAU_RESIDUE * b) % NORM]
+            shifted_a, shifted_b = a - da, b - db
+            k, rem = divmod(shifted_a + TAU_RESIDUE * shifted_b, NORM)
+            assert rem == 0
+            current = (23 * k - 11 * shifted_b,
+                       21 * k - 10 * shifted_b)
+            digits.append((da, db, index, unit))
+        terminal = current
+        for da, db, _, _ in reversed(digits):
+            product = multiply(PI, current)
+            current = product[0] + da, product[1] + db
+        assert current == pair
+        assert norm(terminal) < 46**2
+        max_terminal_norm = max(max_terminal_norm, norm(terminal))
+        max_terminal_coords = [max(max_terminal_coords[i], abs(terminal[i]))
+                               for i in (0, 1)]
+        term_counts[str(sum(index != 0 for _, _, index, _ in digits)
+                        + (terminal != (0, 0)))] += 1
+    digit_entries = STEPS * len(seeds)
+    axis_entries = 2 * (TERMINAL_LIMIT + 1)
+    fused_entries = sum(
+        1 for a in range(112) for b in range(-65, 66)
+        if norm((a, b)) < 56**2 and (a > 0 or b >= 0))
+    assert fused_entries == 5680
+    return {
+        "orbit_count_including_zero": len(seeds),
+        "max_seed": max(seeds),
+        "residue_lut_sha256": lut_digest.hexdigest(),
+        "steps": STEPS,
+        "digit_orbit_entries": digit_entries,
+        "axis_fallback_entries": axis_entries,
+        "fused_terminal_entries": fused_entries,
+        "point_payload_bytes": (digit_entries * 128 +
+                                (axis_entries + fused_entries) * 64),
+        "max_holdout_terminal_norm": max_terminal_norm,
+        "max_holdout_terminal_abs_coordinates": max_terminal_coords,
+        "holdout_nonzero_point_terms": dict(sorted(term_counts.items())),
+    }
+
+
 def evaluate() -> dict:
     assert norm(PI) == NORM
     assert all(NORM % d for d in range(2, isqrt(NORM) + 1))
@@ -184,6 +264,8 @@ def evaluate() -> dict:
         "holdout_nonzero_point_terms": dict(sorted(counts.items())),
         "holdout_recode_sha256": replay.hexdigest(),
         "short_variant": short_variant_screen(cases, screen, initial_magnitude_bound),
+        "unit_variant": unit_variant_screen(cases, screen,
+                                            initial_magnitude_bound),
     }
 
 

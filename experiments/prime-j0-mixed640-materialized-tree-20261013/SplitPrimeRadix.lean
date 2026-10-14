@@ -161,6 +161,52 @@ theorem short_split_step_identity (a b k : Int) :
   dsimp [add, shortPiMul]
   apply Prod.ext <;> dsimp <;> omega
 
+-- The six unit images are +/- the three powers of omega. Each keeps the
+-- Eisenstein norm, so the canonical integer seed bounds every image.
+def omegaMul (x : Coeff) : Coeff :=
+  (x.1 + 3 * x.2, -x.1 - 2 * x.2)
+
+theorem norm_omega_mul (z : Coeff) : norm (omegaMul z) = norm z := by
+  cases z with
+  | mk a b =>
+      simp only [norm, omegaMul]
+      grind
+
+theorem norm_neg (z : Coeff) : norm (-z.1, -z.2) = norm z := by
+  cases z with
+  | mk a b =>
+      simp only [norm]
+      grind
+
+theorem unit_seed_norm (m : Int) :
+    norm (m, 0) = m * m ∧
+    norm (omegaMul (m, 0)) = m * m ∧
+    norm (omegaMul (omegaMul (m, 0))) = m * m := by
+  constructor
+  · simp [norm]
+  constructor
+  · rw [norm_omega_mul]
+    simp [norm]
+  · rw [norm_omega_mul, norm_omega_mul]
+    simp [norm]
+
+theorem unit_digit_step_identity (a b da db k : Int)
+    (h : 3301 * k = (a - da) + 1576 * (b - db)) :
+    let shifted_b := b - db
+    let next : Coeff := (23 * k - 11 * shifted_b,
+                         21 * k - 10 * shifted_b)
+    add (da, db) (piMul next) = (a, b) := by
+  dsimp [add, piMul]
+  apply Prod.ext <;> dsimp <;> omega
+
+theorem unit_terminal_axis_numeric :
+    2 * (56 * 2252907023369138918423925520396307732351
+      + 1064 * 57 ^ 21) < 642 * 56 * 57 ^ 21 := by decide
+
+theorem unit_fused_terminal_numeric :
+    115792089237316195423570985008687907852837564279074904382605163141518161494337
+      < 3 * 27 ^ 2 * 57 ^ 42 := by decide
+
 #print axioms pi_norm
 #print axioms norm_pi_mul
 #print axioms coordinate_a_bound
@@ -186,5 +232,11 @@ theorem short_split_step_identity (a b k : Int) :
 #print axioms short_terminal_axis_numeric
 #print axioms short_fused_terminal_numeric
 #print axioms short_split_step_identity
+#print axioms norm_omega_mul
+#print axioms norm_neg
+#print axioms unit_seed_norm
+#print axioms unit_digit_step_identity
+#print axioms unit_terminal_axis_numeric
+#print axioms unit_fused_terminal_numeric
 
 end SplitPrimeRadix
