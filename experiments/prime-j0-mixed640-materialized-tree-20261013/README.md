@@ -94,14 +94,19 @@ exactly matching the independent integer-recoder model in
 `hybrid64-holdout-native.log`, `hybrid64-native-receipt.json`,
 `hybrid64-opcount-native.log`, and `hybrid64-opcount-receipt.json`.
 
-The next gate is a same-panel native grouped-reference count for the hybrid
-holdout and complete-operation accounting, including recoding, table lookup,
-memory traffic, and affine recovery. The earlier full-pair reference count
-uses a different holdout and is not a direct hybrid-panel comparison. The
-paired instrumented intervals cover
-group evaluation from selected points through the final projective join;
-table setup, recoding, and affine recovery are recorded separately from this
-operation count.
+The same 128-scalar hybrid holdout now has a native grouped-reference count:
+**18,304 generic field calls and 477 Solinas rotations**, with every result
+matching the independent affine oracle and binary multiplication. The hybrid
+uses **16,128 generic tree calls and 601 selected-tau Solinas rotations** on
+those same scalars. It saves 2,176 generic calls and spends 124 additional
+rotations in the instrumented group-evaluation interval. The reference
+instrumentation, executable hash, fixture hash, and raw output are retained
+in `hybrid64-reference-opcount-receipt.json` and
+`hybrid64-reference-opcount-native.log`. These counts do not establish which
+implementation is faster: complete-operation accounting still needs recoding,
+table lookup, memory traffic, and affine recovery. Table setup is separate
+from this online operation count.
+
 Compare the full operation on a host that passes the repository's isolated
 benchmark preflight before making a CPU speed claim.
 
@@ -117,7 +122,8 @@ python3 experiments/prime-j0-mixed640-materialized-tree-20261013/holdout.py --ch
 python3 experiments/prime-j0-mixed640-materialized-tree-20261013/native_opcount.py /private/tmp/mixed640-opcount-replay
 (cd /private/tmp/mixed640-opcount-replay && MIXED640_HOLDOUT=/absolute/path/to/holdout.json cargo test --offline --locked --release --bin eisenstein_fixed source_frozen_holdout_matches_independent_binary -- --nocapture)
 python3 experiments/prime-j0-mixed640-materialized-tree-20261013/native_pair_opcount.py /private/tmp/mixed640-pair-replay
-(cd /private/tmp/mixed640-pair-replay && MIXED640_HOLDOUT=/absolute/path/to/holdout.json cargo test --offline --locked --release --bin eisenstein_fixed source_frozen_holdout_matches_independent_binary -- --nocapture)
+(cd /private/tmp/mixed640-pair-replay && MIXED640_HOLDOUT=/absolute/path/to/holdout.json CARGO_TARGET_DIR=/private/tmp/mixed640-pair-target cargo test --offline --locked --release --bin eisenstein_fixed source_frozen_holdout_matches_independent_binary -- --nocapture)
+(cd /private/tmp/mixed640-pair-replay && MIXED640_HOLDOUT=/absolute/path/to/hybrid-holdout.json CARGO_TARGET_DIR=/private/tmp/mixed640-pair-target cargo test --offline --locked --release --bin eisenstein_fixed source_frozen_holdout_matches_independent_binary -- --nocapture)
 python3 experiments/prime-j0-mixed640-materialized-tree-20261013/hybrid_holdout.py --check
 python3 experiments/prime-j0-mixed640-materialized-tree-20261013/hybrid_model.py
 python3 experiments/prime-j0-mixed640-materialized-tree-20261013/native_hybrid64.py /private/tmp/mixed640-hybrid64-replay
