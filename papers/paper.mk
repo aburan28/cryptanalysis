@@ -26,8 +26,13 @@ EPRINT_ZIP    := eprint-submission.zip
 EXTRA    ?= abstract.txt README.md Makefile
 ASSETS   ?=
 
-# Copy ASSETS into a staging directory, keeping their relative paths.
-copy_assets = $(if $(strip $(ASSETS)),tar cf - $(ASSETS) | (cd $(1) && tar xf -),@true)
+# Copy the given files into a staging directory, keeping their relative
+# paths, so \input{sections/a.tex} and figures/a.pdf still resolve there.
+# Goes through a temporary archive rather than a pipe: /bin/sh reports only
+# a pipeline's last status, so a missing source would otherwise ship an
+# incomplete bundle without failing the target.
+copy_tree = tar cf $(2).tar $(1) && tar xf $(2).tar -C $(2) && rm -f $(2).tar
+SOURCES  = $(TEX) $(SECTIONS) $(BIB) $(ASSETS)
 
 .PHONY: all clean arxiv eprint deanonymize check
 
@@ -46,16 +51,16 @@ clean:
 
 arxiv: $(TEX) $(SECTIONS) $(BIB) $(ASSETS)
 	mkdir -p submission-staging/arxiv
-	cp $(TEX) $(SECTIONS) $(BIB) $(EXTRA) ../paper.mk submission-staging/arxiv/
-	$(call copy_assets,submission-staging/arxiv)
+	$(call copy_tree,$(SOURCES) $(EXTRA),submission-staging/arxiv)
+	cp ../paper.mk submission-staging/arxiv/
 	cd submission-staging/arxiv && tar czf ../../$(ARXIV_TARBALL) *
 	rm -rf submission-staging/arxiv
 	@echo "arXiv submission bundle ready: $(ARXIV_TARBALL)"
 
 eprint: $(PDF)
 	mkdir -p submission-staging/eprint
-	cp $(PDF) $(TEX) $(SECTIONS) $(BIB) $(EXTRA) ../paper.mk submission-staging/eprint/
-	$(call copy_assets,submission-staging/eprint)
+	$(call copy_tree,$(PDF) $(SOURCES) $(EXTRA),submission-staging/eprint)
+	cp ../paper.mk submission-staging/eprint/
 	cd submission-staging/eprint && zip -qr ../../$(EPRINT_ZIP) *
 	rm -rf submission-staging/eprint
 	@echo "IACR ePrint submission bundle ready: $(EPRINT_ZIP)"
