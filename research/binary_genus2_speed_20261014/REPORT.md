@@ -1,13 +1,20 @@
 # Full-subgroup elliptic / genus-two ECDLP comparison
 
-The same full-order a=1 target completed in **5.846 seconds** on the elliptic
-curve and **669.526 seconds** using checked native genus-two Cantor arithmetic,
-with exactly **6,631,641 steps** in each matched walk. Both recovered scalars
-were independently verified in E and J(C). The optimized image-inverse-to-E
-route also completed, with a first paired search time of **2.747 seconds**.
-These are descriptive L0 VM search durations, not an admitted speedup or
-security conclusion. The larger a=0 subgroup and remaining native targets
-continue in the checkpointed campaign.
+Four independent a=1 targets now have completed, matched elliptic and native
+genus-two full-subgroup solves. The three newly completed native searches
+took **984.515, 405.053 and 1,116.430 seconds**; their matched elliptic searches
+took **8.937, 3.392 and 10.603 seconds**. Each target used exactly the same
+step count in all three arms and passed separate-process verification in
+E and J(C). All eight elliptic and image-inverse targets are complete.
+These are descriptive L0 VM search durations; complete priced cost and
+speedup remain unset. The a=0 full solves and four native a=1 targets remain
+outstanding in the checkpointed campaign.
+
+Latest snapshot: [run-20261014T2034Z](runs/run-20261014T2034Z/ARCHIVE.md),
+acknowledged pause 20:37:44 UTC. It contains 20 verified resumable completions,
+ten beyond the earlier ten-completion snapshot. The 27 optimized reference
+runs are retained earlier evidence, not new executions. The immutable
+[earlier snapshot](runs/run-20261014T1901Z/snapshot.json) remains unchanged.
 
 The user selected full-subgroup solves and a longer compute campaign. The
 [protocol](PROTOCOL.md) was pushed before target generation. This is not an
@@ -21,6 +28,9 @@ Field: GF(2^83), polynomial basis `z^83+z^45+z²+z+1`.
 | --- | --- | --- | --- |
 | 0 | EC1N83Ckb0h252dacc102a4 | 2417851639230796216685689 | 4 |
 | 1 | EC1N83Ckb1h1f579d351b52 | 8569786107849059 | 1128547018 |
+
+ICV1 identities are `icv1-f2m83-tm6151469093347-debefd74` (a=0) and
+`icv1-f2m83-t6151469093347-cdcc5432` (a=1), as in the construction report.
 
 The source is `E_a: y²+xy=x³+a*x²+1`. The target is the elliptic image in
 `J(C_a)` for `C_a: v²+u²v=u⁵+a*u⁴+u³+u`, from the
@@ -81,13 +91,28 @@ The native Jacobian arm completed the same 6,631,641 steps in
 It performed 6,632,874 checked Cantor additions, including cycle escapes;
 the frozen counters retain mappings and all other native operations.
 
-| Matched resumable arm, a=1 Q_0 | Full solve steps | Search seconds | Verification |
-| --- | ---: | ---: | --- |
-| Direct E | 6,631,641 | 5.845604437 | E and J(C), separate process |
-| Image inverse then E | 6,631,641 | 5.842078086 | E and J(C), separate process |
-| Checked native Cantor + conversions | 6,631,641 | 669.526079432 | E and J(C), separate process |
+| a=1 target | Steps in each matched arm | Direct E search s | Image inverse/E search s | Checked Cantor/conversions search s |
+| --- | ---: | ---: | ---: | ---: |
+| Q_0 (previous snapshot) | 6,631,641 | 5.845604437 | 5.842078086 | 669.526079432 |
+| Q_1 | 10,049,968 | 8.936632815 | 8.726057880 | 984.514533998 |
+| Q_2 | 3,913,125 | 3.392115110 | 3.423350861 | 405.053302451 |
+| Q_3 | 10,875,029 | 10.603287411 | 10.859175528 | 1,116.429875080 |
 
-![Matched completed native full solve](figures/matched-full-solve.svg)
+Every row has separate-process E and Jacobian verification. All 20 resumable
+candidates were also rechecked in new verifier invocations at this follow-up;
+[additional receipts](runs/run-20261014T2034Z/followup-verification/) contain
+the public-job hashes and both checks. The held-out witness was not accessed.
+The remaining elliptic/image-inverse completions on Q_4 through Q_7 and all
+native counters are retained per target in the native summary. Repeated
+representations and verifier invocations do not add independent targets.
+
+![Four matched completed native full solves](figures/matched-targets.svg)
+
+At the pause, native a=1 Q_4 had 3,786,038 steps with no candidate; Q_5 through
+Q_7 were queued. The a=0 checkpoints had 236,882,500 elliptic steps,
+232,917,459 inverse/E steps and 2,383,516 native Jacobian steps, with no
+candidates. These are censored work counts. No completed duration is assigned
+to them and no scalar-space restriction was introduced.
 
 No E-addition/Jacobian-addition count ratio is a common priced cost. Setup,
 search, mappings, table operations, collision processing, checkpoint I/O,
@@ -151,8 +176,9 @@ performance conclusion. No index-calculus solver was measured here.
 
 ## Evidence and continuing execution
 
-- [Frozen native summary](runs/run-20261014T1901Z/snapshot.json), including raw-source paths.
-- [Run report](reports/run-20261014T1901Z/REPORT.md).
+- [Latest frozen native summary](runs/run-20261014T2034Z/snapshot.json), including raw-source paths.
+- [Latest run report](reports/run-20261014T2034Z/REPORT.md).
+- [Earlier run report](reports/run-20261014T1901Z/REPORT.md) and its unchanged frozen evidence.
 - [PDF with recorded graphs](report.pdf); [layout source](render_report.py).
 - [Rust commands, methods and checkpoint controls](../../tools/binary-genus2-cover/README.md#full-subgroup-ecdlp-campaign).
 - [Validation history and final logs](validation/README.md).
@@ -171,6 +197,20 @@ The actual worker runs on the current workspace with atomic checkpoints.
 A live process does not guarantee persistence after worker deletion. See
 `RESUME.md` for the recorded launch/resume commands and pause/stop procedure.
 Future snapshots must use new directories; never edit this run's evidence.
+
+| Requested requirement | Status and evidence |
+| --- | --- |
+| m=83, both pinned prime orders, original uniform public targets | Preserved; unchanged public-job hashes and native input checks |
+| Eight full targets per a, in each matched arm | Partial: a=1 E/image 8/8 each, native 4/8; a=0 0/8 in each arm |
+| Independent candidate verification | Verified for all 20 completed resumable solves and the earlier 27 optimized references; same host, separate processes |
+| Exact checkpoint continuation | Executing on the original worker; full state archived after an acknowledged pause; durable retention remains open |
+| Common priced cost, admitted speedup, ecbench audit | Not established; adapter, pricing, isolation and independent-host gates remain open |
+| Reports, graphs and PDF | Refreshed for this snapshot; new benchmark entry preserves earlier copies |
+
+This update adds observations to the same implementation, not a mathematical
+advance or an arithmetic optimization. Existing geometric formalization
+obligations are unchanged. The [a=0 durable-compute problem](../../problems/binary-genus2-a0-full-solve-compute.md)
+and ecbench-adapter problem remain open under their original exit criteria.
 
 Graphs checked for applicability: `docs/index-calculus-scoreboard.html`,
 `docs/ic/progress-timeline.json`, `docs/ic/leaderboard.json`, and the construction

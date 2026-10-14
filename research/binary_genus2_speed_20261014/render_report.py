@@ -2,6 +2,7 @@
 """Layout only: render already-recorded values. No searches or research math."""
 import json
 import os
+import argparse
 from pathlib import Path
 import subprocess
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/genus2-speed-matplotlib")
@@ -9,8 +10,14 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-root = Path(__file__).resolve().parent
-run = root / "runs" / "run-20261014T1901Z"
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--run-id", default="run-20261014T2034Z")
+parser.add_argument("--study-root", type=Path, default=Path(__file__).resolve().parent)
+parser.add_argument("--output-dir", type=Path, default=Path(__file__).resolve().parent)
+args = parser.parse_args()
+root = args.output_dir.resolve()
+(root / "figures").mkdir(parents=True, exist_ok=True)
+run = args.study_root.resolve() / "runs" / args.run_id
 data = json.loads((run / "snapshot.json").read_text())
 plt.rcParams.update({"svg.fonttype": "none", "font.size": 10})
 
@@ -69,6 +76,26 @@ if len(matched) == 3:
     fig.tight_layout()
     save(fig, "matched-full-solve")
 
+completed_targets = [i for i in range(8) if all(
+    (states.get(f"a1-{i}-{arm}.checkpoint.json", {}).get("verification") or {}).get("jacobian_verified")
+    for arm in ("elliptic", "image_inverse", "jacobian"))]
+fig, ax = plt.subplots(figsize=(9.2, 3.2))
+for offset, arm, color, label in [(-0.24, "elliptic", "#346da0", "Direct E"),
+    (0, "image_inverse", "#26734b", "Image inverse to E"),
+    (0.24, "jacobian", "#ad6143", "Checked Cantor + conversions")]:
+    ax.bar([i + offset for i in range(len(completed_targets))],
+        [states[f"a1-{i}-{arm}.checkpoint.json"]["search_seconds"] for i in completed_targets],
+        width=0.23, color=color, label=label)
+ax.set_xticks(range(len(completed_targets)), [f"Q_{i}" for i in completed_targets])
+ax.set_yscale("log")
+ax.set_ylabel("completed search wall time (seconds; log scale)")
+ax.set_xlabel("independent a=1 public target; matched resumable walks")
+ax.grid(axis="y", alpha=0.25)
+ax.legend(fontsize=8, loc="upper left", bbox_to_anchor=(1.01, 1))
+fig.text(0.5, -0.03, f"{args.run_id}: both-group verification receipts; L0 observations, no admitted speed ratio.", ha="center", fontsize=8)
+fig.tight_layout()
+save(fig, "matched-targets")
+
 # All numerical entries below are copied from the native summary.
 lines = []
 for panel in data["calibration"]:
@@ -89,5 +116,13 @@ for arm, label in [("elliptic", "Direct E"), ("image_inverse", "Image inverse to
 (root / "matched-table.tex").write_text(
     r"\begin{tabular}{lrrl}\toprule" + "\n" +
     r"Matched resumable arm & Steps & Search seconds & Status\\\midrule" + "\n" +
+    "\n".join(lines) + "\n" + r"\bottomrule\end{tabular}" + "\n")
+lines = []
+for i in completed_targets:
+    rows = [states[f"a1-{i}-{arm}.checkpoint.json"] for arm in ("elliptic", "image_inverse", "jacobian")]
+    lines.append(f"$Q_{i}$ & {rows[0]['steps']:,} & " + " & ".join(f"{s['search_seconds']:.3f}" for s in rows) + " " + chr(92) * 2)
+(root / "matched-targets-table.tex").write_text(
+    r"\begin{tabular}{lrrrr}\toprule" + "\n" +
+    r"Target & Steps in each arm & E (s) & Inverse/E (s) & Cantor (s)\\\midrule" + "\n" +
     "\n".join(lines) + "\n" + r"\bottomrule\end{tabular}" + "\n")
 subprocess.run(["pdflatex", "-halt-on-error", "-interaction=nonstopmode", "report.tex"], cwd=root, check=True)

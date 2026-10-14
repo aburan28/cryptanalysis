@@ -8,3 +8,8 @@ and the suite's Jacobian arithmetic. Its restart receipts match crypto's for
 both n=83 subgroups. External native campaign records are not sealed ecbench
 sessions. The registry, common-cost and independent-host gates remain open;
 recording or merging this pointer does not resolve them.
+
+The [later external snapshot](../research/binary_genus2_speed_20261014/runs/run-20261014T2034Z/ARCHIVE.md)
+has 20 verified resumable completions, including four native full targets.
+It supplies no registered ecbench session, common price or independent-host
+performance replay. The canonical problem and all exit criteria remain open.

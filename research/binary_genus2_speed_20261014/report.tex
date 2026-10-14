@@ -8,7 +8,8 @@
 \begin{document}
 \begin{center}
 {\Large Full-subgroup ECDLP on an elliptic curve and a genus-two image}\\[5pt]
-GF$(2^{83})$, $a=0,1$; exploratory current-worker campaign, 14 October 2026
+GF$(2^{83})$, $a=0,1$; exploratory current-worker campaign, 14 October 2026\\
+Snapshot: \texttt{run-20261014T2034Z}, paused 20:37:44 UTC
 \end{center}
 
 The source is $E_a:y^2+xy=x^3+ax^2+1$. The constructed curve
@@ -22,6 +23,8 @@ source identities \texttt{EC1N83Ckb0h252dacc102a4} and
 \texttt{EC1N83Ckb1h1f579d351b52}. Prime orders are
 $r_0=2417851639230796216685689$ and $r_1=8569786107849059$.
 The latter is a 53-bit subgroup, despite the 83-bit field.
+\par{\small ICV1 $a=0$: \path{icv1-f2m83-tm6151469093347-debefd74}\\
+ICV1 $a=1$: \path{icv1-f2m83-t6151469093347-cdcc5432}}\par
 Pinned generators, public coordinates, subgroup cofactors and job hashes
 are in the frozen public-job files. Eight nonzero targets per curve were drawn
 uniformly using OS rejection sampling. Scalar witnesses were written outside
@@ -53,12 +56,23 @@ backend validation are included in its cost. This is a conservative software
 implementation, not a benchmark of optimized genus-two formulas or index calculus.
 
 \begin{center}
-\input{matched-table.tex}
+\input{matched-targets-table.tex}
 \end{center}
-\IfFileExists{figures/matched-full-solve.pdf}{
-\begin{center}\includegraphics[width=0.96\linewidth]{figures/matched-full-solve.pdf}\end{center}
+\IfFileExists{figures/matched-targets.pdf}{
+\begin{center}\includegraphics[width=0.98\linewidth]{figures/matched-targets.pdf}\end{center}
 }{}
 
+At the acknowledged snapshot, all eight $a=1$ E and inverse/E targets and
+four native Jacobian targets were verified: 20 resumable completions.
+Targets $Q_1,Q_2,Q_3$ add three native full solves to the earlier snapshot.
+All 20 candidates passed a further separate-process check in both groups.
+Native $Q_4$ remains unfinished; $Q_5$--$Q_7$ are queued.
+
+The $a=0$ checkpoints contain 236,882,500 E steps, 232,917,459 inverse/E
+steps and 2,383,516 native Jacobian steps, without candidates. These are
+censored work counts, not completed solve times. No target was regenerated.
+
+\newpage
 \textbf{Rate calibration.} One warmup, two A/A controls and five interleaved
 E/Cantor prefix pairs were recorded per curve. Matching lane digests and
 restarted/uninterrupted state checks pass in both repositories. Prefixes are
@@ -67,9 +81,8 @@ native work units; their ratio is not a priced cost ratio.
 \begin{center}
 \input{calibration-table.tex}
 \end{center}
-\begin{center}\includegraphics[width=0.93\linewidth]{figures/prefix-rates.pdf}\end{center}
+\begin{center}\includegraphics[width=0.82\linewidth]{figures/prefix-rates.pdf}\end{center}
 
-\newpage
 \textbf{Host and admissibility.} Intel Xeon Platinum 8573C virtual worker,
 five exposed CPUs, four-CPU quota and 16 GiB memory limit. The native ecbench
 primitives take the exclusive benchmark lock, attempt eviction and pin the
@@ -100,6 +113,7 @@ pause marker causes a complete snapshot before other heavy work; a stop marker
 ends orderly. Reconstruction of native divisor caches is timed as resume work.
 Elapsed time determines scheduling only, never a scalar-space restriction.
 
+\newpage
 \textbf{Validation and remaining gates.} Both packages pass 33 native unit
 tests plus three cover tests, formatting, scoped Clippy, CLI rejection controls
 and exact map-identity replay. Identical public-job restart receipts were
@@ -117,10 +131,12 @@ The earlier cover report's geometric Lean bridge also remains partial.
 
 \textbf{Evidence and sources.} Preregistered protocol:
 \par{\small\path{research/binary_genus2_speed_20261014/PROTOCOL.md}}\par
-Frozen \texttt{runs/run-20261014T1901Z/}, including public jobs, raw per-round/reference
+Frozen \texttt{runs/run-20261014T2034Z/}, including public jobs, raw per-round/reference
 records, verification receipts, host manifests, checkpoint snapshot, source and
 binary bindings and SHA-256 manifests. The native summary supplies every plotted
-value; the renderer only lays out these recorded values.
+value; the renderer only lays out these recorded values. The earlier
+\texttt{run-20261014T1901Z} remains unchanged. The 27 optimized reference
+runs in the new archive repeat earlier evidence and are not new executions.
 
 Construction proof and identity certificate:
 \href{https://github.com/aburan28/crypto/tree/d38a85f7e1ac02358223b58d71633f71f2efa7fa/research/binary_genus2_cover_20261014}{binary genus-two construction study}.

@@ -10,3 +10,8 @@ actual solve duration or a proved lower bound. Durable checkpoint retention
 and actual independently verified full-target recoveries remain required.
 The [study](../research/binary_genus2_speed_20261014/REPORT.md) republishes the
 same frozen performance evidence as crypto, not an independent campaign.
+
+The [later snapshot](../research/binary_genus2_speed_20261014/runs/run-20261014T2034Z/ARCHIVE.md)
+adds three a=1 native full targets (four now complete) and retains all a=0
+checkpoint tables without candidates. This leaves the durable-compute and
+actual a=0 full-recovery exit criteria unmet; status remains investigating.

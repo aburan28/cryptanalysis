@@ -51,8 +51,19 @@ checkpoints validate the public-job identity and reconstruct cached divisors
 from the saved image points. New-host timing is a separate run, not an extension
 of the old host's performance claim.
 
-The frozen snapshot under `runs/run-20261014T1901Z/` is immutable. Its candidate
-and verification records identify completed targets; other checkpoints are
-censored observations. Write future snapshots and reports under new run IDs.
+The frozen snapshots under `runs/run-20261014T1901Z/` and
+`runs/run-20261014T2034Z/` are immutable. The latter paused at Unix 1792010264
+and contains all eight a=1 E/image completions and four native completions
+(Q_0 through Q_3). Native Q_4 and all a=0 checkpoints are censored; later
+native targets are queued. All 20 completed candidates passed an additional
+separate-process E/Jacobian check. This is the original worker and public
+target set; no discarded-table restart or witness access was used.
+
+Live identity was checked using PID 21441's command line, process start tick
+1667143, CPU-time/progress advancement, affinity and acknowledged pause.
+`/proc/21441/exe` resolution was denied by the runtime; the exact limitation
+and immutable on-disk binary hash are in the new archive's `ARCHIVE.md`.
+Do not use the archived startup `active.json` or a PID alone as health proof.
+Write future snapshots and reports under new run IDs.
 Current-worker persistence is not guaranteed. The [a=0 compute problem](../../problems/binary-genus2-a0-full-solve-compute.md)
 keeps the original full-subgroup requirement and the measured resource gap open.
