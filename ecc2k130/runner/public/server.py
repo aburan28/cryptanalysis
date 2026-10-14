@@ -207,6 +207,9 @@ class Handler(BaseHTTPRequestHandler):
                 now = int(time.time())
                 db.execute("INSERT INTO runs(id,token_sha256,created_at,last_seen) VALUES (?,?,?,?)",
                            (run_id, hashlib.sha256(token.encode()).hexdigest(), now, now))
+                # The client may issue its next request as soon as it reads
+                # this response, so the assignment must be visible first.
+                db.commit()
             return self.respond(201, {"run_id": run_id, "token": token,
                                       "campaign": CAMPAIGN, "walk_id": WALK_ID,
                                       "dp_weight": DP_WEIGHT})
@@ -256,6 +259,7 @@ class Handler(BaseHTTPRequestHandler):
                            (run_id, offset, len(data), digest, str(relative), int(time.time())))
                 db.execute("UPDATE runs SET cursor=?,last_seen=? WHERE id=?",
                            (offset + len(data), int(time.time()), run_id))
+                db.commit()
                 return self.respond(201, {"ok": True, "records": count,
                                           "cursor": offset + len(data)})
             if offset != row["cursor"]:
@@ -264,6 +268,7 @@ class Handler(BaseHTTPRequestHandler):
             atomic_bytes(self.server.state / relative, data)
             db.execute("UPDATE runs SET checkpoint_path=?,checkpoint_at=?,last_seen=? WHERE id=?",
                        (str(relative), offset, int(time.time()), run_id))
+            db.commit()
             return self.respond(201, {"ok": True, "sha256": digest,
                                       "iterations": iterations, "cursor": offset})
 
