@@ -95,28 +95,60 @@ static uint64_t ec_hash(const ca_group *g, const ca_elem *a)
  * one field inversion for n additions at the cost of 3(n-1) extra
  * multiplications.  Special cases (infinity, doubling, inverse pairs)
  * are handled inline so that the common path stays branch-light.
+ *
+ * The prefix products run as EC_BATCH_CHAINS interleaved chains (element i
+ * on chain i mod EC_BATCH_CHAINS) that share the one inversion.  A single
+ * chain makes every multiplication wait for the previous one, forward and
+ * backward; interleaved, consecutive multiplications are independent and
+ * overlap.  Each den[i]^{-1} is the same field element either way, so the
+ * sums are identical.
  */
+#define EC_BATCH_CHAINS 4
+
+static inline uint64_t ec_batch_den(const ca_group *g, const ca_elem *A, const ca_elem *B,
+                                    uint64_t one)
+{
+    if (FINF(A) || FINF(B)) return one;
+    if (FX(A) == FX(B)) {
+        if (FY(A) == FY(B) && FY(A) != 0) return fadd(g, FY(A), FY(A));
+        return one;
+    }
+    return fsub(g, FX(B), FX(A));
+}
+
 static void ec_batch_op(const ca_group *g, ca_elem *r, const ca_elem *a, const ca_elem *b,
                         size_t n, uint64_t *scratch)
 {
     if (n == 0) return;
+    enum { L = EC_BATCH_CHAINS };
     uint64_t *den = scratch;       /* n denominators */
-    uint64_t *pre = scratch + n;   /* n prefix products */
+    uint64_t *pre = scratch + n;   /* n prefix products, per chain */
     const uint64_t one = g->mont.r1;
     for (size_t i = 0; i < n; i++) {
-        uint64_t d;
-        if (FINF(&a[i]) || FINF(&b[i])) d = one;
-        else if (FX(&a[i]) == FX(&b[i])) {
-            if (FY(&a[i]) == FY(&b[i]) && FY(&a[i]) != 0) d = fadd(g, FY(&a[i]), FY(&a[i]));
-            else d = one;
-        } else d = fsub(g, FX(&b[i]), FX(&a[i]));
+        uint64_t d = ec_batch_den(g, &a[i], &b[i], one);
         den[i] = d;
-        pre[i] = i ? fmul(g, pre[i - 1], d) : d;
+        pre[i] = i >= L ? fmul(g, pre[i - L], d) : d;
     }
-    uint64_t inv = finv(g, pre[n - 1]);
+    /* chain totals, then each chain's inverse from the one inversion of
+     * their product (the same trick once more, over L values) */
+    uint64_t T[L], linv[L];
+    for (size_t l = 0; l < L; l++) {
+        if (l >= n) { T[l] = one; continue; }
+        size_t last = l + ((n - 1 - l) / L) * L;
+        T[l] = pre[last];
+    }
+    uint64_t P[L + 1];
+    P[0] = one;
+    for (size_t l = 0; l < L; l++) P[l + 1] = l ? fmul(g, P[l], T[l]) : T[0];
+    uint64_t inv = finv(g, P[L]);
+    for (size_t l = L; l-- > 0;) {
+        linv[l] = l ? fmul(g, inv, P[l]) : inv;
+        inv = fmul(g, inv, T[l]);
+    }
     for (size_t i = n; i-- > 0;) {
-        uint64_t di = i ? fmul(g, inv, pre[i - 1]) : inv; /* den[i]^{-1} */
-        inv = fmul(g, inv, den[i]);
+        const size_t l = i % L;
+        uint64_t di = i >= L ? fmul(g, linv[l], pre[i - L]) : linv[l]; /* den[i]^{-1} */
+        linv[l] = fmul(g, linv[l], den[i]);
         const ca_elem *A = &a[i], *B = &b[i];
         if (FINF(A)) { r[i] = *B; continue; }
         if (FINF(B)) { r[i] = *A; continue; }
