@@ -152,6 +152,25 @@ struct ca_group;
 int ca_zp_group_mul(const struct ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k);
 int ca_ec_group_mul(const struct ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k);
 
+/* Fixed-base multiples for curves made by ca_group_ec_init (Montgomery
+ * affine coordinates of 2^j P; bit j of inf_mask marks 2^j P = O).
+ * ca_ec_pow2_init returns 0, leaving the table unset, for any other vtable.
+ * ca_ec_pow2_mul2 sets r = k1 P1 + k2 P2 (t2 may be NULL), the same point
+ * ca_group_mul and ca_group_op would give, with one field inversion. */
+typedef struct ca_ec_pow2 {
+    uint64_t x[64], y[64];
+    uint64_t inf_mask;
+} ca_ec_pow2;
+int ca_ec_pow2_init(const struct ca_group *g, ca_ec_pow2 *t, const ca_elem *P);
+void ca_ec_pow2_mul2(const struct ca_group *g, ca_elem *r, const ca_ec_pow2 *t1, uint64_t k1,
+                     const ca_ec_pow2 *t2, uint64_t k2);
+
+/* What ca_group_mul adds to its ops counter for scalar k. */
+static inline uint64_t ca_mul_ops(uint64_t k)
+{
+    return k ? (uint64_t)__builtin_popcountll(k) + (uint64_t)(63 - __builtin_clzll(k)) : 0;
+}
+
 int ca_check_members(const struct ca_group *g, const ca_elem *base, const ca_elem *target,
                      uint64_t n, const char *solver);
 

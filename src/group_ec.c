@@ -322,6 +322,56 @@ int ca_ec_group_mul(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k)
     return 1;
 }
 
+/* Affine 2^j P for j < 64, so that k P (and k1 P1 + k2 P2) is a run of
+ * mixed Jacobian additions with no doublings and one inversion at the end.
+ * Any correct method returns the same affine point, so this is a drop-in
+ * for ca_group_mul / ca_group_op where the same base is used many times. */
+int ca_ec_pow2_init(const ca_group *g, ca_ec_pow2 *t, const ca_elem *P)
+{
+    if (g->vt != &ec_vt) return 0;
+    ca_elem cur = *P;
+    t->inf_mask = 0;
+    for (int j = 0; j < 64; j++) {
+        if (FINF(&cur)) {
+            t->inf_mask |= (uint64_t)1 << j;
+            t->x[j] = t->y[j] = 0;
+        } else {
+            t->x[j] = FX(&cur);
+            t->y[j] = FY(&cur);
+        }
+        if (j < 63) ec_dbl(g, &cur, &cur);
+    }
+    return 1;
+}
+
+static inline void ec_pow2_accumulate(const ca_group *g, ec_jac *acc, const ca_ec_pow2 *t,
+                                      uint64_t k)
+{
+    k &= ~t->inf_mask;
+    while (k) {
+        int j = __builtin_ctzll(k);
+        k &= k - 1;
+        ec_jac_add_affine(g, acc, t->x[j], t->y[j]);
+    }
+}
+
+void ca_ec_pow2_mul2(const ca_group *g, ca_elem *r, const ca_ec_pow2 *t1, uint64_t k1,
+                     const ca_ec_pow2 *t2, uint64_t k2)
+{
+    ec_jac acc = {0, 0, 0, 1};
+    ec_pow2_accumulate(g, &acc, t1, k1);
+    if (t2) ec_pow2_accumulate(g, &acc, t2, k2);
+    if (acc.inf) {
+        ec_identity(g, r);
+        return;
+    }
+    uint64_t zi = finv(g, acc.z), zi2 = fsqr(g, zi);
+    FX(r) = fmul(g, acc.x, zi2);
+    FY(r) = fmul(g, acc.y, fmul(g, zi2, zi));
+    FINF(r) = 0;
+    r->w[3] = 0;
+}
+
 ca_status ca_group_ec_init(ca_group *g, uint64_t p, uint64_t a, uint64_t b, uint64_t order)
 {
     memset(g, 0, sizeof(*g));
