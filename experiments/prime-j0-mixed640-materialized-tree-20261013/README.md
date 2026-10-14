@@ -156,7 +156,7 @@ training and native panels, counted 611,926 ungauged versus 610,209 gauged
 rotations. The paired mean saving is 0.0262 rotations per scalar, with a
 normal-approximation 95% interval of 0.00695–0.04545 under that input law.
 This replication evaluates recoder choices only; it does not replay those
-65,536 points in the native evaluator. The current builder rotates each
+65,536 points in the native evaluator. The first fixed-gauge builder rotates each
 gauged table entry, requiring 560,029 additional setup rotations under the
 fixed policy. At the model replay's mean saving, those rotations alone need
 about 21.4 million scalar evaluations to amortize. Runtime gauge selection
@@ -169,6 +169,29 @@ Thus per-seed gauge choice has zero rotation advantage under a uniform atlas
 residue law. `gauge-atlas-audit.json` retains the exact codebook counts and
 hashes. The window-level signal arises from the declared scalar recoder law,
 and its small size makes table-construction and selection cost decisive.
+
+The native_gauge128_base.py variant moves each stored gauge to its window
+base before building the table. Because the beta action is a group
+homomorphism and commutes with tau, the builder then produces the same
+gauged points without rotating every entry. The frozen source calls the
+Jacobian omega map 27 times across the 28 base channels and removes the
+560,029 per-entry Solinas rotations counted above. This is source-level
+setup-operation accounting; complete table-build timing is still open. The
+proof obligations are the homomorphism and commutation hypotheses in
+TauMaterialization.tau_unit_fold and the unit-adjustment identity in
+GaugeShift.gauge_shift; a concrete Lean curve instance remains open.
+
+The base-rotated source was frozen at
+0db3af3443f405f6f2f626df23ca950ae1953d4b after 128 prior-panel points
+passed independent affine and binary checks. A fifth disjoint 128-scalar
+panel then verified all points. Native instrumentation matched the
+independent model: **16,128 tree calls and 1,184 selected-unit rotations**
+for the base-rotated gauge, versus **16,128 calls and 1,207 rotations** for
+the ungauged 128-byte table on those same scalars. Both retained 57,874,660
+bytes including metadata. The fixed policy therefore saved 23 rotations on
+this panel; the earlier gauge panel lost 21, so neither panel alone supports
+a general speed assertion. The base-holdout.json, base-test-model.json, and
+gaugebase128 receipt files preserve the paired evidence.
 
 Compare the full operation on a host that passes the repository's isolated
 benchmark preflight before making a CPU speed claim.
@@ -199,4 +222,14 @@ python3 experiments/prime-j0-mixed640-materialized-tree-20261013/native_affine12
 (cd /private/tmp/mixed640-affine128-replay && MIXED640_HOLDOUT=/absolute/path/to/affine-holdout.json CARGO_TARGET_DIR=/private/tmp/mixed640-affine128-target cargo test --offline --locked --release --bin eisenstein_fixed source_frozen_holdout_matches_independent_binary -- --nocapture)
 python3 experiments/prime-j0-mixed640-materialized-tree-20261013/native_affine128_opcount.py /private/tmp/mixed640-affine128-opcount-replay
 (cd /private/tmp/mixed640-affine128-opcount-replay && MIXED640_HOLDOUT=/absolute/path/to/affine-holdout.json CARGO_TARGET_DIR=/private/tmp/mixed640-affine128-opcount-target cargo test --offline --locked --release --bin eisenstein_fixed source_frozen_holdout_matches_independent_binary -- --nocapture)
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/gauge_policy.py
+(cd experiments/prime-j0-mixed640-materialized-tree-20261013 && lean GaugeShift.lean)
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/gauge_holdout.py --check
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/gauge_test_model.py
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/gauge_replication.py
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/gauge_atlas_audit.py
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/base_holdout.py --check
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/base_test_model.py
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/native_gauge128_base_opcount.py /private/tmp/mixed640-gaugebase-replay
+(cd /private/tmp/mixed640-gaugebase-replay && MIXED640_HOLDOUT=/absolute/path/to/base-holdout.json CARGO_TARGET_DIR=/private/tmp/mixed640-gaugebase-target cargo test --offline --locked --release --bin eisenstein_fixed source_frozen_holdout_matches_independent_binary -- --nocapture)
 ```
