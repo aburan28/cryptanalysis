@@ -41,18 +41,32 @@ the lattice determinant, the numeric bound, and the table counts. On the
 22; the largest observed terminal coordinates are 40 and 31. These are
 fixture observations; the 663 table limit follows from the bound above.
 `SplitPrimeRadix.lean` proves the quotient root and pi residue identities,
-the exact division step, recursive reconstruction, and the group-action
+norm multiplicativity for `pi`, the exact division step, recursive
+reconstruction, the two coordinate inequalities, and the group-action
 evaluation formula. Its numeric lemma checks the final rational bound.
 The analytic contraction and the floor/ceil lattice-cell inequalities are
 written here and checked numerically by the model; their full Lean bridge
 remains open.
 
 `native_split_prime_bench.py` generates the pinned Rust evaluator and a
-128-scalar correctness test against independent binary multiplication.
-Table construction is recorded as preparation; the online timer includes
-recoding, signed lookup, mixed additions, and affine recovery. A matched
-serial RunPod comparison with grouped, axial, and frontier-15 formats is the
-next performance check. This variable-index fixed-base evaluator is a
+128-scalar correctness test against independent binary multiplication. The
+release test passed locally and on the RunPod; the native table retained
+2,304,336 bytes including metadata. Table construction is recorded as
+preparation; the online timer includes recoding, signed lookup, mixed
+additions, and affine recovery.
+
+The case-0 grouped/split-prime comparison completed eight valid serial
+pairs with median online ratio **1.2173** and paired bootstrap interval
+**1.1697–1.4454**. All artifacts, binaries, and the runner stayed stable.
+The raw job is `tier1-runpod-20261013/e4ff7ae8cc93481e9c2c540d3b173f2a/`;
+the transferred archive SHA-256 is
+`4307c078a7300d1d9b5bb27ce24f0baff3d1bcc0249b9148a779c47d75b31f10`.
+The Pod supplies instance-scoped Tier 1 evidence and records
+`host_exclusivity_proved=false`. Eight additional frozen holdout scalars
+are queued as separate five-pair jobs in the same serial service to test
+whether the case-0 direction persists.
+
+This variable-index fixed-base evaluator is a
 research benchmark path; use in a secret-scalar API would require a
 constant-time selection design and a separate side-channel review.
 

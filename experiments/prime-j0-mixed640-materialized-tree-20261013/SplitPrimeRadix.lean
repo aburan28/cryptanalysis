@@ -12,6 +12,31 @@ def norm (x : Coeff) : Int :=
   x.1 * x.1 + 3 * x.1 * x.2 + 3 * x.2 * x.2
 
 theorem pi_norm : norm (86, -21) = 3301 := by decide
+theorem norm_pi_mul (z : Coeff) : norm (piMul z) = 3301 * norm z := by
+  cases z with
+  | mk a b =>
+      simp only [norm, piMul]
+      grind
+
+theorem coordinate_a_bound (a b : Int) :
+    a * a ≤ 4 * norm (a, b) := by
+  have h : 0 ≤ (a + 2 * b) * (a + 2 * b) := by
+    by_cases hx : 0 ≤ a + 2 * b
+    · exact Int.mul_nonneg hx hx
+    · have hy : a + 2 * b ≤ 0 := by omega
+      exact Int.mul_nonneg_of_nonpos_of_nonpos hy hy
+  simp only [norm]
+  grind
+
+theorem coordinate_b_bound (a b : Int) :
+    3 * b * b ≤ 4 * norm (a, b) := by
+  have h : 0 ≤ (2 * a + 3 * b) * (2 * a + 3 * b) := by
+    by_cases hx : 0 ≤ 2 * a + 3 * b
+    · exact Int.mul_nonneg hx hx
+    · have hy : 2 * a + 3 * b ≤ 0 := by omega
+      exact Int.mul_nonneg_of_nonpos_of_nonpos hy hy
+  simp only [norm]
+  grind
 theorem tau_residue_root : (1576 * 1576 - 3 * 1576 + 3) % 3301 = 0 := by decide
 theorem pi_residue_zero : (86 - 21 * 1576) % 3301 = 0 := by decide
 
@@ -74,6 +99,9 @@ theorem action_expand {P : Type} (pointAdd : P → P → P)
       rw [act_digit_add, act_pi, ih]
 
 #print axioms pi_norm
+#print axioms norm_pi_mul
+#print axioms coordinate_a_bound
+#print axioms coordinate_b_bound
 #print axioms tau_residue_root
 #print axioms pi_residue_zero
 #print axioms residue_quotient
