@@ -89,6 +89,8 @@ def check_inverse(sources: dict, test_source: str, settings: dict):
             record["racecheck"] = command_record(
                 [sanitizer, "--tool", "racecheck", "--error-exitcode", "86", str(binary)],
                 cwd=root, timeout=600)
+            if "Error: Device not supported" in record["racecheck"]["output"]:
+                return finish("race_checker_unsupported_device")
             if record["racecheck"]["returncode"] or "ERROR SUMMARY: 0 errors" not in record["racecheck"]["output"]:
                 return finish("racecheck_failed_or_ambiguous")
     return finish("passed")

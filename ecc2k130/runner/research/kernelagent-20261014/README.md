@@ -292,3 +292,37 @@ driver did not add the runner directory to its Python import path. Its
 [unchanged log](inverse-double-buffer-gate.log) is retained. The corrected
 driver is rerun with a separate `inverse-double-buffer-gate-r2.log`; the
 original failure is an infrastructure/driver result, not an inverse result.
+
+### Gate result and current limit
+
+The corrected [gate receipt](inverse-double-buffer-gate.json) and [second raw
+log](inverse-double-buffer-gate-r2.log) record a completed candidate build on
+the RTX PRO 6000 Blackwell Server Edition, driver 610.57.04 and CUDA 13.3.
+The executable SHA-256 is
+`666ddd5871e33cdc998a82312ebc9f1d566c9825446ae9eba9fdc4fa83b0d0f3`.
+The build reported 96 registers/thread, 16 allocated barrier slots and
+27,392 bytes of shared memory; the earlier pinned production build reported
+96 registers/thread, 16 barrier slots and 14,592 bytes of shared memory.
+That 12,800-byte increase is the second 640-thread scratch bank. Allocated
+barrier slots are not a count of dynamic barrier executions.
+
+The device reference passed 1,024 inputs at 512 threads for group widths 2,
+4, 8 and 16, and 1,280 inputs at production 640 threads for group width 4.
+Both included zero inputs, two bank phases and repeated calls with different
+group loop counts. The separate [host gate](inverse-double-buffer-host.json)
+also passed, but it does not exercise group scratch. Compute Sanitizer
+2026.2.1.0 returned exit 86 and `Error: Device not supported` before it
+could assess the 640-thread kernel. The gate driver's frozen outcome label is
+`racecheck_failed_or_ambiguous`; inspection of its retained raw output narrows
+this instance to an unsupported checker/device combination. A subsequent
+driver revision distinguishes that condition explicitly without changing the
+original receipt. No paired timing was run because the predeclared race gate
+did not complete.
+
+The next diagnostic is a minimal shared-memory race-control kernel under the
+same checker and GPU to determine whether the tool fails before analyzing any
+kernel. A supported CUDA device can then provide a separate cross-device
+race check. Such a check is supplemental: the frozen RTX PRO 6000 gate remains
+unmet until a checker supports it or an explicitly recorded replacement gate
+is justified. The [critical-path problem](../../../../problems/ecc2k130-frobenius-gpu-critical-path.md)
+tracks this access/tool obstruction and the outstanding throughput test.
