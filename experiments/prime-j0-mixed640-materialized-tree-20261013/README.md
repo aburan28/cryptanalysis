@@ -278,6 +278,39 @@ the allocation receipt hash is
 Use `native_bench_cli.py` to generate the pinned benchmark front doors and
 `make_tier1_manifest.py` to create a manifest for a new case or panel.
 
+### Fixed-capacity tree and adjacent-pair cache screen
+
+`native_stack_tree.py` keeps the selective table and the exact pairwise
+reduction order while replacing per-level `Vec` allocations with a
+14-slot stack array. The generated evaluator passed the 128-scalar frozen
+holdout against the independent affine fixture and binary multiplication on
+the Linux Pod. Its one-case Tier 1 panel used the same scalar and the
+selective vector evaluator as reference:
+
+| Panel | Valid pairs | Median vector/stack online ratio | Paired bootstrap 95% interval | Median table preparation, vector/stack |
+| --- | ---: | ---: | ---: | ---: |
+| Selective vector versus stack tree | 8/8 | 1.0440 | 0.9213–1.0908 | 10,392/10,402 ms |
+
+All 16 invocations were valid with stable source, runner, and binary
+hashes. The interval includes 1 and overlaps the affine A/A noise band,
+so the allocation change has unresolved latency effect here. The raw
+receipt is job `bc5733ccc4be4b3f84df257d53f5c789` in the
+[Tier 1 directory](tier1-runpod-20261013/). Its archive SHA-256 was
+`ff8c5061649baa42e5f30ddc770e12c3dcdc507790b802f517e49a0c7459ff25`
+before extraction.
+
+`pair_reuse_screen.py` tested a separate format idea: precompute exact sums
+of selected points in adjacent window pairs, then cache those sums under a
+fixed entry budget. The first 2,048 scalars of the frozen 4,096-scalar
+panel supplied 14,336 distinct pair keys. Caching even all 14,336 of
+them produced **zero hits** in the other 2,048 scalars (14,336 pair slots)
+and in the disjoint 128-scalar holdout (896 pair slots). Thus this exact
+pair-key cache does not transfer under these input laws; a useful pair
+scheme would need algebraic sharing or a coarser reusable key. The
+[screen receipt](pair-reuse-screen.json) includes input and atlas hashes,
+the tested budgets, and zero-seed counts. Recompute it with
+`python3 pair_reuse_screen.py` from this directory.
+
 Reproduce the current receipts:
 
 ```sh
