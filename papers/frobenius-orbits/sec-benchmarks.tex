@@ -81,10 +81,18 @@ operation count agreed between arms on all six runs. The timings are
 on an unisolated host and are stage diagnostics: the three adjacent
 target-stage pairs gave ratios $1.074$, $1.156$ and $1.118$, and the
 canonicalization phase alone fell from $2.216$ to $1.557$~s
-($1.42\times$). An adapter that replays exactly this stage through the
-isolated benchmark service is committed; its receipt is not, so no
-CPU speedup is claimed for the
-shortcut.\art{experiments/koblitz-n83-index-design-20260929/packed_index_e1_isolated_replay_20261010/README.md}
+($1.42\times$). That $1.42\times$ did not survive isolation. A
+Tier~1 replay on one GitHub-hosted \texttt{ubuntu-24.04} instance ran
+sixteen alternating same-target pairs of the same stage under a
+protocol frozen before any timing, with every gate passing. The
+canonicalization phase ratio was $1.086$ (paired bootstrap 95\%
+interval $[1.076, 1.094]$) and the target stage ratio $1.023$
+($[1.017, 1.033]$), against $1.007$ for the stage that does identical
+work in both arms. The frozen rule therefore promotes a speedup of the
+canonicalization phase, at that size and no other, and marks the
+exploratory figure overstated. It is a stage diagnostic on one target
+and one instance, not a complete single-target speedup; no end-to-end
+CPU claim follows.\art{experiments/koblitz-n83-index-design-20260929/packed_index_e1_canonical_tier1_20261014/README.md}
 
 \begin{table}[t]
 \centering\small
@@ -482,7 +490,7 @@ count the end-to-end cost is proportional to.
 improvement & what moved & verified & class \\
 \midrule
 normal-basis rotation vs squaring chain & $8.6$--$15\times$ per key; rho process $4.08\times$ fewer instructions & keys identical; 1024/1024 & engineering \\
-zero-gap shortcut (variant B) & $17.1\times$ fewer rotations; canonicalization phase $1.42\times$ (unisolated) & keys and shifts identical & engineering (stage) \\
+zero-gap shortcut (variant B) & $17.1\times$ fewer rotations; canonicalization phase $1.086\times$ $[1.076,1.094]$ (Tier~1, one instance; the unisolated $1.42\times$ is refuted) & keys and shifts identical & engineering (stage) \\
 laned variant A & $1.09$--$1.31\times$ pipeline (isolated) & identical logs & engineering \\
 packed 18-byte record & $2.27\times$ fewer table bytes ($2.50\times$ first layout); $11.8\times$ fewer comparisons across successive layouts on one frozen probe & controls identical & engineering (stage) \\
 folded pair table & $2n$ fewer entries; $+1.2\%$ operations at 12688 pts; cheapest above $\approx16\,000$ pts & 32/32 & relabelling / accounting \\

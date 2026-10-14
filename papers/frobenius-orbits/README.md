@@ -96,11 +96,17 @@ without TeX can open the paper.
      to using that fact as an exact word-level filter, plus the two
      implementations, their exactness proofs and the measurements (§1, §4,
      §8, §9, abstract).
-2. **Isolated replay** of the `n = 83` zero-gap stage. It is frozen as the
-   Tier 1 GitHub-runner panel
-   `experiments/koblitz-n83-index-design-20260929/packed_index_e1_canonical_tier1_20261014/`
-   (16 pairs, with the promotion/refutation rule fixed in `tier1_protocol.json`).
-   The panel has been pushed to run, but its receipt has not been read back yet.
+2. ~~**Isolated replay** of the `n = 83` zero-gap stage~~ — measured, Tier 1
+   (GitHub run `38502816475`, one `ubuntu-24.04` instance, 16 pairs, all gates
+   passed), in
+   `experiments/koblitz-n83-index-design-20260929/packed_index_e1_canonical_tier1_20261014/`.
+   - Frozen rule: `promoted`. Canonicalization-phase ratio 1.086
+     [1.076, 1.094]; target stage 1.023 [1.017, 1.033]; negative control 1.007
+     [0.997, 1.017].
+   - The exploratory 1.42× is `refuted_overstated`; the paper now reports the
+     Tier 1 figure (stage diagnostic, one target, one instance; not a complete
+     speedup). Still open: Tier 0 host isolation, if a speedup claim beyond the
+     instance is wanted.
 3. **Isolated one-target comparison at `n = 83`.**
    - The historical 8.2× used a packed rho that crypto no longer accepts.
      Against the current strong rho on the same point, IC is 1.38× *slower*

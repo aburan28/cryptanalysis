@@ -1,7 +1,7 @@
 # N83 E-1 full scan against zero gap: Tier 1 replay protocol
 
-**Status: prepared, not yet run.** This directory holds no timing result.
-It freezes a Tier 1 (cloud instance) paired replay of the n=83 Frobenius
+**Status: run; verdict `promoted` (Tier 1, magnitude `refuted_overstated`).** See [Result](#result).
+This directory froze a Tier 1 (cloud instance) paired replay of the n=83 Frobenius
 canonicalization stage, which settles the paper's exploratory
 canonicalization-phase ratio of **1.42×**. That figure
 ([`papers/frobenius-orbits/sec-benchmarks.tex`](../../../papers/frobenius-orbits/sec-benchmarks.tex),
@@ -10,6 +10,7 @@ replay either promotes it to an instance-scoped Tier 1 result or refutes it.
 
 | Item | Value |
 | --- | --- |
+| Run | GitHub Actions run `38502816475`, `ubuntu-24.04`, instance `gh-38502816475-1-paired-stage`, receipt [`tier1_github_38502816475/`](tier1_github_38502816475/) |
 | Proposal | `Q2026100902` (candidate ID `null`: only the PDP stage is specified) |
 | Curve | `EC1N83Ckb1h876c2921cb64` |
 | Workload | `981ac530e67e` (one frozen public target, 2,000,000 pair states, 1,024 MiB RSS cap) |
@@ -97,6 +98,7 @@ paired ratios, so the two estimators differ, and the protocol records that.
 | `restore_crypto_source.py` | restores crypto `904f0f84` into the frozen experiment's gitignored `crypto_source_snapshot/` and checks its tree digests |
 | `make_tier1_manifest.py` | writes the `isolated_bench.py` Tier 1 manifest (sixteen pairs, one case) |
 | `verify_tier1_receipt.py` | audits an archived receipt, replays the raw results, recomputes all ratios and intervals, and prints the verdict |
+| `tier1_github_38502816475/` | archived receipt of the run: allocation, host probe, preflight, manifest, raw pairs, build log, `verdict.json` |
 | `figures/*.tex`, `figures/*.pdf`, `figures/*.png` | diagram and graph TikZ sources, vector and PNG renderings |
 | `README.pdf` | this report with its figures |
 | `report_header.tex`, `report_filter.lua` | PDF build: `pandoc README.md -o README.pdf --pdf-engine=pdflatex -H report_header.tex --lua-filter report_filter.lua -V geometry:margin=2cm -V fontsize=10pt -V colorlinks=true` |
@@ -168,12 +170,44 @@ same time.
   The panel is a code-path test only. It is not committed, and its timings
   and verdict are not a measurement.
 
-The workflow has not run, so this directory makes no Tier 1 claim. The
-paper's 1.42× remains exploratory until a receipt is archived here and its
-verdict is reported.
+## Result
+
+Run `38502816475` (commit `66e16796`, public runner image `ubuntu24`
+20261004.327.1, 4 exposed CPUs, one pinned) completed with conclusion
+`success`. The artifact was downloaded through the GitHub API and archived in
+[`tier1_github_38502816475/`](tier1_github_38502816475/) without the runner's
+queue lock file. `verify_tier1_receipt.py` replayed the archived raw results
+from the committed copy and reproduced the workflow's `verdict.json` byte for
+byte. All 16 pairs were valid and every gate passed (peak native RSS
+562,561,024 bytes against the 1,024 MiB cap).
+
+| Statistic (paired R/C, median of 16) | Median | 95% paired bootstrap | Rule outcome |
+| --- | --- | --- | --- |
+| Primary: canonicalization phase | 1.0856 | [1.0757, 1.0939] | `promoted` (lower bound above 1) |
+| Secondary: target stage | 1.0227 | [1.0174, 1.0327] | `promoted`, never changes the primary |
+| Negative control: S3 batch phase | 1.0073 | [0.9968, 1.0171] | not gated; interval contains 1 |
+
+Median canonicalization phase: 1,172,834,420 ns (R) against 1,079,689,756 ns
+(C). Median target stage: 4,419.0 ms (R) against 4,272.3 ms (C).
+
+**Verdict by the frozen rule.** `promoted`: the primary lower bound is above 1.
+The claim is a canonicalization-phase ratio of 1.086 [1.076, 1.094] on GitHub
+Actions, instance `gh-38502816475-1-paired-stage`, tier 1. The magnitude check
+is `exploratory_magnitude_refuted_overstated`: the exploratory 1.4233 lies far
+outside the interval, so 1.42x is not supported and is not reported as a
+result. The negative control stayed near 1 as intended.
+
+Limits: one target, one instance, a stage diagnostic (canonicalization is
+about a quarter of the target stage; the target stage moves only 1.023x). A
+container affinity mask does not prove host-wide exclusivity, and steal and
+involuntary switches were recorded, not gated. This is not a complete
+single-target IC speedup and is not a Tier 0 result.
+
+![Paired R/C ratio of each of the 16 alternating pairs, with the median and 95% interval of the primary statistic and the exploratory figure for scale.](figures/tier1_result.png)
 
 ## Graphs checked
 
-The paper's Table "survives" row and the `sec-benchmarks.tex` paragraph on
-zero gaps cite 1.42× as unisolated. They stay correct until a receipt
-exists. No canonical graph changes in this preparation step.
+`figures/tier1_result.{tex,pdf,png}` is new and plots the receipt. The paper's
+Table "survives" row and the `sec-benchmarks.tex` zero-gap paragraph now cite
+the Tier 1 figure and state that the unisolated 1.42x is refuted; the
+frozen-protocol and exploratory-input figures are unchanged and remain current.
