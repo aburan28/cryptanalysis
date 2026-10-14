@@ -165,6 +165,24 @@ int ca_ec_pow2_init(const struct ca_group *g, ca_ec_pow2 *t, const ca_elem *P);
 void ca_ec_pow2_mul2(const struct ca_group *g, ca_elem *r, const ca_ec_pow2 *t1, uint64_t k1,
                      const ca_ec_pow2 *t2, uint64_t k2);
 
+/* The bodies of the curve vtable's hash and canonicalize (group_ec.c calls
+ * these), so a solver that knows it holds a plain curve can inline them in
+ * its step loop instead of calling through the vtable.  Layout: w[0] = x,
+ * w[1] = y (Montgomery form), w[2] != 0 for the point at infinity. */
+static inline uint64_t ca_ec_hash_inline(const ca_elem *a)
+{
+    if (a->w[2]) return 0x9e3779b97f4a7c15ULL;
+    return ca_mix64(a->w[0] * 0x9E3779B97F4A7C15ULL ^ ca_mix64(a->w[1]));
+}
+
+static inline int ca_ec_canonicalize_inline(uint64_t p, ca_elem *a)
+{
+    if (a->w[2] || a->w[1] == 0) return 0;
+    uint64_t ny = p - a->w[1];
+    if (ny < a->w[1]) { a->w[1] = ny; return 1; }
+    return 0;
+}
+
 /* What ca_group_mul adds to its ops counter for scalar k. */
 static inline uint64_t ca_mul_ops(uint64_t k)
 {

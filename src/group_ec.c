@@ -86,8 +86,7 @@ static int ec_equal(const ca_group *g, const ca_elem *a, const ca_elem *b)
 static uint64_t ec_hash(const ca_group *g, const ca_elem *a)
 {
     (void)g;
-    if (FINF(a)) return 0x9e3779b97f4a7c15ULL;
-    return ca_mix64(FX(a) * 0x9E3779B97F4A7C15ULL ^ ca_mix64(FY(a)));
+    return ca_ec_hash_inline(a);
 }
 
 /*
@@ -210,10 +209,7 @@ static int ec_is_valid(const ca_group *g, const ca_elem *a)
  * with negation, so this is a valid canonical choice. */
 static int ec_canonicalize(const ca_group *g, ca_elem *a)
 {
-    if (FINF(a) || FY(a) == 0) return 0;
-    uint64_t ny = g->p - FY(a);
-    if (ny < FY(a)) { FY(a) = ny; return 1; }
-    return 0;
+    return ca_ec_canonicalize_inline(g->p, a);
 }
 
 static const ca_group_vtable ec_vt = {
