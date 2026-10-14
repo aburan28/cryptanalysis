@@ -38,7 +38,9 @@ the final `tau`, addition, inversion, and affine recovery. The RunPod
 comparison uses the serial benchmark service and preserves its preflight,
 source hashes, raw invocations, and pair rows.
 
-The Pod release test also passed all 128 frozen scalars. On case 0, the
+The Pod release test also passed all 128 frozen scalars; its build and test
+logs and source/binary receipt are in `tier1-runpod-20261013/axial-validation/`.
+On case 0, the
 serial grouped-versus-axial comparison completed eight valid pairs and
 reported a grouped/axial median online ratio of **0.9709**, with paired
 bootstrap interval **0.9533–1.0324**. This interval leaves the online
