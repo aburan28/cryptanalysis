@@ -117,6 +117,12 @@ Jacobian arm selects canonical representatives through the checked image
 inverse and pullback; these conversions are counted and timed on every step.
 It measures this conservative implementation, not optimized Jacobian formulas
 or index calculus. All arms quotient by the same 166 signed Frobenius actions.
+`reference --arm image_inverse` includes the checked public-divisor round trip
+before the optimized search. `reference-suite --public DIR --out DIR --cpu CPU`
+runs one warmup, A/A controls, five interleaved direct/image-inverse pairs on
+target 0, and one direct/image-inverse pair on each remaining a=1 target,
+verifying every candidate in another process. Repeated controls do not add
+independent targets. It leaves a=0 to the checkpointed campaign.
 
 `run` schedules six streams serially, starts with target 0 for each arm/a,
 and advances each stream through all eight targets after independent CLI
@@ -127,6 +133,12 @@ are reconstructed losslessly from the image coordinates on resume. Checkpoints
 are atomic and synced at least once per minute per active stream, on a
 candidate, on pause and on an orderly stop. A crash may lose the current
 minute of work. Checkpoints are trusted local state, not signed certificates.
+The a=1 native Jacobian stream receives roughly 30-second quanta after its
+first segment; other streams receive roughly two seconds. This prioritizes
+the first native full solve while preserving a=0 progress. Scheduling changes
+neither trajectories nor the target distribution. A large checkpoint write
+or a long scheduler cycle can extend the interval between durable snapshots;
+the actual checkpoint times and work counts are authoritative.
 
 Create `OUT/PAUSE`, then wait for `OUT/paused.json` before copying checkpoints
 or doing other heavy work. Remove `OUT/PAUSE` to continue. Create `OUT/STOP`

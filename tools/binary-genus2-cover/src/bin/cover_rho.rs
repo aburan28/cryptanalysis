@@ -242,8 +242,13 @@ fn run(public: &Path, out: &Path, cpu: &str) -> Result<()> {
             let old = search.state.steps;
             let before = iso::conditions(&[iso::current_cpu().unwrap_or(0)]);
             let budget = if search.state.rounds > 0 && search.state.search_seconds > 0. {
-                (2. * search.state.rounds as f64 / search.state.search_seconds).clamp(1., 200_000.)
-                    as u64
+                let seconds = if ctx.job.a == 1 && search.state.arm == "jacobian" {
+                    30.
+                } else {
+                    2.
+                };
+                (seconds * search.state.rounds as f64 / search.state.search_seconds)
+                    .clamp(1., 200_000.) as u64
             } else if search.state.arm == "jacobian" {
                 4
             } else {

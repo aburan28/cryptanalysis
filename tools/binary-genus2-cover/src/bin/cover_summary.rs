@@ -46,7 +46,10 @@ fn summarize(root: &Path) -> Result<Value> {
             if p.exists() {
                 let result: Value = read_json(&p)?;
                 let verification = entry.path().join("verification.json");
-                references.push(json!({"directory":name,"result":result,"verification":if verification.exists(){read_json::<Value>(&verification)?}else{Value::Null}}));
+                let process_times = entry.path().join("process-times.json");
+                references.push(json!({"directory":name,"result":result,
+                    "process_times":if process_times.exists(){read_json::<Value>(&process_times)?}else{Value::Null},
+                    "verification":if verification.exists(){read_json::<Value>(&verification)?}else{Value::Null}}));
             }
         }
     }
@@ -59,10 +62,16 @@ fn summarize(root: &Path) -> Result<Value> {
                 .ends_with(".checkpoint.json")
             {
                 let s: Checkpoint = read_json(&e.path())?;
+                let verification = e.path().with_file_name(
+                    e.file_name()
+                        .to_string_lossy()
+                        .replace(".checkpoint.json", ".verification.json"),
+                );
                 progress.push(json!({"checkpoint":e.file_name().to_string_lossy(),"arm":s.arm,"job_sha256":s.job_sha256,"steps":s.steps,"rounds":s.rounds,
                     "search_seconds":s.search_seconds,"setup_seconds":s.setup_seconds,"setup_counts":s.setup_counts,
                     "checkpoint_seconds_through_previous_write":s.checkpoint_seconds,"resume_seconds":s.resume_seconds,
-                    "counts":s.counts,"table_entries":s.table.len(),"candidate":s.candidate.map(|k|k.to_string())}));
+                    "counts":s.counts,"table_entries":s.table.len(),"candidate":s.candidate.map(|k|k.to_string()),
+                    "verification":if verification.exists(){read_json::<Value>(&verification)?}else{Value::Null}}));
             }
         }
     }
