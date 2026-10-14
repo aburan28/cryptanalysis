@@ -3,7 +3,7 @@ set -euo pipefail
 
 # The suite imports these two modules from crypto. Keep the dependency small:
 # Cargo's git source would check out crypto's entire research tree.
-rev="56b08ece138b39b60339c90e0d744ddad9b2031a"
+rev="e4f200cc2da058492a9a27f348fb88dc23f8a745"
 remote="${CRYPTO_ANALYSIS_CORE_REMOTE:-https://github.com/aburan28/crypto.git}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 checkout="$root/deps/crypto"
