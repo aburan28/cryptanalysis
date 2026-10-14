@@ -44,6 +44,7 @@ speedup.
 | Format | Distinct point slots | Point and atlas bytes | Modeled calls, 4,096 scalars |
 | --- | ---: | ---: | ---: |
 | Two tau buckets, compressed orbit | 415,190 | 44,588,220 | 552,976 |
+| One tree, 64-byte ordinary and tau entries | 808,296 | 56,460,924 | 554,411 |
 | One tree, 64-byte tau entries | 808,296 | 69,747,004 | 534,629 |
 | One tree with pre-tau entries | 808,296 | 82,326,396 | 516,096 |
 
@@ -107,6 +108,27 @@ implementation is faster: complete-operation accounting still needs recoding,
 table lookup, memory traffic, and affine recovery. Table setup is separate
 from this online operation count.
 
+`native_affine128.py` stores both the ordinary point and its prepared tau
+image as 64-byte affine coordinates. This 128-byte pair removes the third
+coordinate from each ordinary point and rotates either selected point's
+x-coordinate with the Solinas constant when its unit requires beta or
+beta-squared. The full-slot native table retains **57,874,660 bytes**
+including metadata, 13,286,080 fewer than the 160-byte hybrid. After source
+freeze at `913a5c27ee13548ed510c9ead6b3b8f01bb497b0`, a third disjoint
+128-scalar holdout matched every independently generated affine point and
+native binary multiplication. Its independent recoder model and native
+instrumentation both counted **16,128** tree calls and **1,212** selected-unit
+Solinas rotations. The grouped reference on those same scalars used **18,304**
+generic calls and **469** rotations. Thus the 128-byte format saves 2,176
+generic calls while adding 743 rotations in the counted interval. The
+fixture, source and binary hashes, raw logs, and the three native receipts
+are retained as `affine-holdout.json`, `affine-model.json`, and the
+`affine128-*` files. On the frozen 4,096-scalar panel, the source-formula
+model counts 516,096 tree calls and 38,315 selected-unit rotations, or
+554,411 calls when each rotation is counted once. That equal-call total is
+1,435 above the two-bucket model. The compact table is a memory candidate,
+and its wall time and complete-operation cost are still unmeasured.
+
 Compare the full operation on a host that passes the repository's isolated
 benchmark preflight before making a CPU speed claim.
 
@@ -130,4 +152,10 @@ python3 experiments/prime-j0-mixed640-materialized-tree-20261013/native_hybrid64
 (cd /private/tmp/mixed640-hybrid64-replay && MIXED640_HOLDOUT=/absolute/path/to/hybrid-holdout.json cargo test --offline --locked --release --bin eisenstein_fixed source_frozen_holdout_matches_independent_binary -- --nocapture)
 python3 experiments/prime-j0-mixed640-materialized-tree-20261013/native_hybrid64_opcount.py /private/tmp/mixed640-hybrid64-opcount-replay
 (cd /private/tmp/mixed640-hybrid64-opcount-replay && MIXED640_HOLDOUT=/absolute/path/to/hybrid-holdout.json cargo test --offline --locked --release --bin eisenstein_fixed source_frozen_holdout_matches_independent_binary -- --nocapture)
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/affine_holdout.py --check
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/affine_model.py
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/native_affine128.py /private/tmp/mixed640-affine128-replay
+(cd /private/tmp/mixed640-affine128-replay && MIXED640_HOLDOUT=/absolute/path/to/affine-holdout.json CARGO_TARGET_DIR=/private/tmp/mixed640-affine128-target cargo test --offline --locked --release --bin eisenstein_fixed source_frozen_holdout_matches_independent_binary -- --nocapture)
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/native_affine128_opcount.py /private/tmp/mixed640-affine128-opcount-replay
+(cd /private/tmp/mixed640-affine128-opcount-replay && MIXED640_HOLDOUT=/absolute/path/to/affine-holdout.json CARGO_TARGET_DIR=/private/tmp/mixed640-affine128-opcount-target cargo test --offline --locked --release --bin eisenstein_fixed source_frozen_holdout_matches_independent_binary -- --nocapture)
 ```

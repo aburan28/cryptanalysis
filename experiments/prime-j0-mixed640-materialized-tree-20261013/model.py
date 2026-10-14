@@ -46,6 +46,7 @@ def main():
     scalars = json.loads(source.read_bytes())["scalars_hex"]
     histogram = Counter()
     rotated_tau_terms = 0
+    rotated_all_terms = 0
     replay_count = 64
     output_hash = sha256()
     for case, scalar_hex in enumerate(scalars):
@@ -59,6 +60,7 @@ def main():
             if seed_id:
                 choices.append((index, seed_id, exponent, unit))
                 rotated_tau_terms += int(exponent == 1 and unit // 2 != 0)
+                rotated_all_terms += int(unit // 2 != 0)
             a, b = (a - digit[0]) // radix, (b - digit[1]) // radix
         assert (a, b) == (0, 0)
         counts = (sum(e == 0 for _, _, e, _ in choices),
@@ -105,9 +107,13 @@ def main():
               "unified_tree_join_calls": unified_calls,
               "saved_calls": two_bucket_calls - unified_calls,
               "rotated_tau_terms": rotated_tau_terms,
+              "rotated_all_terms": rotated_all_terms,
               "hybrid_64byte_tau_join_and_rotation_calls": unified_calls + rotated_tau_terms,
               "hybrid_saved_calls": two_bucket_calls - unified_calls - rotated_tau_terms,
+              "affine_64byte_pair_join_and_rotation_calls": unified_calls + rotated_all_terms,
+              "affine_saved_calls": two_bucket_calls - unified_calls - rotated_all_terms,
               "two_bucket_96byte_point_and_atlas_bytes": slots * 96 + atlas_bytes,
+              "affine_64byte_pair_and_atlas_bytes": (slots + tau_slots) * 64 + atlas_bytes,
               "hybrid_96byte_base_64byte_tau_and_atlas_bytes":
                   slots * 96 + tau_slots * 64 + atlas_bytes,
               "unified_96byte_point_and_atlas_bytes": (slots + tau_slots) * 96 + atlas_bytes,
