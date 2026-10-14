@@ -110,8 +110,16 @@ def main():
             "expected_result": panel["cases"][index]["point_hex"],
         } for index in case_indices],
     }
-    args.output.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
-    print(json.dumps({"output": str(args.output), "case_indices": case_indices,
+    outputs = []
+    for index, case in zip(case_indices, manifest["cases"], strict=True):
+        # The pinned Tier 1 runner accepts one frozen case per serial job.
+        # A panel is a set of independently receipted one-case manifests.
+        output = args.output if len(case_indices) == 1 else args.output.with_name(
+            f"{args.output.stem}-case{index}{args.output.suffix}")
+        single = {**manifest, "cases": [case]}
+        output.write_text(json.dumps(single, indent=2, sort_keys=True) + "\n")
+        outputs.append(str(output))
+    print(json.dumps({"outputs": outputs, "case_indices": case_indices,
                       "fixture_sha256": fixture_hash,
                       "repetitions": args.repetitions}, sort_keys=True))
 
