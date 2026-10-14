@@ -52,19 +52,21 @@ from the saved image points. New-host timing is a separate run, not an extension
 of the old host's performance claim.
 
 The frozen snapshots under `runs/run-20261014T1901Z/`,
-`runs/run-20261014T2034Z/` and `runs/run-20261014T2148Z/` are immutable.
-The latest paused at Unix 1792014566 and contains all eight a=1 E/image
-completions and seven native completions (Q_0 through Q_6): 23 resumable
-completions. Native Q_7 and all a=0 checkpoints are censored. The three new
-native candidates passed additional separate-process E/Jacobian checks.
+`runs/run-20261014T2034Z/`, `runs/run-20261014T2148Z/` and
+`runs/run-20261014T2250Z/` are immutable. The latest paused at Unix
+1792018309 and contains all eight a=1 completions in each of the three
+matched arms: 24 resumable completions. The final native Q_7 also passed
+one further separate-process E/Jacobian check. All a=0 checkpoints remain
+censored, with later targets queued. The a=1 streams are complete and the
+original worker continues the a=0 streams without an overall step cap.
 Earlier receipts remain unchanged. This is the original worker and public
 target set; no discarded-table restart or witness access was used.
 
 Live identity was checked using PID 21441's command line, process start tick
 1667143, CPU-time/progress advancement, affinity and acknowledged pause.
-The latest pause observed 02:12:51 CPU time on that same process; its a=0
-checkpoints retained 410,039,272 E steps, 404,195,619 inverse/E steps and
-4,137,664 native steps, without candidates.
+The latest pause observed 03:06:55 CPU time on that same process; its a=0
+checkpoints retained 1,147,759,082 E steps, 1,142,115,358 inverse/E steps and
+11,707,378 native steps, without candidates.
 `/proc/21441/exe` resolution was denied by the runtime; the exact limitation
 and immutable on-disk binary hash are in the new archive's `ARCHIVE.md`.
 Do not use the archived startup `active.json` or a PID alone as health proof.
