@@ -1,0 +1,71 @@
+{
+  "comparison_boundary": "Retained bytes and point-addition count are verified; online speed and cache behavior require an isolated paired benchmark.",
+  "created_utc": "2026-10-14T09:02:53.686414+00:00",
+  "failed_attempt": "The first generated build indexed a 551-entry row with the raw seed (up to 1064) and failed two scalar replay tests; v2 adds a checked seed-to-row index and preserves the failure in the prior run output.",
+  "formalization_status": "Existing checked split-prime canonical selector and unit-action theorems apply unchanged; seed-index lookup and curve implementation are checked by exhaustive and independent native tests.",
+  "lean": {
+    "axiom_audit": {
+      "split_unit_digit_add": [
+        "propext",
+        "Quot.sound"
+      ],
+      "split_unit_digit_nat": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ]
+    },
+    "command": "LEAN_PATH=/private/tmp/lean-split-prime /Users/adamburan/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean SplitPrimeBatchAffine.lean",
+    "exit_code": 0,
+    "module": "SplitPrimeBatchAffine.lean",
+    "source_sha256": "696a9d44760ce3a9958d2b59ca075bca03fde0bdb50d6199e4ec2ecad4c859a8",
+    "toolchain": "leanprover/lean4:v4.34.1"
+  },
+  "mathematical_basis": "The packed residue selects one of 550 canonical nonzero seeds and one of six Eisenstein units; each seed indexes a direct two-x affine point in each of 21 radix rows.",
+  "native": {
+    "binary_sha256": "ba89dcc75491f95c3294251d948d98154be4f500ebcc5c52d7aac6d39ba0677a",
+    "cargo_target_dir": "/private/tmp/split-prime-direct-two-x-target",
+    "command": [
+      "cargo",
+      "test",
+      "--offline",
+      "--locked",
+      "--release",
+      "--bin",
+      "eisenstein_fixed",
+      "split_prime_",
+      "--",
+      "--test-threads=1",
+      "--nocapture"
+    ],
+    "compiled_module_sha256": "03a4945cbd54e61b672ec18ab8a5ccc7eb13eedffe44463234e166be1b85bbe1",
+    "exit_code": 0,
+    "fixture_path": "/private/tmp/split-prime-direct-two-x-v2-20261014/src/bin/mixed640_bench_fixture.json",
+    "fixture_sha256": "7f4672b7b676969fe40056d0f14c6ecf45ad36109870cdf3466ebafd9e7b22d8",
+    "generated_module_sha256": "1f66fe30b5834b051dcad08b0d13d1cd57d6b1ef4686746c1acdf471d86e6b37",
+    "generator_sha256": "554ca5f7731c3ce423492e8f115ca3bfa3574b78b8f268d59314b6244e078d7c",
+    "replay_cases": {
+      "deterministic_and_boundary": 518,
+      "digit_unit_images": 69426,
+      "frozen": 128,
+      "packed_residues": 3301,
+      "quotient_cases": 29709,
+      "terminal_sign_canonical_pairs": 3838
+    },
+    "stdout": "   Compiling prime-j0-secp256k1-native-replay v0.1.0 (/private/tmp/split-prime-direct-two-x-v2-20261014)\nwarning: function `warm_mixed640_pretau_table` is never used\n    --> src/bin/eisenstein_fixed/unit_orbit_windows.rs:4525:15\n     |\n4525 | pub(super) fn warm_mixed640_pretau_table() -> usize {\n     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^\n     |\n     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `prime-j0-secp256k1-native-replay` (bin \"eisenstein_fixed\" test) generated 1 warning\n    Finished `release` profile [optimized] target(s) in 9.72s\n     Running unittests src/bin/eisenstein_fixed.rs (/private/tmp/split-prime-direct-two-x-target/release/deps/eisenstein_fixed-38821490af4f1333)\n\nrunning 5 tests\ntest unit_orbit_windows::split_prime_tests::split_prime_digit_two_x_orbits_exhaustive ... digit_two_x_unit_images=69426\nok\ntest unit_orbit_windows::split_prime_tests::split_prime_holdout_matches_independent_binary ... split_prime_holdout_cases=128 retained_bytes=1258760\nok\ntest unit_orbit_windows::split_prime_tests::split_prime_no_fallback_random_replay ... split_prime_no_fallback_replays=518\nok\ntest unit_orbit_windows::split_prime_tests::split_prime_packed_lookup_exhaustive ... packed_lookup_residues=3301 checked_steps=29709\nok\ntest unit_orbit_windows::split_prime_tests::split_prime_terminal_orbit_exhaustive ... terminal_orbit_pairs=3838 terminal_orbits=1280\nok\n\ntest result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 135 filtered out; finished in 6.13s\n\n",
+    "temporary_include_shim_count": 31,
+    "temporary_include_shim_manifest_sha256": "8ceb391f73772580af940e896daf59eb715b4a229a13e0a5bbfeb6af2a04a0f6"
+  },
+  "schema": 1,
+  "scope": "native correctness, retained bytes, and exact point addition structure; CPU timing unmeasured",
+  "table": {
+    "canonical_nonzero_seeds": 550,
+    "digit_point_bytes": 96,
+    "digit_selection": "at most one mixed accumulator addition per nonzero radix digit; no online batch inversion",
+    "entries_per_row_including_zero": 551,
+    "previous_split_two_x_retained_bytes": 277704,
+    "retained_bytes": 1258760,
+    "rows": 21
+  },
+  "variant": "split_prime_radix_3301_fused_terminal_unit_compressed_packed_correction_tight_terminal_split_seed_tables_terminal_orbits_no_terminal_fallback_digit_two_x_direct_two_x_seeds"
+}

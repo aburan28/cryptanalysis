@@ -480,3 +480,25 @@ distribute over the low/high digit split, including the canonical seed
 reconstruction. The batch inversion's native field implementation is covered
 by the group-law and scalar replays. An isolated paired run will determine
 whether the saved mixed additions exceed the shared inversion cost.
+
+The `--unit-direct-two-x` evaluator stores the 550 canonical nonzero seeds
+directly in each of the 21 digit rows, using the same 96-byte two-x point
+representation and six-unit reconstruction. A shared 1,065-entry seed-index
+array translates the packed canonical seed to its row position. This yields
+one selected point and at most one mixed accumulator addition per nonzero
+radix digit, without an online batch inversion or low/high pair addition.
+The retained table is **1,258,760 bytes**. Relative to the 277,704-byte
+split two-x format, it trades 981,056 more retained bytes for fewer online
+point operations. The precise speed and cache cost remain to be measured on
+the isolated serial runner.
+
+The [direct-seed receipt](direct-two-x-seed-validation.json) pins the separate
+release binary, generated and compiled source hashes, temporary include
+shims, and five passing test families: all 69,426 digit unit images, 646
+independent scalar replays, all 3,301 packed residues and 29,709 quotient
+cases, and all 3,838 terminal points. The first local version indexed the
+551-entry row with a raw seed up to 1,064; its two scalar replay failures
+prompted the explicit seed-index map in the checked version. The existing
+Lean canonical-selector and unit-action results apply to this direct table;
+the seed-index map and native point representation are checked by the
+exhaustive and independent native tests.

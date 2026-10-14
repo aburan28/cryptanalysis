@@ -765,6 +765,38 @@ def use_two_x_digit_rows(source: str) -> str:
     return replace_once(source, anchor, DIGIT_TWO_X_TEST_RUST + anchor)
 
 
+def use_direct_two_x_seed_rows(source: str) -> str:
+    """Materialize canonical seeds directly, with six units from each two-x entry."""
+    old_row = UNIT_SPLIT_ROW_RUST.replace("U256OrbitXAffine", "U256TwoXAffine")
+    new_row = UNIT_ROW_RUST.replace("U256OrbitXAffine", "U256TwoXAffine")
+    source = replace_once(source, old_row, new_row)
+    direct_online = UNIT_ONLINE_RUST.replace(
+        "row[index].unit(unit)", "row[tables.seed_index[index] as usize].unit(unit)")
+    source = replace_once(source, UNIT_SPLIT_ONLINE_RUST, direct_online)
+    source = replace_once(source,
+        "    residue_packed: Box<[u32]>,\n",
+        "    residue_packed: Box<[u32]>,\n"
+        "    seed_index: [u16; SPLIT_PRIME_DIGIT_LIMIT + 1],\n")
+    source = replace_once(source,
+        "        assert_eq!(*seeds.last().unwrap(), 1064);\n",
+        "        assert_eq!(*seeds.last().unwrap(), 1064);\n"
+        "        let mut seed_index = [u16::MAX; SPLIT_PRIME_DIGIT_LIMIT + 1];\n"
+        "        for (index, &seed) in seeds.iter().enumerate() {\n"
+        "            seed_index[seed as usize] = index as u16;\n"
+        "        }\n")
+    source = replace_once(source,
+        "        Self { digit_windows, residue_packed: residue_packed.into_boxed_slice(),\n",
+        "        Self { digit_windows, residue_packed: residue_packed.into_boxed_slice(),\n"
+        "               seed_index,\n")
+    source = replace_once(source, "        assert_eq!(entries, 1_386);\n",
+                          "        assert_eq!(entries, 11_571);\n")
+    source = replace_once(source, "            assert_eq!(row.len(), 66);\n",
+                          "            assert_eq!(row.len(), 551);\n")
+    source = replace_once(source, "        assert_eq!(checked, 21 * 66 * 6);\n",
+                          "        assert_eq!(checked, 21 * 551 * 6);\n")
+    return source
+
+
 BATCH_AFFINE_ADD_RUST = r"""fn split_prime_batch_affine_add(
     pairs: &[(U256Affine, U256Affine)], output: &mut [U256Affine],
 ) {
@@ -1037,7 +1069,8 @@ def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
          unit_compressed: bool = False, packed_correction: bool = False,
          tight_terminal: bool = False, split_seed_tables: bool = False,
          terminal_orbits: bool = False, no_terminal_fallback: bool = False,
-         digit_two_x: bool = False, batch_affine_digits: bool = False) -> None:
+         digit_two_x: bool = False, batch_affine_digits: bool = False,
+         direct_two_x_seeds: bool = False) -> None:
     if variant not in ("3301", "3307", "5113"):
         raise ValueError("variant must be 3301, 3307, or 5113")
     spec = importlib.util.spec_from_file_location("mixed640_bench_cli", BASE)
@@ -1082,6 +1115,10 @@ def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
         if not no_terminal_fallback:
             raise ValueError("two-x digit rows require axis-free terminal table")
         split_source = use_two_x_digit_rows(split_source)
+    if direct_two_x_seeds:
+        if not digit_two_x or batch_affine_digits:
+            raise ValueError("direct two-x seeds require two-x rows without batch fusion")
+        split_source = use_direct_two_x_seed_rows(split_source)
     if batch_affine_digits:
         if not digit_two_x:
             raise ValueError("batch affine digits require two-x digit rows")
@@ -1120,6 +1157,7 @@ def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
                     + ("_terminal_orbits" if terminal_orbits else "")
                     + ("_no_terminal_fallback" if no_terminal_fallback else "")
                     + ("_digit_two_x" if digit_two_x else "")
+                    + ("_direct_two_x_seeds" if direct_two_x_seeds else "")
                     + ("_batch_affine_digits" if batch_affine_digits else "")),
         "split_prime_source_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
         "generated_module_sha256": sha256(module_path.read_bytes()).hexdigest(),
@@ -1166,5 +1204,10 @@ if __name__ == "__main__":
              packed_correction=True, tight_terminal=True, split_seed_tables=True,
              terminal_orbits=True, no_terminal_fallback=True, digit_two_x=True,
              batch_affine_digits=True)
+    elif len(sys.argv) == 3 and sys.argv[1] == "--unit-direct-two-x":
+        main(Path(sys.argv[2]), fused_terminal=True, unit_compressed=True,
+             packed_correction=True, tight_terminal=True, split_seed_tables=True,
+             terminal_orbits=True, no_terminal_fallback=True, digit_two_x=True,
+             direct_two_x_seeds=True)
     else:
         raise SystemExit("usage: native_split_prime_bench.py [--linear|--fused-terminal|--short-fused|--unit-fused|--unit-packed|--unit-packed-tight|--unit-split-table] TARGET_DIR")
