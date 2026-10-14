@@ -138,6 +138,12 @@ overlay logs, together with the near-real variant logs, are retained under
 `tier1-runpod-20261013/split-prime-validation/`. Their transferred archive
 SHA-256 is
 `28654dc4b96346a238d68ef7958c6001d4b5c64291d2269cba2daa1b379590f1`.
+Before the successful fused build, two unmeasured housekeeping commands
+failed: pinning to CPUs `0-7` was rejected by the Pod's affinity mask, and
+a later `taskset` invocation could not resolve `cargo` on its command path.
+The recorded successful build used allowed housekeeping CPUs and the
+absolute `/root/.cargo/bin/cargo` launcher. Neither failure entered a
+timed benchmark job.
 
 The case-0 serial comparison against the original norm-3301 radix completed
 eight valid pairs. Its median paired original/fused online ratio was
@@ -146,9 +152,17 @@ is `tier1-runpod-20261013/e2e0700e2f9a466dbd3243636687833c/`; the
 transferred archive SHA-256 is
 `eaf524ff4cf8852eb254cc8fe349b2363767febbcac99af111b47fa7e7361ffb`.
 All 16 invocations returned independently verified points, and artifacts,
-binaries, and runner stayed stable. The eight-case serial follow-up is
-queued under the same instance-scoped service. Host exclusivity remains
-unproved, so this timing result is exploratory.
+binaries, and runner stayed stable. The eight-case serial follow-up also
+completed: 40 valid pairs and 80 valid invocations, with every case median
+above one. The median of case medians was **1.1102**, and a 20,000-replicate
+hierarchical bootstrap over cases and their five pairs gave
+**1.0272–1.1913**. The case medians ranged from 1.0205 to 1.1913. Raw jobs
+and `fused-prime-eight-panel.json` are under `tier1-runpod-20261013/`;
+the transferred eight-job archive SHA-256 is
+`3c6e46ca83a658693ce223d0b4af21f8a38c5242c1c00ae88b789c1aa58b3e00`.
+`summarize_split_prime_panel.py` replays the aggregate from the raw case
+jobs and rejects invalid runs or changed binaries, artifacts, or runner.
+Host exclusivity remains unproved, so these timing results are exploratory.
 
 ## Twenty-digit norm-5113 variant
 
