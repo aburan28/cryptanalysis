@@ -219,6 +219,18 @@ theorem unit_packed_correction_identity (q b digitB digitQ carry : Int) :
   dsimp
   apply Prod.ext <;> dsimp <;> omega
 
+-- Every quotient residue already has a representative among signed
+-- integers of magnitude at most 1650. Unit-orbit pruning starts from this
+-- complete set; the exact greedy 551-seed lookup is checked by the model.
+theorem centered_sign_cover (r : Nat) (hr : r < 3301) :
+    ∃ m : Nat, m ≤ 1650 ∧ (r = m ∨ r + m = 3301) := by
+  by_cases h : r ≤ 1650
+  · exact ⟨r, h, Or.inl rfl⟩
+  · refine ⟨3301 - r, ?_, Or.inr ?_⟩ <;> omega
+
+theorem six_unit_residue_multipliers_distinct :
+    List.Nodup ([1, 3300, 1726, 1575, 1574, 1727] : List Nat) := by decide
+
 #print axioms pi_norm
 #print axioms norm_pi_mul
 #print axioms coordinate_a_bound
@@ -251,5 +263,7 @@ theorem unit_packed_correction_identity (q b digitB digitQ carry : Int) :
 #print axioms unit_terminal_axis_numeric
 #print axioms unit_fused_terminal_numeric
 #print axioms unit_packed_correction_identity
+#print axioms centered_sign_cover
+#print axioms six_unit_residue_multipliers_distinct
 
 end SplitPrimeRadix
