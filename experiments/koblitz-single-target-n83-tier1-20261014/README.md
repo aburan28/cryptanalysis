@@ -1,7 +1,8 @@
 # N83 one-target IC against strong rho: Tier 1 protocol
 
-**Status (2026-10-14): protocol frozen and validated at reduced scale. The
-Tier 1 run has not happened, so this directory contains no timing result.**
+**Status (2026-10-14): measured. GitHub run `38523707244` completed (status
+`COMPLETE`, all three panels eligible); see [Result](#result).** The text below
+the Result section is the frozen protocol as written before the run.
 The protocol re-measures the n=83 a=1 one-target comparison on a fresh
 GitHub Actions `ubuntu-24.04` instance. Today that comparison rests on three
 unisolated packed-rho pairs with a median rho/IC wall ratio of 8.2×
@@ -21,6 +22,58 @@ ledger §23 requires.
 | Frozen point Q0 | (2655898345537166180532960, 3881526307991673265292615); its validation scalar is opened only by the verifier |
 | Crypto source | `770f6a6925a0d29b768bd79074f54a173e967fe7` (on crypto `origin/main`), restored path-by-path with `git archive` and hash-checked |
 | Harness | crypto beat `koblitz.compact_orbit.n83_single_target`; `single_target_panel.py` claim builder; `boundary_autolab.validate_claim(stage="vs_rho")` |
+
+## Result
+
+Run `38523707244` (commit `5a1bb18d`, crypto `770f6a69`, `ubuntu-24.04` image
+`ubuntu24` 20261004.327.1, AMD EPYC 9V74, 4 exposed CPUs, one pinned) ended with
+conclusion success. The artifact is archived in
+[`tier1_github_38523707244/`](tier1_github_38523707244/), and
+`verify_tier1_receipt.py` re-run on the archived receipt (with the pinned crypto
+source restored) reproduced `tier1_result.json`, `tier1_table.md` and the
+workflow's verdict byte for byte. The rank stage passed (full rank, table
+verified independently, Q0 verified, base hash matched); all 32 pairs are valid
+and every claim check passed.
+
+| Panel | Pairs | IC online median (ms) | rho online median (ms) | rho / IC primary [95%] | Frozen reading | Cold IC/rho | IC online / BL model |
+| --- | ---: | ---: | ---: | --- | --- | ---: | ---: |
+| A: Q0, strong rho | 8 | 5,068 | 9,026 | 1.779 [1.775, 1.783] | `ic_online_faster` | 95.4 | 74.8 |
+| B: 16 public points, strong rho | 16 | 645 | 6,200 | 2.769 [1.521, 8.990] | `ic_online_faster` | 134 | 33.5 |
+| C: Q0, legacy packed rho | 8 | 5,110 | 38,500 | 7.536 [7.476, 7.600] | `ic_online_faster` (not a reference) | 23.1 | 1.10 |
+
+**Verdict by the frozen rule.** Panel A reads `ic_online_faster` (lower bound
+above 1), and it is the Tier 1 instance-scoped online result for Q0. It is quoted
+with Panel B's section 23 figure (2.77, 12 of 16 rows IC faster), the cold ratio
+and the BL column, and never as a speed of the method: the cold ratio is 95.4
+(A) and 134 (B), and the break-even is 223 and 218 targets, so rho is ahead once
+the 882 s setup (835.6 s rank stage plus per-process 46.5 s) is charged. Against
+the BL model given that setup, IC online is 74.8x (A) and 33.5x (B) slower.
+Panel C only tests the historical 8.2x: its median 7.54 [7.48, 7.60] excludes
+8.2, so that figure did not survive isolation unchanged, and the packed rho is
+not an accepted reference.
+
+Limits and caveats:
+
+* Panel A's interval covers eight repeats of one deterministic target, so it
+  measures timing noise, not target variation. Rho took 1.42 times the floor
+  steps on Q0 (mean over rows), against 0.995 over Panel B's 16 points, so Q0 is
+  a long rho walk. Panel B has the target variation, and its wide interval
+  is the honest width.
+* One instance, one run, one CPU pinned on a shared cloud VM (Tier 1): not
+  host-isolated, and exclusivity is not certified. `isolated_bench` marks Panel
+  B `speedup_claim_eligible: false` by construction (it needs eight
+  repetitions per case); the protocol's section 23 rule is used for B, as frozen.
+* The precompute and the log-table load are instance observations, not
+  noise-gated.
+* It disagrees in direction with the 2026-10-12 crypto diagnostic (IC over
+  strong rho 1.38 [1.04, 1.88], rho faster). The two differ in host, rho seed
+  and index cache, and no reconciliation is claimed. No K or seed was
+  re-chosen after seeing either result.
+* The factor-log table (`precompute/factor_logs_n83_K600.json`, sha256
+  `a771716f...d9f17e` with matching recomputation) is now archived; binding it
+  in `tier1_protocol.json` is a separate, unmade change.
+
+![rho/IC online ratio by panel with 95% intervals, and the earlier unisolated figures for scale.](figures/tier1_result.png)
 
 ## What changed from the 2026-10-06 runs, and why
 
@@ -189,7 +242,7 @@ diagnostics only. Receipts are in [`smoke/`](smoke/).
   (no {200, 600} tune), the factor-log table is cached, and Panel A is added.
   Results are instance-scoped. Independent-host replay and ledger promotion
   stay outstanding.
-* Canonical graphs: none changed, because there is no new measured fact.
+* Canonical graphs (as checked before the run; `figures/tier1_result.*` is new):
   Checked: `experiments/volcano-ic/figures/` (census, ecdlp and tau figures;
   no n=83 vs_rho data) and crypto `docs/index-calculus-scoreboard.html`, whose
   `n83-retained-gates-20261010` entry concerns the a=0 81-bit model and
@@ -202,9 +255,9 @@ diagnostics only. Receipts are in [`smoke/`](smoke/).
 `ic_log_cache.patch`, `Cargo.toml`/`Cargo.lock`, `make_targets.py` and
 `inputs/targets.json`, `precompute.py`, `arm.py` (the per-arm wrapper
 isolated_bench launches), `make_tier1_manifest.py`, `verify_tier1_receipt.py`,
-`figures/`, `smoke/`, the workflow
+`figures/` (including `tier1_result.{tex,pdf,png}`), `smoke/`, `tier1_github_38523707244/` (the archived receipt, without the runner's queue lock), the workflow
 [`.github/workflows/n83-onetarget-tier1.yml`](../../.github/workflows/n83-onetarget-tier1.yml),
-and the PDF `n83_onetarget_tier1_protocol.pdf`.
+the PDF `n83_onetarget_tier1_protocol.pdf`, and the result report `n83_onetarget_tier1_result.md` with its PDF.
 
 ## Reproduce
 

@@ -107,18 +107,20 @@ without TeX can open the paper.
      Tier 1 figure (stage diagnostic, one target, one instance; not a complete
      speedup). Still open: Tier 0 host isolation, if a speedup claim beyond the
      instance is wanted.
-3. **Isolated one-target comparison at `n = 83`.**
-   - The historical 8.2× used a packed rho that crypto no longer accepts.
-     Against the current strong rho on the same point, IC is 1.38× *slower*
-     online (diagnostic; `crypto:research/n83_evaluation_20261012/`).
-   - A Tier 1 GitHub-runner protocol extends the n = 61 isolated `vs_rho`
-     protocol to n = 83, in
-     `experiments/koblitz-single-target-n83-tier1-20261014/`:
-     - Panel A: strong rho on Q0, 8 pairs.
-     - Panel B: 16 fresh public points.
-     - Panel C: the legacy packed rho.
-     - Each panel reports the cold ratio and the Bernstein–Lange column.
-   - The protocol has been pushed but not read back.
+3. ~~**Isolated one-target comparison at `n = 83`**~~ — measured, Tier 1
+   (GitHub run `38523707244`, one instance, all panels eligible), in
+   `experiments/koblitz-single-target-n83-tier1-20261014/`.
+   - Frozen readings, rho online / IC online: Panel A (Q0, strong rho) 1.779
+     [1.775, 1.783], `ic_online_faster`; Panel B (16 points) 2.769
+     [1.521, 8.990], `ic_online_faster`; Panel C (legacy packed rho, not a
+     reference) 7.536 [7.476, 7.600].
+   - Quoted only as instance-scoped, never as a speed of the method: cold ratio
+     IC/rho 95.4 (A) and 134 (B); IC online is 74.8x (A) and 33.5x (B) the
+     Bernstein-Lange model.
+   - The paper (abstract, section 7, limitations, conclusion) now states this.
+     It disagrees in direction with the 2026-10-12 crypto diagnostic (IC 1.38x
+     slower); that is not reconciled. Still open: a Tier 0 or independent-host
+     replay.
 4. ~~A **rho arm at `n = 19`**~~ — measured, exploratory tier (GitHub run
    `38520305068`, `experiments/volcano-ic/rho-arm-20261014/`; 10/10 scalars,
    640/640 rho logs verified, validity gate passed).
