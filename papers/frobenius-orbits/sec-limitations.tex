@@ -9,8 +9,9 @@ internally as ``speedups'', a $131\times$ and an $18.9\times$, are not:
 the first is the ratio $S/S_\rho$ of a meet-in-the-middle arm at
 $n=23$ (it is $131$ times \emph{slower} than rho) and also the
 entry-count quotient of a quotiented ECC2K-130 table; the second is
-the compact tier's cost relative to the generic floor at $n=61$
-(Table~\ref{tab:tier}). Neither is a speedup of anything, and neither
+the compact tier's cost relative to the generic floor at $n=61$ in
+the single-width run that preceded Table~\ref{tab:tier} ($18.98$--$22.49$
+in the table itself).\art{131: crypto:research/koblitz_symmetrised_e2e_20260927/RESULTS.md and crypto:research/isogeny_fibers_20261010/round4/16_1_m_crossover/RESULTS.md ($S=143$ against $S_\rho=1.09$); the entry-count quotient in crypto:research/notes/ecc2k130/RESEARCH_ECC2K130_RELATION_SWEEPS.md. 18.9: crypto:research/notes/ecc2k130/RESEARCH_KOBLITZ_INDEX_CALCULUS.md, the tier-flip table} Neither is a speedup of anything, and neither
 appears in this paper as one. Likewise the $6.85\times$ of
 Table~\ref{tab:n19} is a CPU-time ratio between two factor bases at
 $n=19$, not a ratio to rho, and should not be confused with the
@@ -19,19 +20,32 @@ to report at $n=131$.\art{experiments/sage-ic-campaign/onb-frobenius-20260924/RE
 
 \paragraph{No end-to-end advance.}
 At every degree where a complete, verified pipeline was priced against
-the matched signed-Frobenius rho the index calculus is slower:
-$12$--$13\times$ in operations at $n=61$, $1.3$--$23\times$ in isolated
-CPU at $n=37$--$53$, $300\times$ at the best $39$-bit rung of the
-boundary ledger. The one exploratory observation in the other direction
-($n=83$, median $8.2\times$ in online wall) is unisolated and is not a
-claim. The paper claims no attack, no asymptotic statement and nothing
+the matched signed-Frobenius rho with its setup charged, the index
+calculus is slower: $12.1$--$15.4\times$ in operations over the
+$n=61$ tier sweep and $330.7\times$ for the $300\,608$-point $n=61$
+pipeline, $1.3$--$23\times$ in isolated CPU at $n=37$--$53$, and
+$300\times$ at the first, unfolded $39$-bit rung of the boundary
+ledger ($30$--$42\times$ after folding). The isolated single-target
+rows in which it is faster online ($8.8$--$17.5\times$ at
+$r\le2^{47}$; $12.9$--$13.9\times$ at $n=61$) exclude a setup that
+costs $62$--$292$ online intervals and that a generic walk could use
+as precomputation to better effect (Section~\ref{sec:bench-e2e}); the
+unisolated $n=83$ observation (median $8.2\times$) is of the same kind,
+was taken against a rho reference the repository has since rejected,
+and reverses to $1.38\times$ in rho's favour against the current
+reference in an earlier diagnostic; a later Tier~1 panel reads index
+calculus $1.78\times$ and $2.77\times$ faster online than that reference
+with a cold ratio of $95$--$134$ in rho's favour, and the two readings are
+not reconciled; it is not a claim. The paper claims no attack, no asymptotic statement and nothing
 about ECC2K-130 or any deployed curve.
 
-\paragraph{The canonical form is prior art.}
+\paragraph{The canonical form and the zero-gap fact are prior art.}
 Section~\ref{sec:related}: the least Frobenius conjugate in normal-basis
-representation is the normalization of \citet{bailey2009}. The
-contributions are the shortcut, its proof, the layouts and the
-measurements.
+representation is the normalization of \citet{bailey2009}, and
+Lemma~\ref{lem:zerogap} is a standard property of necklaces
+\citep{ruskeysawada1999,gabricsawada2026}. The contributions are the
+implementations of the shortcut and their exactness proofs, the
+layouts and the measurements.
 
 \paragraph{Isolation.}
 Of the timing rows, only the laned-key result, the cold panel of
@@ -62,5 +76,9 @@ out-of-order core the data-dependent exits of variants A and B
 mispredict on most keys, and the exhaustive branch-free vector scan
 wins inside the decomposition loop at $n=53$
 (Section~\ref{sec:canon-impl}). Which variant is right depends on the
-loop it is embedded in, and the right answer at $n=83$, where no
-vector register holds a key, is open.
+loop it is embedded in. At $n=131$ the branch-free three-limb arm
+retires $2.4\times$ the exhaustive scan's instructions and the lifting
+form of variant~A is cheapest (Section~\ref{sec:bench-canon}), but
+that is an instruction count on an unisolated host, not a timing
+inside a decomposition loop, and the right answer at $n=83$ and
+$n=131$ inside such a loop is open.

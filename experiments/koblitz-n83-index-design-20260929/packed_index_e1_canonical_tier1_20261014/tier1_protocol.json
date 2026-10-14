@@ -1,0 +1,179 @@
+{
+  "bound_sha256": {
+    "bridge": "7937fdbb7810c6fa25d3fe5872480970f5be6e40dcbe3e9419bd6427f95b5c99",
+    "candidate_expected_raw": "8b07d1d94b53272eff04e06bf094d436580faf119defc6196035b42040337491",
+    "canonical_protocol": "ad4562d4a74ee6afc76cb1a0e180fd558f3839edde7f1765448cd0f14db63467",
+    "canonical_stage_manifest": "3376e186b34260ed03137421d290bde3a7957b05db53b8d6d47f31ffc75b089f",
+    "canonical_summary": "c7b8a3d67b8ba80764d55f3de9cb23e357a8806458f15adaaf9e316ca4394e8d",
+    "canonical_workload": "aff27829aa13c4ab6aba23e503480b527ece102d01a77a98bee0c830a6be07fc",
+    "cargo_lock": "a62aa7a2fb65c0e23b30b4d0bbba5a3a5a0cffbf81fb4432939924b33458f371",
+    "cargo_manifest": "7f3282483caf608a23850e33d845faf825a960263ea22c84ded567425860cd88",
+    "isolated_bench_runner": "652ea0ea2089c96e55554b51ecff47e9b7de63dd8e7bbd06230f59139d38a6d3",
+    "native_source": "390f16b16800d0542bd0769e1d3f2ac80fdaa647e67184e23e8b586db71691cf",
+    "reference_expected_raw": "be8672978886e927a8a212237aba5b170612a8ea343db3e8eecc595c0fc9017b",
+    "representatives": "46e8431a2ab5c3be53679d136dbac572ebdfdc2c0860f5301a398f967433fb40",
+    "stage_wrapper": "fa1b6cee52095684737132548ec2db7fc4ce343ce250019c3b25a608328fc497"
+  },
+  "candidate_id": null,
+  "candidate_mode": "packed_bucket22_fastcanon",
+  "comparison_variable": "full 83-rotation Frobenius canonicalization scan (reference) versus exact longest-zero-gap candidate scan (candidate); same binary, same 22-bit hashed bucket directory, same 18-byte records, same target",
+  "correctness": "Each arm must reproduce every frozen ARM_FIELDS value of its mode's published raw row (stage_wrapper), including operation_counts (canonical_rotation_steps 328000000/656000000 full scan, 19127078/38261354 zero gap) and lookup_sample (canonical key and stored Frobenius shift for the 64 roots of the first 32 indexed states). Both arms must share the 20-field pair certificate, so canonical keys, shifts, first-witness samples, hit counts, outcomes and the native generator control agree.",
+  "curve_id": "EC1N83Ckb1h876c2921cb64",
+  "decision_rule": {
+    "invalid": "Any noise or correctness gate fails, or fewer than 16 valid pairs: no verdict; every raw row is preserved; the 1.42x figure stays exploratory.",
+    "magnitude_check": "Separately for a valid panel: 1.4232676 inside the primary interval -> exploratory_magnitude_consistent; interval upper bound < 1.4232676 -> exploratory_magnitude_refuted_overstated; lower bound > 1.4232676 -> exploratory_magnitude_refuted_understated.",
+    "not_promoted_inconclusive": "Interval contains 1: no Tier 1 speedup; the exploratory 1.42x is not promoted.",
+    "promoted": "Primary interval lower bound > 1: Tier 1 instance-scoped canonicalization-phase speedup, reported as the measured median and interval with provider, instance ID and tier (not as 1.42x).",
+    "refuted_regression": "Primary interval upper bound < 1: the zero-gap scan is slower in this phase on this instance; the exploratory speedup is refuted at Tier 1.",
+    "scope": "A promoted result is a stage diagnostic on one frozen target and one instance; it is not a complete single-target IC speedup, which still needs a verified complete solve and same-point rho.",
+    "secondary": "The target-stage ratio gets the same promoted / refuted_regression / not_promoted_inconclusive classification and is reported beside the primary; it never changes the primary verdict."
+  },
+  "expected_candidate_raw": "../packed_index_e1_canonical_20261009/run_2_packed_bucket22_fastcanon.json",
+  "expected_fields": {
+    "curve_id": "EC1N83Ckb1h876c2921cb64",
+    "indexed_states": "2000000",
+    "input_sha256": "46e8431a2ab5c3be53679d136dbac572ebdfdc2c0860f5301a398f967433fb40",
+    "native_source_sha256": "390f16b16800d0542bd0769e1d3f2ac80fdaa647e67184e23e8b586db71691cf",
+    "pair_certificate": "7cfba6355dc0a0dd4c67bfcf585377b57caa50c4391554ac5ab5ec86d7acaff8",
+    "status": "state_cap_no_relation",
+    "target_states": "2000000",
+    "workload_id": "981ac530e67e"
+  },
+  "expected_reference_raw": "../packed_index_e1_canonical_20261009/run_1_packed_bucket22.json",
+  "expected_result": "7cfba6355dc0a0dd4c67bfcf585377b57caa50c4391554ac5ab5ec86d7acaff8",
+  "frozen_at_utc": "2026-10-14T02:40:00+00:00",
+  "frozen_before_any_timing": true,
+  "host": "fresh GitHub Actions ubuntu-24.04 standard runner, one job, one pinned exposed CPU (minimum of the observed affinity mask)",
+  "kind": "n83_e1_canonical_fullscan_vs_zerogap_tier1_instance_comparison_v1",
+  "maximum_panel_wall_s": 5760,
+  "measurement_boundary": "Native one-target bounded PDP clock (timing_ns.target_pdp_and_native_check) after target-independent setup, factor-base, root index and lookup sample; includes target query preparation, batched S3 roots, root conversion and Frobenius canonicalization, exact lookup and native relation checks. The canonicalization phase is timing_ns.target_cycle_canonical, a sub-interval of target_partner_check. Process launch, index build and wrapper verification are outside both intervals.",
+  "measurement_tier": "tier1_instance",
+  "noise_gates": [
+    "isolated_bench Tier 1 preflight ok before the panel and before and after every arm (Linux, execution CPU inside affinity, container cpu.stat nr_throttled and memory oom counters readable)",
+    "per arm: exit 0, no timeout, verified=1, executable digest unchanged, cpu.stat nr_throttled delta 0, memory_events oom and oom_kill delta 0",
+    "per arm: native peak_rss_bytes <= 1024 MiB",
+    "per arm: target_query_preparation + target_s3_batch + target_partner_check <= target_pdp_and_native_check, and target_cycle_canonical + target_exact_lookup <= target_partner_check",
+    "per pair: all eight pair_fields equal and equal to expected_fields",
+    "panel: 32 valid arms in the frozen order, one binary digest, artifacts unchanged across the panel"
+  ],
+  "pair_fields": [
+    "curve_id",
+    "workload_id",
+    "input_sha256",
+    "status",
+    "indexed_states",
+    "target_states",
+    "pair_certificate",
+    "native_source_sha256"
+  ],
+  "pair_order": [
+    [
+      "reference",
+      "candidate"
+    ],
+    [
+      "candidate",
+      "reference"
+    ],
+    [
+      "reference",
+      "candidate"
+    ],
+    [
+      "candidate",
+      "reference"
+    ],
+    [
+      "reference",
+      "candidate"
+    ],
+    [
+      "candidate",
+      "reference"
+    ],
+    [
+      "reference",
+      "candidate"
+    ],
+    [
+      "candidate",
+      "reference"
+    ],
+    [
+      "reference",
+      "candidate"
+    ],
+    [
+      "candidate",
+      "reference"
+    ],
+    [
+      "reference",
+      "candidate"
+    ],
+    [
+      "candidate",
+      "reference"
+    ],
+    [
+      "reference",
+      "candidate"
+    ],
+    [
+      "candidate",
+      "reference"
+    ],
+    [
+      "reference",
+      "candidate"
+    ],
+    [
+      "candidate",
+      "reference"
+    ]
+  ],
+  "pair_state_cap": 2000000,
+  "peak_rss_cap_mib": 1024,
+  "proposal_id": "Q2026100902",
+  "recorded_not_gated": [
+    "steal ticks, IRQ and softirq deltas on the execution CPU",
+    "child involuntary context switches and major faults",
+    "child user and system CPU time",
+    "cgroup memory peak"
+  ],
+  "reference_mode": "packed_bucket22",
+  "repetitions": 16,
+  "result_field": "pair_certificate",
+  "run_id": null,
+  "same_binary_required": true,
+  "stage_wrapper": "../packed_index_e1_isolated_replay_20261010/benchmark_stage.py",
+  "statistics": {
+    "exploratory_reference": {
+      "canonicalization_phase_ratio": "1.4232676",
+      "canonicalization_phase_ratio_source": "ratio of six-run medians 2215795406 / 1556836845 ns in ../packed_index_e1_canonical_20261009/summary.json (unisolated macOS arm64, three adjacent pairs)",
+      "target_stage_adjacent_pair_ratios": [
+        "1.074",
+        "1.156",
+        "1.118"
+      ]
+    },
+    "interval": "paired bootstrap 95%: random.Random(20261011), 10000 resamples of the 16 per-pair ratios with replacement, median of each, sorted, [index 250, index 9749]; a fresh generator for each statistic",
+    "negative_control": {
+      "name": "s3_batch_phase_ratio",
+      "per_pair": "reference timing_ns.target_s3_batch / candidate timing_ns.target_s3_batch; identical work in both arms, reported to show instrument noise, never gated"
+    },
+    "primary": {
+      "name": "canonicalization_phase_ratio",
+      "per_pair": "reference timing_ns.target_cycle_canonical / candidate timing_ns.target_cycle_canonical, from the base64 raw native result in each arm's stdout",
+      "point": "median of the 16 per-pair ratios"
+    },
+    "secondary": {
+      "name": "target_stage_ratio",
+      "per_pair": "reference online_ms / candidate online_ms (timing_ns.target_pdp_and_native_check), the isolated_bench paired speedup",
+      "point": "median of the 16 per-pair ratios"
+    }
+  },
+  "stop_rule": "Run the panel once per workflow attempt. Never rerun to replace an invalid or unfavourable panel; a further attempt is a new receipt reported alongside the first.",
+  "timeout_s_per_arm": 180,
+  "workload_id": "981ac530e67e"
+}

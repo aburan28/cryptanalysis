@@ -1,0 +1,191 @@
+--- a/examples/koblitz_orbit_dlp_fast_online_logcache.rs
++++ b/examples/koblitz_orbit_dlp_fast_online_logcache.rs
+@@ -956,6 +956,90 @@
+     }
+ }
+ 
++// ── Tier 1 factor-log cache (cryptanalysis n83-onetarget-tier1 patch) ──
++//
++// Added by `experiments/koblitz-single-target-n83-tier1-20261014/ic_log_cache.patch`
++// in aburan28/cryptanalysis; the upstream file is unchanged.  The base logs
++// `L_j = log_G(R_j)` of the orbit representatives are the unique full-rank
++// solution of the rank stage, a function of the factor base alone.
++// `KIC_LOG_TABLE_OUT=<path>` writes them after the rank stage;
++// `KIC_LOG_TABLE_IN=<path>` skips the rank stage, reads them, checks the table
++// names this curve and base, and verifies every `[L_j]G = R_j` before any
++// target work.  Load and verification are timed as the relation-LA phase of
++// the reusable setup, outside the target interval.  The relation search, the
++// descent and the five target-phase timers are unchanged.  Wide path only.
++mod log_cache {
++    use serde_json::{json, Value};
++
++    pub const KIND: &str = "compact_orbit_factor_log_table";
++
++    pub fn input_path() -> Option<String> {
++        std::env::var("KIC_LOG_TABLE_IN").ok().filter(|p| !p.is_empty())
++    }
++
++    pub fn output_path() -> Option<String> {
++        std::env::var("KIC_LOG_TABLE_OUT").ok().filter(|p| !p.is_empty())
++    }
++
++    /// Read a table and check that it names this curve and base.
++    pub fn load(
++        path: &str,
++        n: u32,
++        a: u8,
++        r: u64,
++        base_hash: &str,
++        columns: usize,
++    ) -> (Vec<u64>, String) {
++        let bytes = std::fs::read(path).expect("read KIC_LOG_TABLE_IN");
++        let digest = blake3::hash(&bytes).to_hex().to_string();
++        let table: Value = serde_json::from_slice(&bytes).expect("parse factor-log table");
++        assert_eq!(table["kind"], KIND, "not a factor-log table");
++        assert_eq!(table["n"].as_u64(), Some(u64::from(n)), "log table n differs");
++        assert_eq!(table["a"].as_u64(), Some(u64::from(a)), "log table a differs");
++        assert_eq!(
++            table["subgroup_order"].as_str(),
++            Some(r.to_string().as_str()),
++            "log table r differs"
++        );
++        assert_eq!(table["base_hash"].as_str(), Some(base_hash), "log table base differs");
++        assert_eq!(
++            table["orbit_columns"].as_u64(),
++            Some(columns as u64),
++            "log table width differs"
++        );
++        let logs: Vec<u64> = table["logs"]
++            .as_array()
++            .expect("logs array")
++            .iter()
++            .map(|v| {
++                v.as_str()
++                    .expect("decimal log string")
++                    .parse::<u64>()
++                    .expect("u64 log")
++            })
++            .collect();
++        assert_eq!(logs.len(), columns, "log table length differs");
++        assert!(logs.iter().all(|&l| l < r), "log out of range");
++        (logs, digest)
++    }
++
++    pub fn write(path: &str, n: u32, a: u8, r: u64, base_hash: &str, logs: &[u64], provenance: Value) {
++        let table = json!({
++            "kind": KIND,
++            "schema_version": 1,
++            "n": n,
++            "a": a,
++            "subgroup_order": r.to_string(),
++            "base_hash": base_hash,
++            "orbit_columns": logs.len(),
++            "log_definition": "logs[j] = log_G(R_j) for factor_base_representatives[j]",
++            "logs": logs.iter().map(|l| l.to_string()).collect::<Vec<_>>(),
++            "provenance": provenance,
++        });
++        std::fs::write(path, format!("{table}\n")).expect("write KIC_LOG_TABLE_OUT");
++    }
++}
++
+ // ── Wide (`u128`-word) compact-orbit pipeline for `64 < n ≤ 127` ──
+ //
+ // Twin of the `u64` path above with identical stage semantics and the same
+@@ -2058,6 +2142,7 @@
+         // Rank stage: rows sum(coefficient * L_column) = a for random [a]G,
+         // with the same query / PDP / relation-check split as the `u64`
+         // online flow so the cold-phase accounting stays complete.
++        let cached_log_table = super::log_cache::input_path();
+         let rank_started = Instant::now();
+         let mut echelon = Echelon {
+             r,
+@@ -2075,7 +2160,7 @@
+         let mut rank_pdp_elapsed = std::time::Duration::ZERO;
+         let mut rank_relation_check_elapsed = std::time::Duration::ZERO;
+         // Guided: decompose [a]G - R_j for a column j that has no pivot yet.
+-        while echelon.rank < base.columns {
++        while cached_log_table.is_none() && echelon.rank < base.columns {
+             let query_started = Instant::now();
+             rank_seed = rank_seed
+                 .wrapping_mul(6364136223846793005)
+@@ -2128,9 +2213,55 @@
+             .checked_sub(rank_query_elapsed + rank_pdp_elapsed + rank_relation_check_elapsed)
+             .expect("rank phase accounting exceeds rank interval");
+         let la_started = Instant::now();
+-        let logs = echelon.solve();
++        let (logs, log_table_digest) = match cached_log_table.as_deref() {
++            Some(path) => {
++                let (logs, digest) =
++                    super::log_cache::load(path, n, a, r, &base_hash, base.columns);
++                (logs, Some(digest))
++            }
++            None => (echelon.solve(), None),
++        };
++        // Every factor log is checked against its representative before any
++        // target work, whether it was solved here or read from the cache.
++        let log_verify_started = Instant::now();
++        for (column, &log) in logs.iter().enumerate() {
++            let rep: FastPoint128 = representatives[column].map(|[x, y]| (x, y));
++            assert_eq!(
++                fast.scalar_mul(generator, &BigUint::from(log)),
++                rep,
++                "factor log {column} does not map G to its representative"
++            );
++        }
++        let log_verify_ms = ms(log_verify_started.elapsed());
+         let la_elapsed = la_started.elapsed();
+         let la_ms = ms(la_elapsed);
++        if let Some(path) = super::log_cache::output_path() {
++            assert!(
++                cached_log_table.is_none(),
++                "KIC_LOG_TABLE_OUT needs an in-process rank stage"
++            );
++            super::log_cache::write(
++                &path,
++                n,
++                a,
++                r,
++                &base_hash,
++                &logs,
++                json!({
++                    "producer": "koblitz_orbit_dlp_fast_online_logcache (wide path)",
++                    "rank_seed_argument": arguments[3],
++                    "rank_threads": 1,
++                    "rank": echelon.rank,
++                    "rank_attempts": rank_attempts,
++                    "rank_relations": rank_relations,
++                    "rank_failures": rank_failures,
++                    "rank_rows_without_gain": rank_rows_without_gain,
++                    "rank_probes_total": rank_probes,
++                    "rank_stage_ms": rank_ms,
++                    "every_log_verified_against_representative": true,
++                }),
++            );
++        }
+         let setup_complete_elapsed = process_started.elapsed();
+         let setup_complete_ns = setup_complete_elapsed.as_nanos() as u64;
+         let input_control_elapsed = setup_complete_elapsed
+@@ -2310,7 +2441,7 @@
+         } else {
+             (None, None)
+         };
+-        let summary = json!({
++        let mut summary = json!({
+             "kind":"compact_orbit_dlp_summary",
+             "schema_version":"1.0",
+             "producer_version":"compact_orbit_online_pair_symmetry_v1",
+@@ -2358,6 +2489,14 @@
+             "target_threads":1,
+             "scope":"public synthetic Koblitz fixtures; shared-factor-log DLP with every stage timed in one process; no external points or key recovery",
+         });
++        summary["factor_log_table"] = json!({
++            "source": if cached_log_table.is_some() { "verified_cache" } else { "in_process_rank" },
++            "input_blake3": log_table_digest,
++            "relation_la_or_load_and_verify_ms": la_ms,
++            "verify_all_logs_ms": log_verify_ms,
++            "verified_columns": logs.len(),
++            "rank_stage_skipped": cached_log_table.is_some(),
++        });
+         println!("{summary}");
+         if let Ok(path) = std::env::var("KIC_DUMP_BASE") {
+             let dump = json!({

@@ -1,0 +1,77 @@
+{
+  "id": "canon-n131-20261014",
+  "frozen": "2026-10-14, before any metric, instruction count or timing was collected; committed on its own ahead of the results",
+  "question": "At n = 131 (the ECC2K-130 field size), what does exact normal-basis least-rotation canonicalization cost in a three-limb word for (a) the exhaustive scan, (b) the zero-gap set-bit scan (variant B analogue), and (c) a branch-free version, in deterministic counts (candidate rotations, retired instructions), and are all three exact?",
+  "source_context": {
+    "paper": "cryptanalysis:papers/frobenius-orbits/sec-canonicalization.tex (Lemma lem:zerogap, Algorithm alg:zerogap, Proposition prop:cost)",
+    "variant_A": "crypto:src/cryptanalysis/koblitz_fast.rs FrobeniusCanon::least_rotation / least_rotations (crypto commit ecc27ef893c827c90b2b2274501c849b35e6f9d2)",
+    "variant_B": "cryptanalysis:experiments/koblitz-n83-index-design-20260929/packed_index_e1_canonical_20261009/native_packed_index.rs canonical_gap",
+    "base_commit": "cryptanalysis 8f9b3362a8d85b81de920a99d76528ba187a57e5 (branch claude/frobenius-orbit-canonicalization-gwmz8z)"
+  },
+  "convention": "bit i = normal-basis coefficient i; rotl(x,s) = ((x<<s)|(x>>(131-s))) & (2^131-1); canonical = (min_s rotl(x,s), least such s); identical to canonical_gap at n=83 and least_rotation",
+  "representation": {
+    "choice": "[u64; 3], limbs of 64/64/3 bits, little-endian",
+    "justification": [
+      "x86-64 has no 128-bit general-purpose registers: a u128 is lowered to two u64 registers anyway, so u128 + top limb is the same three registers with the cross-limb carries hidden in compiler lowering of 128-bit shifts (variable u128 shifts lower to shld/shl plus a test of bit 6 and cmov), which makes the branch-free property harder to audit",
+      "explicit limbs let one generic code path run with any limb width B, so the three-limb carries and the wrap from bit 130 to bit 0 are tested exhaustively at small n with small limbs (tests/small_n.rs)",
+      "it is the host layout of cryptanalysis:ecc2k130/src/f131.h (struct F131 { uint64_t w[3]; }, 64/64/3), so a canonicalizer here drops into that walk without a repack"
+    ]
+  },
+  "arms": {
+    "exhaustive": "(a) reference: N-1 rotate-by-one steps, keep first strict minimum (ties -> smallest shift)",
+    "gap_scan": "(b) zero-gap set-bit scan: ctz over the set bits of the three limbs, cyclic gap between consecutive ones, rotate-and-compare at every gap >= running maximum, wrap gap last; constant words return (x,0)",
+    "refine_bf": "(c) branch-free: bit-parallel candidate refinement. Candidate mask C (start positions), B_t = rotl(x,t); for t in 0..130: C' = C & ~B_t, C = C' if C' != 0 else C, by mask select. Fixed 130 steps; the first Z steps are the zero-run growth of the lemma. Shift = 130 - msb(C) by branch-free per-limb lzcnt/bsr and mask select; word = fixed 8-stage masked barrel rotation. Constant words fall out with shift 0 without a special case.",
+    "exhaustive_bf": "supplementary: (a) with a borrow-chain compare and mask selects (scalar analogue of the paper's vectorized variant C)",
+    "lift_scan": "supplementary: variant A analogue: branch-free binary lifting (constant rotations only) of the longest-run mask, then a data-dependent loop over its set bits",
+    "null": "call/copy overhead reference for instruction counts"
+  },
+  "branch_free_definition": "In the arm's machine code (objdump, Intel syntax), every conditional jump is a backward loop edge whose flags come from a counter register that is initialised by a constant and stepped only by constants inside the loop; no call, no indirect jump; selections by and/andn/or masks or cmov. Checked mechanically by asm_check.py on the built bench binary. Memory accesses are only the fixed loads of the input and stores of the output. Not claimed: constant time on any particular microarchitecture (no timing-leak test is run).",
+  "build": {
+    "toolchain": "rustc 1.97.0 (2d8144b78 2026-07-07), cargo 1.97.0",
+    "command": "cargo build --release --locked --offline",
+    "target": "x86_64-unknown-linux-gnu, baseline x86-64 (no target-cpu flag; pclmulqdq only inside the fmul proxy behind target_feature)",
+    "profile": "opt-level 3, codegen-units 1, fat LTO, panic abort, debug=1 symbols",
+    "dependencies": "none; Cargo.lock committed"
+  },
+  "exactness": {
+    "small_n": "every word for n = 2..20 in two geometries (three limbs of ceil(n/3) bits; one 64-bit limb) plus n = 8, 12, 20 with an empty top limb; every arm vs exhaustive vs an independent u64 oracle; composite n included for ties (cargo test --release)",
+    "n131_uniform": {"words": 10000000, "seed": 1312026101401},
+    "n131_edges": [
+      "x in F_2: 0 and all-ones (1 in a normal basis); expected (x, 0) from every arm",
+      "every word of weight 1, 2, 3 and its complement (weights 128-130)",
+      "one zero run of length 1..60 straddling bit 64, bit 128 or the wrap 130->0 at every offset; with all-ones background, with a second equal run (tie), and on 4 random backgrounds",
+      "exactly c tied longest runs of length z, c = 2..12, z = 1..12, up to 200 words each",
+      "near-periodic words: random pattern of period 2..40 over 131 bits, 0-2 random flips, 1000 per period"
+    ],
+    "oracle": {"words": 200000, "mix": "alternating uniform and structured", "check": "exhaustive arm vs a Vec<bool> oracle with no limb code; and the minimizing shift is unique for every nonconstant word (Corollary cor:unique)"},
+    "pass_rule": "zero mismatches anywhere"
+  },
+  "metrics": {
+    "distributions": {
+      "uniform": "131 independent uniform bits (SplitMix64)",
+      "structured": "random pattern of period d uniform in 2..20 repeated over 131 bits, one random flip with probability 1/2 (structured131 in src/lib.rs); a stress distribution with many tied longest runs, not a model of any workload"
+    },
+    "counts": {
+      "words_uniform": 10000000, "seed_uniform": 20261014,
+      "words_structured": 1000000, "seed_structured": 20261015,
+      "reported": "mean, sd, median, max and histogram of: longest zero run Z; number c of longest runs (= candidate rotations of variant A / lift_scan); gap-scan rotate-and-compare evaluations; refinement depth (steps until one candidate); fraction of nonconstant words with c = 1"
+    },
+    "instructions": {
+      "tool_order": ["perf stat -e instructions (try; record if unavailable)", "valgrind --tool=cachegrind --cache-sim=no"],
+      "unit": "retired instructions (Ir) of the arm's own symbol canon131_<arm> per word, from cg_annotate; the arms are leaf functions (asm_check confirms no call), so self Ir = inclusive Ir; the null arm's Ir is reported as call overhead",
+      "words": 200000, "seeds": {"uniform": 7001, "structured": 7002},
+      "both_distributions": "every arm on both; a branch-free arm must have identical Ir per word on both"
+    },
+    "field_multiply_reference": "crypto has no 131-bit normal-basis multiply (koblitz_rotated_chain ONB requires m < 128; cyclotomic_factor_base n <= 62). As a labelled proxy only, Ir of one 131-bit polynomial-basis multiply mod z^131+z^13+z^2+z+1 (PCLMULQDQ schoolbook + word reduction, checked against bitwise schoolbook), 200000 chained products, seed 7003. Ratio canon Ir / fmul Ir. A point operation costs several multiplies plus a conversion; no point-operation ratio is claimed.",
+    "wall_clock": "exploratory, UNISOLATED cloud VM, no isolation receipt: 1,000,000 words per arm per distribution (seeds 9001 uniform, 9002 structured), 11 passes, median ns/word, arms run in the fixed order exhaustive, gap_scan, refine_bf, exhaustive_bf, lift_scan, null, fmul. Not a speedup claim under AGENTS.md CPU tiers."
+  },
+  "predictions": {
+    "P1": "all arms exact: zero mismatches",
+    "P2": "gap_scan mean rotations per uniform word between 4 and 6.5 (4.78 at n = 83)",
+    "P3": "fraction of uniform words with one longest run between 0.65 and 0.78 (72.6% at n = 61)",
+    "P4": "refine_bf and exhaustive_bf retire identical Ir per word on both distributions",
+    "P5": "refine_bf costs more Ir per uniform word than gap_scan, by at least 3x",
+    "P6": "max refinement depth on uniform words is far below 130, while the structured distribution reaches depth > 100, which is why a fixed-count branch-free arm cannot stop at the zero-gap filter"
+  },
+  "claims_not_made": "no wall-clock speedup; no end-to-end or ECDLP claim; no constant-time certification; the fmul ratio is a proxy, not a point-operation ratio"
+}
