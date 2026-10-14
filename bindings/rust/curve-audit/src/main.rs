@@ -1,4 +1,5 @@
 mod arithmetic;
+mod certificates;
 mod input;
 
 use arithmetic::{
@@ -16,6 +17,23 @@ const ATTACK_MAP: &str = include_str!("../catalog/attack_map.json");
 
 fn sha256(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
+}
+fn auditor_source_sha256() -> String {
+    let mut digest = Sha256::new();
+    for (name, bytes) in [
+        ("arithmetic.rs", include_bytes!("arithmetic.rs").as_slice()),
+        (
+            "certificates.rs",
+            include_bytes!("certificates.rs").as_slice(),
+        ),
+        ("input.rs", include_bytes!("input.rs").as_slice()),
+        ("main.rs", include_bytes!("main.rs").as_slice()),
+    ] {
+        digest.update(name.as_bytes());
+        digest.update([0]);
+        digest.update(bytes);
+    }
+    format!("{:x}", digest.finalize())
 }
 fn number(n: &BigUint) -> String {
     n.to_str_radix(10)
@@ -116,15 +134,47 @@ fn graph_lookup(path: &str, atlas_id: Option<&str>) -> Result<Value, String> {
     )
 }
 
+// Hasse gives |#E-(p+1)| <= 2 sqrt(p).  If r > 4 sqrt(p), the
+// interval has width strictly less than r, hence contains at most one
+// multiple of r.
+fn hasse_unique_multiple(p: &BigUint, r: &BigUint, n: &BigUint) -> bool {
+    if r.is_zero() || n % r != BigUint::zero() {
+        return false;
+    }
+    let center = p + BigUint::one();
+    let delta = if n >= &center {
+        n - &center
+    } else {
+        &center - n
+    };
+    &delta * &delta <= BigUint::from(4u32) * p && r * r > BigUint::from(16u32) * p
+}
+
 fn audit(
     input: AuditInput,
     raw_hash: String,
     max_k: u32,
     count_limit: u64,
     graph_path: Option<&str>,
+    prime_certificates: Option<&[u8]>,
 ) -> Result<Value, String> {
     let (mut checks, meta) = catalog()?;
-    let prime_status = primality(&input.p);
+    let certified_primes = prime_certificates
+        .map(|bytes| certificates::verify(bytes, &raw_hash, &input.p, input.r.as_ref()))
+        .transpose()?
+        .is_some();
+    let prime_status = if certified_primes {
+        Primality::ProvenPrime
+    } else {
+        primality(&input.p)
+    };
+    let selected_prime_status = input.r.as_ref().map(|r| {
+        if certified_primes {
+            Primality::ProvenPrime
+        } else {
+            primality(r)
+        }
+    });
     let field_status = match prime_status {
         Primality::ProvenPrime => "proven_prime",
         Primality::ProvenComposite => "composite",
@@ -138,6 +188,10 @@ fn audit(
         "arithmetic_supported":supported,"curve_nonsingular":null,"generator_on_curve":null,
         "r_times_generator_is_infinity":null,"curve_order_status":"unavailable"});
     let mut derived = json!({"embedding_degree_search_max":max_k,"point_count_limit":count_limit});
+    if let Some(bytes) = prime_certificates {
+        validation["prime_certificate_status"] = json!("verified");
+        validation["prime_certificate_sha256"] = json!(sha256(bytes));
+    }
     let mut exact_order: Option<BigUint> = None;
     let mut invalid = prime_status == Primality::ProvenComposite;
     if input.degree == 1 {
@@ -204,7 +258,6 @@ fn audit(
                     let n = BigUint::from(n);
                     exact_order = Some(n.clone());
                     validation["curve_order_status"] = json!("independently_counted");
-                    derived["curve_order"] = json!(number(&n));
                     if input
                         .curve_order
                         .as_ref()
@@ -212,48 +265,70 @@ fn audit(
                     {
                         invalid = true;
                     }
-                    let twist = BigUint::from(2u32) * &input.p + BigUint::from(2u32) - &n;
-                    derived["quadratic_twist_order"] = json!(number(&twist));
-                    derived["quadratic_twist_small_factors"] = factor_json(&twist);
-                    let p_plus_one = &input.p + BigUint::one();
-                    derived["trace"] = if n <= p_plus_one {
-                        json!(number(&(&p_plus_one - &n)))
-                    } else {
-                        json!(format!("-{}", number(&(&n - &p_plus_one))))
-                    };
-                    if n == input.p {
-                        set(
-                            &mut checks,
-                            "anomalous_prime",
-                            "condition_verified",
-                            "Exact point enumeration gives #E(F_p)=p.",
-                            json!({"point_count":number(&n)}),
-                        );
-                    } else {
-                        set(
-                            &mut checks,
-                            "anomalous_prime",
-                            "condition_excluded",
-                            "Exact point enumeration gives #E(F_p) different from p.",
-                            json!({"point_count":number(&n)}),
-                        );
-                    }
-                    if n == &input.p + BigUint::one() {
-                        set(&mut checks,"supersingular_pairing","geometry_verified",
-                            "For p>3, exact trace zero establishes the prime-field supersingular condition; pairing transfer remains separate.",json!({"trace":"0"}));
-                    } else {
-                        set(
-                            &mut checks,
-                            "supersingular_pairing",
-                            "geometry_excluded",
-                            "Exact nonzero trace excludes prime-field supersingularity for p>3.",
-                            json!({"point_count":number(&n)}),
-                        );
-                    }
-                    set(&mut checks,"twist_order","structural_data",
-                        "Exact twist order is computed; exploitation requires an input-validation and static-scalar protocol witness.",
-                        json!({"twist_order":number(&twist)}));
                 }
+            }
+            if exact_order.is_none() && certified_primes {
+                if let (Some(r), Some(n)) = (&input.r, &input.curve_order) {
+                    let center = &input.p + BigUint::one();
+                    let delta = if n >= &center {
+                        n - &center
+                    } else {
+                        &center - n
+                    };
+                    let in_hasse_interval = &delta * &delta <= BigUint::from(4u32) * &input.p;
+                    let unique_multiple_bound = r * r > BigUint::from(16u32) * &input.p;
+                    validation["hasse_claim_in_interval"] = json!(in_hasse_interval);
+                    validation["hasse_unique_multiple_bound"] = json!(unique_multiple_bound);
+                    if n % r != BigUint::zero() || !in_hasse_interval {
+                        invalid = true;
+                    }
+                    if validation["r_times_generator_is_infinity"] == true
+                        && hasse_unique_multiple(&input.p, r, n)
+                        && !invalid
+                    {
+                        exact_order = Some(n.clone());
+                        validation["curve_order_status"] =
+                            json!("hasse_unique_multiple_certificate");
+                    }
+                }
+            }
+            if let Some(n) = &exact_order {
+                derived["curve_order"] = json!(number(n));
+                let twist = BigUint::from(2u32) * &input.p + BigUint::from(2u32) - n;
+                derived["quadratic_twist_order"] = json!(number(&twist));
+                derived["quadratic_twist_small_factors"] = factor_json(&twist);
+                let center = &input.p + BigUint::one();
+                derived["trace"] = if n <= &center {
+                    json!(number(&(&center - n)))
+                } else {
+                    json!(format!("-{}", number(&(n - &center))))
+                };
+                set(
+                    &mut checks,
+                    "anomalous_prime",
+                    if n == &input.p {
+                        "condition_verified"
+                    } else {
+                        "condition_excluded"
+                    },
+                    "Certified curve order determines whether #E(F_p)=p.",
+                    json!({"point_count":number(n),"order_status":validation["curve_order_status"]}),
+                );
+                if n == &center {
+                    set(&mut checks,"supersingular_pairing","geometry_verified",
+                        "For p>3, certified trace zero establishes the prime-field supersingular condition; pairing transfer remains separate.",json!({"trace":"0"}));
+                } else {
+                    set(
+                        &mut checks,
+                        "supersingular_pairing",
+                        "geometry_excluded",
+                        "Certified nonzero trace excludes prime-field supersingularity for p>3.",
+                        json!({"point_count":number(n)}),
+                    );
+                }
+                set(&mut checks,"twist_order","structural_data",
+                    "Certified twist order is computed; exploitation requires an input-validation and static-scalar protocol witness.",
+                    json!({"twist_order":number(&twist)}));
             }
             if exact_order.is_none() {
                 if let Some(claimed) = &input.curve_order {
@@ -311,7 +386,7 @@ fn audit(
         }
     }
     if let Some(r) = &input.r {
-        let r_prime = primality(r);
+        let r_prime = selected_prime_status.unwrap();
         derived["selected_order_primality"] = json!(match r_prime {
             Primality::ProvenPrime => "proven_prime",
             Primality::ProvenComposite => "composite",
@@ -320,7 +395,13 @@ fn audit(
         let factors = factor_json(r);
         derived["selected_order_factorization"] = factors.clone();
         let (prime_factors, _, complete) = small_factorization(r, 10_000);
-        let mut exact_generator_order = false;
+        let mut exact_generator_order = r_prime == Primality::ProvenPrime
+            && supported
+            && !invalid
+            && validation["r_times_generator_is_infinity"] == true;
+        if exact_generator_order {
+            validation["generator_exact_order"] = json!(true);
+        }
         if complete && supported && !invalid {
             if let Some((x, y)) = &input.generator {
                 let curve = Curve {
@@ -436,6 +517,7 @@ fn audit(
     };
     Ok(
         json!({"schema":"ca.curve_audit.v1","catalog":meta,"input_sha256":raw_hash,
+        "auditor_source_sha256":auditor_source_sha256(),
         "curve":{"name":input.name,"characteristic":number(&input.p),"degree":input.degree,
             "modulus":input.modulus,"model":input.model,"a":number(&input.a),"b":number(&input.b),
             "selected_order":input.r.as_ref().map(number),"atlas_id":input.atlas_id},
@@ -447,7 +529,7 @@ fn audit(
 }
 
 fn usage() -> ! {
-    eprintln!("usage: ca-curve-audit catalog | audit --input FILE [--max-k 32] [--point-count-limit 100000] [--graph GRAPH.json]");
+    eprintln!("usage: ca-curve-audit catalog | audit --input FILE [--prime-certificates CERT.json] [--max-k 32] [--point-count-limit 100000] [--graph GRAPH.json]");
     process::exit(2)
 }
 
@@ -462,6 +544,7 @@ fn run() -> Result<Value, String> {
     }
     let mut input_path = None;
     let mut graph = None;
+    let mut prime_certificates = None;
     let mut max_k = 32u32;
     let mut count_limit = 100_000u64;
     let mut i = 2;
@@ -472,6 +555,7 @@ fn run() -> Result<Value, String> {
         match args[i].as_str() {
             "--input" => input_path = Some(value.as_str()),
             "--graph" => graph = Some(value.as_str()),
+            "--prime-certificates" => prime_certificates = Some(value.as_str()),
             "--max-k" => max_k = value.parse().map_err(|_| "--max-k must be an integer")?,
             "--point-count-limit" => {
                 count_limit = value
@@ -491,7 +575,17 @@ fn run() -> Result<Value, String> {
     let path = input_path.ok_or("--input is required")?;
     let bytes = read_limited(path, 1_000_000, "input")?;
     let hash = sha256(&bytes);
-    audit(input::parse(&bytes)?, hash, max_k, count_limit, graph)
+    let cert_bytes = prime_certificates
+        .map(|path| read_limited(path, 1_000_000, "prime certificates"))
+        .transpose()?;
+    audit(
+        input::parse(&bytes)?,
+        hash,
+        max_k,
+        count_limit,
+        graph,
+        cert_bytes.as_deref(),
+    )
 }
 
 fn main() {
@@ -514,6 +608,7 @@ mod tests {
             sha256(bytes),
             max_k,
             100_000,
+            None,
             None,
         )
         .unwrap()
@@ -587,6 +682,139 @@ mod tests {
         );
         assert_eq!(status(&report, "anomalous_prime"), "unassessed");
         assert_eq!(report["verdict"], "incomplete_assessment");
+    }
+
+    #[test]
+    fn p192_certifies_large_field_order_trace_and_twist() {
+        let bytes = include_bytes!("../examples/nist-p192.json");
+        let certificate = include_bytes!("../examples/nist-p192-pratt.json");
+        let report = audit(
+            input::parse(bytes).unwrap(),
+            sha256(bytes),
+            6,
+            100_000,
+            None,
+            Some(certificate),
+        )
+        .unwrap();
+        let claimed = input::parse(bytes).unwrap().curve_order.unwrap();
+        assert_eq!(report["validation"]["field_characteristic"], "proven_prime");
+        assert_eq!(
+            report["derived"]["selected_order_primality"],
+            "proven_prime"
+        );
+        assert_eq!(
+            report["validation"]["curve_order_status"],
+            "hasse_unique_multiple_certificate"
+        );
+        assert_eq!(report["validation"]["generator_exact_order"], true);
+        assert_eq!(report["derived"]["curve_order"], number(&claimed));
+        assert_eq!(report["derived"]["trace"], "31607402316713927207482677199");
+        assert_eq!(status(&report, "anomalous_prime"), "condition_excluded");
+        assert_eq!(status(&report, "twist_order"), "structural_data");
+    }
+
+    #[test]
+    fn p224_certifies_large_field_order_trace_and_twist() {
+        let bytes = include_bytes!("../examples/nist-p224.json");
+        let certificate = include_bytes!("../examples/nist-p224-pratt.json");
+        let report = audit(
+            input::parse(bytes).unwrap(),
+            sha256(bytes),
+            6,
+            100_000,
+            None,
+            Some(certificate),
+        )
+        .unwrap();
+        let claimed = input::parse(bytes).unwrap().curve_order.unwrap();
+        assert_eq!(report["validation"]["field_characteristic"], "proven_prime");
+        assert_eq!(
+            report["derived"]["selected_order_primality"],
+            "proven_prime"
+        );
+        assert_eq!(
+            report["validation"]["curve_order_status"],
+            "hasse_unique_multiple_certificate"
+        );
+        assert_eq!(report["validation"]["generator_exact_order"], true);
+        assert_eq!(report["derived"]["curve_order"], number(&claimed));
+        assert_eq!(
+            report["derived"]["trace"],
+            "4733100108545601916421827343930821"
+        );
+        assert_eq!(status(&report, "anomalous_prime"), "condition_excluded");
+    }
+
+    #[test]
+    fn bad_or_misbound_prime_certificates_are_rejected() {
+        let bytes = include_bytes!("../examples/nist-p192.json");
+        let cert = include_bytes!("../examples/nist-p192-pratt.json");
+        let mut value: Value = serde_json::from_slice(cert).unwrap();
+        value["field_characteristic"]["a"] = json!("1");
+        assert!(audit(
+            input::parse(bytes).unwrap(),
+            sha256(bytes),
+            6,
+            100_000,
+            None,
+            Some(&serde_json::to_vec(&value).unwrap())
+        )
+        .is_err());
+        let mut input_value: Value = serde_json::from_slice(bytes).unwrap();
+        input_value["curve"]["b"] = json!("7");
+        let changed = serde_json::to_vec(&input_value).unwrap();
+        assert!(audit(
+            input::parse(&changed).unwrap(),
+            sha256(&changed),
+            6,
+            100_000,
+            None,
+            Some(cert)
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn valid_prime_certificates_do_not_promote_an_incorrect_order() {
+        let bytes = include_bytes!("../examples/nist-p192.json");
+        let mut input_value: Value = serde_json::from_slice(bytes).unwrap();
+        input_value["curve_order"] = json!("1");
+        let changed = serde_json::to_vec(&input_value).unwrap();
+        let mut cert_value: Value =
+            serde_json::from_slice(include_bytes!("../examples/nist-p192-pratt.json")).unwrap();
+        cert_value["input_sha256"] = json!(sha256(&changed));
+        let cert = serde_json::to_vec(&cert_value).unwrap();
+        let report = audit(
+            input::parse(&changed).unwrap(),
+            sha256(&changed),
+            6,
+            100_000,
+            None,
+            Some(&cert),
+        )
+        .unwrap();
+        assert_eq!(report["validation"]["prime_certificate_status"], "verified");
+        assert_eq!(
+            report["validation"]["curve_order_status"],
+            "supplied_unverified"
+        );
+        assert_eq!(report["validation"]["hasse_claim_in_interval"], false);
+        assert_eq!(report["verdict"], "invalid_parameters");
+    }
+
+    #[test]
+    fn hasse_multiple_requires_interval_divisibility_and_spacing() {
+        let p = BigUint::from(101u32);
+        let r = BigUint::from(101u32);
+        assert!(hasse_unique_multiple(&p, &r, &r));
+        assert!(!hasse_unique_multiple(&p, &r, &BigUint::from(100u32)));
+        assert!(!hasse_unique_multiple(&p, &r, &BigUint::from(202u32)));
+        assert!(!hasse_unique_multiple(
+            &p,
+            &BigUint::from(7u32),
+            &BigUint::from(98u32)
+        ));
     }
 
     #[test]

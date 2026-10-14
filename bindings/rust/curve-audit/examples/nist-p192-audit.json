@@ -1,0 +1,722 @@
+{
+  "auditor_source_sha256": "21c9b414ce9972b8652eb12cf9c56fd739c81f9ce4ca378d362496f893926eea",
+  "catalog": {
+    "attack_map_sha256": "3316d2b821a9f4be9fbd43c538a88a26877370283dbd07acdae4fcbb26dd1935",
+    "criteria_sha256": "165fc26fa90f1789e3fe01301cda59c8fd2df1a3219fe5ba9cfc97397148ba93",
+    "indexed_count": 23,
+    "research_count": 38,
+    "schema": "ca.curve_criteria.v1",
+    "upstream_commit": "2f1f9c553b4b2f03643f4200d6e12ab9221900c4"
+  },
+  "checks": [
+    {
+      "domain": "E/F_p, p prime",
+      "evidence": {
+        "order_status": "hasse_unique_multiple_certificate",
+        "point_count": "6277101735386680763835789423176059013767194773182842284081"
+      },
+      "family": "Indexed criteria",
+      "id": "anomalous_prime",
+      "name": "Anomalous prime-field group",
+      "reason": "Certified curve order determines whether #E(F_p)=p.",
+      "required_witness": "Exact point count, field and model coefficients, and selected point order.",
+      "source_url": "https://doi.org/10.1007/s001459900052",
+      "status": "condition_excluded"
+    },
+    {
+      "domain": "Any finite cyclic elliptic subgroup",
+      "family": "Indexed criteria",
+      "id": "smooth_selected_order",
+      "name": "Smooth selected subgroup",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Generator, exact order, complete factorization, and membership of the target.",
+      "source_url": "https://doi.org/10.1109/TIT.1978.1055817",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Selected r-subgroup of E/F_q, gcd(r,q)=1",
+      "evidence": {
+        "max_k": 6
+      },
+      "family": "Indexed criteria",
+      "id": "mov_weil_pairing",
+      "name": "MOV / Weil-pairing transfer",
+      "reason": "No k <= 6 satisfies r | p^k-1; larger degrees were not searched.",
+      "required_witness": "Independent r-torsion pairing argument, explicit nondegenerate image of the chosen generator, and target transport.",
+      "source_url": "https://doi.org/10.1145/103418.103434",
+      "status": "not_found_within_bound"
+    },
+    {
+      "domain": "Selected r-torsion, gcd(r,q)=1",
+      "evidence": {
+        "max_k": 6
+      },
+      "family": "Indexed criteria",
+      "id": "frey_ruck_tate_pairing",
+      "name": "Frey–Rück / Tate-pairing transfer",
+      "reason": "No k <= 6 satisfies r | p^k-1; larger degrees were not searched.",
+      "required_witness": "A Tate-pairing class giving an injective image of the chosen subgroup, plus destination-field DLP cost.",
+      "source_url": "https://doi.org/10.1090/S0025-5718-1994-1218343-6",
+      "status": "not_found_within_bound"
+    },
+    {
+      "domain": "Supersingular E/F_q with selected r",
+      "evidence": {
+        "point_count": "6277101735386680763835789423176059013767194773182842284081"
+      },
+      "family": "Indexed criteria",
+      "id": "supersingular_pairing",
+      "name": "Supersingular pairing geometry",
+      "reason": "Certified nonzero trace excludes prime-field supersingularity for p>3.",
+      "required_witness": "Point-count and supersingularity certificates, r-subgroup generator, pairing transfer, and destination cost.",
+      "source_url": "https://doi.org/10.1145/103418.103434",
+      "status": "geometry_excluded"
+    },
+    {
+      "domain": "E/F_(2^m) with a specified subfield tower",
+      "evidence": null,
+      "family": "Indexed criteria",
+      "id": "ghs_binary",
+      "name": "Binary-field GHS descent",
+      "reason": "The field characteristic is not two.",
+      "required_witness": "Cover equation, genus, maps, selected subgroup kernel check, and destination solver cost.",
+      "source_url": "https://www.iacr.org/cryptodb/data/paper.php?pubkey=14115",
+      "status": "outside_domain"
+    },
+    {
+      "domain": "Prime extension degree d∈{2,3,5,7}, odd characteristic",
+      "evidence": null,
+      "family": "Indexed criteria",
+      "id": "ghs_odd_covering",
+      "name": "Odd-characteristic GHS covering",
+      "reason": "This input has extension degree one; the listed proper-subfield route needs an extension-field instance.",
+      "required_witness": "Defining equations, smoothness/genus, cover map, Jacobian isogeny, selected subgroup injection, and cost.",
+      "source_url": "https://eprint.iacr.org/2015/805.pdf",
+      "status": "outside_domain"
+    },
+    {
+      "domain": "E/F_(p^6), q=p², p>3",
+      "evidence": null,
+      "family": "Indexed criteria",
+      "id": "cubic_norm_one",
+      "name": "Cubic norm-one genus-three branch",
+      "reason": "This input has extension degree one; the listed proper-subfield route needs an extension-field instance.",
+      "required_witness": "λ=α^q/α, exact coefficients, cover and genus certificate, subgroup map and charged construction.",
+      "source_url": "https://github.com/aburan28/crypto/tree/main/research/weak_curve_database_20261012",
+      "status": "outside_domain"
+    },
+    {
+      "domain": "E/F_(p^6), q=p², p>3",
+      "evidence": null,
+      "family": "Indexed criteria",
+      "id": "quadratic_torus",
+      "name": "Nonsplit quadratic genus-three branch",
+      "reason": "This input has extension degree one; the listed proper-subfield route needs an extension-field instance.",
+      "required_witness": "Exact model, covering construction, genus and induced subgroup map.",
+      "source_url": "https://github.com/aburan28/crypto/tree/main/research/weak_curve_database_20261012",
+      "status": "outside_domain"
+    },
+    {
+      "domain": "Selected subgroup of E/F_(q^d), d>1, with an explicit subfield factor base",
+      "evidence": null,
+      "family": "Indexed criteria",
+      "id": "extension_index_calculus",
+      "name": "Direct extension-field decomposition",
+      "reason": "This input has extension degree one; the listed proper-subfield route needs an extension-field instance.",
+      "required_witness": "Verified natural-query relations, rank growth, final linear algebra, target descent, scalar replay, and a matched one-target reference.",
+      "source_url": "https://eprint.iacr.org/2010/157",
+      "status": "outside_domain"
+    },
+    {
+      "domain": "Selected subgroup G of E/F_(p^(nd)) over a composite-degree tower F_(p^(nd))/F_(p^n)/F_p; sextic branches n=2,d=3 or n=3,d=2",
+      "evidence": null,
+      "family": "Indexed criteria",
+      "id": "cover_and_decomposition",
+      "name": "Cover-and-decomposition index calculus",
+      "reason": "This input has extension degree one; the listed proper-subfield route needs an extension-field instance.",
+      "required_witness": "Exact tower, lower-field H and map, selected-subgroup kernel, F_p-abscissa factor base, verified natural relations and rank, final linear algebra, target descent, and complete cost.",
+      "source_url": "https://eprint.iacr.org/2011/020",
+      "status": "outside_domain"
+    },
+    {
+      "domain": "Selected prime-order subgroup of E/F_(q^3) satisfying the isogeny construction",
+      "evidence": null,
+      "family": "Indexed criteria",
+      "id": "cubic_jacobian_isogeny",
+      "name": "Cubic Weil-restriction Jacobian isogeny",
+      "reason": "This input has extension degree one; the listed proper-subfield route needs an extension-field instance.",
+      "required_witness": "Explicit isogeny and genus-three Jacobian, selected-subgroup kernel check, transported points, destination solver, and full cost.",
+      "source_url": "https://arxiv.org/abs/2012.07173",
+      "status": "outside_domain"
+    },
+    {
+      "domain": "E/F_(p^n) with a proper subfield",
+      "evidence": null,
+      "family": "Indexed criteria",
+      "id": "proper_subfield_points",
+      "name": "Selected points over a proper subfield",
+      "reason": "This input has extension degree one; the listed proper-subfield route needs an extension-field instance.",
+      "required_witness": "Explicit field isomorphism/model transport and point-containment certificate for generator and target.",
+      "source_url": "https://github.com/aburan28/crypto/tree/main/research/weak_curve_database_20261012",
+      "status": "outside_domain"
+    },
+    {
+      "domain": "E/F_q with a recorded separable isogeny and selected subgroup order r",
+      "family": "Indexed criteria",
+      "id": "isogeny_transfer",
+      "name": "Isogeny transfer to an assessed neighbor",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Exact endpoint models and UIDs, degree, kernel, forward map, image order of the selected generator, target transport, and construction cost.",
+      "source_url": "https://github.com/aburan28/crypto/tree/main/research/isogeny_walk_p192_20261004",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Prime-field curves with a computable endomorphism; the j=0 and j=1728 automorphisms are simple sufficient screens",
+      "family": "Indexed criteria",
+      "id": "glv_endomorphism",
+      "name": "GLV endomorphism screen",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Explicit endomorphism, eigenvalue modulo r, orbit size, scalar-decomposition or rho implementation, and matched cost.",
+      "source_url": "https://doi.org/10.1007/3-540-44647-8_11",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Curves over F_(p²) built as a quadratic twist of an F_p curve",
+      "evidence": null,
+      "family": "Indexed criteria",
+      "id": "gls_frobenius",
+      "name": "GLS Frobenius-twist screen",
+      "reason": "This input has extension degree one; the listed proper-subfield route needs an extension-field instance.",
+      "required_witness": "Twist isomorphism over its defining extension, endomorphism formula, selected-subgroup eigenvalue, and measured orbit or decomposition gain.",
+      "source_url": "https://eprint.iacr.org/2008/194",
+      "status": "outside_domain"
+    },
+    {
+      "domain": "A specified cyclic subgroup and DDH input law, often with a distortion map or cross-group input",
+      "family": "Indexed criteria",
+      "id": "ddh_pairing",
+      "name": "Pairing-assisted decisional Diffie–Hellman",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Exact challenge group, pairing, auxiliary map or G2 input, nondegeneracy on the chosen subgroup, and the decision equation.",
+      "source_url": "https://eprint.iacr.org/2004/070",
+      "status": "unassessed"
+    },
+    {
+      "domain": "A fixed secret key reused across chosen public inputs in a specified protocol",
+      "family": "Indexed criteria",
+      "id": "static_dh_oracle",
+      "name": "Static Diffie–Hellman with oracle access",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Concrete oracle transcript model, query bound, reduction or recovery algorithm, and independently checked secret or shared-key result.",
+      "source_url": "https://eprint.iacr.org/2010/177",
+      "status": "unassessed"
+    },
+    {
+      "domain": "r coprime to p, base field q=p^m and k=ord_r(q)",
+      "evidence": {
+        "max_k": 6
+      },
+      "family": "Indexed criteria",
+      "id": "minimal_pairing_field",
+      "name": "Minimal pairing output field",
+      "reason": "No k <= 6 satisfies r | p^k-1; larger degrees were not searched.",
+      "required_witness": "Exact p, m, r, modular-order certificates for d and k, pairing computation field, and image field.",
+      "source_url": "https://eprint.iacr.org/2006/415",
+      "status": "not_found_within_bound"
+    },
+    {
+      "domain": "Pairing-friendly curve with a specified r, twist, and target field",
+      "family": "Indexed criteria",
+      "id": "pairing_group_roles",
+      "name": "Pairing groups G1, G2 and GT",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Exact base and twist equations, generators, order/cofactor facts, embedding degree, and nondegenerate pairing specification.",
+      "source_url": "https://datatracker.ietf.org/doc/draft-irtf-cfrg-pairing-friendly-curves/",
+      "status": "unassessed"
+    },
+    {
+      "domain": "A concrete protocol accepting G1/G2 points or GT values",
+      "family": "Indexed criteria",
+      "id": "pairing_subgroup_validation",
+      "name": "Pairing subgroup and cofactor validation",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Exact input parser, cofactor policy, membership tests, adversarial inputs, and observed protocol response.",
+      "source_url": "https://datatracker.ietf.org/doc/draft-irtf-cfrg-pairing-friendly-curves/",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Order-r target group GT in F_(p^d)*",
+      "family": "Indexed criteria",
+      "id": "pairing_target_field_dlp",
+      "name": "GT finite-field discrete-log cost",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Exact p, r, d, field tower, factorization assumptions, calibrated algorithm and resource estimate.",
+      "source_url": "https://datatracker.ietf.org/doc/draft-irtf-cfrg-pairing-friendly-curves/",
+      "status": "unassessed"
+    },
+    {
+      "domain": "SIDH-style protocol public keys containing images of auxiliary torsion points",
+      "family": "Indexed criteria",
+      "id": "sidh_auxiliary_torsion",
+      "name": "SIDH/SIKE auxiliary-torsion key recovery",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Exact protocol parameter set, public-key format and auxiliary images, attack implementation, and key-recovery transcript.",
+      "source_url": "https://eprint.iacr.org/2022/975",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Curve plus static-scalar protocol",
+      "evidence": {
+        "twist_order": "6277101735386680763835789423239273818400622627597807638479"
+      },
+      "family": "Inputs and subgroups",
+      "id": "twist_order",
+      "name": "Quadratic-twist subgroup confinement",
+      "reason": "Certified twist order is computed; exploitation requires an input-validation and static-scalar protocol witness.",
+      "required_witness": "An accepted twist point and observable multiplication under a reused scalar",
+      "source_url": "https://eprint.iacr.org/2024/1265",
+      "status": "structural_data"
+    },
+    {
+      "domain": "Implementation",
+      "family": "Inputs and subgroups",
+      "id": "invalid_curve",
+      "name": "Invalid-curve input",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Scalar multiplication accepts a point off the declared curve and reveals a secret-dependent result",
+      "source_url": "https://eprint.iacr.org/2024/1265",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Static-key protocol",
+      "family": "Inputs and subgroups",
+      "id": "small_subgroup",
+      "name": "Small-subgroup confinement",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Attacker-controlled low-order point, reused secret, and distinguishable output",
+      "source_url": "https://eprint.iacr.org/2016/995",
+      "status": "unassessed"
+    },
+    {
+      "domain": "X25519 application",
+      "family": "Inputs and subgroups",
+      "id": "x25519_zero",
+      "name": "X25519 all-zero result",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Accepted low-order input and missing or ineffective all-zero shared-secret handling",
+      "source_url": "https://www.rfc-editor.org/rfc/rfc7748",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Pairing implementation",
+      "family": "Inputs and subgroups",
+      "id": "g1_membership",
+      "name": "G1 subgroup acceptance",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "External G1 point with missing order-r check or cofactor clearing",
+      "source_url": "https://www.rfc-editor.org/rfc/rfc9380",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Pairing implementation",
+      "family": "Inputs and subgroups",
+      "id": "g2_twist_membership",
+      "name": "G2 twist subgroup acceptance",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "External twist point with missing twist, subgroup, or infinity check",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-197",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Pairing protocol",
+      "family": "Inputs and subgroups",
+      "id": "gt_membership",
+      "name": "GT subgroup acceptance",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Untrusted target-field element used as an order-r value without validation",
+      "source_url": "https://datatracker.ietf.org/doc/draft-irtf-cfrg-pairing-friendly-curves/",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Hash-to-curve deployment",
+      "family": "Inputs and subgroups",
+      "id": "hash_to_curve",
+      "name": "Hash-to-curve subgroup and domain separation",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Missing cofactor clearing, subgroup check, or domain separation for the intended group",
+      "source_url": "https://www.rfc-editor.org/rfc/rfc9380",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Selected prime-order group plus auxiliary input",
+      "family": "Auxiliary information",
+      "id": "cheon_minus",
+      "name": "Cheon r−1 auxiliary powers",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "A supplied [x^d]G with d dividing r−1, in addition to G and [x]G",
+      "source_url": "https://doi.org/10.1007/11761679_1",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Selected prime-order group plus auxiliary input",
+      "family": "Auxiliary information",
+      "id": "cheon_plus",
+      "name": "Cheon r+1 auxiliary powers",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "The paper's r+1 auxiliary-input pattern, including the required powers of one secret",
+      "source_url": "https://doi.org/10.1007/11761679_1",
+      "status": "unassessed"
+    },
+    {
+      "domain": "SRS or powers-of-tau protocol",
+      "family": "Auxiliary information",
+      "id": "srs_powers",
+      "name": "Structured-reference-string powers",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Public consecutive secret powers in a specified group and target secret relation",
+      "source_url": "https://doi.org/10.1007/11761679_1",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Signature implementation",
+      "family": "Auxiliary information",
+      "id": "nonce_reuse",
+      "name": "Repeated ECDSA nonce",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Two distinct-message signatures under one key sharing a nonce",
+      "source_url": "https://www.rfc-editor.org/rfc/rfc6979",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Signature implementation",
+      "family": "Auxiliary information",
+      "id": "nonce_bias",
+      "name": "Biased ECDSA nonces",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "A measurable nonce bias across enough signatures under one key",
+      "source_url": "https://eprint.iacr.org/2019/023",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Signature implementation",
+      "family": "Auxiliary information",
+      "id": "nonce_partial",
+      "name": "Partial nonce leakage",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Observed nonce bits or intervals tied to signatures under one key",
+      "source_url": "https://eprint.iacr.org/2021/455",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Key-generation process",
+      "family": "Auxiliary information",
+      "id": "secret_entropy",
+      "name": "Restricted scalar distribution",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Evidence that the secret lies in a constrained subset",
+      "source_url": "https://eprint.iacr.org/2010/617",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Selected subgroup over an extension field",
+      "family": "Index calculus and covers",
+      "id": "trace_zero",
+      "name": "Trace-zero subgroup index calculus",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Generator lies in the kernel of the extension trace map",
+      "source_url": "https://eprint.iacr.org/2014/318",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Prime-field elliptic DLP",
+      "family": "Index calculus and covers",
+      "id": "prime_field_ic",
+      "name": "Prime-field summation-polynomial index calculus",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "An actual factor base and natural relation collection on E(F_p)",
+      "source_url": "https://eprint.iacr.org/2017/609",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Extension-field elliptic DLP",
+      "family": "Index calculus and covers",
+      "id": "cover_without_isogeny",
+      "name": "Cover search beyond the isogeny condition",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Constructed lower-field curve, cover map and injective selected-subgroup transfer",
+      "source_url": "https://eprint.iacr.org/2009/613",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Exact curve with a covering",
+      "evidence": {
+        "c": 0,
+        "degree": 2,
+        "destination_field": "original_field",
+        "equation": "v^2=F(u^2+c)"
+      },
+      "family": "Index calculus and covers",
+      "id": "same_field_cover",
+      "name": "Same-field cover transfer",
+      "reason": "The degree-two map (u,v)->(u^2+c,v) gives a smooth genus-two same-field cover; no subgroup or relation advantage follows from geometry alone.",
+      "required_witness": "A same-field covering plus a measured Jacobian route that improves the chosen task",
+      "source_url": "https://github.com/aburan28/crypto/blob/main/docs/curves/COVERS.md",
+      "status": "geometry_verified"
+    },
+    {
+      "domain": "E/F_(p^(nd)) with composite degree nd and selected subgroup G",
+      "evidence": null,
+      "family": "Index calculus and covers",
+      "id": "jv_intermediate_field_cover",
+      "name": "Joux–Vitse intermediate-field cover",
+      "reason": "This input has extension degree one; the listed proper-subfield route needs an extension-field instance.",
+      "required_witness": "An explicit H/F_(p^n), a cover H→E over F_(p^(nd)), and injective norm–pullback on G",
+      "source_url": "https://eprint.iacr.org/2011/020",
+      "status": "outside_domain"
+    },
+    {
+      "domain": "Odd-characteristic hyperelliptic H/F_(p²) reached from an elliptic subgroup",
+      "family": "Index calculus and covers",
+      "id": "jv_quadratic_sieve",
+      "name": "Joux–Vitse bihomogeneous quadratic sieve",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "A constructed lower-field cover, n=2, a factor base with x in F_p, and a saturated nontrivial relation ideal",
+      "source_url": "https://eprint.iacr.org/2011/020",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Jacobian transfer",
+      "family": "Index calculus and covers",
+      "id": "genus3_model",
+      "name": "Genus-three hyperelliptic branch",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "A genus-three destination and an explicit hyperelliptic model or a suitable nonhyperelliptic solver",
+      "source_url": "https://arxiv.org/abs/2012.07173",
+      "status": "unassessed"
+    },
+    {
+      "domain": "DLP in a specified hyperelliptic Jacobian",
+      "family": "Index calculus and covers",
+      "id": "hyperelliptic_divisor_decomposition",
+      "name": "Hyperelliptic divisor decomposition",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "A reduced divisor representation and a factor base of small-degree prime divisors",
+      "source_url": "https://eprint.iacr.org/2014/815",
+      "status": "unassessed"
+    },
+    {
+      "domain": "DLP in a small-genus hyperelliptic Jacobian",
+      "family": "Index calculus and covers",
+      "id": "hyperelliptic_large_prime",
+      "name": "Hyperelliptic large-prime recombination",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Verified partial divisor relations and a bounded large-prime policy",
+      "source_url": "https://eprint.iacr.org/2004/153",
+      "status": "unassessed"
+    },
+    {
+      "domain": "DLP in a high-genus hyperelliptic Jacobian",
+      "family": "Index calculus and covers",
+      "id": "hyperelliptic_high_genus",
+      "name": "High-genus divisor smoothness",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "A finite field, genus, degree bound and explicit smoothness law for reduced divisors",
+      "source_url": "https://doi.org/10.1090/S0025-5718-01-01363-1",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Exact hyperelliptic curve and Jacobian",
+      "family": "Index calculus and covers",
+      "id": "jacobian_isogeny_decomposition",
+      "name": "Jacobian isogeny decomposition",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "A lower-dimensional factor over the declared field and a usable map from the selected subgroup",
+      "source_url": "https://arxiv.org/abs/1409.8510",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Hyperelliptic cover of an elliptic curve",
+      "family": "Index calculus and covers",
+      "id": "elliptic_quotient_prym",
+      "name": "Elliptic quotient and Prym complement",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "An explicit cover H→E and maps between E, Jac(H), and the complementary factor",
+      "source_url": "https://arxiv.org/abs/1209.3187",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Selected subgroup of a binary Koblitz curve",
+      "family": "Endomorphism acceleration",
+      "id": "koblitz_frobenius",
+      "name": "Binary Koblitz Frobenius orbit rho",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "An efficiently computable Frobenius action with nontrivial orbit on that subgroup",
+      "source_url": "https://eprint.iacr.org/2016/603",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Selected elliptic subgroup",
+      "family": "Endomorphism acceleration",
+      "id": "automorphism_rho",
+      "name": "General automorphism quotient rho",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Efficient automorphism acting with nontrivial, usable orbits on the chosen subgroup",
+      "source_url": "https://eprint.iacr.org/2013/644",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Ordinary elliptic curve",
+      "family": "Endomorphism acceleration",
+      "id": "cm_discriminant",
+      "name": "Small-CM-discriminant structure",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Verified endomorphism order and an exploitable action on the selected subgroup",
+      "source_url": "https://safecurves.cr.yp.to/disc.html",
+      "status": "unassessed"
+    },
+    {
+      "domain": "GT subset of F_(p^k)*",
+      "family": "Pairing target fields",
+      "id": "gt_tnfs",
+      "name": "Pairing-target tower NFS",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "A verified pairing image and a field tower amenable to a finite-field DLP algorithm",
+      "source_url": "https://eprint.iacr.org/2015/505",
+      "status": "unassessed"
+    },
+    {
+      "domain": "GT over a small-characteristic extension",
+      "family": "Pairing target fields",
+      "id": "gt_small_characteristic",
+      "name": "Small-characteristic target-field DLP",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "A pairing image in a field covered by a small-characteristic DLP algorithm",
+      "source_url": "https://arxiv.org/abs/1306.4244",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Concrete scalar-multiplication implementation",
+      "family": "Implementation and faults",
+      "id": "ladder_leak",
+      "name": "Scalar-ladder side-channel leakage",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Observable secret-dependent timing, power or memory behavior",
+      "source_url": "https://eprint.iacr.org/2020/615",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Concrete point-arithmetic implementation",
+      "family": "Implementation and faults",
+      "id": "exceptional_formula",
+      "name": "Exceptional-point formula behavior",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Special inputs trigger observably different formula behavior under a secret scalar",
+      "source_url": "https://eprint.iacr.org/2021/1595",
+      "status": "unassessed"
+    },
+    {
+      "domain": "Invalid-input or faulted scalar multiplication",
+      "family": "Implementation and faults",
+      "id": "degenerate_curve",
+      "name": "Degenerate-curve arithmetic",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "An invalid computation on a degenerate group with observable secret-dependent output",
+      "source_url": "https://eprint.iacr.org/2015/1233",
+      "status": "unassessed"
+    },
+    {
+      "domain": "SIDH-style static-key exchange",
+      "family": "Isogeny protocols",
+      "id": "sidh_active",
+      "name": "Active SIDH malformed-key oracle",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "Chosen public isogeny data, reused secret and a distinguishable shared-secret response",
+      "source_url": "https://eprint.iacr.org/2016/859",
+      "status": "unassessed"
+    },
+    {
+      "domain": "CSIDH class-group action",
+      "family": "Isogeny protocols",
+      "id": "csidh_class_relations",
+      "name": "CSIDH short class-group relations",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "A parameter set and secret distribution affected by short relations or collisions",
+      "source_url": "https://eprint.iacr.org/2019/1209",
+      "status": "unassessed"
+    },
+    {
+      "domain": "CSIDH class-group action",
+      "family": "Isogeny protocols",
+      "id": "csidh_hidden_shift",
+      "name": "CSIDH quantum hidden-shift cost",
+      "reason": "The catalog lists the method; this audit has not verified its required witness.",
+      "required_witness": "A specified group action, oracle model and quantum resource model",
+      "source_url": "https://eprint.iacr.org/2018/383",
+      "status": "unassessed"
+    }
+  ],
+  "curve": {
+    "a": "6277101735386680763835789423207666416083908700390324961276",
+    "atlas_id": null,
+    "b": "2455155546008943817740293915197451784769108058161191238065",
+    "characteristic": "6277101735386680763835789423207666416083908700390324961279",
+    "degree": 1,
+    "model": "short_weierstrass",
+    "modulus": null,
+    "name": "NIST P-192 / secp192r1",
+    "selected_order": "6277101735386680763835789423176059013767194773182842284081"
+  },
+  "derived": {
+    "cofactor": "1",
+    "curve_order": "6277101735386680763835789423176059013767194773182842284081",
+    "embedding_degree_search_max": 6,
+    "embedding_degree_within_bound": null,
+    "point_count_limit": 100000,
+    "quadratic_twist_order": "6277101735386680763835789423239273818400622627597807638479",
+    "quadratic_twist_small_factors": {
+      "complete": false,
+      "factors": [
+        {
+          "exponent": 1,
+          "prime": "23"
+        }
+      ],
+      "remaining_cofactor": "272917466755942641905903887966924948626114027286861201673",
+      "trial_division_limit": 10000
+    },
+    "selected_order_factorization": {
+      "complete": false,
+      "factors": [],
+      "remaining_cofactor": "6277101735386680763835789423176059013767194773182842284081",
+      "trial_division_limit": 10000
+    },
+    "selected_order_primality": "proven_prime",
+    "trace": "31607402316713927207482677199"
+  },
+  "graph": null,
+  "input_sha256": "546cc91e069dbd8fdb808a597ba4c4c5312b20ebeaae9da515745bceb752b653",
+  "protocol_context_supplied": false,
+  "schema": "ca.curve_audit.v1",
+  "summary": {
+    "criteria_total": 61,
+    "structural_candidates": 0,
+    "unassessed": 44,
+    "verified_conditions": 0
+  },
+  "validation": {
+    "arithmetic_supported": true,
+    "curve_nonsingular": true,
+    "curve_order_status": "hasse_unique_multiple_certificate",
+    "field_characteristic": "proven_prime",
+    "generator_exact_order": true,
+    "generator_on_curve": true,
+    "hasse_claim_in_interval": true,
+    "hasse_unique_multiple_bound": true,
+    "prime_certificate_sha256": "4de20aebb2c4b1199dc8aa454b4064f3cb0d4f94e08b14fbf1c5984f5ec3fa3a",
+    "prime_certificate_status": "verified",
+    "r_times_generator_is_infinity": true,
+    "selected_order_divides_curve_order": true
+  },
+  "verdict": "incomplete_assessment",
+  "verdict_meaning": "This is an evidence inventory, not a certificate that a curve or implementation is safe."
+}

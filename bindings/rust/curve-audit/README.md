@@ -5,7 +5,8 @@
 emits one JSON row for each of the 61 versioned WeakCurves criteria. A row
 states the observed condition, its evidence, and the next witness required
 to advance the assessment. The catalog and its source revision are embedded
-in the executable, so a report remains tied to the rules that produced it.
+in the executable, and each report includes the compiled auditor source
+digest, so a result remains tied to the rules and arithmetic that produced it.
 
 Build and run from the repository root:
 
@@ -13,12 +14,32 @@ Build and run from the repository root:
 cargo build --locked --manifest-path bindings/rust/Cargo.toml -p ca-curve-audit
 bindings/rust/target/debug/ca-curve-audit catalog > criteria.json
 bindings/rust/target/debug/ca-curve-audit audit \
-  --input bindings/rust/curve-audit/examples/nist-p192.json --max-k 6 > p192-audit.json
+  --input bindings/rust/curve-audit/examples/nist-p192.json \
+  --prime-certificates bindings/rust/curve-audit/examples/nist-p192-pratt.json \
+  --max-k 6 > p192-audit.json
 ```
 
-The [P-192 input](examples/nist-p192.json) reproduces the parameters in
-[NIST FIPS 186-4, Appendix D.1.2.1](https://nvlpubs.nist.gov/nistpubs/fips/nist.fips.186-4.pdf)
-and demonstrates the 192-bit path.
+The [P-192 input](examples/nist-p192.json) and
+[P-224 input](examples/nist-p224.json) reproduce the parameters in
+[NIST FIPS 186-4, Appendix D.1.2](https://nvlpubs.nist.gov/nistpubs/fips/nist.fips.186-4.pdf)
+and exercise the 192- and 224-bit paths. Their checked-in
+[P-192](examples/nist-p192-pratt.json) and
+[P-224](examples/nist-p224-pratt.json) recursive prime certificates bind to
+each input's exact SHA-256 digest. Generate equivalent certificates through the
+repository's checked Sage launcher:
+
+```sh
+./sage -python bindings/rust/curve-audit/tools/generate_pratt.py \
+  --input bindings/rust/curve-audit/examples/nist-p192.json \
+  --output bindings/rust/curve-audit/examples/nist-p192-pratt.json
+# Repeat with nist-p224.json and nist-p224-pratt.json for P-224.
+```
+
+The Rust auditor verifies these certificates without Sage. Each large-prime
+node checks the complete factorization of `n-1`, recursively proved prime
+factors, and a Lucas witness of order `n-1`; factors at most `10^12` use
+exact trial division. A supplied certificate with the wrong input hash or
+an invalid witness stops the audit with an error.
 The [anomalous F_101 input](examples/anomalous-101.json) exercises an exact
 point-count and generator-order finding; the
 [negative-trace input](examples/negative-trace-101.json) exercises a
@@ -51,13 +72,51 @@ The backend checks the discriminant, generator-on-curve equation,
 `[r]G = O`, bounded embedding degrees, small factors of the selected order,
 and the same-field degree-two cover formula. It independently counts points
 when the prime is at most `--point-count-limit` (default 100,000, maximum
-1,000,000), then computes exact trace, twist order, cofactor and anomalous
-or supersingular conditions. For larger primes, it records a fixed-base
-probable-prime screen and labels any supplied curve order
-`supplied_unverified`; generator annihilation alone does not prove the
-whole curve order. The default embedding-degree bound is 32, with a maximum
+1,000,000). For larger prime fields, it can certify a supplied order `N`
+using the prime certificates, a checked nonidentity point `G` with
+`[r]G=O`, `r | N`, `|N-(p+1)|² ≤ 4p`, and `r² > 16p`. Since `r` is prime,
+`G` has exact order `r`. Lagrange's theorem makes the true curve order a
+multiple of `r`; Hasse's interval has width `4√p < r`, so `N` is its unique
+multiple of `r`. The resulting status is
+`hasse_unique_multiple_certificate`. This route certifies the checked-in
+P-192 and P-224 orders and yields their traces, quadratic-twist orders, and downstream
+arithmetic checks. Without a certificate, a larger prime receives the
+fixed-base probable-prime screen and any supplied order remains
+`supplied_unverified`. The default embedding-degree bound is 32, with a maximum
 of 256. A missing degree within the bound is reported as
 `not_found_within_bound`, not as an all-degree result.
+
+The [Lean theorem](formal/HasseUnique.lean) proves the interval uniqueness
+step for arbitrary natural-number multiples and an interval width less than
+`r`. Its exact hypotheses are `n=k*r`, `m=l*r`, `n≤m+width`,
+`m≤n+width`, and `width<r`; it concludes `n=m`. The proof map is therefore
+**partial** for the full elliptic-curve theorem: the Lucas primality
+criterion, the elliptic group law, Lagrange divisibility, Hasse's bound,
+and the conversion of the squared inequalities into interval bounds remain
+outside this Lean module. The Rust certificate verifier checks the concrete
+P-192 and P-224 arithmetic, and independent checked-Sage point counts confirm
+their orders and traces. The pinned Lean toolchain and build/axiom output are in
+[`formal/`](formal/). `lean4checker --fresh` was unavailable on this host.
+
+Independent replay command (run through the repository launcher):
+
+```sh
+./sage -python -c 'import json; from sage.all import GF, EllipticCurve, Integer; x=json.load(open("bindings/rust/curve-audit/examples/nist-p192.json")); p=Integer(x["field"]["characteristic"]); a=Integer(x["curve"]["a"]); b=Integer(x["curve"]["b"]); r=Integer(x["subgroup"]["order"]); E=EllipticCurve(GF(p),[a,b]); G=E(Integer(x["subgroup"]["generator"]["x"]),Integer(x["subgroup"]["generator"]["y"])); N=E.cardinality(); print(json.dumps({"p_prime":bool(p.is_prime(proof=True)),"r_prime":bool(r.is_prime(proof=True)),"curve_order":str(N),"generator_order":str(G.order()),"trace":str(p+1-N),"twist_order":str(2*p+2-N),"matches_claim":bool(N==Integer(x["curve_order"]))}))'
+```
+
+It returned `curve_order = generator_order =
+6277101735386680763835789423176059013767194773182842284081`,
+`trace = 31607402316713927207482677199`, and
+`twist_order = 6277101735386680763835789423239273818400622627597807638479`.
+The [replay receipt](examples/nist-p192-sage-replay.json) retains these
+values, the exact input and certificate digests, and the checked Sage
+runtime manifest digest. The [complete audit report](examples/nist-p192-audit.json)
+is the current 61-criterion result for this input and certificate.
+The corresponding [P-224 replay](examples/nist-p224-sage-replay.json) and
+[audit](examples/nist-p224-audit.json) record exact order
+`26959946667150639794667015087019625940457807714424391721682722368061`,
+trace `4733100108545601916421827343930821`, and twist order
+`26959946667150639794667015087019635406658024805628224565337410229703`.
 
 `condition_verified` means the current input and independently checked
 arithmetic establish the stated mathematical condition. `structural_candidate`
@@ -77,8 +136,8 @@ matches are `graph_record_unbound` until the identity and maps are replayed.
 The bundled [catalog provenance](catalog/PROVENANCE.md) fixes the 23 indexed
 criteria and 38 research checks imported from the WeakCurves atlas.
 
-The next backend should verify prime-field point counts at 192–252 bits
-with a reproducible certificate, then add extension-field arithmetic and
+The next backend should extend the certified-order path to independently
+sampled 192–252-bit controls beyond these standardized examples, then add extension-field arithmetic and
 cover/isogeny transfer modules. Protocol and implementation attacks require
 the actual parser, scalar multiplication and oracle behavior as inputs;
 their rows expose those evidence requirements today. The exact acceptance
