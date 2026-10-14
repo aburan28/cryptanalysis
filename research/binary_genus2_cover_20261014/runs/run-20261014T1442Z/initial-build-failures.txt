@@ -1,0 +1,13 @@
+Native preflight: cargo test --release --offline --manifest-path tools/binary-genus2-cover/Cargo.toml
+Compiler failure: recursion limit reached while expanding serde_json::json_internal at src/checks.rs:101.
+Corrected by setting the crate's macro recursion limit to 256. No arithmetic check ran in this attempt.
+
+Lean preflight: lake build, Lean 4.24.0
+The central cleared_map_identity and map_affine_point theorems checked successfully.
+The auxiliary tuple-valued image_constants_recover_point theorem failed at `grind`.
+The failed build reported sorryAx on that failed declaration; it was not a checked theorem.
+Corrected by applying Prod.ext before the scalar equality proof.
+The successful subsequent build reports only propext, Classical.choice, Quot.sound on all three declarations.
+
+Setup: conductor check was attempted twice and returned exit 127: conductor: command not found.
+The native run is local to this managed workspace. No independent host replay is claimed.
