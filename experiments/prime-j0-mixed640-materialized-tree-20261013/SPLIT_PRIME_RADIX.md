@@ -44,9 +44,10 @@ fixture observations; the 663 table limit follows from the bound above.
 norm multiplicativity for `pi`, the exact division step, recursive
 reconstruction, the two coordinate inequalities, and the group-action
 evaluation formula. Its numeric lemma checks the final rational bound.
-The analytic contraction and the floor/ceil lattice-cell inequalities are
-written here and checked numerically by the model; their full Lean bridge
-remains open.
+The later six-unit variant has a checked 21-step norm contraction in
+`SplitPrimeNormBound.lean` for digits of norm at most 1,064². The
+floor/ceil lattice-cell inequalities remain the missing Lean premise for
+its use on every scalar representative.
 
 `native_split_prime_bench.py` generates the pinned Rust evaluator and a
 128-scalar correctness test against independent binary multiplication. The
@@ -236,13 +237,14 @@ numeric 46-norm and coordinate inequalities. The generated
 strict per-digit contraction for exact division by `86-21 tau`:
 `N(z)≤B²`, `N(d)≤D²`, and `(B+D)²<3301 R²` imply `N((z-d)/pi)<R²`.
 Its polynomial Cauchy identity and axiom audit are pinned in
-`split-prime-norm-bound-lean-receipt.json`. Applying the theorem through
-all 21 digits still requires a Lean proof of the nearest-cell premise
-`3N(z₀)≤n` and a formal radius sequence. The integer ceiling recurrence
-from `B₀=27·57²¹` and digit radius 1064 ends at `B₂₁=46`, giving
-`N(z₂₁)<46²` under that premise: all 21 integer radius inequalities are
-strict against the exact norm multiplier 3301. This 21-step composition is
-checked by the model but is not yet a Lean theorem.
+`split-prime-norm-bound-lean-receipt.json`. Its Lean theorem
+`terminal_bound_from_cell` composes all 21 exact quotient steps and the
+digit norm bound, with the nearest-cell inequality `3N(z₀)≤n` stated as
+an explicit hypothesis. The checked integer radius sequence starts at
+`B₀=27·57²¹` and ends at `B₂₁=46`; each step is strict against the exact
+norm multiplier 3301, so the theorem concludes `N(z₂₁)<46²`.
+The remaining geometric bridge is a Lean proof that the implemented
+nearest-cell scalar decomposition satisfies `3N(z₀)≤n`.
 The generated
 `SplitPrimeUnitCover.lean` proves the complete finite quotient bound:
 for every `0 ≤ r < 3301`, there is a seed `m ≤ 1064` whose image under one

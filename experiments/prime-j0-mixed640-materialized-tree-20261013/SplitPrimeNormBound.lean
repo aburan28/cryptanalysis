@@ -96,6 +96,79 @@ theorem split_step_bound (a b da db x y B D R : Int)
   have hprod : 3301*nrm x y < 3301*(R*R) := by omega
   exact (Int.mul_lt_mul_left hpos).mp hprod
 
+def radius : Nat → Int
+  | 0 => 27 * 57 ^ 21
+  | i + 1 => (radius i + 1064 + 56) / 57
+
+theorem radius_checks :
+    ∀ i ∈ List.range 21,
+      0 ≤ radius i ∧
+      (radius i + 1064) * (radius i + 1064) <
+        3301 * (radius (i+1) * radius (i+1)) := by
+  decide
+
+theorem radius_last : radius 21 = 46 := by decide
+
+theorem terminal_bound (state digit : Nat → Int × Int)
+    (hinitial : nrm (state 0).1 (state 0).2 ≤ radius 0 * radius 0)
+    (hstep : ∀ i < 21,
+      (state i).1 = (digit i).1 + 86*(state (i+1)).1 + 63*(state (i+1)).2 ∧
+      (state i).2 = (digit i).2 - 21*(state (i+1)).1 + 23*(state (i+1)).2)
+    (hdigit : ∀ i < 21, nrm (digit i).1 (digit i).2 ≤ 1064*1064) :
+    nrm (state 21).1 (state 21).2 < 46*46 := by
+  have hbound : ∀ i ≤ 21,
+      nrm (state i).1 (state i).2 ≤ radius i * radius i := by
+    intro i hi
+    induction i with
+    | zero => exact hinitial
+    | succ j ih =>
+        have hj : j < 21 := by omega
+        have hjle : j ≤ 21 := by omega
+        have hc := radius_checks j (List.mem_range.mpr hj)
+        have hs := hstep j hj
+        have hd := hdigit j hj
+        have hn := split_step_bound
+          (state j).1 (state j).2 (digit j).1 (digit j).2
+          (state (j+1)).1 (state (j+1)).2
+          (radius j) 1064 (radius (j+1))
+          hs.1 hs.2 (ih hjle) hd hc.1 (by decide) hc.2
+        omega
+  have hj : 20 < 21 := by decide
+  have hc := radius_checks 20 (List.mem_range.mpr hj)
+  have hs := hstep 20 hj
+  have hd := hdigit 20 hj
+  have hn := split_step_bound
+    (state 20).1 (state 20).2 (digit 20).1 (digit 20).2
+    (state 21).1 (state 21).2
+    (radius 20) 1064 (radius 21)
+    hs.1 hs.2 (hbound 20 (by decide)) hd hc.1 (by decide) hc.2
+  rw [radius_last] at hn
+  exact hn
+
+theorem initial_radius_from_cell (a b : Int)
+    (hcell : 3 * nrm a b ≤
+      115792089237316195423570985008687907852837564279074904382605163141518161494337) :
+    nrm a b ≤ radius 0 * radius 0 := by
+  have hn :
+      115792089237316195423570985008687907852837564279074904382605163141518161494337
+      < 3 * (radius 0 * radius 0) := by decide
+  omega
+
+theorem terminal_bound_from_cell (state digit : Nat → Int × Int)
+    (hcell : 3 * nrm (state 0).1 (state 0).2 ≤
+      115792089237316195423570985008687907852837564279074904382605163141518161494337)
+    (hstep : ∀ i < 21,
+      (state i).1 = (digit i).1 + 86*(state (i+1)).1 + 63*(state (i+1)).2 ∧
+      (state i).2 = (digit i).2 - 21*(state (i+1)).1 + 23*(state (i+1)).2)
+    (hdigit : ∀ i < 21, nrm (digit i).1 (digit i).2 ≤ 1064*1064) :
+    nrm (state 21).1 (state 21).2 < 46*46 := by
+  exact terminal_bound state digit
+    (initial_radius_from_cell _ _ hcell) hstep hdigit
+
 #print axioms cs_identity
 #print axioms triangle_bound
 #print axioms split_step_bound
+#print axioms radius_checks
+#print axioms terminal_bound
+#print axioms initial_radius_from_cell
+#print axioms terminal_bound_from_cell
