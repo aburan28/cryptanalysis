@@ -14,7 +14,7 @@ The requested system uses the legacy sigma walk for the existing `ecc2k-130` cam
 
 ## Evidence and uncertainty
 
-- **Observed:** The [gateway and worker source](../ecc2k130/runner/public/) and [CloudFormation template](../ecc2k130/runner/public/deploy/aws-gateway.yaml) are in PR #874. Host-side Docker builds, campaign known answers, local gateway tests, Compose configuration, and read-only CloudFormation template validation completed in the authoring session. The automatic approval review rejected creation of a persistent IAM role with access to the join/RDS secrets and seed registry, asking for explicit authorization of that exact boundary. The stack was not applied; the public endpoint and NVIDIA device path were not tested.
+- **Observed:** The [gateway and worker source](../ecc2k130/runner/public/) and [CloudFormation template](../ecc2k130/runner/public/deploy/aws-gateway.yaml) merged through PR #874. Host-side Docker builds, campaign known answers, local gateway tests, Compose configuration, and read-only CloudFormation template validation completed. The [v0.1.0 prerelease](https://github.com/aburan28/cryptanalysis/releases/tag/ecc2k130-public-v0.1.0) publishes source-bound Linux amd64 images; [tagged CI](https://github.com/aburan28/cryptanalysis/actions/runs/38513181174) passed for both. Anonymous manifest reads succeeded for both images, and the worker's config and all 15 layers accepted anonymous HEAD requests. The automatic approval review rejected creation of a persistent IAM role with access to the join/RDS secrets and seed registry, asking for explicit authorization of that exact boundary. The stack was not applied; a full remote image download, public endpoint, and NVIDIA device path were not tested.
 - **Derived or proved:** No mathematical conclusion follows from these engineering checks.
 - **Suspected explanation:** None needed for the approval refusal. Any later deployment or GPU failure requires its own diagnosis.
 - **Missing capability:** Explicit authorization for the reviewed cloud resources, followed by a reachable public host and a device-backed test.
@@ -41,5 +41,6 @@ A planned step is not a completed experiment. Apply the existing execution, revi
 ## Resolution and history
 
 - 2026-10-13: Recorded the prepared PR, local checks, and automatic approval rejection of IAM role creation. Unresolved.
+- 2026-10-13: PR #874 merged as `c8cc56d8c98705c7f84a21aae1e042453e0105e6`; v0.1.0 images published with passing tagged CI and anonymous registry metadata access. Live activation and device validation remain open.
 
 Completing this record or merging its PR does not establish a research result.
