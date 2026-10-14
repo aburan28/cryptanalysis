@@ -43,6 +43,12 @@
 #else
 #define ECC_USE_CLMAD_INSN 0
 #endif
+#ifndef ECC_PACKED_CLMAD_HI_FIRST
+#define ECC_PACKED_CLMAD_HI_FIRST 0
+#endif
+#if ECC_PACKED_CLMAD_HI_FIRST != 0 && ECC_PACKED_CLMAD_HI_FIRST != 1
+#error "ECC_PACKED_CLMAD_HI_FIRST must be 0 or 1"
+#endif
 #ifndef ECC_PACKED_TOP_CLMAD
 #define ECC_PACKED_TOP_CLMAD 0
 #endif
@@ -193,8 +199,15 @@ ECC_HD void clmul64(uint32_t r[4], const uint32_t a[2], const uint32_t b[2]) {
     const uint64_t aa = uint64_t(a[0]) | (uint64_t(a[1]) << 32);
     const uint64_t bb = uint64_t(b[0]) | (uint64_t(b[1]) << 32);
     uint64_t lo, hi;
+#if ECC_PACKED_CLMAD_HI_FIRST
+    // The high half feeds the Karatsuba fold.  Try issuing it first so its
+    // consumers have more distance from the carryless operation.
+    asm("clmad.hi.u64 %0, %1, %2, 0;" : "=l"(hi) : "l"(aa), "l"(bb));
+    asm("clmad.lo.u64 %0, %1, %2, 0;" : "=l"(lo) : "l"(aa), "l"(bb));
+#else
     asm("clmad.lo.u64 %0, %1, %2, 0;" : "=l"(lo) : "l"(aa), "l"(bb));
     asm("clmad.hi.u64 %0, %1, %2, 0;" : "=l"(hi) : "l"(aa), "l"(bb));
+#endif
     r[0] = uint32_t(lo); r[1] = uint32_t(lo >> 32);
     r[2] = uint32_t(hi); r[3] = uint32_t(hi >> 32);
 #else
