@@ -4,7 +4,7 @@ cd "$(dirname "$0")/../.."
 genus2_manifest=tools/binary-genus2-cover/Cargo.toml
 cargo fmt --manifest-path "$genus2_manifest" --package binary-genus2-cover -- --check
 cargo test --release --locked --manifest-path "$genus2_manifest"
-cargo clippy --locked --manifest-path "$genus2_manifest" --package binary-genus2-cover --all-targets --no-deps -- -D warnings
+cargo clippy --release --locked --manifest-path "$genus2_manifest" --package binary-genus2-cover --all-targets --no-deps -- -D warnings
 genus2_run_dir=$(mktemp -d)
 trap 'rm -rf -- "$genus2_run_dir"' EXIT
 cargo run --release --locked --manifest-path "$genus2_manifest" --bin binary_genus2_check -- --a both --output "$genus2_run_dir/both.json"
@@ -26,3 +26,12 @@ for genus2_bad_args in '--a 2' '--unknown 1' '--a both --q-point O' '--a 0 --q-p
     cat "$genus2_run_dir/negative.stderr"
   fi
 done
+genus2_rho=$(cargo metadata --locked --manifest-path "$genus2_manifest" --format-version 1 --no-deps | jq -r '.target_directory + "/release/cover_rho"')
+"$genus2_rho" generate --public "$genus2_run_dir/public" --witness "$genus2_run_dir/heldout.json"
+"$genus2_rho" replay --job "$genus2_run_dir/public/a1-0.json" --out "$genus2_run_dir/replay"
+jq -e '.results | length==3 and all(.[]; .identical_walk_state)' "$genus2_run_dir/replay/receipt.json" > /dev/null
+if "$genus2_rho" run --public "$genus2_run_dir/public" --out "$genus2_run_dir/no-run" --scalar 37; then
+  printf 'solver accepted a scalar witness\n' >&2
+  exit 1
+fi
+test ! -e "$genus2_run_dir/no-run"

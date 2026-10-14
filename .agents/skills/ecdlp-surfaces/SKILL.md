@@ -154,6 +154,20 @@ its points and curve identity are kept separate from these presets.
 
 ## Route genus 2 and higher
 
+For a request to **measure or solve** on the explicit genus-two n=83 image,
+use `cover_rho` from `tools/binary-genus2-cover`, following its
+[full-subgroup campaign instructions](../../../tools/binary-genus2-cover/README.md#full-subgroup-ecdlp-campaign)
+and [protocol](../../../research/binary_genus2_speed_20261014/PROTOCOL.md).
+Build/test before timing, use fresh full-subgroup public jobs, keep witnesses
+outside solver inputs, run restart replay and A/A plus interleaved controls,
+then start or resume the real campaign. The optimized one-shot reference and
+the checkpointed walk are separately named methods. Native Cantor additions
+with transfer-based canonicalization and inverse-to-E solving are separate
+arms. Report pending solves explicitly; never substitute a prefix or an
+interval solve. This supports this particular genus-two image, not arbitrary
+genus-2+ Jacobians. Do not label external records ecbench-certified; follow the
+[adapter problem](../../../problems/ecbench-binary-genus2-full-subgroup-adapter.md).
+
 The group law is on `J(C) = Pic^0(C)`, not on the points of a genus-2+ curve.
 Require an explicit homomorphism `i: E -> J(C)` that is injective on the chosen
 order-r subgroup before calling the result an ECDLP transfer. For a cover

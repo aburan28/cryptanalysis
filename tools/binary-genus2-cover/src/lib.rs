@@ -11,7 +11,27 @@ use curve_backend::binary_ecc::{
     MumfordDivisor,
 };
 
+pub mod campaign;
 pub mod checks;
+// Namespace bridge for unchanged, pinned native rho and ecbench primitives.
+pub mod binary_ecc {
+    pub use curve_backend::binary_ecc::*;
+}
+pub mod hash {
+    pub use surface_evidence::hash::*;
+}
+pub mod cryptanalysis {
+    pub use curve_backend::cryptanalysis::{koblitz_index_calculus, semaev_decomp};
+    #[allow(clippy::type_complexity)] // Same lint allowance as the upstream crate.
+    pub mod koblitz_strong_rho;
+    pub mod wide_gf2m;
+    pub mod ecbench {
+        pub mod canonical;
+        pub mod host;
+        pub mod isolation;
+        pub mod signals;
+    }
+}
 
 pub type Result<T> = std::result::Result<T, String>;
 

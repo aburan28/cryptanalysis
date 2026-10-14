@@ -73,3 +73,69 @@ geometric proof, recorded checks, Lean proof scope, and PDF.
 No field descent, independent-host verification, unknown-log recovery,
 generic cover search, or faster ECDLP solver is established. Arithmetic is
 variable-time research code.
+
+## Full-subgroup ECDLP campaign
+
+Use `cover_rho` when the request concerns solve costs on the elliptic subgroup
+and its **genus-two pullback image**, rather than just map correctness. Read
+the [campaign protocol](../../research/binary_genus2_speed_20261014/PROTOCOL.md)
+before generating targets. This new command is a research campaign tool;
+its native records are not sealed ecbench sessions. The
+[integration gap](../../problems/ecbench-binary-genus2-full-subgroup-adapter.md)
+tracks the remaining registry, common-cost and independent replay gates.
+
+```sh
+cargo build --release --locked --manifest-path tools/binary-genus2-cover/Cargo.toml --bin cover_rho
+genus2_rho=tools/binary-genus2-cover/target/release/cover_rho
+"$genus2_rho" generate --public /tmp/fresh-cover-public --witness /tmp/heldout-cover-witness.json
+"$genus2_rho" replay --job /tmp/fresh-cover-public/a1-0.json --out /tmp/fresh-cover-replay
+"$genus2_rho" calibrate --job /tmp/fresh-cover-public/a1-0.json --out /tmp/fresh-cover-rates --cpu 4
+"$genus2_rho" reference --job /tmp/fresh-cover-public/a1-0.json --out /tmp/fresh-cover-reference --cpu 4
+"$genus2_rho" verify --job /tmp/fresh-cover-public/a1-0.json --result /tmp/fresh-cover-reference/result.json --out /tmp/reference-verification.json
+"$genus2_rho" run --public /tmp/fresh-cover-public --out /tmp/live-cover-campaign --cpu 4
+```
+
+Choose an available complete CPU core for `--cpu`; CPU 4 is the original
+five-vCPU worker's selection, not a portable default. The driver takes the
+native ecbench benchmark lock, attempts eviction, pins itself, and records
+preflight, affinity, NUMA observations and hardware-counter availability.
+VM observations are explicitly L0 and never establish a speedup.
+
+`generate` makes eight uniform nonzero public targets per a with OS rejection
+sampling. The witness file is separate, mode 0600, and is never an argument to
+solver commands. Do not commit it or copy it into a solver input directory.
+JSON jobs/checkpoints use exact integer decimal tokens; use a u128-aware
+reader, not a floating-point JSON decoder. The solver rejects unknown fields,
+including a scalar witness. It accepts only the pinned basis and generators.
+
+`reference` is the unchanged optimized, batched signed-Frobenius rho with
+cycle escape. It is a one-shot reference run with its declared step cap, not
+a resumable process. `run` is the separately named resumable method
+`rho.cover_image_checkpoint/v1`: unbatched elliptic additions, image inverse
+plus the same elliptic walk, and checked native Cantor additions. The native
+Jacobian arm selects canonical representatives through the checked image
+inverse and pullback; these conversions are counted and timed on every step.
+It measures this conservative implementation, not optimized Jacobian formulas
+or index calculus. All arms quotient by the same 166 signed Frobenius actions.
+
+`run` schedules six streams serially, starts with target 0 for each arm/a,
+and advances each stream through all eight targets after independent CLI
+verification. Checkpoints include all distinguished points, coefficients,
+lane histories, cursor and jump/start identity. Scheduling uses complete
+lockstep rounds; elapsed time never changes the walk. Native divisor caches
+are reconstructed losslessly from the image coordinates on resume. Checkpoints
+are atomic and synced at least once per minute per active stream, on a
+candidate, on pause and on an orderly stop. A crash may lose the current
+minute of work. Checkpoints are trusted local state, not signed certificates.
+
+Create `OUT/PAUSE`, then wait for `OUT/paused.json` before copying checkpoints
+or doing other heavy work. Remove `OUT/PAUSE` to continue. Create `OUT/STOP`
+for an orderly checkpointed stop. To resume after exit, remove those control
+files and repeat the identical `run` command; existing inputs are never
+regenerated. Preserve `progress.jsonl`, host manifests and the binary/source
+hashes alongside snapshots. A process on this worker is not a durable cloud
+job and cannot survive the worker being deleted without moving checkpoints.
+
+Calibration prefixes, theoretical birthday estimates and unfinished jobs are
+never completed full-subgroup solve times. Additions in E and Jac(C) are
+different native units; common priced work and speedup remain null.
