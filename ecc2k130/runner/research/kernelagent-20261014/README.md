@@ -106,4 +106,48 @@ modal run ecc2k130/runner/tune_frobenius_v3.py --mode screen \
 
 ## Candidate result
 
-Pending execution. The candidate remains off by default.
+The [high-half-first host gate](clmad-hi-first-host.json) passed: 2,526
+polynomial reductions against long division plus independent packed field,
+walk, and Frobenius-power references. The [paired screen](clmad-hi-first-screen.json)
+completed on the same GPU model with CUDA 13.3 and the pinned baseline.
+The A/A ratios were `1.001268` and `0.998798` (median `1.000033`). The
+candidate ratios were `1.001777` and `1.001109` (median `1.001443`), with
+candidate/control median rates of `18.027736` and `18.001757` billion
+updates/s. Every timed arm reproduced the frozen 355-record sorted DP32
+corpus with zero drops. The second candidate ratio lies within the A/A
+range, so this screen does not meet the predeclared two-pair advancement
+gate. This small apparent difference is unresolved; the switch stays off.
+The [full run log](clmad-hi-first-screen.log) retains the individual outputs.
+
+### Same-group 256-thread geometry (frozen before execution)
+
+The source profile also recorded 79,014 not-issued `stall_wait` samples and
+about 41% achieved occupancy for one 640-thread block per SM. The next
+candidate changes only `THREADS=256`, keeping 120,320 workers, four-warp
+inverse groups, batch 16, and all arithmetic settings fixed. This makes 470
+blocks with two inverse groups each, versus 188 blocks with five groups each;
+both layouts have 940 inverse groups and the same number of field inversions
+and group barriers. More blocks may give the scheduler more runnable warps,
+but the extra block overhead may outweigh that. Source samples alone do not
+predict the outcome. Earlier 128-thread static-barrier and 320-thread
+two-warp screens changed other conditions and do not answer this comparison.
+
+Use the same pinned production source, A/A arm, two alternating 64-launch
+pairs, run ID 11000, DP32, and the same 355-record sorted hash. Require zero
+drops and matching corpora for every arm. Only both candidate ratios above
+the A/A interval advance to five warmed 128-launch pairs and full
+fresh/checkpoint/resume checks. A compile, launch or corpus failure is
+preserved as a separate outcome. This is a launch-geometry hypothesis; it
+does not alter production defaults.
+
+```sh
+modal run ecc2k130/runner/tune_frobenius_v3.py --mode screen \
+  --selected production,production_w4_256 --production-baseline \
+  --baseline-commit 1f8e6847de9e207880bd3be63835c3f56eb182d5 \
+  --output research/kernelagent-20261014/w4-256-screen.json \
+  > ecc2k130/runner/research/kernelagent-20261014/w4-256-screen.log 2>&1
+```
+
+## Geometry result
+
+Pending execution.
