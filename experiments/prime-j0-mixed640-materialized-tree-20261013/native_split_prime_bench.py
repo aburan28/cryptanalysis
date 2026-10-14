@@ -371,6 +371,74 @@ UNIT_ONLINE_RUST = r"""    for row in &tables.digit_windows {
 """
 
 
+UNIT_PACKED_STEP_RUST = r"""fn split_prime_unit_step(
+    a: Signed192, b: Signed192, tables: &SplitPrimeTables,
+) -> (Signed192, Signed192, usize, usize) {
+    let residue_word = a.add(b.times_split_prime_small(SPLIT_PRIME_TAU_RESIDUE));
+    let (quotient, signed_rem, residue) =
+        residue_word.div_rem_small_radix(SPLIT_PRIME_NORM as u64);
+    let packed = tables.residue_packed[residue];
+    let index = (packed & 1023) as usize;
+    let unit = ((packed >> 10) & 7) as usize;
+    let correction_a = ((packed >> 13) & 63) as i32 - 20;
+    let correction_b = ((packed >> 19) & 63) as i32 - 7;
+    let carry = if signed_rem < 0 { 1 } else { 0 };
+    let next_a = quotient.times_split_prime_small(23)
+        .sub(b.times_split_prime_small(11))
+        .add(Signed192::from_i32(correction_a - 23 * carry));
+    let next_b = quotient.times_split_prime_small(21)
+        .sub(b.times_split_prime_small(10))
+        .add(Signed192::from_i32(correction_b - 21 * carry));
+    (next_a, next_b, index, unit)
+}
+
+"""
+
+
+UNIT_PACKED_LUT_RUST = r"""        let mut residue_packed = vec![u32::MAX; SPLIT_PRIME_NORM as usize];
+        let mut seeds = vec![0i16];
+        residue_packed[0] = (20u32 << 13) | (7u32 << 19);
+        for seed in 1..=SPLIT_PRIME_DIGIT_LIMIT as i32 {
+            if residue_packed[seed as usize] != u32::MAX { continue; }
+            let index = seeds.len();
+            seeds.push(seed as i16);
+            for (unit, (da, db)) in unit_images((seed, 0)).into_iter().enumerate() {
+                let digit_word = da + SPLIT_PRIME_TAU_RESIDUE * db;
+                let residue = digit_word.rem_euclid(SPLIT_PRIME_NORM) as usize;
+                assert_eq!(residue_packed[residue], u32::MAX);
+                let digit_q = digit_word.div_euclid(SPLIT_PRIME_NORM);
+                let correction_a = -23 * digit_q + 11 * db;
+                let correction_b = -21 * digit_q + 10 * db;
+                assert!((-20..=43).contains(&correction_a));
+                assert!((-7..=28).contains(&correction_b));
+                residue_packed[residue] = index as u32
+                    | ((unit as u32) << 10)
+                    | (((correction_a + 20) as u32) << 13)
+                    | (((correction_b + 7) as u32) << 19);
+            }
+        }
+        assert_eq!(seeds.len(), 551);
+        assert_eq!(*seeds.last().unwrap(), 1064);
+        assert!(residue_packed.iter().all(|&word| word != u32::MAX));
+"""
+
+
+UNIT_PACKED_RETAINED_RUST = r"""        let entries = digit_windows.iter().map(|row| row.len()).sum::<usize>()
+            + terminal_plain.len() + terminal_tau.len();
+        assert_eq!(entries, 12_899);
+        assert_eq!(size_of::<U256Affine>(), 64);
+        assert_eq!(size_of::<U256OrbitXAffine>(), 128);
+        let retained_bytes = digit_windows.iter().map(|row| row.len()).sum::<usize>()
+                * size_of::<U256OrbitXAffine>()
+            + (terminal_plain.len() + terminal_tau.len() + terminal_pairs.len())
+                * size_of::<U256Affine>()
+            + residue_packed.len() * size_of::<u32>()
+            + size_of::<[super::U256; 3]>()
+            + size_of::<Self>()
+            + digit_windows.capacity() * size_of::<Box<[U256OrbitXAffine]>>();
+"""
+
+
 def unitize_split_source(source: str) -> str:
     source = replace_region(source, "fn split_prime_step(",
                             "struct SplitPrimeTables {", UNIT_STEP_RUST)
@@ -401,6 +469,23 @@ def unitize_split_source(source: str) -> str:
     source = replace_region(source,
         "    for row in &tables.digit_windows {\n",
         "    // The fused table covers", UNIT_ONLINE_RUST)
+    return source
+
+
+def pack_unit_corrections(source: str) -> str:
+    source = replace_once(source, UNIT_STEP_RUST, UNIT_PACKED_STEP_RUST)
+    source = replace_once(source, UNIT_LUT_RUST, UNIT_PACKED_LUT_RUST)
+    source = replace_once(source, UNIT_RETAINED_RUST, UNIT_PACKED_RETAINED_RUST)
+    source = replace_once(source,
+        "    residue_codes: Box<[u16]>,\n"
+        "    digit_b: Box<[i16]>,\n"
+        "    digit_quotient: Box<[i16]>,\n",
+        "    residue_packed: Box<[u32]>,\n")
+    source = replace_once(source,
+        "        Self { digit_windows, residue_codes: residue_codes.into_boxed_slice(),\n"
+        "               digit_b: digit_b.into_boxed_slice(),\n"
+        "               digit_quotient: digit_quotient.into_boxed_slice(),\n",
+        "        Self { digit_windows, residue_packed: residue_packed.into_boxed_slice(),\n")
     return source
 
 
@@ -461,7 +546,7 @@ SHORT_REPLACEMENTS = {
 
 
 def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
-         unit_compressed: bool = False) -> None:
+         unit_compressed: bool = False, packed_correction: bool = False) -> None:
     if variant not in ("3301", "3307", "5113"):
         raise ValueError("variant must be 3301, 3307, or 5113")
     spec = importlib.util.spec_from_file_location("mixed640_bench_cli", BASE)
@@ -481,6 +566,10 @@ def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
         if variant != "3301" or not fused_terminal:
             raise ValueError("unit compression requires norm 3301 and fused terminal")
         split_source = unitize_split_source(split_source)
+    if packed_correction:
+        if not unit_compressed:
+            raise ValueError("packed correction requires unit compression")
+        split_source = pack_unit_corrections(split_source)
     module = replace_once(module_path.read_text(),
         "pub(super) fn warm_mixed640_pretau_table() -> usize {\n",
         split_source + "pub(super) fn warm_mixed640_pretau_table() -> usize {\n")
@@ -504,7 +593,8 @@ def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
     receipt.update({
         "variant": (f"split_prime_radix_{variant}"
                     + ("_fused_terminal" if fused_terminal else "")
-                    + ("_unit_compressed" if unit_compressed else "")),
+                    + ("_unit_compressed" if unit_compressed else "")
+                    + ("_packed_correction" if packed_correction else "")),
         "split_prime_source_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
         "generated_module_sha256": sha256(module_path.read_bytes()).hexdigest(),
         "generated_front_sha256": sha256(front_path.read_bytes()).hexdigest(),
@@ -524,5 +614,8 @@ if __name__ == "__main__":
         main(Path(sys.argv[2]), "5113", fused_terminal=True)
     elif len(sys.argv) == 3 and sys.argv[1] == "--unit-fused":
         main(Path(sys.argv[2]), fused_terminal=True, unit_compressed=True)
+    elif len(sys.argv) == 3 and sys.argv[1] == "--unit-packed":
+        main(Path(sys.argv[2]), fused_terminal=True, unit_compressed=True,
+             packed_correction=True)
     else:
-        raise SystemExit("usage: native_split_prime_bench.py [--linear|--fused-terminal|--short-fused|--unit-fused] TARGET_DIR")
+        raise SystemExit("usage: native_split_prime_bench.py [--linear|--fused-terminal|--short-fused|--unit-fused|--unit-packed] TARGET_DIR")

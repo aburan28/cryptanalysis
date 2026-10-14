@@ -235,5 +235,33 @@ numeric 46-norm and coordinate inequalities. Finite lookup coverage and
 the analytic nearest-cell bridge remain model-checked proof obligations.
 The generated native release test matched all 128 frozen points against
 independent binary multiplication locally and reported **1,950,422
-retained bytes** including the residue lookup and metadata. Its online
-cost remains to be measured against the signed-integer fused evaluator.
+retained bytes** including the residue lookup and metadata. The Pod
+release test also passed all 128 points. Its build, test, overlay, and
+manifest logs are under `tier1-runpod-20261013/split-prime-validation/`;
+the transferred validation archive SHA-256 is
+`e5beee1c5f69b54562784dec342439d306102716f69ebc3a8ac60a155e6846cf`.
+
+The serial case-0 comparison against the signed-integer fused evaluator
+completed eight valid pairs. The median signed/unit online ratio was
+**0.8837**, with paired bootstrap interval **0.8444–0.9614**. Median
+online times by arm were 0.03495/0.03887 ms. Median reusable table
+preparation was 9,127/3,541 ms, recorded separately; the compressed
+table was also 26.9% smaller in retained bytes. The raw job is
+`tier1-runpod-20261013/42ed4fdbb9274b308cd559eb00b2dfae/`;
+the transferred archive SHA-256 is
+`f1e9db151c6a2f1bd9810fcac04bd04b54ce5df653417d9f8bacfa6525c8fdc0`.
+All invocations returned verified points, and artifacts, binaries, and
+runner stayed stable. This format improves preparation and memory under
+the recorded instance-scoped envelope while increasing case-0 online time.
+
+The follow-up `--unit-packed` form moves the digit's two small coordinate
+corrections past the large signed-limb multiplications. Exhaustive quotient
+screening puts the corrections in `[-20,43]` and `[-7,28]`; seed index, unit
+code, and both corrections fit in one 32-bit residue word. This replaces
+three separate residue arrays with one. `split_prime_radix.py` pins the
+packed lookup digest and checks every decoded field; the Lean declaration
+`unit_packed_correction_identity` proves that the rewritten quotient step
+is identical for arbitrary coefficients. The generated native release test
+matched all 128 frozen points against independent binary multiplication
+locally and reported **1,943,788 retained bytes**. Online timing is
+evaluated separately from the first unit format.

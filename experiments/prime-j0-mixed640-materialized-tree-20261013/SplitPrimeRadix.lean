@@ -207,6 +207,18 @@ theorem unit_fused_terminal_numeric :
     115792089237316195423570985008687907852837564279074904382605163141518161494337
       < 3 * 27 ^ 2 * 57 ^ 42 := by decide
 
+-- Moving the small quotient and digit-b corrections to the end preserves
+-- the exact quotient update and lets one residue word encode both offsets.
+theorem unit_packed_correction_identity (q b digitB digitQ carry : Int) :
+    let correctionA := -23 * digitQ + 11 * digitB
+    let correctionB := -21 * digitQ + 10 * digitB
+    (23 * (q - digitQ - carry) - 11 * (b - digitB),
+     21 * (q - digitQ - carry) - 10 * (b - digitB)) =
+    (23 * q - 11 * b + correctionA - 23 * carry,
+     21 * q - 10 * b + correctionB - 21 * carry) := by
+  dsimp
+  apply Prod.ext <;> dsimp <;> omega
+
 #print axioms pi_norm
 #print axioms norm_pi_mul
 #print axioms coordinate_a_bound
@@ -238,5 +250,6 @@ theorem unit_fused_terminal_numeric :
 #print axioms unit_digit_step_identity
 #print axioms unit_terminal_axis_numeric
 #print axioms unit_fused_terminal_numeric
+#print axioms unit_packed_correction_identity
 
 end SplitPrimeRadix

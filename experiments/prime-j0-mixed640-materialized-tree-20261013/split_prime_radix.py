@@ -140,9 +140,30 @@ def unit_variant_screen(cases: list[dict], screen,
     assert 2 * (56 * initial_bound + 1064 * 57**STEPS) < (
         642 * 56 * 57**STEPS)
     lut_digest = sha256()
+    packed_digest = sha256()
+    correction_min = [0, 0]
+    correction_max = [0, 0]
     for index, unit, da, db in codes:
         for value in (index, unit, da, db):
             lut_digest.update(value.to_bytes(4, "little", signed=True))
+        residue = (da + TAU_RESIDUE * db) % NORM
+        digit_quotient = (da + TAU_RESIDUE * db) // NORM
+        ca = -23 * digit_quotient + 11 * db
+        cb = -21 * digit_quotient + 10 * db
+        correction_min = [min(correction_min[0], ca),
+                          min(correction_min[1], cb)]
+        correction_max = [max(correction_max[0], ca),
+                          max(correction_max[1], cb)]
+        assert 0 <= index < 1024 and 0 <= unit < 8
+        assert 0 <= ca + 20 < 64 and 0 <= cb + 7 < 64
+        packed = index | (unit << 10) | ((ca + 20) << 13) | ((cb + 7) << 19)
+        assert (packed & 1023, (packed >> 10) & 7,
+                ((packed >> 13) & 63) - 20,
+                ((packed >> 19) & 63) - 7) == (index, unit, ca, cb)
+        assert codes[residue] == (index, unit, da, db)
+        packed_digest.update(packed.to_bytes(4, "little"))
+    assert correction_min == [-20, -7]
+    assert correction_max == [43, 28]
 
     max_terminal_norm = 0
     max_terminal_coords = [0, 0]
@@ -182,6 +203,9 @@ def unit_variant_screen(cases: list[dict], screen,
         "orbit_count_including_zero": len(seeds),
         "max_seed": max(seeds),
         "residue_lut_sha256": lut_digest.hexdigest(),
+        "packed_residue_lut_sha256": packed_digest.hexdigest(),
+        "correction_min": correction_min,
+        "correction_max": correction_max,
         "steps": STEPS,
         "digit_orbit_entries": digit_entries,
         "axis_fallback_entries": axis_entries,
