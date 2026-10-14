@@ -1,13 +1,13 @@
 # Adaptive unit-class partition for compact norm-4,831 multiplication
 
-The exact 20-digit source-operation screen identifies a smaller schedule
-family for the 64-byte affine digit table: evaluate one or two unit groups,
-choosing each group's orientation from the recoded scalar. Under the declared
-XYZZ and Solinas product model, a three-group schedule is always dominated
-when all three unit classes occur. The two-group option is selected for 57 of
-the 231 class-count triples with 20 nonzero digits; the one-group option is
-selected for 174. This is a cost-model result. No wall-time advantage is
-assigned to it.
+The exact 20-digit source-operation screen and a native evaluator identify a
+smaller schedule family for the 64-byte affine digit table: evaluate one or
+two unit groups, choosing each group's orientation from the recoded scalar.
+Under the declared XYZZ and Solinas product model, a three-group schedule is
+always dominated when all three unit classes occur. The two-group option is
+selected for 57 of the 231 class-count triples with 20 nonzero digits; the
+one-group option is selected for 174. The native selector passed five
+correctness test families. No controlled wall-time comparison has been run.
 
 For each unit power `c` in `{0,1,2}`, let `S_c` be the sum of selected signed
 affine points before applying the cube-root endomorphism `ω`. The target sum
@@ -42,7 +42,28 @@ the three unit powers, the expected modeled saving against that path is
 0.2359. This distribution is an analytic reference, not a measured scalar
 law. The largest saving among count triples is 437 products. These small
 modeled savings may be erased by the extra recoding pass or branch dispatch;
-the screen gives a concrete falsifier before a costly native build.
+the screen gives a concrete hypothesis for an isolated native comparison.
+
+`adaptive_overlay.py` generates a 1,771-byte schedule table for all count
+triples with up to 20 nonzero digits and verifies its index formula at every
+entry. It replaces the three-bucket evaluator's digit path with a recode
+pass followed by one or two oriented accumulators. The plan table raises
+retained memory from 1,425,154 to **1,426,925 bytes**, still below the
+1,940,994-byte direct two-X table. A second clean generation produced
+byte-identical Rust source. `overlay-receipt.json` pins both generated source
+hashes and the plan digest.
+
+The release native suite passed all 4,831 residue codes, 43,479 quotient
+cases, 96,720 unit images, 5,680 terminal indices, 128 frozen scalars, and
+518 additional deterministic or boundary scalars against independent binary
+point multiplication. On frozen fixture case 0, the evaluator reports 20
+nontrivial mixed additions, no projective joins, 12 digit cube-root
+products, one final bucket rotation, 20 digit reads, one terminal read, and
+12 sign flips. The output point matches the fixture. The local wall-time
+field in that log is a contended-host diagnostic and is not used as a speedup.
+`native-validation.json` records the arm64 macOS compiler, source and binary
+hashes, fixture digest, and exact counts; `native-test.log`,
+`native-build.log`, and `native-case0.log` retain the raw local outputs.
 
 Proof map:
 
@@ -59,10 +80,11 @@ The proof uses Lean 4.34.1. The checked dependency source
 this theorem source has SHA-256
 `595d5df02863a91ef4d67ce3f2e8bb6311a9af1c7b8e3c8279715b8c8380ece6`.
 `dependency-lean-check.log` and `lean-check.log` record the rebuilt modules
-and `#print axioms` results. The general Python scheduler's correspondence
-to a compiled point evaluator remains an implementation bridge, checked here
-by the coefficient-basis audit and reserved for native scalar replay before
-any performance claim.
+and `#print axioms` results. The scheduler's correspondence to the compiled
+selector is checked by the 1,771-entry generator index audit, byte-identical
+generation, and native scalar replay. A full Lean theorem for every one of
+the 57 orientation/partition encodings remains open; the central merge and
+cost-dominance results above are kernel checked.
 
 Reproduce the model and proof from this checkout:
 
@@ -73,7 +95,17 @@ mkdir -p /private/tmp/adaptive-unit-lean
 LEAN_PATH=/private/tmp/adaptive-unit-lean /Users/adamburan/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean experiments/prime-j0-adaptive-unit-partition-20261014/AdaptiveUnitPartition.lean
 ```
 
-The next implementation gate is a native one-group/two-group selector on the
-same 64-byte table, with independent scalar replay. Only after correctness
-passes should its full-operation time be compared with the direct two-X and
-three-bucket kernels in a fresh calibrated Tier 1 or Tier 0 panel.
+Generate and test the native evaluator after preparing the same source crate
+used by the three-bucket overlay:
+
+```sh
+python3 experiments/prime-j0-three-bucket-20261014/three_bucket_overlay.py /private/tmp/adaptive-native-replay
+python3 experiments/prime-j0-adaptive-unit-partition-20261014/adaptive_overlay.py /private/tmp/adaptive-native-replay
+CARGO_TARGET_DIR=/private/tmp/adaptive-native-replay-target cargo test --manifest-path /private/tmp/adaptive-native-replay/Cargo.toml --offline --locked --release --bin eisenstein_fixed split_prime_ -- --test-threads=1 --nocapture
+```
+
+The next gate is a fresh calibrated Tier 1 or Tier 0 panel comparing the
+native selector with the direct two-X and three-bucket kernels on identical
+scalars and resources. The initial RunPod calibration panel was invalidated
+by two noise failures, so its point ratios cannot be reused as this
+candidate's timing evidence.
