@@ -82,12 +82,23 @@ tau point pays one Solinas rotation only when its unit has nonzero beta power.
 The full-slot prototype has **71,160,380** point-plus-atlas bytes, while a
 table containing tau points only for seed IDs that actually use exponent 1
 would have 69,747,004 bytes. The first 128-case replay on the earlier holdout
-passed as a calibration check. A second, source-frozen disjoint panel is
-specified by `hybrid_holdout.py` for the result gate.
+passed as a calibration check. Hybrid source was frozen at
+`f9371823b10ffb3b71c5c219e100d662028983f6`, then
+`hybrid_holdout.py` drew a second disjoint 128-scalar panel. The native
+evaluator matched all independently generated affine points and the separate
+binary scalar oracle. Its actual retained table was **71,160,740 bytes**,
+including metadata. On that panel an instrumented native build counted
+**16,128** tree field calls and **601** selected-tau Solinas rotations,
+exactly matching the independent integer-recoder model in
+`hybrid-model.json`. The raw results and source/binary hashes are in
+`hybrid64-holdout-native.log`, `hybrid64-native-receipt.json`,
+`hybrid64-opcount-native.log`, and `hybrid64-opcount-receipt.json`.
 
-The next gate is the source-frozen hybrid holdout and complete-operation
-accounting, including recoding, table lookup, memory traffic, and affine
-recovery. The paired instrumented intervals cover
+The next gate is a same-panel native grouped-reference count for the hybrid
+holdout and complete-operation accounting, including recoding, table lookup,
+memory traffic, and affine recovery. The earlier full-pair reference count
+uses a different holdout and is not a direct hybrid-panel comparison. The
+paired instrumented intervals cover
 group evaluation from selected points through the final projective join;
 table setup, recoding, and affine recovery are recorded separately from this
 operation count.
@@ -107,4 +118,10 @@ python3 experiments/prime-j0-mixed640-materialized-tree-20261013/native_opcount.
 (cd /private/tmp/mixed640-opcount-replay && MIXED640_HOLDOUT=/absolute/path/to/holdout.json cargo test --offline --locked --release --bin eisenstein_fixed source_frozen_holdout_matches_independent_binary -- --nocapture)
 python3 experiments/prime-j0-mixed640-materialized-tree-20261013/native_pair_opcount.py /private/tmp/mixed640-pair-replay
 (cd /private/tmp/mixed640-pair-replay && MIXED640_HOLDOUT=/absolute/path/to/holdout.json cargo test --offline --locked --release --bin eisenstein_fixed source_frozen_holdout_matches_independent_binary -- --nocapture)
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/hybrid_holdout.py --check
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/hybrid_model.py
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/native_hybrid64.py /private/tmp/mixed640-hybrid64-replay
+(cd /private/tmp/mixed640-hybrid64-replay && MIXED640_HOLDOUT=/absolute/path/to/hybrid-holdout.json cargo test --offline --locked --release --bin eisenstein_fixed source_frozen_holdout_matches_independent_binary -- --nocapture)
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/native_hybrid64_opcount.py /private/tmp/mixed640-hybrid64-opcount-replay
+(cd /private/tmp/mixed640-hybrid64-opcount-replay && MIXED640_HOLDOUT=/absolute/path/to/hybrid-holdout.json cargo test --offline --locked --release --bin eisenstein_fixed source_frozen_holdout_matches_independent_binary -- --nocapture)
 ```
