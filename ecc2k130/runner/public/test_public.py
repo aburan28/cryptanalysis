@@ -5,20 +5,23 @@ from __future__ import annotations
 from http.client import HTTPConnection
 from pathlib import Path
 from io import BytesIO
+import hashlib
 import json
+import os
 import sqlite3
 import struct
 import sys
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from client import API, ensure_identity, upload_checkpoint, upload_dps
-from ingest import process_one
+from ingest import check_gateway_identity, process_one
 from protocol import HEADER
 from server import Gateway, database
-from seed_registry import S3Registry
+from seed_registry import RegistryError, S3Registry
 from deploy.enable_ingest import dsn
 
 
@@ -36,13 +39,23 @@ class FakeStore:
 
 class FakeRegistry:
     def __init__(self):
+        self.bucket = "test-bucket"
+        self.stream_id = "public-v1"
         self.reserved = set()
+        self.archived = {}
 
     def reserve(self, run_id):
         if run_id in self.reserved:
             return False
         self.reserved.add(run_id)
         return True
+
+    def archive_batch(self, run_id, offset, data):
+        key = (run_id, offset)
+        if key in self.archived and self.archived[key] != data:
+            raise RuntimeError("archive mismatch")
+        self.archived[key] = data
+        return f"public-gateway/public-v1/runs/{run_id:05d}/batches/{offset:016d}.bin"
 
 
 class FakeS3:
@@ -52,7 +65,7 @@ class FakeS3:
     def get_object(self, *, Bucket, Key):
         return {"Body": BytesIO(self.objects[Key])}
 
-    def put_object(self, *, Bucket, Key, Body, ContentType, IfNoneMatch):
+    def put_object(self, *, Bucket, Key, Body, ContentType, IfNoneMatch, **kwargs):
         if Key in self.objects:
             class Conflict(Exception):
                 response = {"ResponseMetadata": {"HTTPStatusCode": 412},
@@ -101,6 +114,7 @@ class PublicGatewayTest(unittest.TestCase):
         self.assertEqual(upload_dps(api, local, state), 64)
         self.assertEqual(state["remote_cursor"], 64)
         self.assertEqual(api.request("GET", "/v1/runs/50000")["cursor"], 64)
+        self.assertEqual(self.registry.archived[(50000, 0)], record1 + record2)
         # Retrying the same offset with the same bytes is idempotent.
         status, _ = self.raw("POST", "/v1/runs/50000/dps?offset=0", record1 + record2,
                              {"Authorization": "Bearer " + api.token})
@@ -119,6 +133,12 @@ class PublicGatewayTest(unittest.TestCase):
         (local / "state.ck").write_bytes(checkpoint)
         upload_checkpoint(api, local, state)
         self.assertEqual(api.request("GET", "/v1/runs/50000/checkpoint"), checkpoint)
+        for iteration in (43, 44, 45):
+            (local / "state.ck").write_bytes(
+                HEADER.pack(b"ECC2K130", 0x100, 131, 256, 16, 1, 50000, iteration)
+                + checkpoint[HEADER.size:])
+            upload_checkpoint(api, local, state)
+        self.assertEqual(len(list((self.root / "server/checkpoints/50000").glob("*.ck"))), 3)
         self.assertEqual(ensure_identity(api, local)["remote_cursor"], 64)
         with self.assertRaises(ValueError):
             Gateway(("127.0.0.1", 0), self.root / "server", 51000, 51002,
@@ -134,6 +154,9 @@ class PublicGatewayTest(unittest.TestCase):
                            (3 + 2 * i).to_bytes(24, "little") for i in range(2))
         (local / "dps.bin").write_bytes(records)
         upload_dps(api, local, state)
+        check_gateway_identity(self.root / "server", "test-bucket", "public-v1")
+        with self.assertRaisesRegex(RuntimeError, "identity differ"):
+            check_gateway_identity(self.root / "server", "another-bucket", "public-v1")
         fake = FakeStore()
         outcome = process_one(self.root / "server", fake)
         self.assertEqual(outcome["reported"], 2)
@@ -144,6 +167,8 @@ class PublicGatewayTest(unittest.TestCase):
             self.assertEqual(db.execute("SELECT COUNT(*) FROM batches WHERE ingested_at IS NULL").fetchone()[0], 0)
         self.assertEqual(process_one(self.root / "server", fake), None)
         self.assertEqual(len(fake.rows), 2)
+        self.assertFalse(any((self.root / "server/batches/50000").glob("*.bin")))
+        self.assertEqual(self.registry.archived[(50000, 0)], records)
 
     def test_shared_seed_registry_reservation(self):
         s3 = FakeS3()
@@ -153,6 +178,42 @@ class PublicGatewayTest(unittest.TestCase):
         self.assertFalse(registry.reserve(50000))
         self.assertIn(b'"active_owner": "public-gateway:public-v1:run50000"',
                       s3.objects["seed-registry/curve-131/run-50000.json"])
+        payload = struct.pack("<Q", 50000 << 48) + (3).to_bytes(24, "little")
+        key = registry.archive_batch(50000, 0, payload)
+        self.assertEqual(registry.fetch_batch(50000, 0,
+                         hashlib.sha256(payload).hexdigest(), len(payload)), payload)
+        self.assertEqual(s3.objects[key], payload)
+        self.assertEqual(registry.archive_batch(50000, 0, payload), key)
+
+    def test_registry_outage_refuses_registration_without_assignment(self):
+        def unavailable(*args):
+            raise RegistryError("S3 unavailable")
+
+        self.registry.reserve = unavailable
+        status, body = self.raw("POST", "/v1/register", headers={
+            "X-Join-Token": "a-secret-for-invited-contributors"})
+        self.assertEqual(status, 503)
+        self.assertIn(b"seed registry unavailable", body)
+        with database(self.root / "server/gateway.sqlite3") as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM runs").fetchone()[0], 0)
+
+    def test_archive_failure_does_not_acknowledge_dp_batch(self):
+        api = API(self.url, "a-secret-for-invited-contributors")
+        local = self.root / "worker"
+        local.mkdir()
+        ensure_identity(api, local)
+        record = struct.pack("<Q", 50000 << 48) + (3).to_bytes(24, "little")
+
+        def unavailable(*args):
+            raise RegistryError("S3 unavailable")
+
+        self.registry.archive_batch = unavailable
+        status, _ = self.raw("POST", "/v1/runs/50000/dps?offset=0", record,
+                             {"Authorization": "Bearer " + api.token})
+        self.assertEqual(status, 503)
+        self.assertEqual(api.request("GET", "/v1/runs/50000")["cursor"], 0)
+        with database(self.root / "server/gateway.sqlite3") as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM batches").fetchone()[0], 0)
 
     def test_rds_dsn_encodes_secret_and_requires_verified_tls(self):
         connection = dsn({"username": "rho", "password": "@:#$", "dbname": "rho"},
@@ -160,6 +221,25 @@ class PublicGatewayTest(unittest.TestCase):
         self.assertIn("rho:%40%3A%23%24@rho-dp.", connection)
         self.assertIn("sslmode=verify-full", connection)
         self.assertIn("sslrootcert=%2Fopt%2Fecc2k130%2Frds-ca.pem", connection)
+
+    def test_ingest_restores_missing_staging_from_s3(self):
+        api = API(self.url, "a-secret-for-invited-contributors")
+        local = self.root / "worker"
+        local.mkdir()
+        state = ensure_identity(api, local)
+        record = struct.pack("<Q", 50000 << 48) + (3).to_bytes(24, "little")
+        (local / "dps.bin").write_bytes(record)
+        upload_dps(api, local, state)
+        staged = next((self.root / "server/batches/50000").glob("*.bin"))
+        staged.unlink()
+        fake = FakeStore()
+        with patch.dict(os.environ, {"ECC_BUCKET": "test-bucket",
+                                  "ECC_PUBLIC_STREAM_ID": "public-v1"}), \
+             patch("ingest.S3Registry") as registry_class:
+            registry_class.return_value.fetch_batch.return_value = record
+            outcome = process_one(self.root / "server", fake)
+        self.assertEqual(outcome["reported"], 1)
+        self.assertEqual(fake.rows[0][1], 50000 << 48)
 
     def test_missing_walk_state_cannot_restart_or_reassign_seeds(self):
         api = API(self.url, "a-secret-for-invited-contributors")

@@ -17,6 +17,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import shutil
 import sqlite3
 import tempfile
 import time
@@ -24,7 +25,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from protocol import (CAMPAIGN, DP_WEIGHT, WALK_ID, MAX_BATCH_BYTES,
                       MAX_CHECKPOINT_BYTES, check_checkpoint, check_records)
-from seed_registry import S3Registry
+from seed_registry import RegistryError, S3Registry
 
 RUN_PATH = re.compile(r"^/v1/runs/([1-9][0-9]*)(?:/(dps|checkpoint))?$")
 
@@ -42,7 +43,7 @@ def database(path: Path):
         db.close()
 
 
-def initialize(path: Path, start: int, end: int) -> None:
+def initialize(path: Path, start: int, end: int, bucket: str, stream_id: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with database(path) as db:
         db.executescript("""
@@ -66,7 +67,8 @@ def initialize(path: Path, start: int, end: int) -> None:
                 PRIMARY KEY(batch_id, index_in_batch));
         """)
         expected = {"run_id_start": str(start), "run_id_end": str(end),
-                    "campaign": CAMPAIGN, "walk_id": WALK_ID, "dp_weight": str(DP_WEIGHT)}
+                    "campaign": CAMPAIGN, "walk_id": WALK_ID, "dp_weight": str(DP_WEIGHT),
+                    "bucket": bucket, "stream_id": stream_id}
         for key, value in expected.items():
             row = db.execute("SELECT value FROM config WHERE key=?", (key,)).fetchone()
             if row and row[0] != value:
@@ -93,6 +95,18 @@ def atomic_bytes(path: Path, data: bytes) -> None:
             os.unlink(temporary)
 
 
+def prune_checkpoints(directory: Path, current: Path, retain: int = 3) -> None:
+    # Checkpoints are rolling continuation state. Raw DP batches remain
+    # write-once in S3; keeping only the latest few checkpoints bounds disk.
+    snapshots = sorted(directory.glob("*.ck"),
+                       key=lambda item: item.stat().st_mtime_ns, reverse=True)
+    keep = {current}
+    keep.update(item for item in snapshots if item != current and len(keep) < retain)
+    for item in snapshots:
+        if item not in keep:
+            item.unlink()
+
+
 class Gateway(ThreadingHTTPServer):
     daemon_threads = True
 
@@ -103,7 +117,7 @@ class Gateway(ThreadingHTTPServer):
         self.start_id, self.end_id = start, end
         self.join_hash = hashlib.sha256(join_token.encode()).digest()
         self.registry = registry
-        initialize(self.db_path, start, end)
+        initialize(self.db_path, start, end, registry.bucket, registry.stream_id)
         super().__init__(address, Handler)
 
 
@@ -113,7 +127,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         # Never log bearer or join tokens, query strings, or request bodies.
-        print("%s %s" % (self.address_string(), fmt % args), flush=True)
+        message = fmt % args
+        message = message.replace(self.path, urlsplit(self.path).path)
+        print("%s %s" % (self.address_string(), message), flush=True)
 
     def respond(self, status: int, obj: dict) -> None:
         data = json.dumps(obj, sort_keys=True, separators=(",", ":")).encode()
@@ -172,16 +188,18 @@ class Handler(BaseHTTPRequestHandler):
             if suffix != "checkpoint" or not row["checkpoint_path"]:
                 return self.fail(404, "checkpoint unavailable")
             path = self.server.state / row["checkpoint_path"]
-            if not path.is_file():
+            try:
+                source = path.open("rb")
+            except OSError:
                 return self.fail(503, "checkpoint file unavailable")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/octet-stream")
-            self.send_header("Content-Length", str(path.stat().st_size))
-            self.send_header("X-DP-Cursor", str(row["checkpoint_at"]))
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Connection", "close")
-            self.end_headers()
-            with path.open("rb") as source:
+            with source:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", str(os.fstat(source.fileno()).st_size))
+                self.send_header("X-DP-Cursor", str(row["checkpoint_at"]))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Connection", "close")
+                self.end_headers()
                 while chunk := source.read(1024 * 1024):
                     self.wfile.write(chunk)
             self.close_connection = True
@@ -199,8 +217,12 @@ class Handler(BaseHTTPRequestHandler):
                 db.execute("BEGIN IMMEDIATE")
                 previous = db.execute("SELECT MAX(id) FROM runs").fetchone()[0]
                 run_id = max(self.server.start_id, (previous or 0) + 1)
-                while run_id <= self.server.end_id and not self.server.registry.reserve(run_id):
-                    run_id += 1
+                try:
+                    while run_id <= self.server.end_id and not self.server.registry.reserve(run_id):
+                        run_id += 1
+                except RegistryError:
+                    db.rollback()
+                    return self.fail(503, "seed registry unavailable")
                 if run_id > self.server.end_id:
                     return self.fail(503, "public run IDs exhausted")
                 token = secrets.token_urlsafe(32)
@@ -237,6 +259,8 @@ class Handler(BaseHTTPRequestHandler):
                     iterations = check_checkpoint(data, run_id)
             except ValueError as exc:
                 return self.fail(400, str(exc))
+            if shutil.disk_usage(self.server.state).free < len(data) + 2 * 1024**3:
+                return self.fail(507, "gateway staging disk is nearly full")
             digest = hashlib.sha256(data).hexdigest()
             if suffix == "dps":
                 prior = db.execute("SELECT sha256,size FROM batches WHERE run_id=? AND offset=?",
@@ -250,6 +274,10 @@ class Handler(BaseHTTPRequestHandler):
                     return self.fail(409, "offset does not equal server cursor")
                 relative = Path("batches") / str(run_id) / f"{offset:016d}-{digest}.bin"
                 atomic_bytes(self.server.state / relative, data)
+                try:
+                    self.server.registry.archive_batch(run_id, offset, data)
+                except RegistryError:
+                    return self.fail(503, "durable DP archive unavailable")
                 db.execute("BEGIN IMMEDIATE")
                 current = db.execute("SELECT cursor FROM runs WHERE id=?", (run_id,)).fetchone()[0]
                 if current != offset:
@@ -269,6 +297,11 @@ class Handler(BaseHTTPRequestHandler):
             db.execute("UPDATE runs SET checkpoint_path=?,checkpoint_at=?,last_seen=? WHERE id=?",
                        (str(relative), offset, int(time.time()), run_id))
             db.commit()
+            try:
+                prune_checkpoints((self.server.state / relative).parent,
+                                  self.server.state / relative)
+            except OSError:
+                print(f"checkpoint retention deferred for run {run_id}", flush=True)
             return self.respond(201, {"ok": True, "sha256": digest,
                                       "iterations": iterations, "cursor": offset})
 

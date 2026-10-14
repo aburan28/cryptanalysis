@@ -11,17 +11,19 @@ known-answer file; the managed fleet continues to use
 ```text
 NVIDIA GPU + persistent /data  --HTTPS-->  gateway + durable /data
        sigma walk                         |  run ID reserved in shared S3 registry
-       DP file + checkpoint               |  immutable raw DP batches, checkpoints
+       DP file + checkpoint               +--> write-once raw DP archive in S3
                                          +--> ingester --> existing RDS report_dp
                                                               | collision receipts
 ```
 
 The gateway checks the assigned run ID, record length, orbit-key bit width,
 and DP32 cutoff. These structural checks do **not** prove that a submitted
-point comes from the claimed seed. Raw files and any RDS collision receipt
+point comes from the claimed seed. Raw S3 objects and any RDS collision receipt
 must be retained for independent seed replay before claiming a result. The
 join token should be given to identified contributors; an anonymous open
 upload endpoint would allow false points to pollute the shared table.
+The [activation and device-validation problem](../../../problems/ecc2k130-public-gateway-activation.md)
+tracks the remaining live rollout gate.
 
 ## Build
 
@@ -48,9 +50,12 @@ access to the campaign S3 bucket's **existing** seed registry, and RDS network
 reachability for the ingester. The bucket's
 `seed-registry/curve-131/config.json` must already say `state: ready`.
 The gateway uses S3 conditional `PutObject` on
-`seed-registry/curve-131/run-*.json` before handing out any run ID. Its IAM
-role needs only `GetObject` for the registry configuration and `PutObject` for
-the run records; a combined ingester host also reads the RDS secret. Keep
+`seed-registry/curve-131/run-*.json` before handing out any run ID. It also
+archives each accepted DP batch with conditional `PutObject` under
+`public-gateway/<stream>/runs/<id>/batches/` before acknowledging it. Its IAM
+role has `GetObject` for registry readiness, `PutObject` for run records, and
+`GetObject`/`PutObject` on that raw archive prefix; a combined ingester host
+also reads the RDS secret. Keep
 `ECC_PUBLIC_STREAM_ID` stable across redeployments.
 
 [`deploy/aws-gateway.yaml`](deploy/aws-gateway.yaml) is the reviewable AWS
@@ -98,11 +103,13 @@ ECC_RUN_ID_END=VERIFIED_LAST_UNUSED_ID
 
 Give the gateway an IAM instance role instead of placing AWS keys in `.env`.
 `RHO_DP_DSN` is needed only for the `live-ingest` profile and is passed only
-to that container. Back up the `state`
-volume: it contains contributor tokens, raw records, checkpoint snapshots,
-RDS ingestion cursors, and collision receipts. The local Docker volume is the
-durable source for a contributor upload. Monitor its free space and back it up
-off-host before inviting a large fleet.
+to that container. Back up the `state` volume: it contains contributor tokens,
+the SQLite index, the latest three checkpoint snapshots per run, pending local
+DP staging files, RDS ingestion cursors, and collision receipts. S3 holds the
+write-once raw DP archive. The ingester removes a local batch only after RDS
+reporting commits, and can restore a missing staging file from its S3 object.
+Monitor disk and S3 growth and back up the volume off-host before inviting a
+large fleet.
 
 ```sh
 cd ecc2k130/runner/public
@@ -160,8 +167,9 @@ storage quota monitoring, and seed-replay review remain operator duties.
 ## Verification boundaries
 
 Local tests cover registration, shared registry reservation, token checks,
-DP offset replay, rejected malformed records, checkpoint transfer, raw batch
-retention, and a mocked RDS collision receipt. They do not certify the image
+DP offset replay, rejected malformed records, checkpoint transfer, write-once
+raw batch archiving, checkpoint retention, and a mocked RDS collision receipt.
+They do not certify the image
 on a GPU, the public hostname, S3 permissions, RDS routing, global throughput,
 or an answer to the Certicom challenge. For a live rollout, retain the image
 digest, source commit, seed-audit receipt, gateway and ingester logs, GPU

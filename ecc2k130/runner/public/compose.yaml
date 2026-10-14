@@ -38,6 +38,9 @@ services:
     environment:
       ECC_LIVE_INGEST: "1"
       RHO_DP_DSN: ${RHO_DP_DSN:-}
+      ECC_BUCKET: ${ECC_BUCKET:?set the existing campaign bucket}
+      ECC_PUBLIC_STREAM_ID: ${ECC_PUBLIC_STREAM_ID:?set a stable gateway identity}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-west-2}
     command: ["python3", "/opt/ecc2k130/public/ingest.py", "--state", "/data"]
     volumes:
       - state:/data

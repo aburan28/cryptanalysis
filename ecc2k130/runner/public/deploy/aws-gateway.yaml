@@ -81,6 +81,10 @@ Resources:
                 Effect: Allow
                 Action: s3:PutObject
                 Resource: !Sub arn:aws:s3:::${Bucket}/seed-registry/curve-131/run-*.json
+              - Sid: ArchivePublicRawBatches
+                Effect: Allow
+                Action: [s3:PutObject, s3:GetObject]
+                Resource: !Sub arn:aws:s3:::${Bucket}/public-gateway/${StreamId}/runs/*/batches/*
               - Sid: ReadGeneratedJoinToken
                 Effect: Allow
                 Action: secretsmanager:GetSecretValue

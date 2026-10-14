@@ -19,7 +19,15 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "aws"))
 from rds_gpu import Store, parseGpuRecord  # noqa: E402
 from protocol import CAMPAIGN, DP_WEIGHT, WALK_ID, check_records  # noqa: E402
+from seed_registry import S3Registry  # noqa: E402
 from server import database  # noqa: E402
+
+
+def check_gateway_identity(state: Path, bucket: str, stream_id: str) -> None:
+    with database(state / "gateway.sqlite3") as db:
+        config = dict(db.execute("SELECT key,value FROM config WHERE key IN ('bucket','stream_id')"))
+    if config != {"bucket": bucket, "stream_id": stream_id}:
+        raise RuntimeError("ingester and gateway seed/archive identity differ")
 
 
 def process_one(state: Path, store: Store) -> dict | None:
@@ -28,7 +36,11 @@ def process_one(state: Path, store: Store) -> dict | None:
     if row is None:
         return None
     path = state / row["path"]
-    body = path.read_bytes()
+    if path.is_file():
+        body = path.read_bytes()
+    else:
+        registry = S3Registry(os.environ["ECC_BUCKET"], os.environ["ECC_PUBLIC_STREAM_ID"])
+        body = registry.fetch_batch(row["run_id"], row["offset"], row["sha256"], row["size"])
     if len(body) != row["size"]:
         raise RuntimeError(f"batch {row['id']} has a truncated durable file")
     import hashlib
@@ -61,6 +73,10 @@ def process_one(state: Path, store: Store) -> dict | None:
         db.execute("UPDATE batches SET ingested_at=?,reported=?,new_points=?,collisions=? "
                    "WHERE id=? AND ingested_at IS NULL",
                    (int(time.time()), reported, new_points, collisions, row["id"]))
+        db.commit()
+    # The S3 object was written before the gateway acknowledged this batch.
+    # Local files are only a staging cache once RDS has committed the report.
+    path.unlink(missing_ok=True)
     return {"batch_id": row["id"], "run_id": row["run_id"], "reported": reported,
             "new_points": new_points, "collisions": collisions}
 
@@ -74,6 +90,8 @@ def main(argv=None) -> int:
         parser.error("set ECC_LIVE_INGEST=1 only after the gateway and run-ID range are validated")
     lock_path = args.state / "ingest.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
+    check_gateway_identity(args.state, os.environ.get("ECC_BUCKET", ""),
+                           os.environ.get("ECC_PUBLIC_STREAM_ID", ""))
     with lock_path.open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         store = Store()
