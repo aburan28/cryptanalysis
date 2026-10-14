@@ -122,6 +122,31 @@ $5.4$--$7.1$ for the chained loop, with identical keys; this round is
 declared and has no end-to-end result
 yet.\art{crypto:research/ic_tool_program/explorations/R06-key-gfni-20261006/README.md}
 
+\paragraph{Three limbs ($n=131$).}
+At the ECC2K-130 degree a word takes three $64$-bit limbs ($64+64+3$
+bits). A dependency-free crate implements five exact canonicalizers on
+that layout and agrees with the exhaustive scan on every word for
+$n\le20$ in several limb widths, on $10^7$ uniform $131$-bit words and
+on structured families (low and high weight, zero runs straddling limb
+boundaries, up to twelve tied longest runs, near-periodic words), with
+four planted mutants all
+caught.\art{experiments/canon-n131-20261014/README.md}
+In retired instructions per word (cachegrind, uniform words), the
+exhaustive scan costs $1850$, variant~B $1435$ ($5.43$ rotations a
+word, but a ctz step for each of about $65$ one bits), a branch-free
+refinement with a fixed $130$ steps and mask selects $4510$, and a
+binary-lifting form of variant~A $514$, the cheapest and not
+branch-free. On near-periodic words variant~B rises to $2738$, more
+than the exhaustive scan, while both branch-free arms retire the same
+count on every input; $72.4\%$ of uniform words have a single longest
+run. No $131$-bit normal-basis multiply exists in the code base, so the
+cost relative to a point operation was not measured, and the
+nanosecond times of that report come from an unisolated host. The
+branch-free form is therefore $2.4\times$ the exhaustive scan and
+$8.8\times$ the lifting form at this degree: being free of branches
+costs instructions here. Class: engineering, negative for the
+branch-free arm.
+
 \subsection{The canonicalization inside the reference}
 \label{sec:bench-rho}
 

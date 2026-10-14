@@ -96,14 +96,24 @@ without TeX can open the paper.
      to using that fact as an exact word-level filter, plus the two
      implementations, their exactness proofs and the measurements (§1, §4,
      §8, §9, abstract).
-2. **Isolated replay** of the `n = 83` zero-gap stage through
-   `experiments/koblitz-n83-index-design-20260929/packed_index_e1_isolated_replay_20261010/`
-   so the canonicalization timing ratio can be promoted from exploratory.
+2. **Isolated replay** of the `n = 83` zero-gap stage. It is frozen as the
+   Tier 1 GitHub-runner panel
+   `experiments/koblitz-n83-index-design-20260929/packed_index_e1_canonical_tier1_20261014/`
+   (16 pairs, with the promotion/refutation rule fixed in `tier1_protocol.json`).
+   The panel has been pushed to run, but its receipt has not been read back yet.
 3. **Isolated one-target comparison at `n = 83`** (the only observation where
    a phase-aware index calculus is ahead of rho; currently unisolated).
-4. Decide whether to keep the `n = 19` Gröbner comparison as the only
-   end-to-end positive row or to add a rho arm at `n = 19` so its `6.85×` is
-   read against the right reference.
+4. A **rho arm at `n = 19`** is preregistered in
+   `experiments/volcano-ic/rho-arm-20261014/`. It is a matched signed-Frobenius
+   rho run in the same job as fresh baseline and Γ-orbit arms, in a pinned Sage
+   container on a GitHub runner, so the result will be exploratory tier. The
+   workflow has been pushed but not read back. Until then, `6.85×` stays a
+   ratio between two bases, not a ratio to rho.
+4a. ~~**n = 131 canonicalization**~~ — measured in
+   `experiments/canon-n131-20261014/` (three limbs, exact; instruction counts
+   only). The branch-free arm is 2.4× the exhaustive scan; the binary-lifting
+   variant A form is cheapest. Proposition `prop:cost` was corrected: variant
+   B's ctz scan is Θ(n) steps.
 5. ~~Independent re-derivation~~ — done 2026-10-14, with limited
    independence (a separate AI agent session that did not write the draft,
    not a human). See `review/rederivation-20261014.md`.

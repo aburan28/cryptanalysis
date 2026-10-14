@@ -136,10 +136,13 @@ the $t\le n$ one bits, and one rotate-and-compare per running-maximum
 gap. The exhaustive scan performs $n-1$ rotate-and-compare steps. For
 $w$ uniform on $\{0,1\}^n$, $\mathbb E[Z(w)]=O(\log n)$,
 $\mathbb E[c(w)]=O(1)$ and the expected number of running maxima is
-$O(\log n)$, so both variants perform $O(L\log n)$ word operations
-against $\Theta(nL)$ for the exhaustive scan, and the number of
-whole-word rotations falls from $n-1$ to $O(1)$ (variant~A) or
-$O(\log n)$ (variant~B).
+$O(\log n)$. Variant~A therefore performs $O(L\log n)$ word
+operations against $\Theta(nL)$ for the exhaustive scan. Variant~B's
+ctz scan visits every one bit, $\mathbb E[t]=n/2$, so it performs
+$\Theta(n)$ scalar steps plus $O(L\log n)$ word operations for its
+rotations; it saves rotations, not steps. The number of whole-word
+rotations falls from $n-1$ to $O(1)$ (variant~A) or $O(\log n)$
+(variant~B).
 \end{proposition}
 
 The measured constants are in Section~\ref{sec:bench-canon}: on
