@@ -76,9 +76,18 @@ existing grouped native reference stores 64-byte points and has 31,302,140
 point-plus-atlas bytes. The much larger candidate table makes a complete
 cache-aware comparison essential before any runtime conclusion.
 
-The next gate is complete-operation accounting, including recoding, table
-lookup, memory traffic, and affine recovery, followed by the 64-byte tau
-entry and sparse-table variants. The paired instrumented intervals cover
+`native_hybrid64.py` changes the paired table to a 160-byte record: a
+96-byte compressed ordinary point and a 64-byte affine tau point. A selected
+tau point pays one Solinas rotation only when its unit has nonzero beta power.
+The full-slot prototype has **71,160,380** point-plus-atlas bytes, while a
+table containing tau points only for seed IDs that actually use exponent 1
+would have 69,747,004 bytes. The first 128-case replay on the earlier holdout
+passed as a calibration check. A second, source-frozen disjoint panel is
+specified by `hybrid_holdout.py` for the result gate.
+
+The next gate is the source-frozen hybrid holdout and complete-operation
+accounting, including recoding, table lookup, memory traffic, and affine
+recovery. The paired instrumented intervals cover
 group evaluation from selected points through the final projective join;
 table setup, recoding, and affine recovery are recorded separately from this
 operation count.
