@@ -69,7 +69,7 @@ def profile_exact(sources: dict, settings: dict, baseline_commit: str):
         return result
     result["binary_sha256"] = hashlib.sha256((root / "ecc2k130").read_bytes()).hexdigest()
     target = ["./ecc2k130", "--packed", "--curve", "131", "--threads", "120320",
-              "--steps", "4", "--launches", "1", "--run-id", "11000",
+              "--steps", "64", "--launches", "1", "--run-id", "11000",
               "--dp-weight", "32", "--verify", "0", "--dp-file", "/tmp/profile-dp.bin"]
     result["normal_run"] = command_record(target, cwd=root, timeout=180)
     if result["normal_run"]["returncode"] or "0 dropped)" not in result["normal_run"]["output"]:
@@ -80,6 +80,7 @@ def profile_exact(sources: dict, settings: dict, baseline_commit: str):
                "--section", "SpeedOfLight", "--section", "LaunchStats",
                "--section", "Occupancy", "--section", "WarpStateStats",
                "--section", "SchedulerStats", "--section", "InstructionStats",
+               "--section", "ComputeWorkloadAnalysis", "--section", "SourceCounters",
                "--section", "MemoryWorkloadAnalysis", "--replay-mode", "application",
                "--clock-control", "none", "--cache-control", "none", *target]
     result["profile_command"] = command
