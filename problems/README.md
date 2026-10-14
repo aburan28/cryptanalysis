@@ -9,6 +9,7 @@ explain the gap and what would let the work move past it.
 
 | Problem | Status | What it blocks | What would unblock it |
 | --- | --- | --- | --- |
+| [a=0 native genus-two full-solve compute](binary-genus2-a0-full-solve-compute.md) | investigating | completed full-order native-Jacobian timings at r=2417851639230796216685689 | retained checkpoints, durable compute or a verified new method, and actual full-target recoveries |
 | [ecbench binary genus-two full-subgroup adapter](ecbench-binary-genus2-full-subgroup-adapter.md) | open | sealed cross-representation n=83 comparison and qualified speed ratio | explicit wide subgroup selection, registered Mumford-image adapter, common costs and independent replay |
 | [Binary genus-two geometric formalization](https://github.com/aburan28/crypto/blob/ad73d4bea330eddc4e7db0c660aa91a0255ff3a1/problems/binary-genus2-cover-geometric-formalization.md) | Open | full Lean theorem for the paired native cover construction | geometric and Picard bridge proofs; canonical record is in crypto |
 | [Fixed-width chooser and terminal census formal coverage](prime-j0-hex-terminal-formal-coverage.md) | Investigating | Full Lean coverage of the secp256k1 Voronoi terminal table | All-scalar chooser theorem and checked finite census |

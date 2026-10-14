@@ -70,9 +70,10 @@ The output directory must not already exist. See the
 [report](../../research/binary_genus2_cover_20261014/REPORT.md) for the
 geometric proof, recorded checks, Lean proof scope, and PDF.
 
-No field descent, independent-host verification, unknown-log recovery,
-generic cover search, or faster ECDLP solver is established. Arithmetic is
-variable-time research code.
+The construction checks establish the explicit map and subgroup transfer.
+Full-subgroup solve records and their performance limits belong to the
+separate campaign below. Field descent, arbitrary cover search and a faster
+ECDLP algorithm remain unestablished. Arithmetic is variable-time research code.
 
 ## Full-subgroup ECDLP campaign
 
