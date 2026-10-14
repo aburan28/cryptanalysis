@@ -34,6 +34,13 @@ families: all 4,831 residue codes and 43,479 quotient cases; all 96,720
 unit images; all 5,680 terminal indices; the frozen 128-scalar fixture; and
 518 additional deterministic or boundary scalars against independent binary
 multiplication. These are correctness and memory results. CPU timing is open.
+The benchmark entry point now emits separate counts for nontrivial mixed
+additions, projective joins, bucket `x`-constant multiplications, affine
+point reads, and sign flips after its verification step. On frozen fixture
+case 0 it reports 18 mixed additions, two projective joins, two bucket
+`x` multiplications, 20 digit reads, one terminal read, and 12 sign flips.
+This local execution is an operation-profile check; its wall time is not a
+controlled CPU measurement.
 
 Reproduce from the repository root, using a checkout with the referenced
 atlas inputs available:
@@ -49,4 +56,5 @@ manifest hash and both the generated source hash and the compiled source
 hash are in the receipt; the shims affect unrelated atlas inputs, not the
 norm-4,831 evaluator. For performance, pair this candidate against the
 direct two-x evaluator on the same frozen scalar panel, with an A/A control
-and a host-isolation receipt from the serial benchmark service.
+and the Tier 0 or Tier 1 receipts required by
+[the benchmark tier contract](../../docs/IC_BENCHMARK_TIERS.md).
