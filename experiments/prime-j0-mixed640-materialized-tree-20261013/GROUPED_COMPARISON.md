@@ -36,11 +36,24 @@ prove host-exclusive CPU ownership. The result measures one scalar, and
 table size is a plausible cause rather than an isolated causal variable:
 the two methods also differ in addition schedule and tau handling.
 
-The next measurement uses eight other frozen holdout scalars, with five
-paired repetitions each, submitted as separate jobs to the single serial
-worker. An attempted combined eight-case manifest was rejected before
-execution by the pinned runner's one-case schema. The updated
-`make_tier1_manifest.py` emits one valid manifest per case, preserving
-one-case job receipts and serial execution. The 17.5 MB fifteen-window
-format is the next matched table-size point; `native_frontier15_bench.py`
-generates its benchmark front door.
+The serial eight-case panel completed on holdout cases 1, 17, 33, 49, 65,
+81, 97, and 113, with five valid pairs per case and 80 valid timed
+invocations. The median of the eight case medians was **1.6233**; the
+case medians ranged from **1.5426 to 1.7191**. A 20,000-replicate
+hierarchical bootstrap, resampling cases and then pairs within each case,
+gave **1.5324–1.6941** for the median of case medians. All eight job
+summaries report stable artifacts, binaries, and runner, with no invalid
+runs. The raw receipts and computed panel row are under
+`tier1-runpod-20261013/`, with panel metadata in
+`grouped-eight-panel.json`; the transferred archive SHA-256 is
+`6e639e31a99b062e7395a1643f7475b6a816f70887145fd3921ded8c86dffeef`.
+This remains instance-scoped Tier 1 evidence because host exclusivity was
+not proved.
+
+An attempted combined eight-case manifest was rejected before execution
+by the pinned runner's one-case schema. The corrected
+`make_tier1_manifest.py` emitted one valid manifest per case, preserving
+one-case receipts and serial execution. The 17.5 MB fifteen-window format
+and the new axial factorization are the next matched table-size points;
+their generators are `native_frontier15_bench.py` and
+`native_axial_bench.py`.
