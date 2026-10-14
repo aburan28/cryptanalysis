@@ -644,6 +644,74 @@ def fold_terminal_orbits(source: str) -> str:
     return replace_once(source, anchor, TERMINAL_ORBIT_TEST_RUST + anchor)
 
 
+TERMINAL_NO_FALLBACK_TEST_RUST = r"""    #[test]
+    fn split_prime_no_fallback_random_replay() {
+        let mut scalars = vec![BigInt::from(0), BigInt::from(1),
+                               &SCALAR_LATTICE.n - 1, SCALAR_LATTICE.n.clone(),
+                               &SCALAR_LATTICE.n + 1,
+                               (BigInt::from(1) << 256) - 1];
+        let mut state = 0x6a09e667f3bcc909u64;
+        for _ in 0..512 {
+            let mut bytes = [0u8; 32];
+            for chunk in bytes.chunks_exact_mut(8) {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                chunk.copy_from_slice(&state.to_be_bytes());
+            }
+            scalars.push(BigInt::from_bytes_be(num_bigint::Sign::Plus, &bytes));
+        }
+        for (index, scalar) in scalars.iter().enumerate() {
+            let words = super::super::scalar_words_256(scalar).unwrap();
+            let actual = multiply_u256_tau_split_prime_radix(words).0;
+            let expected = independent_binary_point(&(scalar % &SCALAR_LATTICE.n))
+                .affine_hex();
+            assert_eq!(actual, expected, "scalar case {index}");
+        }
+        println!("split_prime_no_fallback_replays={}", scalars.len());
+    }
+
+"""
+
+
+def drop_terminal_axis_fallback(source: str) -> str:
+    source = replace_once(source,
+        "const SPLIT_PRIME_TERMINAL_LIMIT: usize = 642;",
+        "const SPLIT_PRIME_TERMINAL_LIMIT: usize = 91;")
+    source = replace_once(source,
+        "    terminal_plain: Box<[U256Affine]>,\n"
+        "    terminal_tau: Box<[U256Affine]>,\n", "")
+    source = replace_once(source,
+        "        let terminal_plain = split_prime_affine_row(base, SPLIT_PRIME_TERMINAL_LIMIT);\n"
+        "        let terminal_tau = split_prime_affine_row(base.tau(), SPLIT_PRIME_TERMINAL_LIMIT);\n", "")
+    source = replace_region(source,
+        "fn split_prime_affine_row(", "fn split_prime_orbit_row(", "")
+    source = replace_once(source,
+        "        let entries = digit_windows.iter().map(|row| row.len()).sum::<usize>()\n"
+        "            + terminal_plain.len() + terminal_tau.len();\n"
+        "        assert_eq!(entries, 2_672);\n",
+        "        let entries = digit_windows.iter().map(|row| row.len()).sum::<usize>();\n"
+        "        assert_eq!(entries, 1_386);\n")
+    source = replace_once(source,
+        "            + (terminal_plain.len() + terminal_tau.len())\n"
+        "                * size_of::<U256Affine>()\n", "")
+    source = replace_once(source,
+        "               terminal_plain, terminal_tau,\n", "")
+    source = replace_once(source,
+        "    // The fused table covers the small terminal norm. Axis rows are\n"
+        "    // retained for exact fallback under the original coordinate bound.\n",
+        "    // Every exact 21-step trajectory has terminal norm below 46².\n"
+        "    // Reject an implementation mismatch before indexing the compact ball.\n")
+    source = replace_once(source,
+        "    if terminal_norm < 2116 {\n",
+        "    assert!(terminal_norm < 2116, \"split-prime terminal norm bound\");\n")
+    source = replace_region(source,
+        "    } else {\n    for (coordinate, row) in [(a, &tables.terminal_plain),",
+        "    let point = bucket.affine_hex_binary_inverse();", "")
+    anchor = "    #[test]\n    fn split_prime_holdout_matches_independent_binary() {"
+    return replace_once(source, anchor, TERMINAL_NO_FALLBACK_TEST_RUST + anchor)
+
+
 def split_unit_seed_tables(source: str) -> str:
     source = replace_once(source, UNIT_ROW_RUST, UNIT_SPLIT_ROW_RUST)
     source = replace_once(source, UNIT_ONLINE_RUST, UNIT_SPLIT_ONLINE_RUST)
@@ -813,7 +881,7 @@ SHORT_REPLACEMENTS = {
 def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
          unit_compressed: bool = False, packed_correction: bool = False,
          tight_terminal: bool = False, split_seed_tables: bool = False,
-         terminal_orbits: bool = False) -> None:
+         terminal_orbits: bool = False, no_terminal_fallback: bool = False) -> None:
     if variant not in ("3301", "3307", "5113"):
         raise ValueError("variant must be 3301, 3307, or 5113")
     spec = importlib.util.spec_from_file_location("mixed640_bench_cli", BASE)
@@ -850,6 +918,10 @@ def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
         if not split_seed_tables:
             raise ValueError("terminal orbits require split seed tables")
         split_source = fold_terminal_orbits(split_source)
+    if no_terminal_fallback:
+        if not terminal_orbits:
+            raise ValueError("removing terminal fallback requires terminal orbits")
+        split_source = drop_terminal_axis_fallback(split_source)
     if packed_correction:
         anchor = "    #[test]\n    fn split_prime_holdout_matches_independent_binary() {"
         split_source = replace_once(split_source, anchor,
@@ -881,7 +953,8 @@ def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
                     + ("_packed_correction" if packed_correction else "")
                     + ("_tight_terminal" if tight_terminal else "")
                     + ("_split_seed_tables" if split_seed_tables else "")
-                    + ("_terminal_orbits" if terminal_orbits else "")),
+                    + ("_terminal_orbits" if terminal_orbits else "")
+                    + ("_no_terminal_fallback" if no_terminal_fallback else "")),
         "split_prime_source_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
         "generated_module_sha256": sha256(module_path.read_bytes()).hexdigest(),
         "generated_front_sha256": sha256(front_path.read_bytes()).hexdigest(),
@@ -914,5 +987,9 @@ if __name__ == "__main__":
         main(Path(sys.argv[2]), fused_terminal=True, unit_compressed=True,
              packed_correction=True, tight_terminal=True, split_seed_tables=True,
              terminal_orbits=True)
+    elif len(sys.argv) == 3 and sys.argv[1] == "--unit-split-terminal-orbit-no-fallback":
+        main(Path(sys.argv[2]), fused_terminal=True, unit_compressed=True,
+             packed_correction=True, tight_terminal=True, split_seed_tables=True,
+             terminal_orbits=True, no_terminal_fallback=True)
     else:
         raise SystemExit("usage: native_split_prime_bench.py [--linear|--fused-terminal|--short-fused|--unit-fused|--unit-packed|--unit-packed-tight|--unit-split-table] TARGET_DIR")

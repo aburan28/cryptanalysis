@@ -422,3 +422,24 @@ preserves the Eisenstein norm. The finite orbit count and correspondence of
 the native point action to the curve endomorphism remain verified by the
 native exhaustive test rather than by Lean. CPU timing for this format awaits
 a reachable serial runner and an isolation receipt.
+
+The `--unit-split-terminal-orbit-no-fallback` form removes the two axis
+fallback rows after the 21-step terminal bound. It retains the 1,280-point
+orbit table and indexes it only after asserting `N(a+bτ) < 46²`; coefficient
+conversion also rejects magnitudes above 91. The resulting retained size is
+**322,056 bytes**, a further 82,336-byte reduction from the orbit format
+and 82.3% below the packed tight table. The checked
+`canonical_scheme_terminal_coordinates` theorem composes the all-scalar
+canonical trajectory bound with exact coordinate inequalities:
+`-91 ≤ a ≤ 91` and `-53 ≤ b ≤ 53` at step 21. The runtime guard preserves a
+visible failure if the native selector or packed lookup diverges from that
+mathematical trajectory.
+
+The [axis-free receipt](terminal-no-fallback-validation.json) records the
+separate release build and four passing test families: 128 frozen scalars,
+518 additional deterministic and boundary scalars with independent binary
+replay, all 3,301 packed residues and 29,709 quotient cases, and all 3,838
+direct terminal-point comparisons. This is a retained-memory result. The
+native selector and packed lookup bridge remains checked by the model and
+native tests; a host-isolated online comparison remains the next performance
+measurement.
