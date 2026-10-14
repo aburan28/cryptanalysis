@@ -439,6 +439,76 @@ UNIT_PACKED_RETAINED_RUST = r"""        let entries = digit_windows.iter().map(|
 """
 
 
+UNIT_SPLIT_ROW_RUST = r"""fn split_prime_orbit_row(base: Jacobian, _seeds: &[i16])
+    -> Box<[U256OrbitXAffine]> {
+    // m = low + 32*high, 0 <= low < 32 and 0 <= high <= 33.
+    let low = affine_multiples(base, 32);
+    let high = affine_multiples(low[32], 33);
+    low.into_iter().take(32).chain(high).enumerate().map(|(position, point)| {
+        let point = if position == 0 || position == 32 {
+            U256Affine { x: super::U256::ZERO, y: super::U256::ZERO }
+        } else {
+            let affine = point.into_affine();
+            U256Affine { x: super::hybrid_pair_mont(affine.x),
+                         y: super::hybrid_pair_mont(affine.y) }
+        };
+        U256OrbitXAffine::from_affine(point)
+    }).collect::<Vec<_>>().into_boxed_slice()
+}
+
+"""
+
+
+UNIT_SPLIT_ONLINE_RUST = r"""    for row in &tables.digit_windows {
+        let (next_a, next_b, seed, unit) = split_prime_unit_step(a, b, tables);
+        a = next_a;
+        b = next_b;
+        let low = seed & 31;
+        let high = seed >> 5;
+        if low != 0 {
+            bucket = bucket.add_mixed(row[low].unit(unit));
+            terms += 1;
+        }
+        if high != 0 {
+            bucket = bucket.add_mixed(row[32 + high].unit(unit));
+            terms += 1;
+        }
+    }
+"""
+
+
+def split_unit_seed_tables(source: str) -> str:
+    source = replace_once(source, UNIT_ROW_RUST, UNIT_SPLIT_ROW_RUST)
+    source = replace_once(source, UNIT_ONLINE_RUST, UNIT_SPLIT_ONLINE_RUST)
+    source = replace_once(source,
+        "    let index = (packed & 1023) as usize;\n"
+        "    let unit = ((packed >> 10) & 7) as usize;\n"
+        "    let correction_a = ((packed >> 13) & 63) as i32 - 20;\n"
+        "    let correction_b = ((packed >> 19) & 63) as i32 - 7;",
+        "    let index = (packed & 2047) as usize;\n"
+        "    let unit = ((packed >> 11) & 7) as usize;\n"
+        "    let correction_a = ((packed >> 14) & 63) as i32 - 20;\n"
+        "    let correction_b = ((packed >> 20) & 63) as i32 - 7;")
+    source = replace_once(source,
+        "        residue_packed[0] = (20u32 << 13) | (7u32 << 19);",
+        "        residue_packed[0] = (20u32 << 14) | (7u32 << 20);")
+    source = replace_once(source,
+        "                residue_packed[residue] = index as u32\n"
+        "                    | ((unit as u32) << 10)\n"
+        "                    | (((correction_a + 20) as u32) << 13)\n"
+        "                    | (((correction_b + 7) as u32) << 19);",
+        "                residue_packed[residue] = seed as u32\n"
+        "                    | ((unit as u32) << 11)\n"
+        "                    | (((correction_a + 20) as u32) << 14)\n"
+        "                    | (((correction_b + 7) as u32) << 20);")
+    source = replace_once(source,
+        "            let index = seeds.len();\n            seeds.push(seed as i16);",
+        "            seeds.push(seed as i16);")
+    source = replace_once(source, "        assert_eq!(entries, 12_857);",
+                          "        assert_eq!(entries, 2_672);")
+    return source
+
+
 def unitize_split_source(source: str) -> str:
     source = replace_region(source, "fn split_prime_step(",
                             "struct SplitPrimeTables {", UNIT_STEP_RUST)
@@ -575,7 +645,7 @@ SHORT_REPLACEMENTS = {
 
 def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
          unit_compressed: bool = False, packed_correction: bool = False,
-         tight_terminal: bool = False) -> None:
+         tight_terminal: bool = False, split_seed_tables: bool = False) -> None:
     if variant not in ("3301", "3307", "5113"):
         raise ValueError("variant must be 3301, 3307, or 5113")
     spec = importlib.util.spec_from_file_location("mixed640_bench_cli", BASE)
@@ -604,6 +674,10 @@ def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
             raise ValueError("tight terminal requires packed unit compression")
         for old, new in UNIT_TIGHT_TERMINAL_REPLACEMENTS.items():
             split_source = replace_once(split_source, old, new)
+    if split_seed_tables:
+        if not tight_terminal:
+            raise ValueError("split seed tables require tight packed unit compression")
+        split_source = split_unit_seed_tables(split_source)
     module = replace_once(module_path.read_text(),
         "pub(super) fn warm_mixed640_pretau_table() -> usize {\n",
         split_source + "pub(super) fn warm_mixed640_pretau_table() -> usize {\n")
@@ -629,7 +703,8 @@ def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
                     + ("_fused_terminal" if fused_terminal else "")
                     + ("_unit_compressed" if unit_compressed else "")
                     + ("_packed_correction" if packed_correction else "")
-                    + ("_tight_terminal" if tight_terminal else "")),
+                    + ("_tight_terminal" if tight_terminal else "")
+                    + ("_split_seed_tables" if split_seed_tables else "")),
         "split_prime_source_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
         "generated_module_sha256": sha256(module_path.read_bytes()).hexdigest(),
         "generated_front_sha256": sha256(front_path.read_bytes()).hexdigest(),
@@ -655,5 +730,8 @@ if __name__ == "__main__":
     elif len(sys.argv) == 3 and sys.argv[1] == "--unit-packed-tight":
         main(Path(sys.argv[2]), fused_terminal=True, unit_compressed=True,
              packed_correction=True, tight_terminal=True)
+    elif len(sys.argv) == 3 and sys.argv[1] == "--unit-split-table":
+        main(Path(sys.argv[2]), fused_terminal=True, unit_compressed=True,
+             packed_correction=True, tight_terminal=True, split_seed_tables=True)
     else:
-        raise SystemExit("usage: native_split_prime_bench.py [--linear|--fused-terminal|--short-fused|--unit-fused|--unit-packed|--unit-packed-tight] TARGET_DIR")
+        raise SystemExit("usage: native_split_prime_bench.py [--linear|--fused-terminal|--short-fused|--unit-fused|--unit-packed|--unit-packed-tight|--unit-split-table] TARGET_DIR")

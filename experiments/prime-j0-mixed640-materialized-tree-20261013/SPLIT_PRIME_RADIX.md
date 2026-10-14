@@ -291,3 +291,31 @@ the exact axis fallback is limited to coordinate magnitude 642 instead of
 663. Local native release testing matched all 128 independent binary
 points and reported **1,823,132 retained bytes**. Its online effect is
 measured as a separate arm against the packed and signed-integer formats.
+
+The `--unit-split-table` format factors each canonical seed as
+`m = (m mod 32) + 32 floor(m/32)`. The bound `m ≤ 1064` makes the two
+indices at most 31 and 33. At each of the 21 radix positions it stores 32
+low multiples and 34 high multiples, each with the same six-unit orbit
+representation as the packed format. Table preparation builds the low and
+high point chains directly from `P` and `32P`, so it does not materialize
+all 1,056 intermediate multiples. The residue word now carries the
+11-bit seed itself, so the online evaluator applies the unit action to
+each nonzero component and adds at most two mixed points per digit. The
+Lean declaration `split_seed_reconstruct` checks the exact decomposition
+and both index bounds; the group step follows by distributivity of scalar
+multiplication and the unit endomorphism over point addition.
+
+The generated release implementation passed the 128-point frozen holdout,
+including an independent binary multiplication for every point, with
+**519,452 retained bytes**. This is 71.5% less retained memory than the
+packed tight table. The 1,386 digit points occupy 177,408 bytes; the
+terminal and fallback tables and lookup account for the rest. On the same
+128 scalar representatives the split requires a median of 19 additional
+mixed additions per scalar (range 14–21) relative to the one-point-per-digit
+packed table. The [model receipt](split-prime-radix.json) records the full
+distribution and the [local correctness receipt](split-table-local-validation.json)
+records the generator, compiled source, fixture, and test hashes. That local
+build used compile-only placeholders for 31 unavailable, unrelated atlas
+includes in this sparse checkout; the selected scalar test did not read
+them. A clean source-pinned Pod build and serial online comparison are
+needed to place this memory format on the measured time/memory frontier.

@@ -168,6 +168,7 @@ def unit_variant_screen(cases: list[dict], screen,
     max_terminal_norm = 0
     max_terminal_coords = [0, 0]
     term_counts = Counter()
+    split_extra_additions = Counter()
     for case in cases:
         scalar = int(case["scalar_hex"], 16) % screen.ORDER
         pair = screen.representative(scalar)
@@ -191,6 +192,10 @@ def unit_variant_screen(cases: list[dict], screen,
         max_terminal_norm = max(max_terminal_norm, norm(terminal))
         max_terminal_coords = [max(max_terminal_coords[i], abs(terminal[i]))
                                for i in (0, 1)]
+        split_extra_additions[str(sum(
+            int(index != 0 and seeds[index] % 32 != 0
+                and seeds[index] // 32 != 0)
+            for _, _, index, _ in digits))] += 1
         term_counts[str(sum(index != 0 for _, _, index, _ in digits)
                         + (terminal != (0, 0)))] += 1
     digit_entries = STEPS * len(seeds)
@@ -212,6 +217,10 @@ def unit_variant_screen(cases: list[dict], screen,
         "correction_max": correction_max,
         "steps": STEPS,
         "digit_orbit_entries": digit_entries,
+        "split_digit_orbit_entries": STEPS * (32 + 34),
+        "split_digit_point_bytes": STEPS * (32 + 34) * 128,
+        "split_holdout_extra_mixed_additions": dict(sorted(
+            split_extra_additions.items(), key=lambda pair: int(pair[0]))),
         "axis_fallback_entries": axis_entries,
         "fused_terminal_entries": fused_entries,
         "tight_terminal_entries": tight_entries,

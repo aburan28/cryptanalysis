@@ -231,6 +231,12 @@ theorem centered_sign_cover (r : Nat) (hr : r < 3301) :
 theorem six_unit_residue_multipliers_distinct :
     List.Nodup ([1, 3300, 1726, 1575, 1574, 1727] : List Nat) := by decide
 
+-- The split point rows represent m as a low 5-bit part and a high
+-- multiple of 32. The same unit acts on both summands.
+theorem split_seed_reconstruct (m : Nat) (hm : m ≤ 1064) :
+    m = m % 32 + 32 * (m / 32) ∧ m % 32 < 32 ∧ m / 32 ≤ 33 := by
+  omega
+
 #print axioms pi_norm
 #print axioms norm_pi_mul
 #print axioms coordinate_a_bound
@@ -265,5 +271,6 @@ theorem six_unit_residue_multipliers_distinct :
 #print axioms unit_packed_correction_identity
 #print axioms centered_sign_cover
 #print axioms six_unit_residue_multipliers_distinct
+#print axioms split_seed_reconstruct
 
 end SplitPrimeRadix
