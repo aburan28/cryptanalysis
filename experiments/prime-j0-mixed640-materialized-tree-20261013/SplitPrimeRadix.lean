@@ -190,6 +190,32 @@ theorem unit_seed_norm (m : Int) :
   · rw [norm_omega_mul, norm_omega_mul]
     simp [norm]
 
+def unitResidue (x : Coeff) : Int := (x.1 + 1576 * x.2) % 3301
+
+-- The six constants in the finite coverage certificate are exactly the
+-- quotient residues of the three unit powers and their negatives.
+theorem unit_seed_residue_forms (m : Int) :
+    unitResidue (m, 0) = m % 3301 ∧
+    unitResidue (-m, 0) = (3300 * m) % 3301 ∧
+    unitResidue (omegaMul (m, 0)) = (1726 * m) % 3301 ∧
+    unitResidue (-(omegaMul (m, 0)).1, -(omegaMul (m, 0)).2) =
+      (1575 * m) % 3301 ∧
+    unitResidue (omegaMul (omegaMul (m, 0))) = (1574 * m) % 3301 ∧
+    unitResidue (-(omegaMul (omegaMul (m, 0))).1,
+                 -(omegaMul (omegaMul (m, 0))).2) = (1727 * m) % 3301 := by
+  simp only [unitResidue, omegaMul]
+  constructor
+  · simp
+  constructor
+  · omega
+  constructor
+  · omega
+  constructor
+  · omega
+  constructor
+  · omega
+  · omega
+
 theorem unit_digit_step_identity (a b da db k : Int)
     (h : 3301 * k = (a - da) + 1576 * (b - db)) :
     let shifted_b := b - db
@@ -265,6 +291,7 @@ theorem split_seed_reconstruct (m : Nat) (hm : m ≤ 1064) :
 #print axioms norm_omega_mul
 #print axioms norm_neg
 #print axioms unit_seed_norm
+#print axioms unit_seed_residue_forms
 #print axioms unit_digit_step_identity
 #print axioms unit_terminal_axis_numeric
 #print axioms unit_fused_terminal_numeric

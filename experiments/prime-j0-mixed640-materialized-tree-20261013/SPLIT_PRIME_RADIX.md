@@ -231,8 +231,20 @@ the maximum observed terminal norm is 1,201. The uniform digit norm bound
 conservative 56-norm fused table and 663-coordinate fallback while this
 variant is tested. `SplitPrimeRadix.lean` proves norm preservation under
 the unit action, exact division for an arbitrary unit digit, and the
-numeric 46-norm and coordinate inequalities. Finite lookup coverage and
-the analytic nearest-cell bridge remain model-checked proof obligations.
+numeric 46-norm and coordinate inequalities. The generated
+`SplitPrimeUnitCover.lean` proves the complete finite quotient bound:
+for every `0 ≤ r < 3301`, there is a seed `m ≤ 1064` whose image under one
+of the six explicit unit multipliers is `r`. Its 24 bounded certificate
+chunks use kernel-checked `decide`; the theorem's axiom audit lists only
+Lean's standard `propext` and `Quot.sound`. Regenerate it with
+`python3 generate_split_prime_unit_cover.py --write` and check it with
+`lean SplitPrimeUnitCover.lean`; the
+[Lean receipt](split-prime-unit-cover-lean-receipt.json) pins the source and
+output. `SplitPrimeRadix.unit_seed_residue_forms` identifies those six
+numeric multipliers with the actual coefficient images of the unit action.
+The exact greedy choice of 551 seed representatives and the
+analytic nearest-cell bridge still have exhaustive model checks and written
+proofs, but no full Lean bridge yet.
 The generated native release test matched all 128 frozen points against
 independent binary multiplication locally and reported **1,950,422
 retained bytes** including the residue lookup and metadata. The Pod
