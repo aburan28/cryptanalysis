@@ -237,6 +237,47 @@ benchmark preflight before making a CPU speed claim. A RunPod CPU Pod can
 qualify only for the separate instance-scoped Tier 1 gate when its paired
 noise and correctness checks pass; it does not establish host exclusivity.
 
+### RunPod Tier 1 full-operation timing, 2026-10-13
+
+The serial isolated-benchmark service ran one A/A affine control and one
+affine-reference/selective-candidate comparison on RunPod instance
+`rrao2y0m5xlahr`. Each used eight alternating-order pairs for the same
+frozen holdout point (`selective_holdout_case_0`), CPU 14, NUMA node 0,
+and the same online timing boundary: start immediately before the
+scalar-dependent pre-tau multiplication call and stop after affine point
+recovery. Recoding, lookup, selection, tree evaluation, and recovery are
+included. Table preparation and fixture loading are outside that interval;
+each invocation records its table preparation time separately. The runner
+verified the output point and required fixture fields on every invocation.
+
+| Panel | Valid pairs | Median affine/reference divided by candidate online time | Paired bootstrap 95% interval | Median table preparation, reference/candidate |
+| --- | ---: | ---: | ---: | ---: |
+| Affine A/A control | 8/8 | 0.9803 | 0.9490–1.0531 | 9,728/9,700 ms |
+| Affine versus selective | 8/8 | 1.0294 | 0.9720–1.1259 | 10,441/10,491 ms |
+
+All 32 invocations were valid, with stable artifact, runner, and binary
+hashes. The recorded cgroup throttle and per-CPU steal deltas were zero.
+The A/B interval includes 1 and overlaps the A/A noise range, so this
+panel does not resolve an online timing advantage. This is an
+instance-scoped Tier 1 measurement: the preflight passed, but the Pod does
+not prove host-exclusive CPU ownership. Only one frozen scalar was timed,
+with one multiplication per process and 0.066–0.082 ms online intervals;
+a longer, multi-case paired panel or host-exclusive repeat is the next
+timing gate. The observed A/B median is a diagnostic, not a qualified
+speedup ratio.
+
+The complete [Tier 1 receipts](tier1-runpod-20261013/) preserve both
+manifests, preflights, per-invocation counters and outputs, paired rows,
+and summaries. The A/A and A/B job IDs are
+`71c10fc08f214c37b805653d0cf28808` and
+`c917dc6bee7046e9b780df17d158d921`. Their result archives were
+transferred from the Pod and SHA-256-checked before extraction. The
+runner hash is `48361f0d0a5138e9e2f1264ff3de689fddb9d1a5181afd089e70c153e3a089cc`;
+the allocation receipt hash is
+`f9887f1b1cb100abd598709195f4061fbbe050ebf51bfbcc7c95788defa48d70`.
+Use `native_bench_cli.py` to generate the pinned benchmark front doors and
+`make_tier1_manifest.py` to create a manifest for a new case or panel.
+
 Reproduce the current receipts:
 
 ```sh
