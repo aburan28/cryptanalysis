@@ -174,6 +174,102 @@ struct HostWalk {
     uint64_t a[H][2], b[H][2];
 #endif
 
+#if ECC_WALK_TABLE
+    // a P + b Q for the table's entries, on the packed polynomial-basis
+    // routines the walk itself runs (affine double-and-add, one packed
+    // inversion an operation).  The model's ec2k_pt_mul takes about 90 ms a
+    // product here, so 2 * TW_H of them were most of a client's start-up;
+    // verifyTable() holds the result to ec2k_pt_mul, and the tests call it.
+    struct PolyPt {
+        P131 x, y;
+        bool inf;
+    };
+    static bool polyEqual(const P131 &a, const P131 &b)
+    {
+        return a.v[0] == b.v[0] && a.v[1] == b.v[1] && a.v[2] == b.v[2] && a.v[3] == b.v[3] &&
+               (a.v[4] & 7u) == (b.v[4] & 7u);
+    }
+    static bool polyZero(const P131 &a) { return (a.v[0] | a.v[1] | a.v[2] | a.v[3] | (a.v[4] & 7u)) == 0; }
+    static P131 polyInv(const P131 &a)
+    {
+        using namespace eccPacked131;
+        return toPolynomial131(inv131(fromPolynomial131(a)));
+    }
+    // y^2 + xy = x^3 + 1: lambda = x + y/x, x3 = lambda^2 + lambda,
+    // y3 = x^2 + (lambda + 1) x3; x = 0 is the 2-torsion point.
+    static PolyPt polyDbl(const PolyPt &p)
+    {
+        using namespace eccPacked131;
+        if (p.inf || polyZero(p.x)) return PolyPt{P131{}, P131{}, true};
+        const P131 lam = add131(p.x, mulPolynomial131(p.y, polyInv(p.x)));
+        const P131 x3 = add131(squarePolynomial131(lam), lam);
+        const P131 y3 = add131(add131(squarePolynomial131(p.x), mulPolynomial131(lam, x3)), x3);
+        return PolyPt{x3, y3, false};
+    }
+    // lambda = (y1 + y2)/(x1 + x2), x3 = lambda^2 + lambda + x1 + x2,
+    // y3 = lambda (x1 + x3) + x3 + y1.
+    static PolyPt polyAdd(const PolyPt &p, const PolyPt &q)
+    {
+        using namespace eccPacked131;
+        if (p.inf) return q;
+        if (q.inf) return p;
+        if (polyEqual(p.x, q.x)) {
+            if (polyEqual(p.y, q.y)) return polyDbl(p);
+            return PolyPt{P131{}, P131{}, true};
+        }
+        const P131 d = add131(p.x, q.x);
+        const P131 lam = mulPolynomial131(add131(p.y, q.y), polyInv(d));
+        const P131 x3 = add131(add131(squarePolynomial131(lam), lam), d);
+        const P131 y3 = add131(add131(mulPolynomial131(lam, add131(p.x, x3)), x3), p.y);
+        return PolyPt{x3, y3, false};
+    }
+    static PolyPt polyOf(const ec2k_pt &p)
+    {
+        using namespace eccPacked131;
+        return PolyPt{toPolynomial131(toPacked(p.x)), toPolynomial131(toPacked(p.y)), p.inf != 0};
+    }
+    // k P for a two-word k, the bits from the top as ec2k_pt_mul takes them
+    static PolyPt polyMul(const PolyPt &p, const uint64_t k[2])
+    {
+        PolyPt acc{P131{}, P131{}, true};
+        for (int i = 127; i >= 0; --i) {
+            acc = polyDbl(acc);
+            if ((k[i >> 6] >> (i & 63)) & 1) acc = polyAdd(acc, p);
+        }
+        return acc;
+    }
+    static ec2k_pt modelOf(const PolyPt &p)
+    {
+        using namespace eccPacked131;
+        ec2k_pt r;
+        if (p.inf) {
+            ec2k_fe_zero(&r.x);
+            ec2k_fe_zero(&r.y);
+            r.inf = 1;
+            return r;
+        }
+        r.x = fromPacked(fromPolynomial131(p.x));
+        r.y = fromPacked(fromPolynomial131(p.y));
+        r.inf = 0;
+        return r;
+    }
+
+    // Every table point against the golden model's a P + b Q.
+    bool verifyTable() const
+    {
+        for (int h = 0; h < H; ++h) {
+            ec2k_pt ap, bq, t;
+            ec2k_pt_mul(&ap, &P, a[h], 2);
+            ec2k_pt_mul(&bq, &Q, b[h], 2);
+            ec2k_pt_add(&t, &ap, &bq);
+            if (t.inf != point[h][0].inf || !sameFe(t.x, point[h][0].x) ||
+                !sameFe(t.y, point[h][0].y))
+                return false;
+        }
+        return true;
+    }
+#endif
+
     void build(const ec2k_pt &basis, const ec2k_pt &target)
     {
         P = basis;
@@ -186,10 +282,8 @@ struct HostWalk {
                 a[h][w] = eccPrf(0x7ab1e0000000ull + 2ull * (uint64_t)h, w);
                 b[h][w] = eccPrf(0x7ab1e0000000ull + 2ull * (uint64_t)h + 1, w);
             }
-            ec2k_pt ap, bq, t;
-            ec2k_pt_mul(&ap, &P, a[h], 2);
-            ec2k_pt_mul(&bq, &Q, b[h], 2);
-            ec2k_pt_add(&t, &ap, &bq);
+            const PolyPt pp = polyOf(P), qp = polyOf(Q);
+            const ec2k_pt t = modelOf(polyAdd(polyMul(pp, a[h]), polyMul(qp, b[h])));
             for (int k = 0; k < 131; ++k) {
                 ec2k_pt_frob(&point[h][k], &t, (unsigned)k);
                 toLimbs(point[h][k].x, table[h][k].x.v);
