@@ -185,4 +185,20 @@ model in `split_prime_radix.py` found maximum fixture terminal norm 2,163;
 126 cases used 21 nonzero point terms and two used 20. Norm scaling,
 quotient root, exact digit division, and both numeric bounds are checked in
 `SplitPrimeRadix.lean`; the analytic and nearest-cell Lean bridge remains
-open. Online timing awaits a source-pinned serial Pod comparison.
+open. The Pod release test also passed all 128 frozen points. Its build,
+test, overlay, and manifest logs are under
+`tier1-runpod-20261013/split-prime-validation/`; the transferred validation
+archive SHA-256 is
+`f17f693a13d3f7345daeda14eb9313a8934f7faa960e242ad60a644db14c9189`.
+
+The source-pinned case-0 comparison against the 21-digit norm-3301 fused
+evaluator completed eight valid pairs. The median paired 21-digit/20-digit
+online ratio was **0.9096**, with paired bootstrap interval
+**0.8530–1.0348**. Median online times by arm were 0.03604/0.03840 ms;
+median table preparation was 9,907/14,140 ms, measured separately.
+The raw job is `tier1-runpod-20261013/39b4b17a2f71421893bb9f9920794b22/`;
+the transferred archive SHA-256 is
+`4682b937f5d97dcd7fc942b770adb3a83093d62d6dac86878c2c13ab071850e3`.
+All 16 invocations returned verified points, and artifacts, binaries, and
+runner stayed stable. This case gives no measured advantage for the shorter
+radix; host exclusivity was unproved.
