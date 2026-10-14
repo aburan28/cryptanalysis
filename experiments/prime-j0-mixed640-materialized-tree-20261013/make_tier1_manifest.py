@@ -37,16 +37,21 @@ def main():
     parser.add_argument("--runner-source", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--cpu", type=int, required=True)
-    parser.add_argument("--case-index", type=int, default=0)
+    parser.add_argument("--case-index", type=int, action="append",
+                        help="fixture case index; repeat for a multi-case panel (default: 0)")
     parser.add_argument("--repetitions", type=int, default=8)
     parser.add_argument("--timeout-s", type=int, default=300)
     args = parser.parse_args()
     if args.repetitions < 5:
         parser.error("Tier 1 requires at least five alternating pairs")
-    if args.cpu < 0 or args.case_index < 0:
-        parser.error("CPU and case index must be nonnegative")
+    case_indices = args.case_index or [0]
+    if args.cpu < 0 or any(index < 0 for index in case_indices):
+        parser.error("CPU and case indices must be nonnegative")
+    if len(set(case_indices)) != len(case_indices):
+        parser.error("case indices must be distinct")
     panel = json.loads(FIXTURE.read_text())
-    case = panel["cases"][args.case_index]
+    if any(index >= len(panel["cases"]) for index in case_indices):
+        parser.error("case index exceeds frozen fixture length")
     receipt = json.loads(args.allocation_receipt.read_text())
     if receipt.get("provider") != "runpod" or not receipt.get("instance_id"):
         parser.error("allocation receipt must identify the RunPod Pod")
@@ -92,21 +97,21 @@ def main():
         "result_field": "point",
         "artifacts": paths,
         "cases": [{
-            "id": f"selective_holdout_case_{args.case_index}",
+            "id": f"selective_holdout_case_{index}",
             "reference": [str(executable(reference)),
-                          "--benchmark-mixed640-packet", str(args.case_index)],
+                          "--benchmark-mixed640-packet", str(index)],
             "candidate": [str(executable(candidate)),
-                          "--benchmark-mixed640-packet", str(args.case_index)],
+                          "--benchmark-mixed640-packet", str(index)],
             "expected_fields": {
                 "fixture_sha256": fixture_hash,
-                "case_id": str(args.case_index),
-                "scalar": case["scalar_hex"],
+                "case_id": str(index),
+                "scalar": panel["cases"][index]["scalar_hex"],
             },
-            "expected_result": case["point_hex"],
-        }],
+            "expected_result": panel["cases"][index]["point_hex"],
+        } for index in case_indices],
     }
     args.output.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
-    print(json.dumps({"output": str(args.output), "case_index": args.case_index,
+    print(json.dumps({"output": str(args.output), "case_indices": case_indices,
                       "fixture_sha256": fixture_hash,
                       "repetitions": args.repetitions}, sort_keys=True))
 
