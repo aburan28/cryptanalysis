@@ -1,0 +1,20 @@
+import Lean
+set_option maxRecDepth 100000
+set_option maxHeartbeats 0
+namespace UnitGreedyLookup
+def images (m : Nat) : List Nat :=
+  [m % 3301, (3300*m)%3301, (1726*m)%3301,
+   (1575*m)%3301, (1574*m)%3301, (1727*m)%3301]
+def step (state : Array Bool × List Nat) (m : Nat) : Array Bool × List Nat :=
+  if state.1[m]! then state
+  else ((images m).foldl (fun seen r => seen.set! r true) state.1,
+        m :: state.2)
+def initial : Array Bool × List Nat :=
+  ((Array.replicate 3301 false).set! 0 true, [0])
+def greedy : Array Bool × List Nat :=
+  ((List.range 1650).map (· + 1)).foldl step initial
+theorem count : greedy.2.length = 551 := by decide
+theorem max_seed : greedy.2.head? = some 1064 := by decide
+#print axioms count
+#print axioms max_seed
+end UnitGreedyLookup
