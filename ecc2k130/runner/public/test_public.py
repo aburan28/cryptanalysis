@@ -19,6 +19,7 @@ from ingest import process_one
 from protocol import HEADER
 from server import Gateway, database
 from seed_registry import S3Registry
+from deploy.enable_ingest import dsn
 
 
 class FakeStore:
@@ -152,6 +153,13 @@ class PublicGatewayTest(unittest.TestCase):
         self.assertFalse(registry.reserve(50000))
         self.assertIn(b'"active_owner": "public-gateway:public-v1:run50000"',
                       s3.objects["seed-registry/curve-131/run-50000.json"])
+
+    def test_rds_dsn_encodes_secret_and_requires_verified_tls(self):
+        connection = dsn({"username": "rho", "password": "@:#$", "dbname": "rho"},
+                         "rho-dp.cxqyicswioh8.us-west-2.rds.amazonaws.com")
+        self.assertIn("rho:%40%3A%23%24@rho-dp.", connection)
+        self.assertIn("sslmode=verify-full", connection)
+        self.assertIn("sslrootcert=%2Fopt%2Fecc2k130%2Frds-ca.pem", connection)
 
     def test_missing_walk_state_cannot_restart_or_reassign_seeds(self):
         api = API(self.url, "a-secret-for-invited-contributors")

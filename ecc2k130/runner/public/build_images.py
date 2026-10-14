@@ -36,6 +36,7 @@ def build(kind: str, tag: str, platform: str) -> None:
                            public / "client.py", public / "protocol.py"])
         else:
             inputs.extend([public / "server.py", public / "ingest.py",
+                           public / "check_rds.py",
                            public / "protocol.py", public / "seed_registry.py",
                            ROOT / "ecc2k130/runner/aws/rds_gpu.py"])
         for item in inputs:

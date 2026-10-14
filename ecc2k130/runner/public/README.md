@@ -50,7 +50,29 @@ reachability for the ingester. The bucket's
 The gateway uses S3 conditional `PutObject` on
 `seed-registry/curve-131/run-*.json` before handing out any run ID. Its IAM
 role needs only `GetObject` for the registry configuration and `PutObject` for
-the run records. Keep `ECC_PUBLIC_STREAM_ID` stable across redeployments.
+the run records; a combined ingester host also reads the RDS secret. Keep
+`ECC_PUBLIC_STREAM_ID` stable across redeployments.
+
+[`deploy/aws-gateway.yaml`](deploy/aws-gateway.yaml) is the reviewable AWS
+rollout template. It creates a `t3.medium` EC2 instance with a 100 GiB
+encrypted EBS volume, an Elastic IP, inbound TCP 80/443 and UDP 443, a
+generated join token in Secrets Manager, and a scoped EC2 role. It builds
+the gateway from an exact merged source commit and starts only the gateway
+and HTTPS ingress. Its public address uses the IP-derived `sslip.io` DNS
+service until a project-owned domain is configured; that external DNS
+dependency must be checked during rollout. The EC2 role also has read access
+to the existing `rho/dp-rds` secret for the separate ingester. It has no
+general bucket write permission. The template is not applied by a build or
+PR check.
+
+After reviewing the template, selecting a public subnet, and recording the
+source commit, a deployment uses `aws cloudformation deploy` with
+`CAPABILITY_IAM` and parameters `SourceCommit`, `VpcId`, and `SubnetId`.
+The source commit is a 40-character SHA reachable on `main`; the stack
+outputs the HTTPS URL, instance ID, and join-secret ARN. Preserve the EBS
+volume and retained join secret when replacing or removing the stack.
+Inspect cloud-init logs, `docker compose ps`, public `/health`, certificate
+validation, and one S3 run-ID reservation before sharing the URL.
 
 Audit the proposed run-ID interval against the shared registry and every
 historical owner using the canonical
@@ -71,7 +93,7 @@ ECC_BUCKET=YOUR_EXISTING_CAMPAIGN_BUCKET
 AWS_DEFAULT_REGION=us-west-2
 ECC_RUN_ID_START=VERIFIED_FIRST_UNUSED_ID
 ECC_RUN_ID_END=VERIFIED_LAST_UNUSED_ID
-RHO_DP_DSN=postgresql://.../rho?sslmode=verify-full
+# Set RHO_DP_DSN through deploy/enable_ingest.py after the gateway check.
 ```
 
 Give the gateway an IAM instance role instead of placing AWS keys in `.env`.
@@ -87,8 +109,16 @@ cd ecc2k130/runner/public
 docker compose up -d gateway ingress
 curl --fail https://ecc2k130.example.org/health
 # After a controlled end-to-end upload and RDS contract check:
-docker compose --profile live-ingest up -d ingest
+python3 deploy/enable_ingest.py \
+  --db-host rho-dp.cxqyicswioh8.us-west-2.rds.amazonaws.com --start
 ```
+
+`enable_ingest.py` reads the existing `rho/dp-rds` secret without printing it,
+downloads the AWS RDS CA bundle, writes a mode-0600 DSN into `.env`, checks
+the existing campaign row over verified TLS without a DP write, and then
+starts the ingester if `--start` was given. The local CA bundle is ignored by
+Git. The first real upload still needs an RDS sample lookup and independent
+seed replay when a collision is recorded.
 
 The gateway must use the existing campaign row and its `report_dp` function;
 the ingester validates that metadata before writing. A database failure leaves

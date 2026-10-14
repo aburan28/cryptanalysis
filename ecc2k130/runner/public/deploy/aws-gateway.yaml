@@ -1,0 +1,200 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  ECC2K-130 invited contributor gateway. Creates an encrypted EC2 host, an
+  Elastic IP, HTTPS ingress, one generated join token, and a scoped IAM role.
+
+Parameters:
+  SourceCommit:
+    Type: String
+    Description: Exact merged cryptanalysis commit to build the gateway from.
+    AllowedPattern: '^[0-9a-f]{40}$'
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+  AmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+  InstanceType:
+    Type: String
+    Default: t3.medium
+    AllowedValues: [t3.medium, t3.large]
+  VolumeGiB:
+    Type: Number
+    Default: 100
+    MinValue: 100
+    MaxValue: 1000
+  Bucket:
+    Type: String
+    Default: ecc2k130-590183823895
+    AllowedPattern: '^ecc2k130-[0-9]{12}$'
+  StreamId:
+    Type: String
+    Default: public-gateway-20261014
+    AllowedPattern: '^[a-zA-Z0-9_-]{8,64}$'
+  RunIdStart:
+    Type: Number
+    Default: 50000
+    MinValue: 1
+    MaxValue: 65535
+  RunIdEnd:
+    Type: Number
+    Default: 50999
+    MinValue: 1
+    MaxValue: 65535
+
+Resources:
+  JoinSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: ecc2k130/public-join-token
+      Description: Invited contributor registration token for the ECC2K-130 gateway
+      GenerateSecretString:
+        SecretStringTemplate: '{}'
+        GenerateStringKey: token
+        PasswordLength: 48
+        ExcludePunctuation: true
+
+  GatewayRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ec2.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: ecc2k130-public-gateway
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadRegistryReadiness
+                Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub arn:aws:s3:::${Bucket}/seed-registry/curve-131/config.json
+              - Sid: ReservePublicRunIds
+                Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub arn:aws:s3:::${Bucket}/seed-registry/curve-131/run-*.json
+              - Sid: ReadGeneratedJoinToken
+                Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref JoinSecret
+              - Sid: ReadExistingRdsSecretForSeparateIngester
+                Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rho/dp-rds-*
+
+  GatewayProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref GatewayRole]
+
+  GatewaySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Public HTTPS and ACME only for ECC2K-130 contributor gateway
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0}
+        - {IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0}
+        - {IpProtocol: udp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0}
+
+  GatewayAddress:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  GatewayInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref GatewayProfile
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpTokens: required
+        HttpPutResponseHopLimit: 2
+      NetworkInterfaces:
+        - DeviceIndex: '0'
+          AssociatePublicIpAddress: true
+          SubnetId: !Ref SubnetId
+          GroupSet: [!Ref GatewaySecurityGroup]
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            Encrypted: true
+            VolumeSize: !Ref VolumeGiB
+            VolumeType: gp3
+            DeleteOnTermination: false
+      Tags:
+        - {Key: Name, Value: ecc2k130-public-gateway}
+        - {Key: Project, Value: ecc2k130}
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euo pipefail
+          dnf install -y docker git python3 curl
+          systemctl enable --now docker
+          install -d -m 0755 /usr/local/lib/docker/cli-plugins
+          curl --fail --location --silent --show-error \
+            https://github.com/docker/compose/releases/download/v5.6.0/docker-compose-linux-x86_64 \
+            -o /usr/local/lib/docker/cli-plugins/docker-compose
+          echo '40343e21ca777173e69cff5dbafeb37c6f81f3b0d57d9e597f036e95eb63e76a  /usr/local/lib/docker/cli-plugins/docker-compose' | sha256sum -c -
+          chmod 0755 /usr/local/lib/docker/cli-plugins/docker-compose
+          git clone --filter=blob:none --sparse --branch main --depth 1 \
+            https://github.com/aburan28/cryptanalysis /opt/ecc2k130-source
+          git -C /opt/ecc2k130-source fetch --depth 1 origin ${SourceCommit}
+          git -C /opt/ecc2k130-source checkout --detach ${SourceCommit}
+          git -C /opt/ecc2k130-source sparse-checkout set ecc2k130/runner/public ecc2k130/runner/aws
+          python3 /opt/ecc2k130-source/ecc2k130/runner/public/build_images.py gateway \
+            --tag ecc2k130-gateway:source
+          install -d -m 0700 /run/ecc2k130
+          aws secretsmanager get-secret-value --region ${AWS::Region} \
+            --secret-id '${JoinSecret}' --output json > /run/ecc2k130/join.json
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          secret = json.loads(json.loads(Path('/run/ecc2k130/join.json').read_text())['SecretString'])
+          token = secret['token']
+          if not token.isalnum() or len(token) < 24:
+              raise RuntimeError('generated join token has an unexpected format')
+          target = Path('/opt/ecc2k130-source/ecc2k130/runner/public/.env')
+          values = {
+              'ECC_PUBLIC_HOST': '${GatewayAddress}.sslip.io',
+              'ECC_GATEWAY_IMAGE': 'ecc2k130-gateway:source',
+              'ECC_PUBLIC_JOIN_TOKEN': token,
+              'ECC_PUBLIC_STREAM_ID': '${StreamId}',
+              'ECC_BUCKET': '${Bucket}',
+              'AWS_DEFAULT_REGION': '${AWS::Region}',
+              'ECC_RUN_ID_START': '${RunIdStart}',
+              'ECC_RUN_ID_END': '${RunIdEnd}',
+          }
+          target.write_text(''.join(f'{key}={value}\n' for key, value in values.items()))
+          os.chmod(target, 0o600)
+          PY
+          rm -f /run/ecc2k130/join.json
+          cd /opt/ecc2k130-source/ecc2k130/runner/public
+          docker compose up -d gateway ingress
+
+  GatewayAddressAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt GatewayAddress.AllocationId
+      InstanceId: !Ref GatewayInstance
+
+Outputs:
+  InstanceId:
+    Value: !Ref GatewayInstance
+  ElasticIp:
+    Value: !Ref GatewayAddress
+  PublicUrl:
+    Value: !Sub https://${GatewayAddress}.sslip.io
+  JoinSecretArn:
+    Value: !Ref JoinSecret
