@@ -746,6 +746,15 @@ static ECC_BIG P131 mul131(MulArg a, MulArg b) {
 #if ECC_PACKED_ALU_SQR != 0 && ECC_PACKED_ALU_SQR != 1
 #error "ECC_PACKED_ALU_SQR must be 0 or 1"
 #endif
+#ifndef ECC_PACKED_ZIP_SQR
+#define ECC_PACKED_ZIP_SQR 0
+#endif
+#if ECC_PACKED_ZIP_SQR != 0 && ECC_PACKED_ZIP_SQR != 1
+#error "ECC_PACKED_ZIP_SQR must be 0 or 1"
+#endif
+#if ECC_PACKED_ZIP_SQR && ECC_PACKED_ALU_SQR
+#error "Choose one normal-basis square implementation"
+#endif
 // The logic-op spread, kept callable beside the clmad one: with the table walk
 // the ALU pipe is no longer the only saturated one (ITERATION-FUNCTION.md
 // section 6), so the per-update polynomial squaring can be moved back here
@@ -791,6 +800,9 @@ ECC_HD uint64_t spread32p(uint32_t x){
 #include "square_reduce.h"
 ECC_HD P131 squarePolynomial131(P131 a) { return goal22SquareReduced(a); }
 ECC_HD P131 sqr131(const P131 &a){
+#if ECC_PACKED_ZIP_SQR
+ return goal22SquareNormal(a);
+#else
  P131 rev=reverse131(a),r;
 #if ECC_PACKED_ALU_SQR
  uint64_t lo=(spread32alu(a.v[0])<<1)^spread32alu(rev.v[0]);
@@ -803,6 +815,7 @@ ECC_HD P131 sqr131(const P131 &a){
  r.v[2]=uint32_t(hi);r.v[3]=uint32_t(hi>>32);
  r.v[4]=(rev.v[2]&1u)|((a.v[2]&1u)<<1)|((rev.v[2]&2u)<<1);
  return r;
+#endif
 }
 #ifndef ECC_PACKED_PERM_SIGMA
 #define ECC_PACKED_PERM_SIGMA 0
