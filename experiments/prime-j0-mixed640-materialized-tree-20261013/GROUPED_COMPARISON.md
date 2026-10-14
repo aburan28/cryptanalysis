@@ -57,3 +57,17 @@ one-case receipts and serial execution. The 17.5 MB fifteen-window format
 and the new axial factorization are the next matched table-size points;
 their generators are `native_frontier15_bench.py` and
 `native_axial_bench.py`.
+
+Both case-0 comparisons completed with eight valid pairs on the same
+serial service. The grouped/frontier-15 median online ratio was **1.0462**
+with paired interval **0.9530–1.2021**. The grouped/axial median was
+**0.9709** with interval **0.9533–1.0324**. The three retained table sizes
+are 31,302,596 bytes (grouped), 17,511,596 bytes (frontier-15), and
+5,746,628 bytes (axial). The frontier-15 raw job is
+`tier1-runpod-20261013/a2cacbfd752348559df2608a3bced45e/`; its
+transferred archive SHA-256 is
+`9bf1ae05771d4638d0adb9b2ab1eea157a387d500c613304c7cb767f68335b48`.
+All sixteen timed invocations in each job were valid, and all artifact,
+binary, and runner stability checks passed. Their intervals include one,
+so case-0 online ordering among these three formats remains unresolved.
+Each receipt records `host_exclusivity_proved=false`.
