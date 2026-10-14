@@ -19,7 +19,7 @@ on:
       - 'experiments/ic-candidate-catalog/**'
       - '.github/workflows/independent-replay.yml'
   push:
-    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
+    branches: [main]
     paths:
       - 'experiments/groebner-perf-20260924/round26/**'
       - 'experiments/groebner-perf-20260924/round25/**'
@@ -29,7 +29,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: independent-replay-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   correctness:
@@ -39,12 +39,12 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 30 }}
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Install numerical dependency

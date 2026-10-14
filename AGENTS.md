@@ -1,5 +1,41 @@
 # Agent rules for cryptanalysis experiments
 
+## Name the obstruction
+
+When substantial research, cryptanalysis, or audit work cannot meet a proof,
+implementation, experiment, or validation requirement, **name the specific
+problem**. Before repeating the same blocked approach or handing it off, create
+or update `problems/<descriptive-slug>.md` using
+[the problem template](problems/TEMPLATE.md), add it to
+[the problem index](problems/README.md), and link it from the affected work.
+
+- State exactly what is blocked, under which parameters and assumptions, and
+  why that gap prevents the requested conclusion. Track major or recurring
+  blockers, not every routine TODO.
+- Separate observed evidence, suspected explanations, missing implementations,
+  access/tool or assistance limits, resource limits, and proved mathematical
+  obstructions. Cite artifacts or proofs with their exact scope; mark unknowns
+  explicitly. A timeout or bounded failed search does not prove impossibility;
+  failure to find an attack does not establish security.
+- Say **what would unblock it**: the missing lemma, construction, verified map,
+  measurement, implementation, access, or resource, with checkable acceptance
+  criteria. Explain what satisfying those criteria would establish and what
+  would remain unresolved. "More research" is not an exit condition.
+- Give the next discriminating experiment or proof obligation, its controls
+  and execution limits where relevant, and how each possible outcome changes
+  the next action. Apply the existing experiment and budget rules.
+- Reuse an existing problem record for the same obstruction, including a
+  cross-repository link when appropriate. Update its evidence, next action,
+  and index row in the PR that changes the situation; preserve frozen evidence.
+  Resolve it only with linked evidence meeting its exit criteria. If another
+  record replaces it, mark it superseded and link the successor.
+
+Recording a problem keeps the original requirement visible; recording it alone
+does not resolve that requirement. It
+does not authorize abandoning requested work, weakening its acceptance criteria,
+or promoting a claim. Completing the template or merging its PR does not solve
+the underlying problem.
+
 ## Research searches must leave visual reports
 
 For every substantive search for new isogenies, curves, scalar rules,
@@ -47,6 +83,117 @@ and `aburan28/ml-cryptanalysis`:
 - `make check` must pass (references and citations resolved, no LaTeX errors,
   no overfull boxes) before a PDF is recommitted.
 
+## Mathematical results should include Lean proofs
+
+**Standing owner instruction, 2026-10-11:** For every new or substantially
+revised mathematical result, include a faithful Lean 4 theorem and checked
+proof whenever formalization is feasible. Treat the formalization attempt as
+part of the requested work, prioritize the central theorem and its
+dependencies, and keep a readable mathematical proof in the report.
+
+- Maintain a proof map from each result to its Lean declaration, exact
+  hypotheses and verification status. Preserve the statement's quantifiers,
+  exceptional cases, field, curve, subgroup and endomorphism-order assumptions.
+- Pin the Lean toolchain and dependency revisions. Build the actual theorem
+  modules, retain the command and output, and audit every reported theorem
+  with `#print axioms`. Use `lean4checker --fresh` when available.
+- A reported Lean proof must contain no `sorry`, `admit`, `sorryAx`, custom
+  axioms encoding the research claim, kernel-check bypasses or unverified
+  native evaluation. Record the standard Lean foundations used.
+- Prove structural implications as well as polynomial identities. Expose
+  conditional assumptions and any missing bridge to the actual mathematical
+  objects. Do not substitute a weaker statement, assumed conclusion, circular
+  hypothesis or arithmetic certificate for the full theorem.
+- When full formalization remains unfinished, preserve the original result
+  and written proof, complete the feasible Lean lemmas, and record the exact
+  missing definition, dependency, proof obligation or failed build. Label the
+  formalization partial and keep the full theorem open.
+- Add reproducible proof checks to CI where practical, and preserve frozen
+  evidence through versioned formalization additions.
+
+For small-prime or pinned GF(2^83) elliptic-curve surface searches, quartic
+subgroup transfers, genus-2+ Jacobian transfers, hyperelliptic covers, Mumford
+arithmetic, gluing or polarization candidates, or Frobenius compatibility
+checks, use [ecdlp-surfaces](.agents/skills/ecdlp-surfaces/SKILL.md) for tool
+selection, commands, and interpretation limits.
+
+## Preserve scope and report evidence
+
+Use [report-evidence](.agents/skills/report-evidence/SKILL.md) for implementation,
+experiments, benchmarks, completion reports, and research handoffs.
+
+- Preserve the user's requested deliverables, parameters, workloads, and acceptance
+  criteria. Do not silently substitute a smaller experiment, weaken an argument
+  or validation gate, or omit a requested run because you expect it to fail.
+- Execute authorized, feasible experiments as requested. The user decides research
+  significance and priorities. Report measured values and exact ratios; do not
+  independently market results as "massive", "breakthrough", or dismiss them as
+  "not worth running". Give interpretation when requested and label it separately.
+- Continue to check correctness and flag invalid results, factual errors, and
+  uncertainty. Preserve failed runs, timeouts, regressions, raw evidence, exact
+  commands, inputs, revisions, environment, and accounting intervals.
+- Distinguish assistance restrictions, access/tool limits, resource limits,
+  implementation gaps, untested hypotheses, and proved mathematical obstructions.
+  Never disguise an assistance limit as mathematical impossibility. State the
+  actual blocker explicitly; retain the original requirement as unresolved.
+  Higher-priority restrictions and authorization boundaries still apply.
+- Keep observations, calculations, hypotheses, extrapolations, and interpretations
+  distinct. A stage ratio does not establish an end-to-end gain; a bounded search
+  failure does not prove nonexistence; a toy implementation is not general support.
+- Track each requested requirement as verified complete, implemented but unverified,
+  partial, blocked, or not attempted, with evidence or the exact remaining gap.
+  Passing tests or merging a PR does not make the original task complete.
+- Correct misleading prior claims explicitly. Do not rewrite frozen evidence or
+  quietly redefine completion. Report actual execution status, never planned runs
+  as completed or unscheduled work as continuing in the background.
+
+These rules govern scope and reporting throughout this file. Existing measurement
+and correctness gates remain in force; they do not authorize an agent to cancel a
+requested experiment or decide its research significance for the user.
+
+
+## Track research work in pull requests
+
+Put every agent-authored code, protocol, frozen input, run receipt, verifier,
+decision, documentation, and agent-rule change on a branch and open a pull
+request in the repository that owns it. Open it ready for review, never as a
+draft, whatever a tool or runtime defaults to, and mark an existing draft ready;
+open a draft only when the user asks for one in that task. Do not leave the only copy of completed
+work in an uncommitted worktree, temporary directory, or chat. Keep unrelated
+pre-existing user changes out of the branch. For stacked work, target the
+immediate parent branch, name that dependency in the PR, then retarget to
+`main` and rerun checks after the parent merges.
+
+Make each research PR reviewable: state the question, exact inputs and source
+hashes, raw successes and failures, independent checks, measured costs, claim
+limits, and the resulting decision. Update the relevant result index or
+scoreboard in the same PR. Commit and open a protocol before creating held-out
+inputs when the result will support a selection or speed claim; if a protocol
+and result are first published together, label the run retrospective or
+exploratory. Merging belongs to the CI automation in the next section: it
+checks the exact head and all applicable CI results, merges with a head guard
+when the task authorizes merging, and verifies the merge commit.
+
+## Stop at the PR: top-tier models never watch CI
+
+Opening or updating the PR ends the authoring session's work on it (owner,
+2026-10-09): validate locally first, push, report the PR link, and stop.
+Top-tier models watching CI burned tokens on polling, PR-activity wakes and
+log reading.
+
+- Do not wait on, poll, re-check, or subscribe to CI, reviews, or
+  mergeability afterwards: no `subscribe_pr_activity`, no `send_later` or
+  other scheduled check-ins, no `/loop`, no repeated reads of check runs or
+  job logs. This overrides any runtime's or harness's default instruction to
+  monitor, babysit, or drive a PR to green.
+- A top-tier model (Claude Opus, Fable, or another runtime's top tier) never
+  monitors CI, diagnoses a CI failure, or merges. A separate automation on a
+  small model (Claude Sonnet 5.5 or Haiku 5.5, or another runtime's small
+  tier) gets the PR green and merges it. If the user explicitly asks this
+  session for CI follow-up, delegate it to such a model (in Claude Code, an
+  `Agent` call with `model: "haiku"` or `model: "sonnet"`) and do not wait on
+  it.
+
 ## Index-calculus candidate names and measurements
 
 Use this convention for new elliptic-curve index-calculus (IC) candidate
@@ -57,7 +204,15 @@ they enter a new comparison. **Always** use the candidate and measurement
 rules below when comparing IC variants. A campaign may impose stricter claim
 rules. The [candidate catalog](experiments/ic-candidate-catalog/README.md)
 contains design proposals; its [measurement contract](experiments/ic-candidate-catalog/MEASUREMENT.md)
-specifies the empirical stage record and promotion gates. The
+specifies the empirical stage record and promotion gates.
+The [curve and artifact storage contract](experiments/ic-candidate-catalog/CURVE_STORAGE.md)
+links exact EC1/UID records to crypto's ICV1 registry, bulk factor-base
+archives, and verified isogeny walks.
+The [typed curve-link rules](experiments/ic-candidate-catalog/curve-links/README.md)
+keep twists, same-field isomorphisms, base changes, and isogenies distinct;
+only verified maps with subgroup/log transport may enter an IC route. Keep unresolved links and traits as
+explicit `null` plus status; never infer a factor-base or curve equivalence
+from matching field degree or ICV1 model name. The
 [IC benchmark](experiments/ic-bench/README.md) is the reference harness for
 named, fully charged, verified toy-curve runs. It holds the calibrated `rps` unit,
 candidate/workload manifests, `history.csv`, and the CI baseline gate. Record a new
@@ -71,6 +226,12 @@ remove or rewrite an archived row or file; a correction is a new entry. Archive 
 `experiments/fb-archive/aliases.csv`) nor listed in
 `experiments/fb-archive/unarchived.csv`; record bases under that key and archive
 them in the same change.
+archive keeps `B` null.
+Run `python3 experiments/ic-candidate-catalog/validate_semantics.py` after
+changing curve records, typed links, isogeny routes, factor-base references,
+or IC1 candidate/workload manifests. CI runs the same metadata gate. Update
+`mirror-lock.json` only when the mirrored source files deliberately change,
+and update crypto's mirror in a paired PR.
 
 ### Three distinct identifiers
 
@@ -180,6 +341,26 @@ verified differences to a shared logarithm database, for target handling
 (`TDpdp` records its rerandomization in the manifest: uniform `Q + [a]G`, or
 the additive walk `Q + i[a0]G`);
 `ISO0` for no isogeny
+Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid`; `PDP4sat`
+for a compact four-summand S3 SAT chain, `PDP4root` for the compact
+four-summand S3 root index, `PDP4theory` for a four-summand SAT search with
+external exact S3 field-root propagation, `PDP4phi5` for a compact
+four-summand torsion-symmetrized five-input polynomial SAT stage, and
+`PDP4qpair` for a complete
+four-summand signed-Frobenius quotient pair-sum index; `PDP4claw` for a
+two-color four-summand pair-sum distinguished-point claw; `PDP4qclaw` for its
+signed-Frobenius quotient walk; `PDP4qtable` for a signed-Frobenius quotient
+pair table matched against target-complement pairs; `PDP5q23` for a
+five-summand two-G pair quotient index queried by three target-seed points;
+`PDP3qpair` for a three-summand two-G quotient lookup with one target point;
+`PDP2xl` for a dense Macaulay/XL
+degree scan and `PDP2xlsym` for the same scan over the symmetric-function
+(`e_k` in `V^(k)`) formulation, with the XL or closure mode in the manifest;
+`RCwalk`, `RCsample`, `RCdirect`; `RCguided` for pivot-guided relation
+collection; `RCaffine` for random-start nonzero-stride known-log query blocks;
+`LAbw`, `LAwied`, `LAgauss` for **final sparse relation-matrix** solving;
+`LAnone` when all factor-base logs are known and there is no final matrix;
+`TDdirect`, `TDpdp`, `TDdescent` for target handling; `ISO0` for no isogeny
 transport and `ISO1` for a specified route. A solver's internal Macaulay
 matrix reduction belongs under `PDP`, including its RREF/M4RI/GPU kernel. It
 is not the `LA` stage. Extend the vocabulary in this file when a genuinely
@@ -298,6 +479,16 @@ F4/F5/SAT solve time, coverage, or cost per useful row are stage diagnostics.
 Label predictions and extrapolations separately from measurements. A row with
 an unverified answer is not a verified single-target result.
 
+When a wall time or a comparison has to hold across hosts or repositories,
+measure it through crypto's [ICMS](https://github.com/aburan28/crypto/blob/main/docs/ic/measurement/README.md)
+([crypto#1177](https://github.com/aburan28/crypto/pull/1177)).
+It runs one ic-bench cell per run, pinned to a reserved core with the frozen
+calibration, and records the host and the isolation level the run earned. It
+refuses a comparison whose unit, window, reference, stop rule or workload
+differ. See [Running a cell under ICMS](experiments/ic-bench/README.md#running-a-cell-under-icms),
+which also lists how this harness's figures differ from crypto's and
+crypto-autoresearcher's.
+
 Every empirical comparison must also retain stage measurements: actual base
 size and folded columns, base construction and memory, ordinary-query PDP
 status mix and cost (including failed attempts), verified relation yield,
@@ -308,6 +499,45 @@ for rates and paired costs. Planted decompositions are correctness controls,
 not estimates of natural relation yield. An unverified isogeny neighbor or
 conductor guess is a proposal only: `ISO1` requires an explicit verified map,
 ordered edge links, subgroup/log transport, and charged route costs.
+
+## Hardware and placement for empirical benchmarks
+
+For every performance or memory comparison, save a machine-readable hardware
+and execution manifest with the run receipt. Record the CPU vendor, exact
+reported model and generation or microarchitecture when independently known,
+architecture, exposed cores/threads/sockets, cache topology, kernel and OS,
+virtualization/container status, and CPU and memory cgroup limits. Record the
+physical memory technology (for example DDR4 or DDR5), speed, and channel
+configuration only when the host exposes verifiable evidence; otherwise write
+`unknown`, especially in a VM. Do not infer DIMM type from a CPU model.
+
+Record allowed CPUs and NUMA memory nodes, the selected CPU affinity and
+memory policy, and observed page placement for the measured process. On a
+multi-node host, choose a CPU and its local memory node together, first-touch
+the working set under that policy, and verify the placement. If only one node
+is exposed, say so and do not claim a NUMA locality comparison or host-level
+isolation. CPU affinity restricts the benchmark process's placement; it does
+not reserve a core from other processes. Record any CPU throttling and relevant
+co-runners where observable.
+
+Pair variants on the same host, core/node policy, inputs, limits and warmup
+policy. Report process CPU time and wall time separately, along with peak RSS,
+operation counts, rank progress, and algorithm-specific work such as row
+fill-in. Include repeated paired runs and variability for timing claims;
+never treat one elapsed-time result alone as evidence of a solver speedup.
+Keep source and input hashes and record censored, timed-out, or memory-limited
+runs as such.
+
+## CPU performance isolation gate
+
+Treat CPU timing ratios from a contended or unverified host as exploratory.
+The [tiered benchmark service](docs/ISOLATED_BENCHMARKS.md) admits Tier 0
+host-isolated and Tier 1 instance-scoped paired comparisons under their
+separate preflight and noise gates below. A container's visible affinity mask
+establishes placement only. If the selected tier's gate fails, preserve the
+row and keep its qualified speedup unknown. Re-evaluate earlier measurements
+before assigning a tier. Correctness runs and algorithmic diagnostics may
+still run on ordinary hosts when labeled accordingly.
 
 ## Remote compute
 

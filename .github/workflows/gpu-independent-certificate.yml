@@ -9,7 +9,6 @@ on:
       - 'experiments/pdp-scaling/**'
       - '.github/workflows/gpu-independent-certificate.yml'
   push:
-    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - 'experiments/groebner-perf-20260924/round16/**'
       - 'experiments/groebner-perf-20260924/round15/**'
@@ -20,7 +19,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: gpu-independent-certificate-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   evidence:
@@ -32,10 +31,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Compile Metal host and UBSan variant

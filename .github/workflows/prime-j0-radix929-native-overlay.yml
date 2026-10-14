@@ -1,0 +1,37 @@
+name: prime-j0-radix929-native-overlay
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/prime-j0-radix929-native-overlay.yml"
+      - "experiments/prime-j0-radix929-topball-20261012/**"
+      - "experiments/prime-j0-secp256k1-native/src/bin/eisenstein_fixed.rs"
+      - "experiments/prime-j0-secp256k1-native/src/bin/eisenstein_fixed/unit_orbit_windows.rs"
+      - "experiments/prime-j0-pareto-tree-20261012/plans.bin"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-replay:
+    name: Exhaustive top rank and 512 native point replays
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Fetch locked Rust dependencies
+        run: cargo fetch --locked --manifest-path experiments/prime-j0-secp256k1-native/Cargo.toml
+      - name: Build disposable native overlay
+        run: |
+          set -euo pipefail
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/radix929-target"
+          python3 experiments/prime-j0-radix929-topball-20261012/native_overlay.py \
+            "$RUNNER_TEMP/radix929-overlay" --build
+      - name: Verify every top rank and independent point
+        run: |
+          set -euo pipefail
+          python3 experiments/prime-j0-radix929-topball-20261012/native_replay.py \
+            --binary "$RUNNER_TEMP/radix929-target/release/eisenstein_fixed" \
+            --overlay-record "$RUNNER_TEMP/radix929-overlay/overlay.json" --check

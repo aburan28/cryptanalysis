@@ -1904,10 +1904,9 @@ mod tests {
                     })
                 };
                 let want = rref_rows(work.iter().map(|r| low(r)).collect(), width);
-                // One thread searches nearly every panel lazily, in row
-                // order, and 1024 most eagerly, in gather order; the
-                // pivots, hence the word count, are the lowest rows either
-                // way.
+                // One thread takes every panel's candidates in row order,
+                // 1024 mostly in gather order; the pivots, hence the word
+                // count, are the lowest rows either way.
                 let mut word_ops = None;
                 for threads in [1, 7, 64, 1024] {
                     let e = emulate_echelon(&m, rows, stride, low_start, width, &skip, threads);

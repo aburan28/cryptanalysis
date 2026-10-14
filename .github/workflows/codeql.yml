@@ -2,9 +2,8 @@ name: codeql
 
 on:
   push:
-    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
+    branches: ["**"]
   pull_request:
-  merge_group:
   schedule:
     # 04:41 UTC on Mondays, so a new query pack is seen even on a quiet week.
     - cron: '41 4 * * 1'
@@ -14,36 +13,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: codeql-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  changes:
-    name: Select affected jobs
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      selected: ${{ steps.scope.outputs.selected }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 2
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /.github/actions/ci-scope/
-            /.github/ci/
-            /scripts/ci_scope.py
-      - id: scope
-        uses: ./.github/actions/ci-scope
-        with:
-          workflow: codeql.yml
-
   analyze:
-    needs: changes
-    if: ${{ !cancelled() }}
     name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 40 }}
+    timeout-minutes: 40
     permissions:
       # Required to upload the SARIF results to the security tab.
       security-events: write
@@ -63,10 +40,8 @@ jobs:
           # out so a preview regression cannot block a pull request.
     steps:
       - uses: actions/checkout@v7
-        if: needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}')[matrix.language]) != 'false')
 
       - name: Initialize CodeQL
-        if: needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}')[matrix.language]) != 'false')
         uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
@@ -78,13 +53,12 @@ jobs:
           queries: security-extended
 
       - name: Build the C library
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}')[matrix.language]) != 'false')) && (matrix.language == 'c-cpp')
+        if: matrix.language == 'c-cpp'
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
           cmake --build build -j"$(getconf _NPROCESSORS_ONLN)"
 
       - name: Analyze
-        if: needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}')[matrix.language]) != 'false')
         uses: github/codeql-action/analyze@v3
         with:
           category: /language:${{ matrix.language }}

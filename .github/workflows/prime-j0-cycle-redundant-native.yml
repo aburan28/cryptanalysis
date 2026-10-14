@@ -1,0 +1,130 @@
+name: prime-j0-cycle-redundant-native
+
+# Linux correctness for the source-frozen scalar cover. Timing claims use the
+# separate host-isolated benchmark service and its strict preflight receipt.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/prime-j0-cycle-redundant-native.yml"
+      - "experiments/prime-j0-cycle-prune-20261011/**"
+      - "experiments/prime-j0-cycle-redundant-native-20261011/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  native:
+    name: Linux x86-64 scalar correctness
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify exact covers and frozen scalar paths
+        run: |
+          set -euo pipefail
+          python3 experiments/prime-j0-cycle-prune-20261011/verify_redundant.py
+          python3 experiments/prime-j0-cycle-prune-20261011/redundant_holdout.py verify
+          python3 experiments/prime-j0-cycle-redundant-native-20261011/native_atlas.py verify
+
+      - name: Materialize source-pinned native evaluator
+        run: |
+          set -euo pipefail
+          python3 experiments/prime-j0-cycle-redundant-native-20261011/materialize_native.py \
+            "$RUNNER_TEMP/cycle-redundant-native"
+
+      - name: Replay complete Rust suite and frozen point panel
+        run: |
+          set -euo pipefail
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/cycle-redundant-target"
+          cargo test --locked --release \
+            --manifest-path "$RUNNER_TEMP/cycle-redundant-native/Cargo.toml" \
+            --bin eisenstein_fixed -- --test-threads=2 --nocapture \
+            > "$RUNNER_TEMP/native-tests.log" 2>&1 || {
+              tail -80 "$RUNNER_TEMP/native-tests.log"
+              exit 1
+            }
+          grep -F 'test result: ok. 143 passed; 0 failed;' \
+            "$RUNNER_TEMP/native-tests.log"
+          grep -F 'cycle_redundant_cases=4096 active_rho=1435 rho_terms=1720 additions=49152 gauge_products=19439 retained_bytes=54339936' \
+            "$RUNNER_TEMP/native-tests.log"
+
+      - name: Replay independent boundary points
+        run: |
+          set -euo pipefail
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/cycle-redundant-target"
+          cargo build --locked --release \
+            --manifest-path "$RUNNER_TEMP/cycle-redundant-native/Cargo.toml" \
+            --bin eisenstein_fixed
+          "$CARGO_TARGET_DIR/release/eisenstein_fixed" \
+            --check-scalar-unit-orbit-u256-tau-dual-rho0-direct-gauge-xyzz-tau-fixed-fixture \
+            experiments/prime-j0-tau-bucket-two-x-20261010/edge-fixture.json \
+            > "$RUNNER_TEMP/native-edge.stdout" \
+            2> "$RUNNER_TEMP/native-edge.stderr"
+          test ! -s "$RUNNER_TEMP/native-edge.stderr"
+          python3 - <<'PY'
+          from hashlib import sha256
+          import importlib.util
+          import json
+          from pathlib import Path
+          import os
+
+          path = Path('experiments/prime-j0-power2-residual-20261010/verify_fixture.py')
+          spec = importlib.util.spec_from_file_location('independent_edge', path)
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          fixture = Path('experiments/prime-j0-tau-bucket-two-x-20261010/edge-fixture.json')
+          raw = (Path(os.environ['RUNNER_TEMP']) / 'native-edge.stdout').read_bytes()
+          record = module.check_fixture(
+              'unit_orbit_u256_tau_dual_rho0_direct_gauge_xyzz_tau_fixed',
+              'edge', fixture, raw, 10)
+          print(json.dumps(record, sort_keys=True))
+          assert record['cases'] == 10
+          PY
+
+      - name: Bind Linux outputs to source and workload hashes
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from hashlib import sha256
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ['RUNNER_TEMP'])
+          paths = {
+              'native-tests.log': root / 'native-tests.log',
+              'native-edge.stdout': root / 'native-edge.stdout',
+              'native-edge.stderr': root / 'native-edge.stderr',
+              'redundant-materialization.json': root / 'cycle-redundant-native/redundant-materialization.json',
+              'cover-cycle-redundant.bin': Path('experiments/prime-j0-cycle-prune-20261011/cover-cycle-redundant.bin'),
+              'redundant-inputs.json': Path('experiments/prime-j0-cycle-prune-20261011/redundant-inputs.json'),
+          }
+          record = {name: sha256(path.read_bytes()).hexdigest()
+                    for name, path in paths.items() if path.is_file()}
+          (root / 'cycle-redundant-linux-receipt.json').write_text(
+              json.dumps(record, indent=2, sort_keys=True) + '\n')
+          print(json.dumps(record, sort_keys=True))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prime-j0-cycle-redundant-native-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/native-tests.log
+            ${{ runner.temp }}/native-edge.stdout
+            ${{ runner.temp }}/native-edge.stderr
+            ${{ runner.temp }}/cycle-redundant-linux-receipt.json
+            ${{ runner.temp }}/cycle-redundant-native/redundant-materialization.json
+          if-no-files-found: warn

@@ -1,80 +1,37 @@
 name: Grouped independent Boolean identities
 
 on:
-  merge_group:
+  # Retired 2026-10-11: this gate guards a study that has been quiet for 7+ days, and its
+  # push/pull_request triggers were fanning out across the account's shared runners. Run it
+  # on demand, or restore its push/pull_request triggers from git history to bring it back.
   workflow_dispatch:
-  pull_request:
-    paths:
-      - ".github/ci/**"
-      - ".github/actions/ci-scope/**"
-      - "scripts/ci_scope.py"
-      - 'experiments/groebner-perf-20260924/**'
-      - 'experiments/pdp-scaling/**'
-      - 'experiments/pdp-degree-heuristics/**'
-      - '.github/workflows/grouped-independent-checker.yml'
-  push:
-    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
-    paths:
-      - ".github/ci/**"
-      - ".github/actions/ci-scope/**"
-      - "scripts/ci_scope.py"
-      - 'experiments/groebner-perf-20260924/**'
-      - 'experiments/pdp-scaling/**'
-      - 'experiments/pdp-degree-heuristics/**'
-      - '.github/workflows/grouped-independent-checker.yml'
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: grouped-independent-checker-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  changes:
-    name: Select affected jobs
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      selected: ${{ steps.scope.outputs.selected }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 2
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /.github/actions/ci-scope/
-            /.github/ci/
-            /scripts/ci_scope.py
-      - id: scope
-        uses: ./.github/actions/ci-scope
-        with:
-          workflow: grouped-independent-checker.yml
-
   correctness:
-    needs: changes
-    if: ${{ !cancelled() }}
     name: Grouped independent checker (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 90 }}
+    timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v7
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Install numerical dependency
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         run: python -m pip install numpy==2.4.0
       - name: Build portable dependencies and selected backend
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         shell: bash
         run: |
           mkdir -p grouped-checker-evidence
@@ -92,7 +49,6 @@ jobs:
           python experiments/groebner-perf-20260924/round47/build.py > grouped-checker-evidence/build-47.log 2>&1
           python experiments/groebner-perf-20260924/round48/build.py > grouped-checker-evidence/build-48.log 2>&1
       - name: Detect actual Metal availability
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         shell: bash
         run: |
           cd experiments/groebner-perf-20260924/round44
@@ -114,16 +70,13 @@ jobs:
           PY
           fi
       - name: Exercise proof semantics and charged failure boundaries
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         working-directory: experiments/groebner-perf-20260924/round48
         run: |
           python -u run_tests.py > ../../../grouped-checker-evidence/transform-unit-tests.log 2>&1
           python -u run_identity_tests.py > ../../../grouped-checker-evidence/identity-unit-tests.log 2>&1
       - name: Compare every multiplier coefficient with an independent oracle
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         run: python -u experiments/groebner-perf-20260924/round48/validate_identity.py --output grouped-checker-evidence/native-coefficients.json > grouped-checker-evidence/native-coefficients.log 2>&1
       - name: Validate frozen systems and complete-query ablation
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         shell: bash
         run: |
           flags=()
@@ -132,10 +85,9 @@ jobs:
           fi
           python -u experiments/groebner-perf-20260924/round48/validate_native.py "${flags[@]}" --output grouped-checker-evidence/correctness.json.gz > grouped-checker-evidence/validation.log 2>&1
       - name: Independently audit complete proofs from original equations
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         run: python -u experiments/groebner-perf-20260924/round48/audit_queries.py --input grouped-checker-evidence/correctness.json.gz --output grouped-checker-evidence/independent-audit.json > grouped-checker-evidence/independent-audit.log 2>&1
       - name: Retain actual native binaries and runner identity
-        if: ${{ (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false')) && (!cancelled()) }}
+        if: always()
         run: |
           python - <<'PY'
           import json, os, pathlib, platform, shutil
@@ -148,7 +100,7 @@ jobs:
               shutil.copytree(build, out / 'native' / build.parent.name, dirs_exist_ok=True)
           PY
       - uses: actions/upload-artifact@v4
-        if: ${{ (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false')) && (!cancelled()) }}
+        if: always()
         with:
           name: grouped-checker-${{ matrix.os }}
           path: grouped-checker-evidence/

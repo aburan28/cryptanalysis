@@ -8,7 +8,6 @@ on:
       - 'tests/test_benchmark_export.py'
       - '.github/workflows/curve-identities.yml'
   push:
-    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - 'tools/curve_identity.py'
       - 'tools/export_benchmark_snapshot.py'
@@ -17,13 +16,8 @@ on:
       - '.github/workflows/curve-identities.yml'
 permissions:
   contents: read
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
   metadata:
-    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

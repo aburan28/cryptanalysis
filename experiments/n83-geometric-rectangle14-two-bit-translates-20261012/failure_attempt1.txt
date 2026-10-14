@@ -1,0 +1,20 @@
+Initial two-bit translation screen interrupted after 1,472 completed rows.
+The first zero-containing translated affine plane is bits (37,73), row
+1,486 in lexicographic combination order. The last printed progress row
+was 1,472; rows 1,473 through 1,485 completed without a flush.
+
+Traceback (most recent call last):
+  File "screen.py", line 187, in <module>
+    main()
+  File "screen.py", line 115, in main
+    inverses = batch_inverses(xs, one)
+  File "screen.py", line 31, in batch_inverses
+    assert value != 0
+AssertionError
+
+The frozen attempt source and protocol are screen_attempt1.py and
+protocol_attempt1.json. The trace test x+1/x is undefined at x=0. On
+y^2+xy=x^3+1, x=0 has the rational point (0,1), which projects to the
+identity under cofactor four. The corrected screen records the zero-x
+candidate separately, excludes it from the usable-lift upper bound,
+and inverts only nonzero x.

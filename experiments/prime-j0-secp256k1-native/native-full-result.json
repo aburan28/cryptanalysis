@@ -1,0 +1,89 @@
+{
+  "academic_novelty_claim": null,
+  "architecture": "arm64",
+  "binary_sha256": "00b416151d7e8f9439313dddddf232c10ae6cd97ede70438f9522b8e81f16910",
+  "build": {
+    "command": [
+      "cargo",
+      "build",
+      "--offline",
+      "--locked",
+      "--release",
+      "--manifest-path",
+      "/private/tmp/prime-j0-unit-gauge-stream/experiments/prime-j0-secp256k1-native/Cargo.toml"
+    ],
+    "exit_code": 0,
+    "stderr": "   Compiling prime-j0-secp256k1-native-replay v0.1.0 (/private/tmp/prime-j0-unit-gauge-stream/experiments/prime-j0-secp256k1-native)\nwarning: associated items `from_biguint`, `to_biguint`, `ct_lt`, `ct_is_zero`, `cswap`, and `mul_wide` are never used\n   --> src/../../../suite/src/ct_bignum.rs:68:12\n    |\n 54 | impl<const LIMBS: usize> Uint<LIMBS> {\n    | ------------------------------------ associated items in this implementation\n...\n 68 |     pub fn from_biguint(v: &BigUint) -> Self {\n    |            ^^^^^^^^^^^^\n...\n 88 |     pub fn to_biguint(&self) -> BigUint {\n    |            ^^^^^^^^^^\n...\n117 |     pub fn ct_lt(&self, other: &Self) -> Choice {\n    |            ^^^^^\n...\n123 |     pub fn ct_is_zero(&self) -> Choice {\n    |            ^^^^^^^^^^\n...\n141 |     pub fn cswap(a: &mut Self, b: &mut Self, choice: Choice) {\n    |            ^^^^^\n...\n221 |     pub fn mul_wide(a: &Self, b: &Self) -> (Self, Self) {\n    |            ^^^^^^^^\n    |\n    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: struct `MontgomeryContext` is never constructed\n   --> src/../../../suite/src/ct_bignum.rs:435:12\n    |\n435 | pub struct MontgomeryContext<const LIMBS: usize> {\n    |            ^^^^^^^^^^^^^^^^^\n\nwarning: associated items `new`, `mont_mul`, `mont_sqr`, `to_montgomery`, and `from_montgomery` are never used\n   --> src/../../../suite/src/ct_bignum.rs:460:12\n    |\n451 | impl<const LIMBS: usize> MontgomeryContext<LIMBS> {\n    | ------------------------------------------------- associated items in this implementation\n...\n460 |     pub fn new(n: Uint<LIMBS>) -> Option<Self> {\n    |            ^^^\n...\n481 |     pub fn mont_mul(&self, a: &Uint<LIMBS>, b: &Uint<LIMBS>) -> Uint<LIMBS> {\n    |            ^^^^^^^^\n...\n486 |     pub fn mont_sqr(&self, a: &Uint<LIMBS>) -> Uint<LIMBS> {\n    |            ^^^^^^^^\n...\n491 |     pub fn to_montgomery(&self, a: &Uint<LIMBS>) -> Uint<LIMBS> {\n    |            ^^^^^^^^^^^^^\n...\n497 |     pub fn from_montgomery(&self, a_mont: &Uint<LIMBS>) -> Uint<LIMBS> {\n    |            ^^^^^^^^^^^^^^^\n\nwarning: function `mont_pow_ct` is never used\n   --> src/../../../suite/src/ct_bignum.rs:525:8\n    |\n525 | pub fn mont_pow_ct<const LIMBS: usize>(\n    |        ^^^^^^^^^^^\n\nwarning: associated items `from_biguint`, `to_biguint`, `ct_is_zero`, `as_montgomery`, and `from_montgomery_unchecked` are never used\n   --> src/../../../suite/src/ecc/secp256k1_field.rs:86:12\n    |\n 59 | impl SecpFieldElement {\n    | --------------------- associated items in this implementation\n...\n 86 |     pub fn from_biguint(v: &BigUint) -> Self {\n    |            ^^^^^^^^^^^^\n...\n 94 |     pub fn to_biguint(&self) -> BigUint {\n    |            ^^^^^^^^^^\n...\n185 |     pub fn ct_is_zero(&self) -> Choice {\n    |            ^^^^^^^^^^\n...\n199 |     pub fn as_montgomery(&self) -> &U256 {\n    |            ^^^^^^^^^^^^^\n...\n213 |     pub const fn from_montgomery_unchecked(limbs: U256) -> Self {\n    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: `prime-j0-secp256k1-native-replay` (bin \"prime-j0-secp256k1-native-replay\") generated 5 warnings\n    Finished `release` profile [optimized] target(s) in 1.42s\n",
+    "stdout": ""
+  },
+  "compiler": {
+    "command": [
+      "rustc",
+      "--version",
+      "--verbose"
+    ],
+    "exit_code": 0,
+    "stderr": "",
+    "stdout": "rustc 1.93.1 (01f6ddf75 2026-02-11) (Homebrew)\nbinary: rustc\ncommit-hash: 01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\ncommit-date: 2026-02-11\nhost: aarch64-apple-darwin\nrelease: 1.93.1\nLLVM version: 21.1.8\n"
+  },
+  "cpu_speedup_claim": null,
+  "edge_replay": {
+    "command": [
+      "/private/tmp/cryptanalysis-native-target/release/prime-j0-secp256k1-native-replay",
+      "/private/tmp/prime-j0-unit-gauge-stream/experiments/prime-j0-secp256k1-native/edge-fixture.json"
+    ],
+    "exit_code": 0,
+    "parsed": {
+      "cases": 30,
+      "cpu_speedup_claim": null,
+      "digit_checks": 30,
+      "native_scope": "variable_time_scalar_input",
+      "output_checks": 30,
+      "representative_checks": 30,
+      "seed_checks": 270,
+      "verified": true
+    },
+    "stderr": "",
+    "stdout": "{\"verified\":true,\"cases\":30,\"representative_checks\":30,\"digit_checks\":30,\"seed_checks\":270,\"output_checks\":30,\"native_scope\":\"variable_time_scalar_input\",\"cpu_speedup_claim\":null}\n"
+  },
+  "host_isolation_receipt": null,
+  "kind": "native-variable-time-scalar-input-correctness",
+  "operating_system": "macOS-26.6-arm64-arm-64bit-Mach-O",
+  "original_replay": {
+    "command": [
+      "/private/tmp/cryptanalysis-native-target/release/prime-j0-secp256k1-native-replay",
+      "/private/tmp/prime-j0-unit-gauge-stream/experiments/prime-j0-secp256k1-native/fixture.json"
+    ],
+    "exit_code": 0,
+    "parsed": {
+      "cases": 64,
+      "cpu_speedup_claim": null,
+      "digit_checks": 64,
+      "native_scope": "variable_time_scalar_input",
+      "output_checks": 64,
+      "representative_checks": 64,
+      "seed_checks": 576,
+      "verified": true
+    },
+    "stderr": "",
+    "stdout": "{\"verified\":true,\"cases\":64,\"representative_checks\":64,\"digit_checks\":64,\"seed_checks\":576,\"output_checks\":64,\"native_scope\":\"variable_time_scalar_input\",\"cpu_speedup_claim\":null}\n"
+  },
+  "schema": 1,
+  "source_sha256": {
+    "experiments/prime-j0-cost-aware-chain/run.py": "6e8db67fc854d1f1fb4963fcd975d830b6ce4307e9eefc5064d9e08aae5488d8",
+    "experiments/prime-j0-secp256k1-native/Cargo.lock": "2d2318cc1afb7da05eee27ae08f31c898bb7374b73903704002d808920921270",
+    "experiments/prime-j0-secp256k1-native/Cargo.toml": "86502521537cc0838602b04ac4e4a31ca3e30feec8b4ea46613c0f137befa046",
+    "experiments/prime-j0-secp256k1-native/FULL_NATIVE_PROTOCOL.md": "53aab2b962f255fcac81b64d65b0ef21a727992057e9779dbbeb66f57f10d89f",
+    "experiments/prime-j0-secp256k1-native/edge-fixture.json": "5b375ae82f5b24ce433ae1787374bb6ed064c3c958184312f4cd799ebe62732f",
+    "experiments/prime-j0-secp256k1-native/edge-runtime-info.json": "073ca37250b100a7f961de3475da8a4d489f3f2140c15f4c72457816893f3f01",
+    "experiments/prime-j0-secp256k1-native/fixture.json": "2e8da438343ecf650c9d8d9b2a593f5d603027c4c1f81485f2456c38028491d4",
+    "experiments/prime-j0-secp256k1-native/run_full_replay.py": "e348a2275625ccf53f07365610532d5fdb094ed23c834399b551352683b5e22f",
+    "experiments/prime-j0-secp256k1-native/runtime-info.json": "073ca37250b100a7f961de3475da8a4d489f3f2140c15f4c72457816893f3f01",
+    "experiments/prime-j0-secp256k1-native/src/main.rs": "931a93f3f87b43ad7b42dd9fb7c72bd2471ea8b7a3383eb3ee1282a307ff0f2b",
+    "experiments/prime-j0-secp256k1-scalar/result.json": "4b612f459dd6779830972fb03ed200de0b0bd484d9aa58d3e0ebf9cfffc95d5b",
+    "experiments/prime-j0-secp256k1-scalar/validate_scalar.py": "f7c985950534d75368e5584871c70a2ae32ff66a7f321bbb4ca8534406c08afa",
+    "suite/src/ct_bignum.rs": "72c264a7424ec4d09964f9bc92dd64aa363d92bfdf41fccc4b219deda0767e0d",
+    "suite/src/ecc/secp256k1_field.rs": "f275653c842bac42520816b62e17adf795ecce06a2b3c73d4d7e17f2f17ba887"
+  },
+  "verified": true
+}

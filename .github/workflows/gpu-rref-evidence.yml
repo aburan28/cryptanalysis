@@ -2,7 +2,7 @@ name: GPU RREF experiment evidence
 
 on:
   push:
-    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
+    branches: [main]
     paths:
       - 'experiments/groebner-perf-20260924/round6/**'
       - 'experiments/groebner-perf-20260924/round7/**'
@@ -13,16 +13,16 @@ on:
       - 'experiments/groebner-perf-20260924/round7/**'
       - '.github/workflows/gpu-rref-evidence.yml'
 
+# A new commit supersedes runs for this PR or branch; manual runs stay independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
   evidence:
-    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -37,7 +37,6 @@ jobs:
           python experiments/groebner-perf-20260924/round7/audit.py > /dev/null
 
   host-build:
-    timeout-minutes: 20
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7

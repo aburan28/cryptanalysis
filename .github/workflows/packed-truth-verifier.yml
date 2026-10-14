@@ -12,7 +12,6 @@ on:
       - 'experiments/pdp-scaling/**'
       - '.github/workflows/packed-truth-verifier.yml'
   push:
-    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - 'experiments/groebner-perf-20260924/round18/**'
       - 'experiments/groebner-perf-20260924/round17/**'
@@ -26,7 +25,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: packed-truth-verifier-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   correctness:
@@ -38,10 +37,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Build native replay and query dependencies

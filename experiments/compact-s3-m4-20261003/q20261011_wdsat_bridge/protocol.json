@@ -1,0 +1,40 @@
+{
+  "proposal_id": "Q1458",
+  "candidate_id": null,
+  "run_id": null,
+  "isogeny": "none",
+  "upstream_solver": {
+    "repository": "https://github.com/mtrimoska/WDSat",
+    "commit": "61c6ff3f49445af2729274819edb27b85a89efc1",
+    "license": "GPL-3.0",
+    "source_policy": "build from separate pinned checkout; replace quadratic static undo-list storage with dynamic per-row allocation; emit after-init and search-start markers to stderr; do not vendor source",
+    "input_mode": "CNF-XOR with __XG_ENHANCED__ disabled",
+    "variants": ["plain", "xor_gauss"]
+  },
+  "source_workload": "Q1419 exact balanced-S3 partial-pinning XCNF archives",
+  "cells": ["n53_full_lock", "n53_free_mids", "n83_full_lock", "n83_free_mids"],
+  "curve_and_base": {
+    "n53": {
+      "curve_id": "EC1N53Ckb1hf77aab617904",
+      "factor_base_actual_B": 24062,
+      "factor_base_folded_columns_K": 227,
+      "factor_base_enumerated_set_sha256": "05b75578ee58866bc8e5d3199cc77f441fa8649ccbaf88c089e998a00ea435e5"
+    },
+    "n83": {
+      "curve_id": "EC1N83Ckb1h876c2921cb64",
+      "factor_base_actual_B": 30977592,
+      "factor_base_folded_columns_K": 186612,
+      "factor_base_enumerated_set_sha256": "56c951ad78cc4036d3e8ff70bcb9d7feccacc6c763220b285def056cba30afb8"
+    }
+  },
+  "limits": {
+    "wall_seconds_per_cell": 60,
+    "address_space_mib_per_cell": null,
+    "memory_limit_note": "macOS host rejects RLIMIT_AS and blocks ps sampling in this environment; report child maxrss after each run; no memory cap is claimed",
+    "one_process_per_cell": true,
+    "host_isolation": "none; wall-time ratios exploratory"
+  },
+  "gate": "verify full-lock satisfiable controls and native search start before interpreting free-mids caps; ordinary targets follow only if both controls pass",
+  "complete_solve_work_log2": null,
+  "degree131_challenge_gap_bits": null
+}

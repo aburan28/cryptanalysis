@@ -7,16 +7,15 @@ name: suite
 
 on:
   push:
-    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
+    branches: ["**"]
   pull_request:
-  merge_group:
 
 permissions:
   contents: read
 
 # One run per ref per workflow; a new push supersedes the one in flight.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 defaults:
@@ -28,32 +27,10 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  changes:
-    name: Select affected jobs
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      selected: ${{ steps.scope.outputs.selected }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 2
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /.github/actions/ci-scope/
-            /.github/ci/
-            /scripts/ci_scope.py
-      - id: scope
-        uses: ./.github/actions/ci-scope
-        with:
-          workflow: suite.yml
-
   rust:
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').rust) != 'false')) }}
     name: Rust (stable)
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 45 }}
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: suite
@@ -66,7 +43,17 @@ jobs:
         with:
           workspaces: suite
       - name: Format
-        run: cargo fmt --all --check
+        # The P-256 native benchmark is an immutable measurement source whose
+        # exact bytes are bound into every frozen receipt. Check all other Rust
+        # sources without rewriting or silently invalidating those receipts.
+        run: |
+          mapfile -d '' sources < <(
+            find . -type f -name '*.rs' \
+              ! -path './target/*' \
+              ! -path './examples/p256_isogeny_native_bench.rs' \
+              -print0 | sort -z
+          )
+          rustfmt --check --edition 2021 "${sources[@]}"
       - name: Clippy
         # The three lints allowed in Cargo.toml are the whole allow list;
         # everything else is an error.
@@ -141,8 +128,6 @@ jobs:
             | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["status"] == "complete", r["status"]'
 
   f4-kernel:
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').f4-kernel) != 'false')) }}
     # The batched F4 kernel compiled for sm_75 through sm_120 with the pinned
     # CUDA 13.3 nvcc from NVIDIA's pip wheels, failing on spills, and the
     # same source through NVRTC, which is what the CUDA backend runs.  No
@@ -150,7 +135,7 @@ jobs:
     # how fast it is.  The emulator step of `rust` checks its answers.
     name: F4 kernel compile
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 30 }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -179,13 +164,11 @@ jobs:
           CA_NVRTC_LIB="$lib" cargo test --release --lib nvrtc_ -- --nocapture
 
   rust-msrv:
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').rust-msrv) != 'false')) }}
     # The floor declared in suite/Cargo.toml, re-checked here so that it
     # cannot drift from what actually compiles.
     name: Rust MSRV 1.87
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 45 }}
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: suite
@@ -214,8 +197,6 @@ jobs:
         run: cargo test --release --lib
 
   rust-supply-chain:
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').rust-supply-chain) != 'false')) }}
     name: Rust supply chain (cargo-deny)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -233,8 +214,6 @@ jobs:
         working-directory: suite
 
   python-engine:
-    needs: changes
-    if: ${{ !cancelled() }}
     # The stdlib-only engine `ca-ic fixed` drives, with the optional SAT back
     # ends installed so that the tests covering that path run too.
     name: Python engine ${{ matrix.python }}
@@ -251,23 +230,17 @@ jobs:
         working-directory: suite/python/indexcalc
     steps:
       - uses: actions/checkout@v7
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').python-engine) != 'false'))
       - uses: actions/setup-python@v7
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').python-engine) != 'false'))
         with:
           python-version: ${{ matrix.python }}
       - name: Cache the pip download cache
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').python-engine) != 'false'))
         uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: pip-engine-${{ matrix.python }}-${{ hashFiles('suite/python/indexcalc/requirements-sat.txt') }}-ruff${{ env.RUFF_VERSION }}
       - name: Install the SAT back ends and the linter
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').python-engine) != 'false'))
         run: python -m pip install -r requirements-sat.txt "ruff==$RUFF_VERSION"
       - name: ruff check
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').python-engine) != 'false'))
         run: ruff check --output-format github .
       - name: Unit tests
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').python-engine) != 'false'))
         run: python -m unittest test_indexcalc_e2e test_indexcalc_fixed test_indexcalc_selector testirschedule -v

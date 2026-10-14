@@ -1,30 +1,13 @@
 name: Cached leading terms and reduction experiments
 on:
-  pull_request:
-    paths:
-      - 'experiments/groebner-perf-20260924/round13/**'
-      - 'experiments/groebner-perf-20260924/round12/**'
-      - 'experiments/groebner-perf-20260924/round11/**'
-      - 'experiments/groebner-perf-20260924/round5/**'
-      - 'experiments/groebner-perf-20260924/measured_source.py'
-      - 'experiments/groebner-perf-20260924/measured_sources/**'
-      - 'experiments/groebner-perf-20260924/test_measured_source.py'
-      - '.github/workflows/frontier-reduction.yml'
-  push:
-    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
-    paths:
-      - 'experiments/groebner-perf-20260924/round13/**'
-      - 'experiments/groebner-perf-20260924/round12/**'
-      - 'experiments/groebner-perf-20260924/round11/**'
-      - 'experiments/groebner-perf-20260924/round5/**'
-      - 'experiments/groebner-perf-20260924/measured_source.py'
-      - 'experiments/groebner-perf-20260924/measured_sources/**'
-      - 'experiments/groebner-perf-20260924/test_measured_source.py'
-      - '.github/workflows/frontier-reduction.yml'
+  # Retired 2026-10-11: this gate guards a study that has been quiet for 7+ days, and its
+  # push/pull_request triggers were fanning out across the account's shared runners. Run it
+  # on demand, or restore its push/pull_request triggers from git history to bring it back.
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: frontier-reduction-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   proof:
@@ -40,10 +23,10 @@ jobs:
     env:
       CXX: ${{ matrix.cxx }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Build original, ablations, caches and UBSan trap variants

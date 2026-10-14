@@ -1,60 +1,28 @@
 name: Groebner completion frontier
 on:
   push:
-    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
   pull_request:
-  merge_group:
-  workflow_dispatch:
 permissions:
   contents: read
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  changes:
-    name: Select affected jobs
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      selected: ${{ steps.scope.outputs.selected }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 2
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /.github/actions/ci-scope/
-            /.github/ci/
-            /scripts/ci_scope.py
-      - id: scope
-        uses: ./.github/actions/ci-scope
-        with:
-          workflow: groebner-completion-frontier.yml
-
   portable:
-    needs: changes
-    if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, macos-15]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 45 }}
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').portable) != 'false'))
-      - uses: actions/setup-python@v7
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').portable) != 'false'))
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
       - name: Build and verify larger complete-query frontier
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').portable) != 'false'))
         env:
           CXX: clang++
         run: python experiments/groebner-perf-20260924/round100/run_validation.py --output groebner-completion-frontier-evidence
       - name: Retain successes and failures
-        if: ${{ (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').portable) != 'false')) && (!cancelled()) }}
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: groebner-completion-frontier-${{ matrix.os }}

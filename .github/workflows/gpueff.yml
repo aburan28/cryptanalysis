@@ -3,21 +3,22 @@ name: gpueff
 # export or the measured ceilings it builds a machine profile from change.
 on:
   push:
-    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
+    branches: [main]
     paths: ['gpueff/**', 'ecc2k130/runner/aws/worker.py',
             'ecc2k130/runner/benchmarks/hardware-limits/result.json', '.github/workflows/gpueff.yml']
   pull_request:
     paths: ['gpueff/**', 'ecc2k130/runner/aws/worker.py',
             'ecc2k130/runner/benchmarks/hardware-limits/result.json', '.github/workflows/gpueff.yml']
+# A new commit supersedes runs for this PR or branch; manual runs stay independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
 permissions:
   contents: read
 env:
   PROMETHEUS_VERSION: 2.55.1
   PROMETHEUS_SHA256: 19700bdd42ec31ee162e4079ebda4cd0a44432df4daa637141bdbea4b1cd8927
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
   test:
     runs-on: ubuntu-latest

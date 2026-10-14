@@ -5,9 +5,8 @@ name: fuzz
 # them, so the two never touch the same files.
 on:
   push:
-    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
+    branches: ['**']
   pull_request:
-  merge_group:
   schedule:
     # 03:17 UTC nightly - the long soak.
     - cron: '17 3 * * *'
@@ -17,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: fuzz-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -33,33 +32,12 @@ env:
   CA_FUZZ_CFLAGS: '-fsanitize=fuzzer-no-link,address,undefined -fno-omit-frame-pointer'
 
 jobs:
-  changes:
-    name: Select affected jobs
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      selected: ${{ steps.scope.outputs.selected }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 2
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /.github/actions/ci-scope/
-            /.github/ci/
-            /scripts/ci_scope.py
-      - id: scope
-        uses: ./.github/actions/ci-scope
-        with:
-          workflow: fuzz.yml
-
   # ---------------------------------------------------------------- smoke --
   # Pull requests and pushes: build everything, replay the committed corpus,
   # then fuzz each harness for a minute.  Budget is ~8 minutes in total.
   smoke:
-    needs: changes
     name: build and short fuzz
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').smoke) != 'false')) && github.event_name != 'schedule' }}
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -119,11 +97,10 @@ jobs:
   # One harness per matrix job so a slow target cannot starve the others and
   # a single crash does not hide the rest.
   nightly:
-    needs: changes
     name: soak ${{ matrix.harness }}
-    if: ${{ !cancelled() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 30 }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -136,10 +113,8 @@ jobs:
           - fuzz_ffi
     steps:
       - uses: actions/checkout@v7
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').nightly) != 'false'))
 
       - name: Install clang and the sanitizer runtimes
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').nightly) != 'false'))
         run: |
           set -eux
           sudo apt-get update || true
@@ -148,7 +123,6 @@ jobs:
           sudo apt-get install -y --no-install-recommends "libclang-rt-${major}-dev" || true
 
       - name: Configure and build
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').nightly) != 'false'))
         run: |
           set -eux
           CC=clang CFLAGS="$CA_FUZZ_CFLAGS" cmake -S . -B build-fuzz \
@@ -157,7 +131,6 @@ jobs:
           cmake --build build-fuzz -j"$(nproc)" --target "${{ matrix.harness }}"
 
       - name: Soak ${{ matrix.harness }} for 10 minutes
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').nightly) != 'false'))
         run: |
           set -eux
           mkdir -p artifacts corpus-work
@@ -169,7 +142,7 @@ jobs:
             -artifact_prefix=artifacts/"${{ matrix.harness }}"-
 
       - name: Upload crash artifacts
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').nightly) != 'false')) && (failure())
+        if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: fuzz-nightly-${{ matrix.harness }}-artifacts
@@ -178,7 +151,7 @@ jobs:
           retention-days: 30
 
       - name: Upload the grown corpus
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').nightly) != 'false')) && (success())
+        if: success()
         uses: actions/upload-artifact@v7
         with:
           name: fuzz-nightly-${{ matrix.harness }}-corpus

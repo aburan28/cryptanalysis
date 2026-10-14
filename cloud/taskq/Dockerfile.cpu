@@ -1,0 +1,29 @@
+# taskq worker for cryptanalysis CPU jobs (queue ca-cpu).
+#
+# The taskq worker image pattern (crypto: taskq/deploy/Dockerfile) plus the
+# toolchain `ca` needs: a C11 compiler, cmake and git. The worker checks the
+# repository out at each task's pinned commit and builds it in the task's
+# `setup` steps, so no source is baked in here.
+#
+#   docker build -f cloud/taskq/Dockerfile.cpu -t ghcr.io/aburan28/cryptanalysis-taskq-cpu:dev \
+#       --build-arg TASKQ_IMAGE=ghcr.io/aburan28/cryptanalysis-taskq-cpu:dev cloud/taskq
+FROM python:3.12-slim-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git ca-certificates build-essential cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+# Pin the queue client: a branch, tag or full sha of aburan28/crypto.
+ARG TASKQ_REF=main
+RUN pip install --no-cache-dir \
+        "taskq[mcp] @ git+https://github.com/aburan28/crypto.git@${TASKQ_REF}#subdirectory=taskq"
+
+# The worker records its own image in every result's environment block.
+ARG TASKQ_IMAGE=""
+ENV TASKQ_IMAGE=${TASKQ_IMAGE}
+
+# uid 10001 matches the Helm chart's securityContext.
+RUN useradd -m -u 10001 taskq && mkdir -p /var/cache/taskq && chown taskq /var/cache/taskq
+USER taskq
+ENTRYPOINT ["taskq"]
+CMD ["worker", "--queue", "ca-cpu"]

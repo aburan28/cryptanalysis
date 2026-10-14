@@ -1,0 +1,75 @@
+warning: unused import: `ToPrimitive`
+  --> src/cryptanalysis/curve_traits/mod.rs:50:31
+   |
+50 | use num_traits::{One, Signed, ToPrimitive, Zero};
+   |                               ^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+    --> src/cryptanalysis/ic_boundary.rs:1419:13
+     |
+1419 |         let mut consider = |pt: PrimePoint, mu: u64, best: &mut PrimePoint, best_key: &mut u64, best_mu: &mut u64| {
+     |             ----^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+     |
+     = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `plans` is never read
+   --> src/cryptanalysis/inherited_f4.rs:513:5
+    |
+505 | struct LayoutStep {
+    |        ---------- field in this struct
+...
+513 |     plans: RefCell<HashMap<u32, Rc<RewritePlan>>>,
+    |     ^^^^^
+    |
+    = note: `LayoutStep` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated function `new` is never used
+   --> src/cryptanalysis/inherited_f4.rs:550:8
+    |
+548 | impl RewritePlan {
+    | ---------------- associated function in this implementation
+549 |     /// The plan of `map`, with nothing built yet.
+550 |     fn new(map: Rc<Vec<u32>>) -> Self {
+    |        ^^^
+
+warning: function `zeroed_words` is never used
+    --> src/cryptanalysis/inherited_f4.rs:1019:4
+     |
+1019 | fn zeroed_words(n: usize) -> Rc<[u64]> {
+     |    ^^^^^^^^^^^^
+
+warning: method `rewrite_plan` is never used
+    --> src/cryptanalysis/inherited_f4.rs:1808:8
+     |
+1330 | impl ReducedBasis {
+     | ----------------- method in this implementation
+...
+1808 |     fn rewrite_plan(&self, from: u32) -> Rc<RewritePlan> {
+     |        ^^^^^^^^^^^^
+
+warning: function `trace_on` is never used
+    --> src/cryptanalysis/koblitz_groebner.rs:9351:4
+     |
+9351 | fn trace_on() -> bool {
+     |    ^^^^^^^^
+
+warning: function `trace_cost` is never used
+    --> src/cryptanalysis/koblitz_groebner.rs:9357:4
+     |
+9357 | fn trace_cost(w0: Option<u64>, refuted: bool) {
+     |    ^^^^^^^^^^
+
+warning: function `trace` is never used
+    --> src/cryptanalysis/koblitz_groebner.rs:9371:4
+     |
+9371 | fn trace(f: impl FnOnce(&mut RefutationDegreeTrace)) {
+     |    ^^^^^
+
+warning: `crypto` (lib) generated 9 warnings (run `cargo fix --lib -p crypto` to apply 1 suggestion)
+   Compiling crypto v0.1.0 (/Volumes/SSD990/llm/tmp/n83-packed-root-crypto-20261013)
+    Finished `release` profile [optimized] target(s) in 4.23s

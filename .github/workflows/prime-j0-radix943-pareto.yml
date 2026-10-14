@@ -1,0 +1,126 @@
+name: prime-j0-radix943-pareto
+
+# Correctness and structural work checks. CPU speedups require the separate
+# host-isolated benchmark receipt.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/prime-j0-radix943-pareto.yml"
+      - "experiments/prime-j0-radix943-pareto-20261012/**"
+      - "experiments/prime-j0-radix943-termination-20261012/**"
+      - "experiments/prime-j0-radix943-digit-cover-20261012/**"
+      - "experiments/prime-j0-radix943-orbit-refinement-20261012/**"
+      - "experiments/prime-j0-secp256k1-native/**"
+      - "experiments/prime-j0-gauge-tree-20261012/GaugeTree.lean"
+      - "experiments/prime-j0-pareto-tree-20261012/ParetoCost.lean"
+      - "experiments/prime-j0-pareto-tree-20261012/plans.bin"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  model:
+    name: Frozen inputs and source model
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Regenerate and verify independent holdout and model
+        run: |
+          set -euo pipefail
+          folder=experiments/prime-j0-radix943-pareto-20261012
+          python3 "$folder/holdout.py" --check
+          python3 "$folder/screen.py"
+          python3 "$folder/verify_cli.py"
+          git diff --exit-code -- "$folder/screen.json" "$folder/verify.json"
+          python3 - <<'PY'
+          from hashlib import sha256
+          import json
+          from pathlib import Path
+
+          receipt = json.loads(Path('experiments/prime-j0-radix943-pareto-20261012/receipt.json').read_text())
+          for group in ('source_sha256', 'evidence_sha256'):
+              for name, expected in receipt[group].items():
+                  if name.endswith('/target/release/eisenstein_fixed'):
+                      continue  # receipt records the producing macOS executable
+                  assert sha256(Path(name).read_bytes()).hexdigest() == expected, name
+          print('static receipt hashes verified')
+          PY
+
+  native:
+    name: Linux x86-64 point replay
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: experiments/prime-j0-secp256k1-native
+      - name: Run design-panel replay and build the CLI
+        run: |
+          set -euo pipefail
+          cargo test --locked --release \
+            --manifest-path experiments/prime-j0-secp256k1-native/Cargo.toml \
+            --bin eisenstein_fixed radix943_pareto_replays_full_panel_and_independent_points \
+            -- --nocapture > "$RUNNER_TEMP/panel.log" 2>&1 || {
+              tail -80 "$RUNNER_TEMP/panel.log"
+              exit 1
+            }
+          grep -F 'radix943_pareto_cases=4096 terms=53248 rotations=9027 field_products=484163 product_depth=199382 retained_bytes=127488664' \
+            "$RUNNER_TEMP/panel.log"
+          cargo build --locked --release \
+            --manifest-path experiments/prime-j0-secp256k1-native/Cargo.toml \
+            --bin eisenstein_fixed
+      - name: Replay unseen points through both release CLI modes
+        run: |
+          set -euo pipefail
+          folder=experiments/prime-j0-radix943-pareto-20261012
+          binary=experiments/prime-j0-secp256k1-native/target/release/eisenstein_fixed
+          "$binary" --check-scalar-unit-orbit-u256-radix943-xyzz-gauge-pareto-solinas-fixed-fixture \
+            "$folder/holdout.json" > "$RUNNER_TEMP/candidate.out"
+          "$binary" --check-scalar-unit-orbit-u256-sector14-xyzz-gauge-pareto-solinas-fixed-fixture \
+            "$folder/holdout.json" > "$RUNNER_TEMP/reference.out"
+          "$binary" --check-scalar-unit-orbit-u256-radix943-xyzz-gauge-pareto-solinas-fixed-fixture \
+            experiments/prime-j0-secp256k1-native/tau6-comb13-bench-fixture.json \
+            > "$RUNNER_TEMP/fixture.out"
+          cmp "$RUNNER_TEMP/candidate.out" "$folder/holdout-candidate.txt"
+          cmp "$RUNNER_TEMP/reference.out" "$folder/holdout-reference.txt"
+          cmp "$RUNNER_TEMP/fixture.out" "$folder/cli-fixture.txt"
+
+  proof:
+    name: Pinned Lean reconstruction, digit cover, and termination proofs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install elan for the pinned Lean toolchain
+        run: |
+          set -euo pipefail
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Build checked theorems and audit axioms
+        run: |
+          set -euo pipefail
+          python3 experiments/prime-j0-radix943-pareto-20261012/freeze.py --proof
+          git diff --exit-code -- experiments/prime-j0-radix943-pareto-20261012/lean-build.txt
+          python3 experiments/prime-j0-radix943-termination-20261012/check.py --proof
+          git diff --exit-code -- experiments/prime-j0-radix943-termination-20261012/lean-build.txt
+          python3 experiments/prime-j0-radix943-termination-20261012/check.py --check
+          python3 experiments/prime-j0-radix943-digit-cover-20261012/check.py --proof
+          git diff --exit-code -- \
+            experiments/prime-j0-radix943-digit-cover-20261012/lean-build.txt \
+            experiments/prime-j0-radix943-digit-cover-20261012/fixtures.json \
+            experiments/prime-j0-radix943-digit-cover-20261012/scalar-fixtures.json
+          python3 experiments/prime-j0-radix943-digit-cover-20261012/check.py --check
+          python3 experiments/prime-j0-radix943-orbit-refinement-20261012/check.py --check

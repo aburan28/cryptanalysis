@@ -12,24 +12,16 @@ name: ecc2k130-gpu
 # and no device re-walk comes from here.
 
 on:
-  push:
-    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
-    paths:
-      - "ecc2k130/**"
-      - "fpga/model/**"
-      - ".github/workflows/ecc2k130-gpu.yml"
-  pull_request:
-    paths:
-      - "ecc2k130/**"
-      - "fpga/model/**"
-      - ".github/workflows/ecc2k130-gpu.yml"
+  # Retired 2026-10-11: this gate guards a study that has been quiet for 7+ days, and its
+  # push/pull_request triggers were fanning out across the account's shared runners. Run it
+  # on demand, or restore its push/pull_request triggers from git history to bring it back.
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 defaults:
@@ -55,7 +47,7 @@ jobs:
   cuda:
     name: kernel compile (WALK=${{ matrix.walk }})
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 30 }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:

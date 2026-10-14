@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "purpose": "Exact schedule-capacity audit and exploratory matched stage comparison of two verified N83 known-log bases",
+  "curve_id": "EC1N83Ckb1h876c2921cb64",
+  "public_target_fixture": "../n83_holdout_target_20261001.json",
+  "base_receipts": [
+    "../runs/n83_knownlog_orbit_base.json",
+    "../runs/n83_knownlog_orbit_base_k48194.json"
+  ],
+  "terminal_reconciliation": "../n83_q1091_terminal_reconciliation.json",
+  "wave_plans": ["../n83_q1090_holdout_m32_wave_plan.json", "../n83_q1091_holdout_m32_continuation_plan.json"],
+  "candidate_for_48194_orbits": "../candidates/IC1N83Ckb1fb8000204PDP4qtableRCdirectLAnoneTDdirectISO0h49b47d79e9e3.json",
+  "proposal_for_24097_orbits": "Q1043 base with the same four-point pair-table algorithm; full one-target candidate and run are pending a frozen new-target workload",
+  "schedule": {
+    "table_step": 16461550037,
+    "table_offset": 33178593942,
+    "query_step": 16461550037,
+    "query_offset": 33302050731,
+    "smaller_base_query_offset_policy": "table_offset + table_step * table_descriptors_per_shard modulo the smaller pair domain; reserves the table prefix before all 80 query prefixes",
+    "table_start": 0,
+    "query_start": 0,
+    "planned_shards": 80,
+    "table_descriptors_per_shard": 4294967296,
+    "query_representatives_per_shard": 536870912
+  },
+  "stage_trial": {
+    "table_descriptors": 1048576,
+    "query_representatives": 262144,
+    "table_batch": 1024,
+    "bits_per_key": 20,
+    "hashes": 10,
+    "workers": 4,
+    "representative_batch": 8,
+    "order_orbit_counts": [24097, 48194, 48194, 24097],
+    "cpu_backend": "arm_pmull",
+    "query_offset_policy": "use the disjoint smaller-base offset for K=24097 and the existing frozen Q1091 offset for K=48194",
+    "native_flags": ["-O3", "-std=c++17", "-march=armv8.2-a+crypto", "-DECC2K83_FAST_KEYER=1"]
+  },
+  "interpretation": "Capacity is exact for the specified schedule. Local stage times are exploratory; this trial does not establish one-target online wall time or a speedup."
+}

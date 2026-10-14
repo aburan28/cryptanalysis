@@ -171,6 +171,37 @@ impl SecpFieldElement {
         r0
     }
 
+    /// Fixed secp256k1 field inversion chain: 257 squarings and 14
+    /// multiplications. This is independent of the input and returns zero
+    /// for zero, matching `inv`. It is kept as a separate backend so callers
+    /// can compare it with the existing inversion ladder.
+    pub fn inv_chain(&self) -> Self {
+        #[inline]
+        fn squares(mut x: SecpFieldElement, count: usize) -> SecpFieldElement {
+            for _ in 0..count {
+                x = x.sqr();
+            }
+            x
+        }
+
+        // t_k = x^(2^k-1). The final exponent is
+        // (2^223-1)*2^33 + (2^22-1)*2^10 + 45 = p-2.
+        let t2 = self.sqr().mul(self);
+        let t3 = t2.sqr().mul(self);
+        let t4 = squares(t2, 2).mul(&t2);
+        let t8 = squares(t4, 4).mul(&t4);
+        let t11 = squares(t8, 3).mul(&t3);
+        let t22 = squares(t11, 11).mul(&t11);
+        let t44 = squares(t22, 22).mul(&t22);
+        let t88 = squares(t44, 44).mul(&t44);
+        let t176 = squares(t88, 88).mul(&t88);
+        let t220 = squares(t176, 44).mul(&t44);
+        let t223 = squares(t220, 3).mul(&t3);
+        let x45 = t4.sqr().mul(&t4);
+        let head = squares(t223, 23).mul(&t22);
+        squares(head, 10).mul(&x45)
+    }
+
     // ── Comparison / selection ───────────────────────────────────────────
 
     /// Constant-time equality check.  Two Montgomery-form values are
@@ -381,6 +412,45 @@ mod tests {
                 "a * a^-1 != 1 for a={:#x}",
                 a,
             );
+        }
+    }
+
+    #[test]
+    fn inversion_chain_matches_ladder_and_field_identity() {
+        for a in samples() {
+            let fa = SecpFieldElement::from_biguint(&a);
+            let chain = fa.inv_chain();
+            assert_eq!(chain, fa.inv(), "chain/ladder mismatch for a={:#x}", a);
+            if a.is_zero() {
+                assert_eq!(chain, SecpFieldElement::ZERO);
+            } else {
+                assert_eq!(
+                    fa.mul(&chain),
+                    SecpFieldElement::ONE,
+                    "a * chain(a) != 1 for a={:#x}",
+                    a
+                );
+            }
+        }
+        // Deterministic full-width residues, independent of the chain's
+        // structure and including carry patterns absent from curated edges.
+        let p = p_bu();
+        let mut state = 0x9e37_79b9_7f4a_7c15u64;
+        for _ in 0..256 {
+            let mut bytes = [0u8; 32];
+            for word in bytes.chunks_exact_mut(8) {
+                state ^= state >> 12;
+                state ^= state << 25;
+                state ^= state >> 27;
+                word.copy_from_slice(&state.wrapping_mul(0x2545_f491_4f6c_dd1d).to_be_bytes());
+            }
+            let a = BigUint::from_bytes_be(&bytes) % &p;
+            let fa = SecpFieldElement::from_biguint(&a);
+            let chain = fa.inv_chain();
+            assert_eq!(chain, fa.inv());
+            if !a.is_zero() {
+                assert_eq!(fa.mul(&chain), SecpFieldElement::ONE);
+            }
         }
     }
 

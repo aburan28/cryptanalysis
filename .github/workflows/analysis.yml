@@ -5,16 +5,15 @@ name: analysis
 # backlog.  Building and testing lives in ci.yml.
 on:
   push:
-    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
+    branches: ["**"]
   pull_request:
-  merge_group:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: analysis-${{ github.ref }}
   cancel-in-progress: true
 
 defaults:
@@ -22,30 +21,8 @@ defaults:
     shell: bash
 
 jobs:
-  changes:
-    name: Select affected jobs
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      selected: ${{ steps.scope.outputs.selected }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 2
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /.github/actions/ci-scope/
-            /.github/ci/
-            /scripts/ci_scope.py
-      - id: scope
-        uses: ./.github/actions/ci-scope
-        with:
-          workflow: analysis.yml
-
   # --------------------------------------------------------- clang-tidy ----
   clang-tidy:
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').clang-tidy) != 'false')) }}
     name: clang-tidy
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -73,8 +50,6 @@ jobs:
 
   # ----------------------------------------------------------- cppcheck ----
   cppcheck:
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').cppcheck) != 'false')) }}
     name: cppcheck
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -97,8 +72,6 @@ jobs:
 
   # ------------------------------------------------------- gcc analyzer ----
   gcc-analyzer:
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').gcc-analyzer) != 'false')) }}
     name: gcc -fanalyzer
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -117,8 +90,6 @@ jobs:
 
   # ------------------------------------------------------------- format ----
   format:
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').format) != 'false')) }}
     name: clang-format (changed lines)
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -153,7 +124,7 @@ jobs:
           mapfile -t paths < <(
             git diff --name-only --diff-filter=ACMR "$base"...HEAD -- \
               '*.c' '*.h' '*.cu' '*.cuh' |
-              grep -Ev '(^|/)generated/|^experiments/sage-ic-campaign/[^/]+/(source|baseline|candidate-v1)/' || true
+              grep -Ev '(^|/)generated/|^experiments/sage-ic-campaign/[^/]+/(source|baseline|candidate-v1)/|^experiments/koblitz-pair-claw-20260929/runs/([^/]+/)*(sources[-a-z0-9]*|control-sources|full-sources)/' || true
           )
           if [ "${#paths[@]}" -eq 0 ]; then
             echo "no non-generated C/CUDA files changed"
@@ -173,36 +144,33 @@ jobs:
 
   # --------------------------------------------------------- shell + yml ----
   lint-scripts:
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').lint-scripts) != 'false')) }}
     name: shellcheck + actionlint
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
-      - name: CI scope regression cases
-        run: python3 -m unittest discover -s tests -p test_ci_scope.py -v
-
       - name: shellcheck
         run: |
           sudo apt-get update || true
           sudo apt-get install -y --no-install-recommends shellcheck
-          shellcheck scripts/*.sh deploy/*/*.sh
+          shellcheck scripts/*.sh deploy/*/*.sh usecases/ecc2k130/deploy/helm/check.sh
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
 
       - name: actionlint
         # Also runs shellcheck over every `run:` block in these workflows.
-        uses: docker://rhysd/actionlint:1.7.7
-        with:
-          args: -color
+        run: |
+          GOBIN="$RUNNER_TEMP/actionlint-bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          "$RUNNER_TEMP/actionlint-bin/actionlint" -color
 
   # ----------------------------------------------------------- coverage ----
   coverage:
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').coverage) != 'false')) }}
     name: coverage
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 30 }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 

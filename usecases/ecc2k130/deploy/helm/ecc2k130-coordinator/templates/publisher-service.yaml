@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ecc2k130-coordinator.fullname" . }}-publisher
+  labels:
+    {{- include "ecc2k130-coordinator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: publisher
+  {{- with .Values.publisher.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.publisher.service.type }}
+  internalTrafficPolicy: {{ include "ecc2k130-coordinator.publisherTrafficPolicy" . }}
+  ports:
+    - name: http
+      port: {{ .Values.publisher.service.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "ecc2k130-coordinator.selectorLabels" (dict "root" . "component" "publisher") | nindent 4 }}

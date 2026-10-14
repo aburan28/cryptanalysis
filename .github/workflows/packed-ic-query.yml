@@ -15,14 +15,14 @@ on:
       - 'experiments/ic-candidate-catalog/**'
       - '.github/workflows/packed-ic-query.yml'
   push:
-    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
+    branches: [main]
     paths:
       - 'experiments/groebner-perf-20260924/round20/**'
       - '.github/workflows/packed-ic-query.yml'
 permissions:
   contents: read
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: packed-ic-query-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   correctness:
@@ -34,10 +34,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Install numerical dependency

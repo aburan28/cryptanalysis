@@ -1,108 +1,65 @@
 name: Groebner native continuation phases
 on:
   push:
-    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
   pull_request:
-  merge_group:
-  workflow_dispatch:
 permissions:
   contents: read
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  changes:
-    name: Select affected jobs
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      selected: ${{ steps.scope.outputs.selected }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 2
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /.github/actions/ci-scope/
-            /.github/ci/
-            /scripts/ci_scope.py
-      - id: scope
-        uses: ./.github/actions/ci-scope
-        with:
-          workflow: groebner-continuation-phases.yml
-
   portable:
-    needs: changes
-    if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, macos-15]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 60 }}
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').portable) != 'false'))
-      - uses: actions/setup-python@v7
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').portable) != 'false'))
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
       - name: Build and independently audit frozen early queries
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').portable) != 'false'))
         env:
           CXX: clang++
         run: python experiments/groebner-perf-20260924/round112/run_validation.py --output groebner-phase-evidence/reference
       - name: Build optimized and sanitized phase instrumentation
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').portable) != 'false'))
         env:
           CXX: clang++
         run: python experiments/groebner-perf-20260924/round113/build.py --reference-root .
       - name: Match all phase results to independent audited proofs
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').portable) != 'false'))
         run: python experiments/groebner-perf-20260924/round113/panel.py --reference-report groebner-phase-evidence/reference/panel/report.json --output groebner-phase-evidence/phases
       - name: Verify separator exactness and width caps
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').portable) != 'false'))
         run: python -m unittest discover -s experiments/groebner-f6-20261008 -p 'test_*.py' -v
       - name: Retain successes and failures
-        if: ${{ (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').portable) != 'false')) && (!cancelled()) }}
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: groebner-continuation-phases-${{ matrix.os }}
           path: groebner-phase-evidence
           if-no-files-found: warn
   gpu-query-host:
-    needs: changes
-    if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, macos-15]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 45 }}
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').gpu-query-host) != 'false'))
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').gpu-query-host) != 'false'))
-      - uses: actions/setup-python@v7
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').gpu-query-host) != 'false'))
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
       - name: Build complete-query F4 benchmark
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').gpu-query-host) != 'false'))
         run: cargo build --manifest-path suite/Cargo.toml --release --locked --example f4_query_bench
       - name: Verify the three completed F4 and F5 host queries
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').gpu-query-host) != 'false'))
         run: |
           mkdir -p groebner-gpu-query-host-evidence
           python experiments/f4-gpu-query-20261008/query_ab.py --binary suite/target/release/examples/f4_query_bench --engine f4 --output groebner-gpu-query-host-evidence/f4 --sides host --reps 1
           python experiments/f4-gpu-query-20261008/query_ab.py --binary suite/target/release/examples/f4_query_bench --engine f5 --output groebner-gpu-query-host-evidence/f5 --sides host --reps 1
       - name: Check query completion and independent replay
-        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').gpu-query-host) != 'false'))
         run: python -c "import json; from pathlib import Path; root=Path('groebner-gpu-query-host-evidence'); reports=[(root/m,json.loads((root/m/'report.json').read_text())) for m in ('f4','f5')]; assert all(r['status']=='PASS' and len(r['rows'])==3 and all(row['status']=='verified-decomposition' for row in r['rows']) and all(json.loads((p/row['result']).read_text())['result']['independent_equation_checks']>0 for row in r['rows']) for p,r in reports)"
       - name: Retain successes and failures
-        if: ${{ (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').gpu-query-host) != 'false')) && (!cancelled()) }}
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: groebner-gpu-query-host-${{ matrix.os }}

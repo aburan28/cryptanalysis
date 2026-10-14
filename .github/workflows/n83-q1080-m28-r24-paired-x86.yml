@@ -1,0 +1,162 @@
+name: n83 Q1080 M28 R24 same-host keyer comparison
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/n83-q1080-m28-r24-paired-x86.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  physical-x86-pclmul:
+    # One-shot bounded comparison completed and independently audited.
+    if: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Freeze exact instance, sources, and host resources
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, platform, shutil
+          root = pathlib.Path('experiments/koblitz-pair-claw-20260929')
+          plan_path = root / 'n83_q1080_m28_r24_paired_plan.json'
+          screen_path = root / 'n83_full_spill_screen.json'
+          design_path = root / 'n83_m32_wave_q1077_design.json'
+          plan = json.loads(plan_path.read_text())
+          screen = json.loads(screen_path.read_text())
+          design = json.loads(design_path.read_text())
+          sha = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+          assert plan['proposal_id'] == 'Q1080'
+          assert plan['status'] == 'ready_for_bounded_paired_dispatch'
+          assert plan['candidate_id'] is None and plan['run_id'] is None
+          assert plan['curve_id'] == screen['curve_id'] == design['curve_id']
+          assert plan['isogeny'] == screen['isogeny'] == 'none'
+          assert plan['factor_base_enumerated_set_sha256'] == screen['factor_base']['enumerated_set_sha256']
+          assert plan['actual_usable_points_B_before_folding'] == 8000204
+          assert plan['signed_frobenius_columns'] == 48194
+          assert plan['public_target'] == screen['public_target']
+          assert plan['table_start'] == 0 and plan['table_descriptors'] == 1 << 28
+          assert plan['query_start'] == design['query_end_exclusive'] == 22548578304
+          assert plan['query_representatives'] == 1 << 24
+          assert plan['execution_order'] == ['Q1061','Q1079','Q1079','Q1061']
+          assert plan['screen_sha256'] == sha(screen_path)
+          assert plan['Q1077_design_sha256'] == sha(design_path)
+          for key, name in (
+              ('Q1061_runner_sha256','run_n83_portable_chunk.py'),
+              ('Q1079_runner_sha256','run_n83_zero_run_chunk.py'),
+              ('Q1078_generator_sha256','bench_n83_zero_run_stage.py'),
+              ('portable_native_source_sha256','native_n83_orbit_query_spill_portable.cpp'),
+              ('portable_core_source_sha256','native_n83_bloom_core_portable.hpp'),
+              ('portable_pairs_source_sha256','native_n83_pairs_portable.cpp')):
+              assert plan[key] == sha(root / name), key
+          assert plan['generated_field_sha256'] == sha(pathlib.Path('ecc2k130/runner/generated/eccF83.h'))
+          assert platform.machine().lower() in ('x86_64','amd64')
+          cpu = pathlib.Path('/proc/cpuinfo').read_text().lower()
+          assert 'pclmulqdq' in cpu or 'pclmul' in cpu
+          info = pathlib.Path('/proc/meminfo').read_text()
+          available_kib = int(next(line.split()[1] for line in info.splitlines() if line.startswith('MemAvailable:')))
+          mem_available = available_kib * 1024
+          root_free = shutil.disk_usage(os.environ['RUNNER_TEMP']).free
+          assert mem_available >= plan['minimum_mem_available_bytes']
+          assert root_free >= plan['minimum_root_free_bytes']
+          dest = pathlib.Path(os.environ['RUNNER_TEMP']) / 'n83-q1080-paired'
+          dest.mkdir()
+          (dest / 'sources1').mkdir()
+          (dest / 'sources2').mkdir()
+          for name in ('original1','zero_run1','zero_run2','original2'):
+              (dest / f'spill-{name}').mkdir()
+          host = {
+              'kind':'n83_q1080_physical_x86_M28_R24_paired_preflight',
+              'proposal_id':'Q1080','candidate_id':None,'run_id':None,
+              'curve_id':plan['curve_id'],'isogeny':'none',
+              'factor_base_enumerated_set_sha256':plan['factor_base_enumerated_set_sha256'],
+              'actual_usable_points_B_before_folding':8000204,
+              'signed_frobenius_columns':48194,
+              'host_arch':platform.machine(),'host_os':platform.platform(),
+              'cpu_pclmul_available':True,
+              'mem_available_bytes':mem_available,'root_free_bytes':root_free,
+              'plan_sha256':sha(plan_path),
+              'workflow_sha256':sha(pathlib.Path('.github/workflows/n83-q1080-m28-r24-paired-x86.yml')),
+          }
+          (dest / 'host.json').write_text(json.dumps(host,indent=2)+'\n')
+          PY
+
+      - name: Run same-host ABBA public-target rectangles
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/n83-q1080-paired"
+          PYROOT="experiments/koblitz-pair-claw-20260929"
+          python3 "$PYROOT/run_n83_portable_chunk.py" \
+            --table-log2 28 --query-reps-log2 24 \
+            --table-start 0 --query-start 22548578304 \
+            --workers 4 --rep-batch 8 --bits-per-key 20 --hashes 10 \
+            --cpu-backend x86_pclmul --cxx clang++ \
+            --spill-dir "$ROOT/spill-original1" --binary "$ROOT/original1-bin" \
+            --out "$ROOT/original1.json"
+          python3 "$PYROOT/run_n83_zero_run_chunk.py" \
+            --table-log2 28 --query-reps-log2 24 \
+            --table-start 0 --query-start 22548578304 \
+            --workers 4 --rep-batch 8 --bits-per-key 20 --hashes 10 \
+            --cpu-backend x86_pclmul --cxx clang++ \
+            --spill-dir "$ROOT/spill-zero_run1" --source-dir "$ROOT/sources1" \
+            --binary "$ROOT/zero_run1-bin" --out "$ROOT/zero_run1.json"
+          python3 "$PYROOT/run_n83_zero_run_chunk.py" \
+            --table-log2 28 --query-reps-log2 24 \
+            --table-start 0 --query-start 22548578304 \
+            --workers 4 --rep-batch 8 --bits-per-key 20 --hashes 10 \
+            --cpu-backend x86_pclmul --cxx clang++ \
+            --spill-dir "$ROOT/spill-zero_run2" --source-dir "$ROOT/sources2" \
+            --binary "$ROOT/zero_run2-bin" --out "$ROOT/zero_run2.json"
+          python3 "$PYROOT/run_n83_portable_chunk.py" \
+            --table-log2 28 --query-reps-log2 24 \
+            --table-start 0 --query-start 22548578304 \
+            --workers 4 --rep-batch 8 --bits-per-key 20 --hashes 10 \
+            --cpu-backend x86_pclmul --cxx clang++ \
+            --spill-dir "$ROOT/spill-original2" --binary "$ROOT/original2-bin" \
+            --out "$ROOT/original2.json"
+
+      - name: Check exact outcomes and paired cost boundary
+        run: |
+          python3 - <<'PY'
+          import json, math, os, pathlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'n83-q1080-paired'
+          names=('original1','zero_run1','zero_run2','original2')
+          rows=[json.loads((root/f'{name}.json').read_text()) for name in names]
+          plan=json.loads(pathlib.Path('experiments/koblitz-pair-claw-20260929/n83_q1080_m28_r24_paired_plan.json').read_text())
+          keys=('actual_B','table_descriptors','query_representatives','lifted_query_pairs',
+                'bloom_positive_queries','duplicate_positive_keys','exact_hit_keys',
+                'exact_hit_queries','false_positive_queries','complement_identity_queries','hits')
+          for name,row in zip(names,rows):
+              assert row['curve_id']==plan['curve_id'] and row['isogeny']=='none'
+              assert row['candidate_id'] is None
+              assert row['factor_base']['enumerated_set_sha256']==plan['factor_base_enumerated_set_sha256']
+              assert row['table_start']==0 and row['table_descriptors']==1<<28
+              assert row['query_start']==plan['query_start'] and row['query_representatives']==1<<24
+              assert row['cpu_backend']=='x86_pclmul'
+              assert row['native_field_add_mul_sqr_call_model']==plan['modeled_native_field_calls_per_run']
+              assert row['proposal_id']==('Q1079' if name.startswith('zero_run') else 'Q1061')
+          assert all(all(row['native_result'][key]==rows[0]['native_result'][key] for key in keys) for row in rows[1:])
+          result={'kind':'n83_q1080_M28_R24_paired_native_outcome',
+                  'proposal_id':'Q1080','curve_id':plan['curve_id'],
+                  'query_start':plan['query_start'],
+                  'exact_hit_queries':rows[0]['native_result']['exact_hit_queries'],
+                  'bloom_positive_queries':rows[0]['native_result']['bloom_positive_queries'],
+                  'all_four_exact_outcomes_equal':True,
+                  'original_query_seconds':[rows[i]['native_result']['query_seconds'] for i in (0,3)],
+                  'zero_run_query_seconds':[rows[i]['native_result']['query_seconds'] for i in (1,2)],
+                  'original_query_plus_replay_seconds':[rows[i]['target_online_seconds'] for i in (0,3)],
+                  'zero_run_query_plus_replay_seconds':[rows[i]['target_online_seconds'] for i in (1,2)],
+                  'complete_solve_work_log2':None}
+          (root/'paired.json').write_text(json.dumps(result,indent=2)+'\n')
+          print(json.dumps(result))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: n83-q1080-M28-R24-physical-x86-paired
+          path: ${{ runner.temp }}/n83-q1080-paired/
+          retention-days: 7
