@@ -151,6 +151,21 @@ These rules govern scope and reporting throughout this file. Existing measuremen
 and correctness gates remain in force; they do not authorize an agent to cancel a
 requested experiment or decide its research significance for the user.
 
+### Retain benchmark, evaluation, and profiler reports
+
+For every benchmark, profiler session, or evaluation an agent runs, generate and
+retain a durable insight report. Include failed, timed-out, censored, and
+regressed attempts. State the question, exact workload and controls, baseline
+and candidate revisions and hashes, hardware and tool versions, commands, raw
+measurements, correctness checks, costs, uncertainty, interpretation, and
+limits. Link the report to the raw outputs and the hardware manifest required
+below. Retain native profiler captures, including Nsight Compute `.ncu-rep`
+files, and source or instruction-level exports when produced. If profiling
+fails, keep its logs and identify the missing capture. Store reports and raw
+artifacts in a durable evidence path, or commit a manifest with digests and
+stable artifact locations. Give each rerun a distinct record; never overwrite
+an earlier attempt or substitute a summary for the native capture.
+
 
 ## Track research work in pull requests
 
