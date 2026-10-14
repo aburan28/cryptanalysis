@@ -129,6 +129,47 @@ model counts 516,096 tree calls and 38,315 selected-unit rotations, or
 1,435 above the two-bucket model. The compact table is a memory candidate,
 and its wall time and complete-operation cost are still unmeasured.
 
+## Fixed orbit-gauge experiment
+
+A 128-byte pair can store each point in a chosen beta orbit gauge `g` and
+select the unit power `(u-g) mod 3`. The identity
+`beta^(u-g)(beta^g P) = beta^u P` is formalized as `gauge_shift` in
+`GaugeShift.lean`, with the three-cycle action law stated explicitly. The
+pinned Lean receipt records a successful build and `#print axioms` output;
+connecting that abstract action to the Rust field and curve implementation
+remains open. The native version uses a fixed gauge for each of the fourteen
+windows and each tau exponent, so it stores no per-point gauge metadata.
+
+`gauge_policy.py` chose these 28 gauges solely from the older 4,096-scalar
+panel, then the policy, implementation, instrumentation, and proof were
+frozen at `f05eb12cd4d490a4aaa1c60b1d3ad96d95c73814`. Training predicted
+38,315 rotations without gauges and 37,723 with them. A subsequent disjoint
+128-scalar holdout verified every affine point and binary scalar result, but
+its paired native counters were **1,228 rotations without gauges and 1,249
+with gauges**, with **16,128 tree calls** for either format. The frozen policy
+therefore lost 21 rotations on that holdout. `gauge-holdout.json`,
+`gauge-test-model.json`, and the `gauge128-*-receipt.json` files bind these
+results to source, binary, fixture, and raw output hashes.
+
+A separate deterministic 65,536-scalar model replay, disjoint from the
+training and native panels, counted 611,926 ungauged versus 610,209 gauged
+rotations. The paired mean saving is 0.0262 rotations per scalar, with a
+normal-approximation 95% interval of 0.00695–0.04545 under that input law.
+This replication evaluates recoder choices only; it does not replay those
+65,536 points in the native evaluator. The current builder rotates each
+gauged table entry, requiring 560,029 additional setup rotations under the
+fixed policy. At the model replay's mean saving, those rotations alone need
+about 21.4 million scalar evaluations to amortize. Runtime gauge selection
+and memory traffic remain uncharged. `gauge-replication.json` records the
+fixed seed, input law, scalar-stream hash, paired counts, and uncertainty.
+
+An exhaustive scan of all three atlas codebooks found equal counts for
+beta powers 0, 1, and 2 within every nonidentity `(seed, exponent)` group.
+Thus per-seed gauge choice has zero rotation advantage under a uniform atlas
+residue law. `gauge-atlas-audit.json` retains the exact codebook counts and
+hashes. The window-level signal arises from the declared scalar recoder law,
+and its small size makes table-construction and selection cost decisive.
+
 Compare the full operation on a host that passes the repository's isolated
 benchmark preflight before making a CPU speed claim.
 
