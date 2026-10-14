@@ -1,0 +1,83 @@
+From https://github.com/aburan28/cryptanalysis
+ * branch            codex/mixed640-stack-tree-followup-20261013 -> FETCH_HEAD
+Updating 0971ca5..6514f7a
+Fast-forward
+ .../SPLIT_PRIME_RADIX.md                           |  31 ++
+ .../SplitPrimeRadix.lean                           |   8 +
+ .../native_split_prime_bench.py                    |  82 ++-
+ .../split-prime-lean-receipt.json                  |   7 +-
+ .../00001.stderr.txt                               |   0
+ .../00001.stdout.txt                               |   1 +
+ .../00002.stderr.txt                               |   0
+ .../00002.stdout.txt                               |   1 +
+ .../00003.stderr.txt                               |   0
+ .../00003.stdout.txt                               |   1 +
+ .../00004.stderr.txt                               |   0
+ .../00004.stdout.txt                               |   1 +
+ .../00005.stderr.txt                               |   0
+ .../00005.stdout.txt                               |   1 +
+ .../00006.stderr.txt                               |   0
+ .../00006.stdout.txt                               |   1 +
+ .../00007.stderr.txt                               |   0
+ .../00007.stdout.txt                               |   1 +
+ .../00008.stderr.txt                               |   0
+ .../00008.stdout.txt                               |   1 +
+ .../00009.stderr.txt                               |   0
+ .../00009.stdout.txt                               |   1 +
+ .../00010.stderr.txt                               |   0
+ .../00010.stdout.txt                               |   1 +
+ .../00011.stderr.txt                               |   0
+ .../00011.stdout.txt                               |   1 +
+ .../00012.stderr.txt                               |   0
+ .../00012.stdout.txt                               |   1 +
+ .../00013.stderr.txt                               |   0
+ .../00013.stdout.txt                               |   1 +
+ .../00014.stderr.txt                               |   0
+ .../00014.stdout.txt                               |   1 +
+ .../00015.stderr.txt                               |   0
+ .../00015.stdout.txt                               |   1 +
+ .../00016.stderr.txt                               |   0
+ .../00016.stdout.txt                               |   1 +
+ .../775315ffa9b24cf5ab9715f2878383b6/manifest.json | 593 +++++++++++++++++++++
+ .../775315ffa9b24cf5ab9715f2878383b6/pairs.jsonl   |   8 +
+ .../preflight.json                                 |  52 ++
+ .../775315ffa9b24cf5ab9715f2878383b6/runs.jsonl    |  16 +
+ .../775315ffa9b24cf5ab9715f2878383b6/summary.json  | 580 ++++++++++++++++++++
+ 41 files changed, 1386 insertions(+), 7 deletions(-)
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00001.stderr.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00001.stdout.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00002.stderr.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00002.stdout.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00003.stderr.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00003.stdout.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00004.stderr.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00004.stdout.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00005.stderr.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00005.stdout.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00006.stderr.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00006.stdout.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00007.stderr.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00007.stdout.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00008.stderr.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00008.stdout.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00009.stderr.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00009.stdout.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00010.stderr.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00010.stdout.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00011.stderr.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00011.stdout.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00012.stderr.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00012.stdout.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00013.stderr.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00013.stdout.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00014.stderr.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00014.stdout.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00015.stderr.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00015.stdout.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00016.stderr.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/00016.stdout.txt
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/manifest.json
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/pairs.jsonl
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/preflight.json
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/runs.jsonl
+ create mode 100644 experiments/prime-j0-mixed640-materialized-tree-20261013/tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/summary.json
