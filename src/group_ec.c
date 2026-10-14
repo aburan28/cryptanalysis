@@ -115,10 +115,55 @@ static inline uint64_t ec_batch_den(const ca_group *g, const ca_elem *A, const c
     return fsub(g, FX(B), FX(A));
 }
 
+/* The single-chain form, for batches too small for the chains' fixed
+ * cost (combining the chain totals) to pay for itself. */
+#define EC_BATCH_MIN_CHAINED 16
+
+static inline void ec_batch_finish(const ca_group *g, ca_elem *r, const ca_elem *A,
+                                   const ca_elem *B, uint64_t di)
+{
+    if (FINF(A)) { *r = *B; return; }
+    if (FINF(B)) { *r = *A; return; }
+    if (FX(A) == FX(B)) {
+        if (FY(A) == FY(B) && FY(A) != 0) {
+            uint64_t x2 = fsqr(g, FX(A));
+            uint64_t num = fadd(g, fadd(g, fadd(g, x2, x2), x2), g->a_mont);
+            ec_add_with_inv(g, r, A, A, fmul(g, num, di));
+        } else {
+            ec_identity(g, r);
+        }
+        return;
+    }
+    uint64_t lam = fmul(g, fsub(g, FY(B), FY(A)), di);
+    ec_add_with_inv(g, r, A, B, lam);
+}
+
+static void ec_batch_op_1(const ca_group *g, ca_elem *r, const ca_elem *a, const ca_elem *b,
+                          size_t n, uint64_t *scratch)
+{
+    uint64_t *den = scratch, *pre = scratch + n;
+    const uint64_t one = g->mont.r1;
+    for (size_t i = 0; i < n; i++) {
+        uint64_t d = ec_batch_den(g, &a[i], &b[i], one);
+        den[i] = d;
+        pre[i] = i ? fmul(g, pre[i - 1], d) : d;
+    }
+    uint64_t inv = finv(g, pre[n - 1]);
+    for (size_t i = n; i-- > 0;) {
+        uint64_t di = i ? fmul(g, inv, pre[i - 1]) : inv; /* den[i]^{-1} */
+        inv = fmul(g, inv, den[i]);
+        ec_batch_finish(g, &r[i], &a[i], &b[i], di);
+    }
+}
+
 static void ec_batch_op(const ca_group *g, ca_elem *r, const ca_elem *a, const ca_elem *b,
                         size_t n, uint64_t *scratch)
 {
     if (n == 0) return;
+    if (n < EC_BATCH_MIN_CHAINED) {
+        ec_batch_op_1(g, r, a, b, n, scratch);
+        return;
+    }
     enum { L = EC_BATCH_CHAINS };
     uint64_t *den = scratch;       /* n denominators */
     uint64_t *pre = scratch + n;   /* n prefix products, per chain */
@@ -148,21 +193,7 @@ static void ec_batch_op(const ca_group *g, ca_elem *r, const ca_elem *a, const c
         const size_t l = i % L;
         uint64_t di = i >= L ? fmul(g, linv[l], pre[i - L]) : linv[l]; /* den[i]^{-1} */
         linv[l] = fmul(g, linv[l], den[i]);
-        const ca_elem *A = &a[i], *B = &b[i];
-        if (FINF(A)) { r[i] = *B; continue; }
-        if (FINF(B)) { r[i] = *A; continue; }
-        if (FX(A) == FX(B)) {
-            if (FY(A) == FY(B) && FY(A) != 0) {
-                uint64_t x2 = fsqr(g, FX(A));
-                uint64_t num = fadd(g, fadd(g, fadd(g, x2, x2), x2), g->a_mont);
-                ec_add_with_inv(g, &r[i], A, A, fmul(g, num, di));
-            } else {
-                ec_identity(g, &r[i]);
-            }
-            continue;
-        }
-        uint64_t lam = fmul(g, fsub(g, FY(B), FY(A)), di);
-        ec_add_with_inv(g, &r[i], A, B, lam);
+        ec_batch_finish(g, &r[i], &a[i], &b[i], di);
     }
 }
 
@@ -257,7 +288,8 @@ static void ec_jac_dbl(const ca_group *g, ec_jac *r)
 }
 
 /* P + (x2, y2) for a finite affine (x2, y2) (madd-2007-bl). */
-static void ec_jac_add_affine(const ca_group *g, ec_jac *r, uint64_t x2, uint64_t y2)
+static inline __attribute__((always_inline)) void ec_jac_add_affine(const ca_group *g, ec_jac *r,
+                                                                    uint64_t x2, uint64_t y2)
 {
     if (r->inf) {
         r->x = x2;
