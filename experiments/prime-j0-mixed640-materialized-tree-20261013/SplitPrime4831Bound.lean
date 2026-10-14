@@ -128,6 +128,7 @@ theorem selected_terminal_bound (scalar : Int) (state digit : Nat → Int × Int
 
 #print axioms pi_norm_identity
 #print axioms norm_trial_division
+#print axioms norm_sqrt_cap
 #print axioms recoding_step_identity
 #print axioms step_bound
 #print axioms radius_checks
