@@ -326,3 +326,36 @@ race check. Such a check is supplemental: the frozen RTX PRO 6000 gate remains
 unmet until a checker supports it or an explicitly recorded replacement gate
 is justified. The [critical-path problem](../../../../problems/ecc2k130-frobenius-gpu-critical-path.md)
 tracks this access/tool obstruction and the outstanding throughput test.
+
+### Race-checker calibration: frozen before execution
+
+The [control driver](sanitizer_control.py) uses the same Modal image and
+Compute Sanitizer on the RTX PRO 6000. It compiles two 64-thread kernels:
+one writes a shared word in one lane and synchronizes before all lanes read;
+the other has two lanes write that word without ordering. A usable checker
+must report zero hazards for the first and a planted write-after-write hazard
+for the second. Capture the GPU, driver, compiler, checker version, reported
+confidential-compute mode, exact commands, source/binary hashes, raw output,
+and exit status. If the first control says `Device not supported`, preserve
+that result without treating the candidate as checked.
+
+If the Blackwell control is unsupported, run the same two controls on a Modal
+H100 with `sm_90`. Only after both H100 controls behave as expected does the
+driver build and check the unchanged double-buffer inverse at 640 threads
+with four-warp groups on that device. An H100 candidate pass checks the
+shared-memory design on a second architecture, but it does not fulfill the
+frozen Blackwell race gate and does not authorize throughput timing. A
+different control outcome, unavailable allocation, compile error, or race
+report is retained with its own scope and stops that diagnostic.
+
+```sh
+python3 -m py_compile ecc2k130/runner/research/kernelagent-20261014/sanitizer_control.py
+modal run ecc2k130/runner/research/kernelagent-20261014/sanitizer_control.py \
+  --gpu blackwell \
+  --output ecc2k130/runner/research/kernelagent-20261014/sanitizer-blackwell-control.json \
+  > ecc2k130/runner/research/kernelagent-20261014/sanitizer-blackwell-control.log 2>&1
+modal run ecc2k130/runner/research/kernelagent-20261014/sanitizer_control.py \
+  --gpu h100 \
+  --output ecc2k130/runner/research/kernelagent-20261014/sanitizer-h100-control.json \
+  > ecc2k130/runner/research/kernelagent-20261014/sanitizer-h100-control.log 2>&1
+```

@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -91,7 +92,9 @@ def check_inverse(sources: dict, test_source: str, settings: dict):
                 cwd=root, timeout=600)
             if "Error: Device not supported" in record["racecheck"]["output"]:
                 return finish("race_checker_unsupported_device")
-            if record["racecheck"]["returncode"] or "ERROR SUMMARY: 0 errors" not in record["racecheck"]["output"]:
+            if record["racecheck"]["returncode"] or not re.search(
+                    r"(?:RACECHECK SUMMARY: 0 hazards|ERROR SUMMARY: 0 errors)",
+                    record["racecheck"]["output"]):
                 return finish("racecheck_failed_or_ambiguous")
     return finish("passed")
 
