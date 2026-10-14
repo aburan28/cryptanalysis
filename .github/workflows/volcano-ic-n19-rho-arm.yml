@@ -1,0 +1,67 @@
+name: volcano-ic n19 rho arm
+# Frozen protocol: experiments/volcano-ic/rho-arm-20261014/protocol.json.
+# Baseline subspace IC, tau-orbit dim-6 IC and matched signed-Frobenius rho on
+# the same ten planted scalars, interleaved, in one process on one runner.
+on:
+  push:
+    branches: ["claude/frobenius-orbit-canonicalization-gwmz8z"]
+    paths:
+      - 'experiments/volcano-ic/rho-arm-20261014/**'
+      - '.github/workflows/volcano-ic-n19-rho-arm.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  arms:
+    runs-on: ubuntu-24.04
+    # Estimated 2-3.6 h (protocol.json "runtime"); GitHub-hosted jobs stop at 6 h.
+    timeout-minutes: 350
+    container:
+      image: sagemath/sagemath:10.10@sha256:310dfe23fc786f3a5a06a7b0387c60201ec79b32c0db941b7624505ee5edb565
+      options: --user root
+    env:
+      IMAGE_REF: sagemath/sagemath:10.10@sha256:310dfe23fc786f3a5a06a7b0387c60201ec79b32c0db941b7624505ee5edb565
+      EXP: experiments/volcano-ic/rho-arm-20261014
+      OUT: experiments/volcano-ic/rho-arm-20261014/results
+    steps:
+      - uses: actions/checkout@v7
+      - name: Runtime receipt (outside every timed interval)
+        run: |
+          mkdir -p "$OUT"
+          {
+            echo "image: $IMAGE_REF"
+            sage --version
+            sage -python -c 'import sys, platform; print(sys.version); print(platform.platform())'
+            grep -m1 'model name' /proc/cpuinfo || true
+            nproc
+            cat /sys/fs/cgroup/cpu.max 2>/dev/null || true
+            free -m
+          } | tee "$OUT/runner.txt"
+      - name: Pure-Python rho validation (correctness and step counts)
+        run: sage -python "$EXP/validate_rho.py" --reps 8 --out "$OUT/ci-validation.json"
+      - name: Sage backend agrees with the pure-Python backend
+        run: sage "$EXP/arms.sage" selftest | tee "$OUT/selftest.json"
+      - name: Interleaved arms (frozen protocol)
+        run: sage "$EXP/arms.sage" run --out "$OUT"
+      - name: Analysis, report, figures and PDF
+        if: always()
+        run: |
+          if [ -s "$OUT/arms.jsonl" ]; then
+            sage -python "$EXP/analyze.py" "$OUT"
+          else
+            echo "no rows: nothing to analyse"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: volcano-ic-n19-rho-arm-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            experiments/volcano-ic/rho-arm-20261014/results
+            experiments/volcano-ic/rho-arm-20261014/report
+            experiments/volcano-ic/rho-arm-20261014/figures/arms.*
+          if-no-files-found: warn
+          retention-days: 90
