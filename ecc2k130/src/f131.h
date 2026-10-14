@@ -155,6 +155,34 @@ F131_INLINE void product(const F131 &a, const F131 &b, uint64_t h[5])
     h[3] = vgetq_lane_u64(hi, 1);
     h[4] = vgetq_lane_u64(y, 1) ^ vgetq_lane_u64(t, 0);
 }
+#elif ECC_HOST_CLMUL && defined(__x86_64__)
+// The PCLMULQDQ form of the PMULL product above, term for term: the operands
+// stay in xmm registers, the four 3-bit cross terms and the top term are
+// carry-less multiplies instead of masked shifts (mulTiny), and only the five
+// limbs come back to the integer registers.
+F131_INLINE void product(const F131 &a, const F131 &b, uint64_t h[5])
+{
+    const __m128i av = _mm_loadu_si128(reinterpret_cast<const __m128i *>(a.w)),
+                  bv = _mm_loadu_si128(reinterpret_cast<const __m128i *>(b.w));
+    const __m128i a2 = _mm_set1_epi64x((long long)a.w[2]), b2 = _mm_set1_epi64x((long long)b.w[2]);
+    const __m128i as = _mm_xor_si128(av, _mm_srli_si128(av, 8)), // [a0 ^ a1, a1]
+                  bs = _mm_xor_si128(bv, _mm_srli_si128(bv, 8));
+    const __m128i l = _mm_clmulepi64_si128(av, bv, 0x00), u = _mm_clmulepi64_si128(av, bv, 0x11);
+    const __m128i m = _mm_xor_si128(_mm_clmulepi64_si128(as, bs, 0x00), _mm_xor_si128(l, u));
+    const __m128i x = _mm_xor_si128(_mm_clmulepi64_si128(a2, bv, 0x00),
+                                    _mm_clmulepi64_si128(b2, av, 0x00)); // at limb 2
+    const __m128i y = _mm_xor_si128(_mm_clmulepi64_si128(a2, bv, 0x11),
+                                    _mm_clmulepi64_si128(b2, av, 0x11)); // at limb 3
+    const __m128i t = _mm_clmulepi64_si128(a2, b2, 0x00);                // at limb 4
+    const __m128i lo = _mm_xor_si128(l, _mm_slli_si128(m, 8));           // l ^ [0, m0]
+    const __m128i hi =
+        _mm_xor_si128(_mm_xor_si128(u, x), _mm_alignr_epi8(y, m, 8));    // u ^ x ^ [m1, y0]
+    h[0] = (uint64_t)_mm_cvtsi128_si64(lo);
+    h[1] = (uint64_t)_mm_extract_epi64(lo, 1);
+    h[2] = (uint64_t)_mm_cvtsi128_si64(hi);
+    h[3] = (uint64_t)_mm_extract_epi64(hi, 1);
+    h[4] = (uint64_t)_mm_extract_epi64(y, 1) ^ (uint64_t)_mm_cvtsi128_si64(t);
+}
 #else
 F131_INLINE void product(const F131 &a, const F131 &b, uint64_t h[5])
 {
