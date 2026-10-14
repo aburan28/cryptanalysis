@@ -39,6 +39,11 @@ CASES = {
     "production_top_hoist": ({"PACKED_TOP_HOIST": 1}, ""),
     "production_single_noinline": ({"PACKED_INLINE_POLY": 2}, ""),
     "production_pair_noinline": ({"PACKED_INLINE_POLY": 1}, ""),
+    "production_static_barriers": ({
+        "GPUFLAGS": "-Xptxas -v -DECC_STATIC_GROUP_BARRIERS=1"}, ""),
+    "production_static_128": ({
+        "THREADS": 128, "MINBLOCKS": 5,
+        "GPUFLAGS": "-Xptxas -v -DECC_STATIC_GROUP_BARRIERS=1"}, ""),
     "inline_sigma": ({}, "inline_sigma"),
     "forward_chain_first": ({}, "forward_chain_first"),
     "pair_ilp": ({"PACKED_PAIR_ILP": 1}, ""),
