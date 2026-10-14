@@ -272,6 +272,28 @@ numeric multipliers with the actual coefficient images of the unit action.
 minimum-orbit predicate selects exactly 550 positive seeds;
 `canonical_last` proves that the last is 1,064. Both pass with no axioms in
 the [canonical Lean receipt](split-prime-canonical-lean-receipt.json). The
+generated `SplitPrimeCanonicalCover.all_residues_covered_by_table`
+strengthens the coverage statement to the **actual canonical seed set**:
+every residue has an image of zero or a member of the 550-item `seeds`
+list. Its 67 finite slices cover all 3,301 residues and pass kernel
+checking with only `propext` and `Quot.sound`. Regenerate with
+`python3 generate_split_prime_canonical_cover.py --write`; the
+[canonical cover receipt](split-prime-canonical-cover-lean-receipt.json)
+pins the generated source, generator, dependency, and axiom audit. The
+imported `SplitPrimeDigitChoice.bounded_unit_step` then proves that every
+integer coefficient pair admits a canonical-table seed, a six-unit code,
+and an exact next quotient pair with digit norm at most 1,064². The
+[digit-choice receipt](split-prime-digit-choice-lean-receipt.json) pins
+the source, imports, and `#print axioms` output.
+`SplitPrimeComplete.canonical_scheme_terminal_bound` composes 21 such
+choices with the lattice selector and proves `N(z₂₁)<46²` for every
+integer scalar. Its witness selector uses standard `Classical.choice` in
+Lean; it is a mathematical existence proof. The native evaluator instead
+uses the generated packed residue lookup. The Python model checks equality
+of the canonical and runtime greedy seed lists and all 3,301 lookup
+residues, while a direct Lean theorem about the packed runtime bytes
+remains to be added.
+The
 model checks that this canonical list exactly equals the runtime's greedy
 551-entry list including zero and pins its digest. Direct kernel replay of
 the runtime seen-residue loop was stopped at a local resource ceiling; its
