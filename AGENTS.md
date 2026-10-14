@@ -539,6 +539,15 @@ row and keep its qualified speedup unknown. Re-evaluate earlier measurements
 before assigning a tier. Correctness runs and algorithmic diagnostics may
 still run on ordinary hosts when labeled accordingly.
 
+For an IC single-target speedup on a cloud VM or Pod, use the
+[IC benchmark tier contract](docs/IC_BENCHMARK_TIERS.md). Its Tier 1 panel
+freezes at least five fresh public points after candidate selection, measures
+IC and strong rho on each same point in alternating order on one allocation,
+and records a pinned exposed CPU set and worker counts for both arms. This
+IC-specific multiworker protocol does not require physical-host isolation.
+The general benchmark service's one-CPU Tier 1 mode remains available for
+single-workload comparisons; it is not the only Tier 1 measurement path.
+
 ## Remote compute
 
 A cloud-agent VM has 4 CPUs, 15 GB and no GPU. Run bigger work, such as
