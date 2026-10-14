@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
 import modal
 
@@ -88,6 +89,7 @@ os.close(fd)
 os.execv("./ecc2k130", ["./ecc2k130", *sys.argv[1:], "--dp-file", path])
 """)
     result["profile_launcher_sha256"] = hashlib.sha256(launcher.read_bytes()).hexdigest()
+    report_base = Path(tempfile.mkdtemp(prefix="ecc2k130-ncu-")) / "walk"
     command = [NCU_BINARY, "--target-processes", "all", "--kernel-name-base", "demangled",
                "--kernel-name", "regex:eccPacked131::walk", "--launch-count", "1",
                "--section", "SpeedOfLight", "--section", "LaunchStats",
@@ -96,12 +98,26 @@ os.execv("./ecc2k130", ["./ecc2k130", *sys.argv[1:], "--dp-file", path])
                "--section", "ComputeWorkloadAnalysis", "--section", "SourceCounters",
                "--section", "MemoryWorkloadAnalysis", "--replay-mode", "application",
                "--clock-control", "none", "--cache-control", "none",
+               "--force-overwrite", "--export", str(report_base),
                sys.executable, str(launcher), *target[1:-2]]
     result["profile_command"] = command
     profile = command_record(command, cwd=root, timeout=900)
     result["profile"] = {**profile, **profileResult(profile["returncode"] or 0,
                                                  profile["output"])}
     result["outcome"] = result["profile"].get("kind", "profile_unknown")
+    report_file = report_base.with_suffix(".ncu-rep")
+    if result["outcome"] == "profiled" and report_file.exists():
+        result["profile_raw"] = command_record(
+            [NCU_BINARY, "--import", str(report_file), "--page", "raw", "--csv"],
+            timeout=180)
+        result["profile_details"] = command_record(
+            [NCU_BINARY, "--import", str(report_file), "--page", "details"],
+            timeout=180)
+        result["ncu_report_sha256"] = hashlib.sha256(report_file.read_bytes()).hexdigest()
+        if result["profile_raw"]["returncode"] or result["profile_details"]["returncode"]:
+            result["outcome"] = "report_import_failed"
+    elif result["outcome"] == "profiled":
+        result["outcome"] = "report_missing"
     result["completed_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     return result
 
