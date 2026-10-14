@@ -413,6 +413,11 @@ from the repository root. Inspect live leases, checkpoints and indexed RDS
 sample records with `modal run ecc2k130/runner/verify_production.py` (set
 `ECC_RDS_SECURITY_GROUP` if managed temporary RDS access is needed).
 
+**GPU optimization profile (2026-10-13):** the [Modal profiling and paired-screen
+record](research/kernelagent-20261013/README.md) covers the current compatible
+Frobenius walk, the exact build settings, the frozen DP32 corpus, and the
+candidate decision. The experiments did not change the production preset.
+
 **Table-walk research validation (superseded production profile):** its timing, replay, corpus, and checkpoint
 evidence is in [research/candidates/goal22/](research/candidates/goal22/).
 The production CUDA image built on Modal; its CPU smoke check passed the S3
