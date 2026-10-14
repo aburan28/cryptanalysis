@@ -292,21 +292,6 @@ impl<const N: u32, const B: u32> G<N, B> {
         let mut best_gap = 0u32;
         let mut first = u32::MAX;
         let mut prev = 0u32;
-        let mut consider = |gap: u32, one: u32, best: &mut W3, bs: &mut u32, bg: &mut u32| {
-            if gap == 0 || gap < *bg {
-                return;
-            }
-            let shift = if one == 0 { 0 } else { N - one };
-            let r = Self::rotl(x, shift);
-            if COUNT {
-                *rot += 1;
-            }
-            if gap > *bg || Self::lt(r, *best) || (r == *best && shift < *bs) {
-                *bg = gap;
-                *best = r;
-                *bs = shift;
-            }
-        };
         for l in 0..3u32 {
             let mut rem = x[l as usize];
             while rem != 0 {
@@ -315,13 +300,34 @@ impl<const N: u32, const B: u32> G<N, B> {
                 if first == u32::MAX {
                     first = p;
                 } else {
-                    consider(p - prev - 1, p, &mut best, &mut best_shift, &mut best_gap);
+                    Self::consider::<COUNT>(x, p - prev - 1, p, &mut best, &mut best_shift, &mut best_gap, rot);
                 }
                 prev = p;
             }
         }
-        consider(first + N - prev - 1, first, &mut best, &mut best_shift, &mut best_gap);
+        Self::consider::<COUNT>(x, first + N - prev - 1, first, &mut best, &mut best_shift, &mut best_gap, rot);
         (best, best_shift)
+    }
+
+    /// One gap of the scan: `gap` zeros end just below the one bit at `one`.
+    /// Always inlined (as `consider_gap` is at n = 83); the first run left
+    /// it as an out-of-line closure, which hid its Ir from the arm's symbol.
+    #[inline(always)]
+    fn consider<const COUNT: bool>(x: W3, gap: u32, one: u32, best: &mut W3, bs: &mut u32,
+                                   bg: &mut u32, rot: &mut u32) {
+        if gap == 0 || gap < *bg {
+            return;
+        }
+        let shift = if one == 0 { 0 } else { N - one };
+        let r = Self::rotl(x, shift);
+        if COUNT {
+            *rot += 1;
+        }
+        if gap > *bg || Self::lt(r, *best) || (r == *best && shift < *bs) {
+            *bg = gap;
+            *best = r;
+            *bs = shift;
+        }
     }
 
     #[inline(always)]
@@ -673,9 +679,14 @@ pub mod fmul {
 }
 
 /// One 131-bit polynomial-basis multiply as a stable symbol for cachegrind.
+/// It carries the target feature itself so the multiply inlines into it and
+/// its self Ir is the whole product (the first run used a plain wrapper,
+/// which could not inline the `target_feature` body and counted 14 Ir).
+/// Caller must check `is_x86_feature_detected!("pclmulqdq")`.
 #[cfg(target_arch = "x86_64")]
 #[no_mangle]
 #[inline(never)]
-pub extern "C" fn fmul131_clmul(a: &W3, b: &W3, out: &mut W3) {
-    *out = unsafe { fmul::mul_clmul(a, b) };
+#[target_feature(enable = "pclmulqdq,sse2")]
+pub unsafe extern "C" fn fmul131_clmul(a: &W3, b: &W3, out: &mut W3) {
+    *out = fmul::mul_clmul(a, b);
 }

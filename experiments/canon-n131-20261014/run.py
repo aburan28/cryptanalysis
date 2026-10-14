@@ -78,6 +78,10 @@ def main():
     print(a.stdout)
     if a.returncode != 0:
         sys.exit("asm check failed")
+    audit = json.load(open(os.path.join(RES, "asm_check.json")))
+    leaf = [x for x in ARMS if audit[x]["calls"] != 0]
+    if leaf:  # self Ir of the symbol would miss the callees
+        sys.exit(f"arms with calls, Ir would be incomplete: {leaf}")
 
     # exactness
     ex = P["exactness"]

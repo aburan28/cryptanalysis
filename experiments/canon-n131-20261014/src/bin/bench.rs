@@ -30,7 +30,8 @@ fn main() {
             let mut acc = xs[0];
             for x in &xs {
                 let mut o = [0u64; 3];
-                fmul131_clmul(black_box(&acc), x, &mut o);
+                assert!(is_x86_feature_detected!("pclmulqdq"));
+                unsafe { fmul131_clmul(black_box(&acc), x, &mut o) };
                 acc = o;
             }
             check ^= acc[0];
