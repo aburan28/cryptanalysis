@@ -294,9 +294,39 @@ LINEAR_REPLACEMENTS = {
 }
 
 
+SHORT_REPLACEMENTS = {
+    "const SPLIT_PRIME_NORM: i32 = 3301;":
+        "const SPLIT_PRIME_NORM: i32 = 5113;",
+    "const SPLIT_PRIME_TAU_RESIDUE: i32 = 1576;":
+        "const SPLIT_PRIME_TAU_RESIDUE: i32 = 70;",
+    "const SPLIT_PRIME_STEPS: usize = 21;":
+        "const SPLIT_PRIME_STEPS: usize = 20;",
+    "const SPLIT_PRIME_DIGIT_LIMIT: usize = 1650;":
+        "const SPLIT_PRIME_DIGIT_LIMIT: usize = 2556;",
+    "const SPLIT_PRIME_TERMINAL_LIMIT: usize = 663;":
+        "const SPLIT_PRIME_TERMINAL_LIMIT: usize = 499;",
+    "// In Z[tau]/(86-21*tau), tau = 1576 mod 3301.":
+        "// In Z[tau]/(70+tau), tau = -70 mod 5113.",
+    "let residue_word = a.add(b.times_split_prime_small(SPLIT_PRIME_TAU_RESIDUE));":
+        "let residue_word = a.sub(b.times_split_prime_small(SPLIT_PRIME_TAU_RESIDUE));",
+    "let next_a = k.times_split_prime_small(23).sub(b.times_split_prime_small(11));":
+        "let next_a = k.times_split_prime_small(73).add(b);",
+    "let next_b = k.times_split_prime_small(21).sub(b.times_split_prime_small(10));":
+        "let next_b = k.neg();",
+    "// pi = 86 - 21*tau. All of this is reusable table preparation.":
+        "// pi = 70 + tau. All of this is reusable table preparation.",
+    "let ordinary = affine_multiples(base, 86).pop().unwrap();":
+        "let ordinary = affine_multiples(base, 70).pop().unwrap();",
+    "let tau = affine_multiples(base.tau(), 21).pop().unwrap().neg().into_affine();":
+        "let tau = base.tau().into_affine();",
+    "assert_eq!(entries, 35_999);":
+        "assert_eq!(entries, 52_140);",
+}
+
+
 def main(target: Path, variant: str = "3301", fused_terminal: bool = False) -> None:
-    if variant not in ("3301", "3307"):
-        raise ValueError("variant must be 3301 or 3307")
+    if variant not in ("3301", "3307", "5113"):
+        raise ValueError("variant must be 3301, 3307, or 5113")
     spec = importlib.util.spec_from_file_location("mixed640_bench_cli", BASE)
     bench = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -306,8 +336,8 @@ def main(target: Path, variant: str = "3301", fused_terminal: bool = False) -> N
     module_path = target / "src/bin/eisenstein_fixed/unit_orbit_windows.rs"
     split_source = SPLIT_PRIME_RUST
     if fused_terminal:
-        if variant != "3301":
-            raise ValueError("fused terminal is defined for norm 3301")
+        if variant not in ("3301", "5113"):
+            raise ValueError("fused terminal is defined for norm 3301 or 5113")
         for old, new in FUSED_TERMINAL_REPLACEMENTS.items():
             split_source = replace_once(split_source, old, new)
     module = replace_once(module_path.read_text(),
@@ -315,6 +345,9 @@ def main(target: Path, variant: str = "3301", fused_terminal: bool = False) -> N
         split_source + "pub(super) fn warm_mixed640_pretau_table() -> usize {\n")
     if variant == "3307":
         for old, new in LINEAR_REPLACEMENTS.items():
+            module = replace_once(module, old, new)
+    if variant == "5113":
+        for old, new in SHORT_REPLACEMENTS.items():
             module = replace_once(module, old, new)
     module_path.write_text(module)
     front_path = target / "src/bin/eisenstein_fixed.rs"
@@ -344,5 +377,7 @@ if __name__ == "__main__":
         main(Path(sys.argv[2]), "3307")
     elif len(sys.argv) == 3 and sys.argv[1] == "--fused-terminal":
         main(Path(sys.argv[2]), fused_terminal=True)
+    elif len(sys.argv) == 3 and sys.argv[1] == "--short-fused":
+        main(Path(sys.argv[2]), "5113", fused_terminal=True)
     else:
-        raise SystemExit("usage: native_split_prime_bench.py [--linear|--fused-terminal] TARGET_DIR")
+        raise SystemExit("usage: native_split_prime_bench.py [--linear|--fused-terminal|--short-fused] TARGET_DIR")

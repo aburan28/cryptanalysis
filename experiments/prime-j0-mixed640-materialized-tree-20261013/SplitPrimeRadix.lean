@@ -132,6 +132,35 @@ theorem linear_split_step_identity (a b k : Int) :
   dsimp [add, linearPiMul]
   apply Prod.ext <;> dsimp <;> omega
 
+-- A 20-digit alternative: pi = 70 + tau has prime norm 5113.
+def shortPiMul (x : Coeff) : Coeff :=
+  (70 * x.1 - 3 * x.2, x.1 + 73 * x.2)
+
+theorem short_pi_norm : norm (70, 1) = 5113 := by decide
+theorem norm_short_pi_mul (z : Coeff) :
+    norm (shortPiMul z) = 5113 * norm z := by
+  cases z with
+  | mk a b =>
+      simp only [norm, shortPiMul]
+      grind
+theorem short_tau_residue_root :
+    ((-70 : Int) * (-70) - 3 * (-70) + 3) % 5113 = 0 := by decide
+theorem short_pi_residue_zero :
+    (70 + (-70 : Int)) % 5113 = 0 := by decide
+theorem short_terminal_axis_numeric :
+    2 * (70 * 2252907023369138918423925520396307732351
+      + 2556 * 71 ^ 20) < 499 * 70 * 71 ^ 20 := by decide
+theorem short_fused_terminal_numeric :
+    35 ^ 2 *
+      115792089237316195423570985008687907852837564279074904382605163141518161494337
+      < 3 * 682 ^ 2 * 71 ^ 40 := by decide
+theorem short_split_step_identity (a b k : Int) :
+    let d := a - 70 * b - 5113 * k
+    let q : Coeff := (73 * k + b, -k)
+    add (d, 0) (shortPiMul q) = (a, b) := by
+  dsimp [add, shortPiMul]
+  apply Prod.ext <;> dsimp <;> omega
+
 #print axioms pi_norm
 #print axioms norm_pi_mul
 #print axioms coordinate_a_bound
@@ -150,5 +179,12 @@ theorem linear_split_step_identity (a b k : Int) :
 #print axioms linear_pi_residue_zero
 #print axioms linear_terminal_numeric
 #print axioms linear_split_step_identity
+#print axioms short_pi_norm
+#print axioms norm_short_pi_mul
+#print axioms short_tau_residue_root
+#print axioms short_pi_residue_zero
+#print axioms short_terminal_axis_numeric
+#print axioms short_fused_terminal_numeric
+#print axioms short_split_step_identity
 
 end SplitPrimeRadix

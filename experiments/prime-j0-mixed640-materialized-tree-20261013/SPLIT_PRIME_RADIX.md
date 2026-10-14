@@ -133,5 +133,42 @@ per nonnegative `a` give constant-time row indexing. With the original
 fallback rows, the native retained size is **2,668,328 bytes**. Local
 release testing matched all 128 frozen scalar points to independent binary
 multiplication; all 128 took the fused path, with maximum terminal norm
-1,861. This is a correctness and layout result pending a serial paired Pod
-measurement of its online cost and table preparation.
+1,861. The Pod release test also passed all 128 cases; its build, test, and
+overlay logs, together with the near-real variant logs, are retained under
+`tier1-runpod-20261013/split-prime-validation/`. Their transferred archive
+SHA-256 is
+`28654dc4b96346a238d68ef7958c6001d4b5c64291d2269cba2daa1b379590f1`.
+
+The case-0 serial comparison against the original norm-3301 radix completed
+eight valid pairs. Its median paired original/fused online ratio was
+**1.1101**, with paired bootstrap interval **1.0012–1.1600**. The raw job
+is `tier1-runpod-20261013/e2e0700e2f9a466dbd3243636687833c/`; the
+transferred archive SHA-256 is
+`eaf524ff4cf8852eb254cc8fe349b2363767febbcac99af111b47fa7e7361ffb`.
+All 16 invocations returned independently verified points, and artifacts,
+binaries, and runner stayed stable. The eight-case serial follow-up is
+queued under the same instance-scoped service. Host exclusivity remains
+unproved, so this timing result is exploratory.
+
+## Twenty-digit norm-5113 variant
+
+The `--short-fused` generator selects `pi = 70 + tau`, of prime norm 5113.
+Its quotient root is `tau = -70 (mod 5113)`, and centered digit division is
+`d = (a - 70b) mod 5113`, `k = (a - 70b - d)/5113`,
+`(a',b') = (73k+b,-k)`. Twenty digit rows replace twenty-one, while the
+same 5,680-entry canonical terminal-pair table handles `N(a_20,b_20)<56²`.
+The nearest-cell norm bound and `|pi|>71` yield
+`sqrt(N(z_20))<sqrt(n/3)/71²⁰+2556/70<56`; the final strict numeric
+inequality is `35²n<3·682²·71⁴⁰`. The original cell coordinate bound also
+gives terminal coordinate magnitudes below 499, so two 500-entry axis rows
+remain as an exact fallback.
+
+The 20 digit rows, fallback rows, and fused terminal table contain 57,820
+point entries, or **3,700,480 point bytes**. The local native release test
+matched all 128 frozen scalars against independent binary multiplication
+and reported **3,701,336 retained bytes** including metadata. The exact
+model in `split_prime_radix.py` found maximum fixture terminal norm 2,163;
+126 cases used 21 nonzero point terms and two used 20. Norm scaling,
+quotient root, exact digit division, and both numeric bounds are checked in
+`SplitPrimeRadix.lean`; the analytic and nearest-cell Lean bridge remains
+open. Online timing awaits a source-pinned serial Pod comparison.
