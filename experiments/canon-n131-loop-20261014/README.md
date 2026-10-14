@@ -7,16 +7,25 @@ date: 2026-10-14
 
 **Status (2026-10-14).**
 
+- **Result (Tier 1, instance scoped).** `lift_scan` is the fastest of the
+  five canonicalizers inside the loop on all four workloads. All 16 primary
+  contrasts resolve as "lift_scan faster in the loop" at the Bonferroni
+  level, with ratios from 1.83 to 3.81.
+  - Run: GitHub Actions run 38607684318, attempt 1, on one `ubuntu-24.04`
+    runner (AMD EPYC 7763, Azure `Standard_D4ads_v5`).
+  - Both controls passed on every workload.
+  - Nothing reverses the way it did at n = 53.
+  - Inside the loop the gap shrinks, from 1.3x-8.8x isolated Ir to
+    1.8x-3.8x. That is because of the shared per-key floor, not because the
+    canonicalizers hide behind the field chain or the DRAM misses (see
+    below).
 - **Exactness: verified.** All five canonicalizers agree key for key, shift
   for shift and hit for hit inside the loop, on every key of every workload.
+  The CI run repeated the full check before timing.
 - **Deterministic counts: measured locally.** Ir and conditional-branch
   counts come from cachegrind. Its mispredict counts are a *model*.
-- **Tier 1 timing: pending.** The paired, alternating GitHub-runner run under
-  the frozen [`protocol.json`](protocol.json) (v2) starts with the push of
-  this branch. Its receipts land in `results/ci/run-<id>-<attempt>/`.
-- **This report makes no timing claim.** The local runs in `results/smoke*/`
-  are script tests on an unisolated VM.
-- **No curve or ECDLP result is involved.**
+- **Scope.** The local runs in `results/smoke*/` are script tests, not
+  results. **No curve or ECDLP result is involved.**
 
 ## Question
 
@@ -207,7 +216,7 @@ is excluded from the identity check.
      change the *time* ranking is the Tier 1 question below. The model is
      not hardware evidence.
 
-## Tier 1 timing (pending; protocol frozen)
+## Tier 1 timing (run 38607684318; protocol v2, frozen)
 
 The workflow [`.github/workflows/canon-n131-loop.yml`](../../.github/workflows/canon-n131-loop.yml)
 runs on every push to `claude/n131-canon-loop` and on `workflow_dispatch`.
@@ -253,22 +262,110 @@ only when all of these pass.
 - **Scope.** Every ratio is instance-scoped to the named runner. Tier 1, per
   AGENTS.md, does not prove host-wide exclusivity.
 
-**Receipts.** `receipt.py` snapshots the allocation before and after the
-timed run: runner and image identity, the Azure instance metadata if
-reachable, `lscpu`, affinity, cgroup quota and throttling, `/proc/stat`
-steal, and load. The rows, the analysis and the timing figure
-(`make_figures.py` draws `figures/timing.svg` from the newest non-smoke
-analysis) are follow-up work once the run lands.
+### Receipt
 
-### Frozen predictions (protocol v1/v2; outcomes pending except P1)
+All of the run's files are in
+[`results/ci/run-38607684318-1/`](results/ci/run-38607684318-1/): the rows,
+`analysis.json`, the before and after host receipts, the build receipt, the
+exactness and KAT checks, and the tests. Re-running `analyze.py` on
+`rows.jsonl` reproduces `analysis.json` byte for byte.
+
+| item | value |
+| --- | --- |
+| provider / instance | GitHub-hosted `ubuntu-24.04`, image 20261012.334.1; Azure IMDS `vmSize` Standard_D4ads_v5, `vmId` cd13869a-27b4-45ea-9f44-b58d52b34031, eastus2 |
+| CPU | AMD EPYC 7763, 4 vCPUs exposed; the run pinned to CPU 1 (`taskset -c 1`), and every one of 1,312 passes ran on CPU 1 |
+| toolchain | rustc 1.97.0; sources and dependency sources hash-identical to [`results/build_receipt.json`](results/build_receipt.json); the binaries differ in hash from the local build (different host and paths) |
+| correctness before timing | 9/9 tests, 400/400 KAT vectors x 2 header modes, full exactness `pass: true` |
+| correctness of timed rows | 0 of 1,312 rows mismatched the verified reference summary |
+| cgroup | `nr_throttled` 0 and `throttled_usec` 0 before and after; no `cpu.max` file |
+| steal | `/proc/stat` cpu1 steal 0 before and after |
+| scheduling | 0 voluntary and 1,860 involuntary switches over 1,312 passes; thread CPU / wall = 0.99994 |
+| clocks | wall ns (`Instant`); TSC ticks run at about 2.445 per ns (reference ticks, not core cycles) |
+| total timed run | 330.8 s (protocol estimate about 5.1 min) |
+| not available | the scaling governor (no cpufreq in the VM); host-wide exclusivity is not provable on a hosted runner |
+
+### Results
+
+Median ns per key over 41 rounds. The interquartile ranges are in
+`analysis.json`. They are under 0.3% of the median on the small tables and
+about 3-10% on the large ones.
+
+| workload | null (floor) | lift_scan | lift_scan_aa | lift_scan_2pass | gap_scan | exhaustive | refine_bf | exhaustive_bf |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| w1-small | 95.0 | **163.5** | 163.6 | 327.1 | 456.9 | 495.3 | 528.3 | 624.0 |
+| w1-large | 204.1 | **268.9** | 268.5 | 530.7 | 567.3 | 608.7 | 642.2 | 740.6 |
+| w5-small | 171.5 | **240.8** | 240.8 | 481.7 | 535.5 | 571.4 | 604.9 | 700.9 |
+| w5-large | 283.1 | **354.9** | 352.0 | 708.8 | 648.4 | 691.1 | 728.8 | 814.2 |
+
+Paired ratio `t(arm) / t(lift_scan)`: the geometric mean with its
+Bonferroni-adjusted CI (level 0.996875). Every verdict is the protocol's
+literal wording.
+
+| workload | exhaustive | gap_scan | refine_bf | exhaustive_bf | verdict (all four) |
+| --- | --- | --- | --- | --- | --- |
+| w1-small | 3.029 [3.009, 3.051] | 2.792 [2.775, 2.803] | 3.233 [3.211, 3.253] | 3.812 [3.788, 3.827] | lift_scan faster in the loop |
+| w1-large | 2.224 [2.162, 2.281] | 2.080 [2.026, 2.130] | 2.353 [2.291, 2.410] | 2.710 [2.635, 2.772] | lift_scan faster in the loop |
+| w5-small | 2.370 [2.353, 2.377] | 2.227 [2.209, 2.244] | 2.510 [2.492, 2.522] | 2.909 [2.890, 2.925] | lift_scan faster in the loop |
+| w5-large | 1.945 [1.903, 1.985] | 1.834 [1.787, 1.878] | 2.042 [2.002, 2.084] | 2.306 [2.254, 2.357] | lift_scan faster in the loop |
+| isolated Ir ratio (canon-n131) | 3.60 | 2.79 | 8.78 | 7.13 | |
+
+| workload | A/A `lift_scan_aa` (must contain 1) | positive `lift_scan_2pass` (lower bound must exceed 1.5; expected 2) | null (descriptive) |
+| --- | --- | --- | --- |
+| w1-small | 0.999 [0.993, 1.002]: contains 1 | 1.998 [1.986, 2.007]: detected | 0.581 |
+| w1-large | 1.001 [0.981, 1.030]: contains 1 | 1.990 [1.920, 2.046]: detected | 0.747 |
+| w5-small | 0.998 [0.991, 1.001]: contains 1 | 1.997 [1.983, 2.002]: detected | 0.711 |
+| w5-large | 0.997 [0.972, 1.027]: contains 1 | 2.000 [1.945, 2.065]: detected | 0.799 |
+
+![In-loop ratios to lift_scan with adjusted and 95% CIs; x marks the isolated Ir ratio (`figures/timing.svg`).](figures/timing.png)
+
+**Findings.** All are Tier 1, instance scoped to this runner.
+
+1. **lift_scan is fastest in the loop on every workload, and nothing
+   reverses as at n = 53.**
+   - The 16 primary contrasts all resolve for lift_scan. Their adjusted
+     lower bounds run from 1.79 (gap_scan, w5-large) to 3.79
+     (exhaustive_bf, w1-small).
+   - The branch-free arms (`refine_bf`, `exhaustive_bf`) are the two
+     slowest arms on every workload.
+2. **The canonicalizers do not hide behind the field chain or the probe
+   misses. The ratios shrink because the floor is shared.** Look at each
+   arm's marginal cost over `null` (median of the paired per-round
+   differences, in ns per key):
+   - lift_scan 68-69, gap_scan 362-371, exhaustive 400-408, refine_bf
+     433-444, exhaustive_bf 529-545.
+   - These change by at most 3% between the four workloads, although the
+     floor grows from 95 to 283 ns.
+   - The 2x positive control also stays at 1.99-2.00 on the DRAM-bound
+     tables.
+   - So on this core each canonicalizer's time *adds* to the loop's own
+     time; it is not absorbed by overlap. The in-loop ratios are smaller
+     than the isolated ones only because every arm pays the same 95-283 ns
+     floor.
+   - The v1 dry-run reading ("null does not separate from lift_scan on the
+     large tables") did not reproduce: null is 0.75x and 0.80x of
+     lift_scan there, with CIs below 1. The dry run was too short to see it.
+3. **The in-loop time ranking equals the in-loop Ir ranking.** The order is
+   `lift_scan < gap_scan < exhaustive < refine_bf < exhaustive_bf` on all
+   four workloads, which is exactly the cachegrind Ir order of the loop
+   symbols above. Against the isolated Ir order, Kendall tau is 0.8 on
+   every workload (descriptive, no test). The one swap is refine_bf vs
+   exhaustive_bf, the same swap the in-loop Ir shows. Inlining made
+   `exhaustive_bf` the most expensive arm.
+4. **Descriptive, outside the frozen family: gap_scan is faster than
+   exhaustive in the loop on all four workloads** (medians above). The
+   isolated wall clock in canon-n131 showed the opposite, but that was
+   another host (Intel) and unisolated, and this contrast was not in the
+   tested family. Read it as an observation, not a verdict.
+
+### Frozen predictions, applied literally
 
 | | prediction | outcome |
 | --- | --- | --- |
-| P1 | every exactness check passes | **held** (above) |
-| P2 | lift_scan has the lowest median ns/key on all four workloads | pending (Tier 1) |
-| P3 | each arm's in-loop ratio to lift_scan is below its isolated Ir ratio | pending; the in-loop *Ir* ratios are already below (table above) |
-| P4 | exhaustive_bf and refine_bf stay slower than lift_scan in the loop | pending |
-| P5 | A/A CI contains 1 on at least three of four workloads | pending |
+| P1 | every exactness check passes | **held** (locally and in the CI run) |
+| P2 | lift_scan has the lowest median ns/key of the five arms on all four workloads | **held** (table above) |
+| P3 | each arm's in-loop ratio to lift_scan is below its isolated Ir ratio, on every workload | **held on all 16 geometric means**. One is marginal: gap_scan on w1-small, 2.7916 against an isolated 2.7938, with the isolated value inside its adjusted CI [2.775, 2.803]. By finding 2 the shrinkage comes from the shared floor, not from overlap. |
+| P4 | exhaustive_bf and refine_bf stay slower than lift_scan in the loop | **held** (8 of 8 contrasts resolved for lift_scan) |
+| P5 | the A/A adjusted CI contains 1 on at least three of the four workloads | **held** (4 of 4) |
 
 ## Deviations from the protocol
 
@@ -299,7 +396,8 @@ and the changed fields are in `protocol.json`, key `amendments`.
 | the port equals `f131.h`; Frobenius is rotation in the cyclic order; all arms agree in the loop | exact computation (verified, reproducible) |
 | Ir and Bc per key, the in-loop/isolated Ir ratios, the Ir ranking change | exact computation for this binary and toolchain |
 | Bcm per key | model output (cachegrind's predictor), not a hardware measurement |
-| any time per key, ratio, or "faster" | comparative: **not made here**; reserved for the Tier 1 run's decision rule |
+| "lift_scan faster in the loop" (16 contrasts) | comparative: Tier 1, instance scoped to run 38607684318's runner, decided by the frozen rule with both controls passing |
+| marginal ns over null, rank order, Kendall tau, gap_scan vs exhaustive | comparative but descriptive: outside the tested family, no verdict |
 | W1/W5 resemble a point operation | heuristic proxy, labelled |
 
 **Scope.** This is a word-level loop with a proxy field recurrence. It shows
@@ -309,18 +407,18 @@ nothing about ECDLP cost, curve points, or constant-time behaviour.
 
 - **Created:**
   - `figures/loop.svg`, a diagram;
-  - `figures/counts.svg`, from `results/counts.json`.
+  - `figures/counts.svg`, from `results/counts.json`;
+  - `figures/timing.svg`, from `results/ci/run-38607684318-1/analysis.json`
+    (41 paired rounds; adjusted and 95% CIs; log scale).
 
   `make_figures.py` writes each SVG, and a small Pillow renderer of the same
   SVG subset rasterizes each PNG (ImageMagick has no SVG delegate on this
   host).
-- **Pending:** `figures/timing.svg`. It is drawn once a non-smoke Tier 1
-  `analysis.json` exists.
 - **No curve graph affected.** No curve, isogeny or volcano graph is
   involved. `experiments/volcano-ic/figures/` and
   `experiments/ic-candidate-catalog/curves.yaml` are unchanged.
 - **Paper not updated.** `papers/frobenius-orbits` is not edited. The Ir
-  findings above are for its owner's §4/§7 once the Tier 1 timing exists.
+  and Tier 1 findings above are offered to its owner for §4/§7.
 
 ## Reproduce
 
@@ -328,6 +426,7 @@ nothing about ECDLP cost, curve points, or constant-time behaviour.
 export CARGO_TARGET_DIR=...        # optional shared build dir
 python3 run.py                     # build (--locked --offline), tests, f131.h KAT, exactness,
                                    # cachegrind counts, SMOKE bench + analysis -> results/
+# the Tier 1 run is .github/workflows/canon-n131-loop.yml; locally (unisolated, no tier):
 taskset -c 1 $CARGO_TARGET_DIR/release/loop_bench protocol.json rows.jsonl   # the Tier 1 run
 python3 analyze.py rows.jsonl analysis.json results/isolated_ir.json
 python3 make_figures.py

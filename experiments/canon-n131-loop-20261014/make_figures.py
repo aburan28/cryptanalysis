@@ -19,7 +19,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FIG = os.path.join(HERE, "figures")
 ARMS = ["exhaustive", "gap_scan", "refine_bf", "exhaustive_bf", "lift_scan", "null"]
 COL = {"exhaustive": "#4269d0", "gap_scan": "#efb118", "refine_bf": "#ff725c", "exhaustive_bf": "#6cc5b0",
-       "lift_scan": "#3ca951", "lift_scan_aa": "#97bbf5", "null": "#9498a0"}
+       "lift_scan": "#3ca951", "lift_scan_aa": "#97bbf5", "lift_scan_2pass": "#a463f2", "null": "#9498a0"}
 FONT = 'font-family="DejaVu Sans, Helvetica, Arial, sans-serif"'
 
 
@@ -217,23 +217,24 @@ def timing_figure():
         return
     _, p, a = max(cands)
     run = os.path.basename(os.path.dirname(p))
-    arms = ["exhaustive", "gap_scan", "refine_bf", "exhaustive_bf", "lift_scan_aa", "null"]
+    arms = ["exhaustive", "gap_scan", "refine_bf", "exhaustive_bf", "lift_scan_aa", "lift_scan_2pass", "null"]
     wls = list(a["workloads"])
     w, h = 900, 120 + 70 * len(wls) * 1 + 30 * len(arms) * len(wls) // 2
     rows = [(x, arm) for x in wls for arm in arms]
     h = 110 + 22 * len(rows) + 14 * len(wls)
     b = text(20, 26, f"In-loop time per key relative to lift_scan (Tier 1, {run})", 15, weight="bold")
     b += text(20, 44, f"geometric mean over {a['meta']['rounds']} paired rounds; bar = Bonferroni CI "
-              f"({a['adjusted_level']:.4f}), thin = 95%; log scale", 11)
+              f"({a['adjusted_level']:.4f}), thin = 95%; x = isolated canon-n131 Ir ratio; log scale", 11)
     vals = [a["workloads"][x]["contrasts"][arm] for x, arm in rows]
+    iso = a["workloads"][wls[0]].get("isolated_ir_ratio_vs_lift_scan", {})
     lo = min(v["ci_adjusted"][0] for v in vals) * 0.9
-    hi = max(v["ci_adjusted"][1] for v in vals) * 1.1
+    hi = max([v["ci_adjusted"][1] for v in vals] + list(iso.values())) * 1.1
     x0, pw = 260, 560
 
     def X(v):
         return x0 + pw * (math.log(v) - math.log(lo)) / (math.log(hi) - math.log(lo))
     y = 70
-    for t in [0.05, 0.1, 0.2, 0.5, 1, 2, 3, 5, 8, 10]:
+    for t in [0.5, 0.6, 0.8, 1, 1.5, 2, 3, 4, 6, 8, 10]:
         if lo <= t <= hi:
             b += f'<line x1="{X(t)}" y1="60" x2="{X(t)}" y2="{h - 40}" stroke="{"#333" if t == 1 else "#ddd"}"/>\n'
             b += text(X(t), h - 26, f"{t:g}", 10, "middle")
@@ -247,6 +248,10 @@ def timing_figure():
         b += f'<line x1="{X(v["ci95"][0])}" y1="{y}" x2="{X(v["ci95"][1])}" y2="{y}" stroke="{COL[arm]}" stroke-width="1.5"/>\n'
         b += f'<line x1="{X(v["ci_adjusted"][0])}" y1="{y}" x2="{X(v["ci_adjusted"][1])}" y2="{y}" stroke="{COL[arm]}" stroke-width="5" stroke-opacity="0.6"/>\n'
         b += f'<circle cx="{X(v["ratio_vs_lift_scan_geomean"])}" cy="{y}" r="3.5" fill="#111"/>\n'
+        if arm in iso:
+            ix = X(iso[arm])
+            b += (f'<line x1="{ix - 4}" y1="{y - 4}" x2="{ix + 4}" y2="{y + 4}" stroke="#111" stroke-width="1.5"/>\n'
+                  f'<line x1="{ix - 4}" y1="{y + 4}" x2="{ix + 4}" y2="{y - 4}" stroke="#111" stroke-width="1.5"/>\n')
         b += text(x0 + pw + 8, y + 4, f'{v["ratio_vs_lift_scan_geomean"]:.3f}', 10)
         y += 22
     b += text(x0 + pw / 2, h - 10, "t(arm) / t(lift_scan) per key  (<1: arm faster)", 11, "middle")
