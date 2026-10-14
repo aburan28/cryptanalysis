@@ -41,7 +41,9 @@ The worker build compiles the sigma walk for `sm_80`, `sm_86`, `sm_89`,
 and checks the campaign known answers. A GPU device run and report re-walk
 are still required on each claimed hardware class. The CI tag workflow builds
 and publishes Linux amd64 images to GHCR; the digest from that workflow is
-the image identity to distribute.
+the image identity to distribute. Verify that an unauthenticated client can
+pull the tagged worker image before giving the command to contributors; GHCR
+visibility can differ from the source repository's visibility.
 
 ## Gateway deployment
 

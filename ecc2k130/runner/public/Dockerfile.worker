@@ -16,6 +16,7 @@ RUN make test && make gpu WALK=sigma ARCH='-gencode arch=compute_80,code=sm_80 \
     && build/ec2k-gpu check --kat tests/campaign-kat.hex
 
 FROM nvidia/cuda:13.3.1-runtime-ubuntu24.04
+LABEL org.opencontainers.image.source="https://github.com/aburan28/cryptanalysis"
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     python3 ca-certificates && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 10001 --create-home --shell /usr/sbin/nologin ecc2k \
