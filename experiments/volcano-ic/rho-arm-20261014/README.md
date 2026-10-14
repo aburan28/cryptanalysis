@@ -7,9 +7,28 @@ scalars, interleaved, in one process on one host. The frozen design is in
 `protocol.json`. The preregistration report, with its diagram and validation
 graph, is `preregistration-20261014.md` (PDF beside it).
 
-**Status: proposed, not yet measured.** No CPU number here is a result. The
-2026-09 numbers in `../README.md` (444 s, 70 s, 6.85×) are not compared with
-anything this run produces.
+**Status: measured (GitHub run `38520305068`, exploratory tier).** The run
+completed with conclusion success: 10 of 10 scalars with all three arms
+verified, 640/640 rho logs verified, S_steps 0.2028 (0.997x the floor), validity
+gate passed. `results/`, `report/` (report.md, report.pdf) and `figures/arms.*`
+are the workflow artifact; re-running
+`python3 analyze.py results` (plain Python) on a copy reproduced `summary.json` and `report.md`
+byte for byte.
+
+Frozen decisions (`protocol.json`), CPU per complete ECDLP, geometric mean with
+95% bootstrap interval:
+
+| comparison | ratio | rule outcome |
+| --- | --- | --- |
+| baseline base / rho | 1.77e5 (1.66e5-1.89e5) | costs more than matched rho: not an advance against rho on E0/F_2^19 |
+| tau-orbit base (dim 6) / rho | 1.94e4 (1.69e4-2.23e4) | costs more than matched rho: not an advance against rho |
+| baseline / tau-orbit base | 9.124 (8.122-10.270) | the orbit-base speedup replicates within this run |
+
+The 2026-09 numbers in `../README.md` (444 s, 70 s, 6.85x) were not used in these
+statistics. The tier is exploratory: a GitHub-hosted VM (AMD EPYC 9V45, 4
+logical CPUs, no allocation receipt or pinned CPU), so there is no Tier 1 claim.
+The 9.12x is this run's replication value and does not replace 6.85x. Graph:
+`figures/arms.png`; report PDF: `report/report.pdf`.
 
 ```sh
 python3 validate_rho.py                    # pure Python: correctness + step counts (no Sage needed)

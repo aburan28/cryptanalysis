@@ -119,12 +119,14 @@ without TeX can open the paper.
      - Panel C: the legacy packed rho.
      - Each panel reports the cold ratio and the Bernstein–Lange column.
    - The protocol has been pushed but not read back.
-4. A **rho arm at `n = 19`** is preregistered in
-   `experiments/volcano-ic/rho-arm-20261014/`. It is a matched signed-Frobenius
-   rho run in the same job as fresh baseline and Γ-orbit arms, in a pinned Sage
-   container on a GitHub runner, so the result will be exploratory tier. The
-   workflow has been pushed but not read back. Until then, `6.85×` stays a
-   ratio between two bases, not a ratio to rho.
+4. ~~A **rho arm at `n = 19`**~~ — measured, exploratory tier (GitHub run
+   `38520305068`, `experiments/volcano-ic/rho-arm-20261014/`; 10/10 scalars,
+   640/640 rho logs verified, validity gate passed).
+   - Frozen rule: both IC bases cost more CPU than matched rho (baseline
+     1.77e5×, orbit base 1.94e4×; lower CI bounds above 1): not an advance
+     against rho. Orbit base over baseline replicates at 9.12× (8.12–10.27).
+   - The paper now states this beside Table `tab:n19`; 6.85× stays the
+     earlier two-base ratio. Not Tier 1; no Tier 1 replication is claimed.
 4a. ~~**n = 131 canonicalization**~~ — measured in
    `experiments/canon-n131-20261014/` (three limbs, exact; instruction counts
    only). The branch-free arm is 2.4× the exhaustive scan; the binary-lifting
