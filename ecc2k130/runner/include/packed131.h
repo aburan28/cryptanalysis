@@ -100,6 +100,15 @@
 #if ECC_PACKED_CLMUL_FLAT && !ECC_PACKED_CLMAD
 #error "ECC_PACKED_CLMUL_FLAT requires ECC_PACKED_CLMAD"
 #endif
+#ifndef ECC_PACKED_CLMUL_HI_BATCH
+#define ECC_PACKED_CLMUL_HI_BATCH 0
+#endif
+#if ECC_PACKED_CLMUL_HI_BATCH != 0 && ECC_PACKED_CLMUL_HI_BATCH != 1
+#error "ECC_PACKED_CLMUL_HI_BATCH must be 0 or 1"
+#endif
+#if ECC_PACKED_CLMUL_HI_BATCH && (!ECC_PACKED_CLMAD || ECC_PACKED_CLMUL_FLAT)
+#error "ECC_PACKED_CLMUL_HI_BATCH requires CLMAD and excludes CLMUL_FLAT"
+#endif
 #ifndef ECC_PACKED_PAIR_CLMUL
 #define ECC_PACKED_PAIR_CLMUL 0
 #endif
@@ -227,7 +236,7 @@ ECC_HD void clmul64(uint32_t r[4], const uint32_t a[2], const uint32_t b[2]) {
 
 /* Fold three 128-bit Karatsuba leaves into one 256-bit product. l0/l1 are
    the low 64x64, h0/h1 the high, m0/m1 the middle; each pair is lo then hi. */
-#if ECC_PACKED_CLMUL_FLAT || ECC_PACKED_PAIR_CLMUL
+#if ECC_PACKED_CLMUL_FLAT || ECC_PACKED_CLMUL_HI_BATCH || ECC_PACKED_PAIR_CLMUL
 ECC_HD void foldKarat128(uint32_t r[8], uint64_t l0, uint64_t l1, uint64_t h0, uint64_t h1,
                          uint64_t m0, uint64_t m1) {
     m0 ^= l0 ^ h0;
@@ -243,21 +252,30 @@ ECC_HD void foldKarat128(uint32_t r[8], uint64_t l0, uint64_t l1, uint64_t h0, u
 
 /* 4 x 4 words -> 8 words, Karatsuba again: 3 clmul64 = 9 clmul32. */
 ECC_HD void clmul128(uint32_t r[8], const uint32_t a[4], const uint32_t b[4]) {
-#if ECC_PACKED_CLMUL_FLAT && ECC_PACKED_CLMAD && defined(__CUDA_ARCH__)
-    /* Issue the three .lo halves, then the three .hi, so the carry-less unit
-       sees six independent multiplies instead of three lo/hi pairs. */
+#if (ECC_PACKED_CLMUL_FLAT || ECC_PACKED_CLMUL_HI_BATCH) && ECC_PACKED_CLMAD && defined(__CUDA_ARCH__)
+    /* Six independent carryless halves. The high-first candidate gives the
+       high-half Karatsuba consumers more distance from their producers. */
     const uint64_t a0 = uint64_t(a[0]) | (uint64_t(a[1]) << 32);
     const uint64_t a1 = uint64_t(a[2]) | (uint64_t(a[3]) << 32);
     const uint64_t b0 = uint64_t(b[0]) | (uint64_t(b[1]) << 32);
     const uint64_t b1 = uint64_t(b[2]) | (uint64_t(b[3]) << 32);
     const uint64_t as = a0 ^ a1, bs = b0 ^ b1;
     uint64_t l0, h0, m0, l1, h1, m1;
+#if ECC_PACKED_CLMUL_HI_BATCH
+    asm("clmad.hi.u64 %0, %1, %2, 0;" : "=l"(l1) : "l"(a0), "l"(b0));
+    asm("clmad.hi.u64 %0, %1, %2, 0;" : "=l"(h1) : "l"(a1), "l"(b1));
+    asm("clmad.hi.u64 %0, %1, %2, 0;" : "=l"(m1) : "l"(as), "l"(bs));
+    asm("clmad.lo.u64 %0, %1, %2, 0;" : "=l"(l0) : "l"(a0), "l"(b0));
+    asm("clmad.lo.u64 %0, %1, %2, 0;" : "=l"(h0) : "l"(a1), "l"(b1));
+    asm("clmad.lo.u64 %0, %1, %2, 0;" : "=l"(m0) : "l"(as), "l"(bs));
+#else
     asm("clmad.lo.u64 %0, %1, %2, 0;" : "=l"(l0) : "l"(a0), "l"(b0));
     asm("clmad.lo.u64 %0, %1, %2, 0;" : "=l"(h0) : "l"(a1), "l"(b1));
     asm("clmad.lo.u64 %0, %1, %2, 0;" : "=l"(m0) : "l"(as), "l"(bs));
     asm("clmad.hi.u64 %0, %1, %2, 0;" : "=l"(l1) : "l"(a0), "l"(b0));
     asm("clmad.hi.u64 %0, %1, %2, 0;" : "=l"(h1) : "l"(a1), "l"(b1));
     asm("clmad.hi.u64 %0, %1, %2, 0;" : "=l"(m1) : "l"(as), "l"(bs));
+#endif
     foldKarat128(r, l0, l1, h0, h1, m0, m1);
 #else
     uint32_t lo[4], hi[4], mid[4], as[2], bs[2];

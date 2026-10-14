@@ -42,6 +42,8 @@ CASES = {
         "GPUFLAGS": "-Xptxas -v -DECC_PACKED_ZIP_SQR=1"}, ""),
     "production_clmad_hi_first": ({
         "GPUFLAGS": "-Xptxas -v -DECC_PACKED_CLMAD_HI_FIRST=1"}, ""),
+    "production_clmul_hi_batch": ({
+        "GPUFLAGS": "-Xptxas -v -DECC_PACKED_CLMUL_HI_BATCH=1"}, ""),
     "production_w4_256": ({"THREADS": 256}, ""),
     "production_top_hoist": ({"PACKED_TOP_HOIST": 1}, ""),
     "production_single_noinline": ({"PACKED_INLINE_POLY": 2}, ""),
@@ -383,7 +385,8 @@ def main(mode: str = "screen", selected: str = "", output: str = "",
         allowed = ({"include/collective_inverse.cuh"}
                    if "production_skip_root_barriers" in selected_names else set())
         if {"production_top_half_clmad", "production_zip_square",
-            "production_clmad_hi_first", "production_w4_256"} & set(selected_names):
+            "production_clmad_hi_first", "production_clmul_hi_batch",
+            "production_w4_256"} & set(selected_names):
             allowed.update(("include/collective_inverse.cuh", "include/packed131.h"))
         if set(changed) != allowed:
             raise ValueError(f"production source differs from pinned baseline: {changed}")

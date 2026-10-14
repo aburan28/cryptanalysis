@@ -150,4 +150,51 @@ modal run ecc2k130/runner/tune_frobenius_v3.py --mode screen \
 
 ## Geometry result
 
-Pending execution.
+The [256-thread screen](w4-256-screen.json) completed with A/A paired ratios
+`1.000246` and `1.000839` (median `1.000542`). The 256-thread candidate
+ratios were `0.597903` and `0.598083` (median `0.597993`), with median
+candidate/control rates of `10.753026` and `17.981855` billion updates/s.
+Every timed arm retained the 355-record sorted DP32 corpus and zero drops.
+The [independent screen checker](validate_screen.py) recomputed the raw rates,
+ratios, and corpus for both this [validation](w4-256-validation.json) and the
+[high-half-first validation](clmad-hi-first-validation.json). The 256-thread
+geometry is a large regression under the frozen workload. It remains an
+opt-in screen configuration and does not advance. The [raw log](w4-256-screen.log)
+is preserved.
+
+### Three-product high-half batch (frozen before execution)
+
+The smaller high-half-first change had a sub-percent apparent gain within A/A
+noise. To target more of the repeated high-half consumer stalls, the next
+default-off `ECC_PACKED_CLMUL_HI_BATCH=1` path in `packed131.h` issues the
+three independent `clmad.hi.u64` operations of a 128-bit Karatsuba product
+before its three `clmad.lo.u64` operations. It uses the same six carryless
+operations, fold, top correction, and reduction as the baseline. The existing
+`PACKED_CLMUL_FLAT` path did the reverse order under an earlier profile; this
+is a different instruction schedule. The hypothesis is a longer producer to
+consumer interval for the high-half XOR fold, with possible costs from longer
+register lifetimes or ptxas reordering. The candidate flag is off by default
+and is independent of the first high-half-first flag.
+
+Run the host field and walk gate, then two alternating 64-launch GPU pairs
+against the same pinned baseline with a production A/A arm. The screen
+requires the same 355-record DP32 sorted hash and zero drops in every arm.
+Only if both candidate ratios exceed the A/A interval will it advance to
+five warmed 128-launch pairs and fresh/checkpoint/resume checks. Preserve
+build failures, different DP corpora, and regressions as separate outcomes.
+No instruction-sample ratio is a useful-update speed measurement.
+
+```sh
+python3 ecc2k130/runner/research/kernelagent-20261014/host_gate.py \
+  ecc2k130/runner/research/kernelagent-20261014/clmul-hi-batch-host.json \
+  ECC_PACKED_CLMUL_HI_BATCH=1
+modal run ecc2k130/runner/tune_frobenius_v3.py --mode screen \
+  --selected production,production_clmul_hi_batch --production-baseline \
+  --baseline-commit 1f8e6847de9e207880bd3be63835c3f56eb182d5 \
+  --output research/kernelagent-20261014/clmul-hi-batch-screen.json \
+  > ecc2k130/runner/research/kernelagent-20261014/clmul-hi-batch-screen.log 2>&1
+```
+
+## Batched high-half result
+
+Pending execution. The candidate remains off by default.

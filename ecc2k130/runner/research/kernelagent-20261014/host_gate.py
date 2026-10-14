@@ -1,4 +1,4 @@
-"""Run the independent packed-field host gate for the high-half-first switch."""
+"""Run the independent packed-field host gate for selected CLMAD schedules."""
 
 import datetime
 import hashlib
@@ -21,17 +21,19 @@ def run(command: list[str]) -> dict:
             "stdout": completed.stdout, "stderr": completed.stderr}
 
 
-def main(output_name: str) -> None:
+def main(output_name: str, flag: str = "ECC_PACKED_CLMAD_HI_FIRST=1") -> None:
     output = Path(output_name)
     if output.exists():
         raise FileExistsError(output)
+    if flag not in ("ECC_PACKED_CLMAD_HI_FIRST=1", "ECC_PACKED_CLMUL_HI_BATCH=1"):
+        raise ValueError("unsupported candidate flag")
     with tempfile.TemporaryDirectory(prefix="ecc2k130-hi-first-") as directory:
         binary = Path(directory) / "testpacked"
         command = ["clang++", "-O2", "-std=c++17",
                    "-DECC_PACKED_SINGLE_PRODUCT=1", "-DECC_PACKED_BY_VALUE=1",
                    "-DECC_PACKED_PERM_SIGMA=3", "-DECC_PACKED_DIRECT_REDUCE=1",
                    "-DECC_PACKED_GENERATED_PRODUCT=1", "-DECC_PACKED_CLMAD=1",
-                   "-DECC_PACKED_CLMAD_HI_FIRST=1", "-Wno-unknown-pragmas",
+                   f"-D{flag}", "-Wno-unknown-pragmas",
                    str(TEST.relative_to(ROOT)), "-o", str(binary)]
         receipt = {
             "at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -51,6 +53,6 @@ def main(output_name: str) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        raise SystemExit("usage: host_gate.py output.json")
-    main(sys.argv[1])
+    if len(sys.argv) not in (2, 3):
+        raise SystemExit("usage: host_gate.py output.json [CANDIDATE_FLAG=1]")
+    main(sys.argv[1], sys.argv[2] if len(sys.argv) == 3 else "ECC_PACKED_CLMAD_HI_FIRST=1")
