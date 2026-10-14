@@ -116,9 +116,12 @@ and report again what they reported since. The second copy is byte-identical
 to the first, so the campaign's store keeps it once: it is a re-report, not
 a collision.
 
-**Where the points go.** The campaign's store is written by its own fleet.
-There is no public upload yet, so a contributor's `dps.bin` stays on their
-machine until there is one.
+**Where the points go.** The managed fleet writes to its existing campaign
+store. An invited contributor can use the
+[public container and HTTPS gateway](runner/public/README.md) to reserve a
+run ID in the shared seed registry, upload DP records and checkpoints, and
+feed the existing collision pool through a separate ingester. The gateway
+must be deployed before that command can be used.
 
 At the campaign's weight a lane reports about once in `2^28.4` steps, so
 `--verify` (a CPU re-walk) is for test weights. `make verify` collects at
@@ -518,8 +521,9 @@ reports, so a short session at weight 34 yields nothing.  That is what
   with coefficients -- the source tree's resolver does that with its
   `TableWalk`; here the re-walk exists (`rewalk` in `hostcheck.h`) and the
   coefficient bookkeeping does not.
-- **A way to hand in points.** `dps.bin` is the campaign's record, but the
-  campaign's store takes points only from its own fleet today.
+- **Independent validation of public points.** The public gateway retains
+  submitted records and checks their format, but a seed re-walk is needed
+  before treating a contributor collision as a verified result.
 - **Multi-GPU.** One process, one device; run one per device with distinct
   run ids and merge the corpora.
 - **A rate on any other card, or for the sigma build on any card.** `clmad`

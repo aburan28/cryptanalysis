@@ -1,5 +1,9 @@
 # ECC2K-130 runner
 
+For invited external GPU contributors, use the
+[public worker image and gateway](public/README.md). The container below is
+for the managed fleet and requires private S3 and RDS access.
+
 The Certicom challenge client and its worker supervisor now live here, independently
 of the `crypto` checkout. Production uses the legacy Frobenius walk at **DP weight
 32**, contributing to the existing **`ecc2k-130`** RDS collision pool. The faster

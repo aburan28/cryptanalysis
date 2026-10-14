@@ -1,0 +1,56 @@
+services:
+  gateway:
+    image: ${ECC_GATEWAY_IMAGE:-ghcr.io/aburan28/ecc2k130-gateway:latest}
+    environment:
+      ECC_PUBLIC_JOIN_TOKEN: ${ECC_PUBLIC_JOIN_TOKEN:?set an invited contributor token}
+      ECC_BUCKET: ${ECC_BUCKET:?set the existing campaign bucket}
+      ECC_PUBLIC_STREAM_ID: ${ECC_PUBLIC_STREAM_ID:?set a stable gateway identity}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-west-2}
+    command: ["python3", "/opt/ecc2k130/public/server.py", "--state", "/data",
+              "--bind", "0.0.0.0", "--port", "8080", "--run-id-start",
+              "${ECC_RUN_ID_START:?set a verified free run-ID range}", "--run-id-end",
+              "${ECC_RUN_ID_END:?set a verified free run-ID range}"]
+    volumes:
+      - state:/data
+    restart: unless-stopped
+    read_only: true
+    tmpfs: /tmp
+    cap_drop: [ALL]
+
+  ingress:
+    image: caddy:2
+    environment:
+      ECC_PUBLIC_HOST: ${ECC_PUBLIC_HOST:?set a public HTTPS hostname}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [gateway]
+    restart: unless-stopped
+
+  ingest:
+    profiles: [live-ingest]
+    image: ${ECC_GATEWAY_IMAGE:-ghcr.io/aburan28/ecc2k130-gateway:latest}
+    environment:
+      ECC_LIVE_INGEST: "1"
+      RHO_DP_DSN: ${RHO_DP_DSN:-}
+      ECC_BUCKET: ${ECC_BUCKET:?set the existing campaign bucket}
+      ECC_PUBLIC_STREAM_ID: ${ECC_PUBLIC_STREAM_ID:?set a stable gateway identity}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-west-2}
+    command: ["python3", "/opt/ecc2k130/public/ingest.py", "--state", "/data"]
+    volumes:
+      - state:/data
+      - ./deploy/rds-ca.pem:/opt/ecc2k130/rds-ca.pem:ro
+    restart: unless-stopped
+    read_only: true
+    tmpfs: /tmp
+    cap_drop: [ALL]
+
+volumes:
+  state:
+  caddy_data:
+  caddy_config:
