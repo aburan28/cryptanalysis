@@ -399,3 +399,26 @@ reported 1,823,132 and 519,452 retained bytes respectively. The
 compiled sources, binaries, raw logs, and temporary include shims. It
 also preserves an earlier shared-target run that loaded the wrong layout;
 that run is excluded from these results.
+
+The `--unit-split-terminal-orbit` format folds the terminal norm ball under
+the same six Eisenstein units used by the digit table. The exact ball
+`N(a+bτ) < 46²` contains 7,675 coefficient pairs: zero and 1,279 nonzero
+six-unit orbits. The earlier sign-canonical terminal table held 3,838
+points. The new table holds 1,280 representatives as two-x affine records
+and a 3,838-word index/unit map. The two-x record derives the third cube-root
+x image with field additions, so terminal recovery still uses one mixed
+point addition. Its retained table size is **404,392 bytes**, 115,060 bytes
+(22.15%) below the split-seed format, with the same 21 radix steps.
+
+The [terminal orbit receipt](terminal-orbit-validation.json) records a release
+build with its own Cargo target directory, all 3,838 direct terminal-point
+comparisons, all 3,301 packed residue words and 29,709 exact quotient cases,
+and the 128-scalar independent binary replay. The 31 temporary include shims
+only satisfy unrelated atlas includes absent from this sparse checkout; the
+compiled source hash and shim manifest hash are recorded. In
+`SplitPrimeTerminalOrbit.lean`, checked lemmas prove the lattice unit has
+order three, has no nonzero fixed point under the tested actions, and
+preserves the Eisenstein norm. The finite orbit count and correspondence of
+the native point action to the curve endomorphism remain verified by the
+native exhaustive test rather than by Lean. CPU timing for this format awaits
+a reachable serial runner and an isolation receipt.

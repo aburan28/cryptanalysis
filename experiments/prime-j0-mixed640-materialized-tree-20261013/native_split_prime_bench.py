@@ -556,6 +556,94 @@ UNIT_SPLIT_ONLINE_RUST = r"""    for row in &tables.digit_windows {
 """
 
 
+TERMINAL_ORBIT_BUILD_RUST = r"""        let mut orbit_digits = Vec::new();
+        let mut orbit_indices = std::collections::BTreeMap::new();
+        let mut terminal_orbit_codes = Vec::with_capacity(pair_digits.len());
+        for &pair in &pair_digits {
+            let images = unit_images((i32::from(pair.0), i32::from(pair.1)));
+            let representative = *images.iter().min().unwrap();
+            let index = *orbit_indices.entry(representative).or_insert_with(|| {
+                let index = orbit_digits.len();
+                orbit_digits.push((representative.0 as i16, representative.1 as i16));
+                index
+            });
+            let unit = unit_images(representative).iter().position(|&image| {
+                image == (i32::from(pair.0), i32::from(pair.1))
+            }).unwrap();
+            terminal_orbit_codes.push((index * 6 + unit) as u16);
+        }
+        assert_eq!(orbit_digits.len(), 1280);
+        assert_eq!(orbit_digits[0], (0, 0));
+        let terminal_orbits = build_u256_window(&orbit_digits, base).iter()
+            .copied().map(U256TwoXAffine::from_affine)
+            .collect::<Vec<_>>().into_boxed_slice();
+        let terminal_orbit_codes = terminal_orbit_codes.into_boxed_slice();
+"""
+
+
+TERMINAL_ORBIT_TEST_RUST = r"""    #[test]
+    fn split_prime_terminal_orbit_exhaustive() {
+        let tables = &SPLIT_PRIME_TABLES;
+        let mut pairs = Vec::new();
+        for a in 0..92i32 {
+            for b in -54..=54i32 {
+                let norm = a*a + 3*a*b + 3*b*b;
+                if norm < 2116 && (a > 0 || b >= 0) {
+                    pairs.push((a as i16, b as i16));
+                }
+            }
+        }
+        assert_eq!(pairs.len(), 3838);
+        assert_eq!(tables.terminal_orbits.len(), 1280);
+        // Table construction advances the base by pi^21.
+        let mut base = Jacobian::generator();
+        for _ in 0..SPLIT_PRIME_STEPS {
+            let ordinary = affine_multiples(base, 86).pop().unwrap();
+            let tau = affine_multiples(base.tau(), 21).pop().unwrap().neg().into_affine();
+            base = ordinary.add_mixed(tau).into_affine();
+        }
+        let direct = build_u256_window(&pairs, base);
+        for (index, &pair) in pairs.iter().enumerate() {
+            let word = tables.terminal_orbit_codes[index] as usize;
+            let point = tables.terminal_orbits[word / 6].unit(word % 6);
+            assert_eq!(point.x.0, direct[index].x.0, "terminal x {pair:?}");
+            assert_eq!(point.y.0, direct[index].y.0, "terminal y {pair:?}");
+        }
+        println!("terminal_orbit_pairs=3838 terminal_orbits=1280");
+    }
+
+"""
+
+
+def fold_terminal_orbits(source: str) -> str:
+    source = replace_once(source,
+        "    terminal_pairs: Box<[U256Affine]>,\n",
+        "    terminal_orbits: Box<[U256TwoXAffine]>,\n"
+        "    terminal_orbit_codes: Box<[u16]>,\n")
+    source = replace_once(source,
+        "        let terminal_pairs = build_u256_window(&pair_digits, base);\n",
+        TERMINAL_ORBIT_BUILD_RUST)
+    source = replace_once(source,
+        "(terminal_plain.len() + terminal_tau.len() + terminal_pairs.len())\n"
+        "                * size_of::<U256Affine>()",
+        "(terminal_plain.len() + terminal_tau.len())\n"
+        "                * size_of::<U256Affine>()\n"
+        "            + terminal_orbits.len() * size_of::<U256TwoXAffine>()\n"
+        "            + terminal_orbit_codes.len() * size_of::<u16>()")
+    source = replace_once(source,
+        "               terminal_plain, terminal_tau, terminal_pairs,\n"
+        "               terminal_row_start, terminal_row_min, retained_bytes }",
+        "               terminal_plain, terminal_tau,\n"
+        "               terminal_orbits, terminal_orbit_codes,\n"
+        "               terminal_row_start, terminal_row_min, retained_bytes }")
+    source = replace_once(source,
+        "            let mut point = tables.terminal_pairs[index];\n",
+        "            let word = tables.terminal_orbit_codes[index] as usize;\n"
+        "            let mut point = tables.terminal_orbits[word / 6].unit(word % 6);\n")
+    anchor = "    #[test]\n    fn split_prime_holdout_matches_independent_binary() {"
+    return replace_once(source, anchor, TERMINAL_ORBIT_TEST_RUST + anchor)
+
+
 def split_unit_seed_tables(source: str) -> str:
     source = replace_once(source, UNIT_ROW_RUST, UNIT_SPLIT_ROW_RUST)
     source = replace_once(source, UNIT_ONLINE_RUST, UNIT_SPLIT_ONLINE_RUST)
@@ -724,7 +812,8 @@ SHORT_REPLACEMENTS = {
 
 def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
          unit_compressed: bool = False, packed_correction: bool = False,
-         tight_terminal: bool = False, split_seed_tables: bool = False) -> None:
+         tight_terminal: bool = False, split_seed_tables: bool = False,
+         terminal_orbits: bool = False) -> None:
     if variant not in ("3301", "3307", "5113"):
         raise ValueError("variant must be 3301, 3307, or 5113")
     spec = importlib.util.spec_from_file_location("mixed640_bench_cli", BASE)
@@ -757,6 +846,10 @@ def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
         if not tight_terminal:
             raise ValueError("split seed tables require tight packed unit compression")
         split_source = split_unit_seed_tables(split_source)
+    if terminal_orbits:
+        if not split_seed_tables:
+            raise ValueError("terminal orbits require split seed tables")
+        split_source = fold_terminal_orbits(split_source)
     if packed_correction:
         anchor = "    #[test]\n    fn split_prime_holdout_matches_independent_binary() {"
         split_source = replace_once(split_source, anchor,
@@ -787,7 +880,8 @@ def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
                     + ("_unit_compressed" if unit_compressed else "")
                     + ("_packed_correction" if packed_correction else "")
                     + ("_tight_terminal" if tight_terminal else "")
-                    + ("_split_seed_tables" if split_seed_tables else "")),
+                    + ("_split_seed_tables" if split_seed_tables else "")
+                    + ("_terminal_orbits" if terminal_orbits else "")),
         "split_prime_source_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
         "generated_module_sha256": sha256(module_path.read_bytes()).hexdigest(),
         "generated_front_sha256": sha256(front_path.read_bytes()).hexdigest(),
@@ -816,5 +910,9 @@ if __name__ == "__main__":
     elif len(sys.argv) == 3 and sys.argv[1] == "--unit-split-table":
         main(Path(sys.argv[2]), fused_terminal=True, unit_compressed=True,
              packed_correction=True, tight_terminal=True, split_seed_tables=True)
+    elif len(sys.argv) == 3 and sys.argv[1] == "--unit-split-terminal-orbit":
+        main(Path(sys.argv[2]), fused_terminal=True, unit_compressed=True,
+             packed_correction=True, tight_terminal=True, split_seed_tables=True,
+             terminal_orbits=True)
     else:
         raise SystemExit("usage: native_split_prime_bench.py [--linear|--fused-terminal|--short-fused|--unit-fused|--unit-packed|--unit-packed-tight|--unit-split-table] TARGET_DIR")
