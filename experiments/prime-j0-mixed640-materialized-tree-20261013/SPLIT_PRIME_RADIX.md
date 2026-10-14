@@ -232,6 +232,18 @@ conservative 56-norm fused table and 663-coordinate fallback while this
 variant is tested. `SplitPrimeRadix.lean` proves norm preservation under
 the unit action, exact division for an arbitrary unit digit, and the
 numeric 46-norm and coordinate inequalities. The generated
+`SplitPrimeNormBound.lean` proves the Eisenstein norm triangle bound and
+strict per-digit contraction for exact division by `86-21 tau`:
+`N(z)≤B²`, `N(d)≤D²`, and `(B+D)²<3301 R²` imply `N((z-d)/pi)<R²`.
+Its polynomial Cauchy identity and axiom audit are pinned in
+`split-prime-norm-bound-lean-receipt.json`. Applying the theorem through
+all 21 digits still requires a Lean proof of the nearest-cell premise
+`3N(z₀)≤n` and a formal radius sequence. The integer ceiling recurrence
+from `B₀=27·57²¹` and digit radius 1064 ends at `B₂₁=46`, giving
+`N(z₂₁)<46²` under that premise: all 21 integer radius inequalities are
+strict against the exact norm multiplier 3301. This 21-step composition is
+checked by the model but is not yet a Lean theorem.
+The generated
 `SplitPrimeUnitCover.lean` proves the complete finite quotient bound:
 for every `0 ≤ r < 3301`, there is a seed `m ≤ 1064` whose image under one
 of the six explicit unit multipliers is `r`. Its 24 bounded certificate
