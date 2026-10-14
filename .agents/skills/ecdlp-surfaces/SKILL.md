@@ -13,6 +13,7 @@ description: Select, run, and interpret elliptic-curve surface and genus-2+ Jaco
 | Check whether that representation preserves a supplied ECDLP subgroup | `transfer_check` | Checks prime order, actual cyclic-subgroup membership, inverse round trips, and preservation of the generator's order. |
 | Check a proposed abelian surface's Frobenius compatibility | `frobenius_filter` | Tests necessary polynomial conditions for an elliptic factor; it supplies no homomorphism or subgroup certificate. |
 | Check the repository's n=83 binary Koblitz variants | `binary_surface_check` | Uses the pinned GF(2^83) basis and subgroups, classifies the binary pencil analytically, verifies quartic transfers, and checks the same/opposite products. |
+| Construct a binary genus-2 cover and transfer the pinned n=83 subgroups | `binary_genus2_check` in `tools/binary-genus2-cover` | Constructs the same-field degree-three cover, checked Mumford pullbacks and an inverse on their image. Generic Jacobian norms and a faster solver are separate. |
 | Construct or replay a supported genus-2 or genus-3 cover | `hyperelliptic-cover construct` / `verify` in `crypto` | Checks the fixed cover's equation, smoothness, genus, degree, and field; subgroup preservation is a separate obligation. |
 | Compute with supported genus-2+ divisor classes | `hyperelliptic-cover arithmetic`, or the native Jacobian APIs | Checks Mumford arithmetic in the declared curve and infinity model; it does not construct an elliptic-subgroup map. |
 | Transfer into the binary genus-3 Jacobian | `OrdinaryBinaryCover` Rust API in both repositories | Constructs rational-point-class pullbacks and typed degree-three composition witnesses; injectivity requires an independently verified exact subgroup order coprime to three. |
@@ -167,9 +168,28 @@ surface study did not run its Jacobian pullbacks; preserve that execution gap
 until the requested native transfer checks are performed. The reference gives
 exact model JSON and library entry points for doing so.
 
-For genus 2, distinguish the existing odd-characteristic degree-two cover,
-conditional CM polarization checks, and a proposed binary torsion-gluing
-construction. A product `E x E'` or passing Frobenius polynomial is not a
+For a concrete binary genus-2 construction, use
+`C_a: v^2+u^2*v=u^5+a*u^4+u^3+u`. Its map to E is
+`(u^3/(u+1)^2,(u*(u+1)*v+u^2+u+1)/(u+1)^3)`.
+Source infinity and points over u=1 map to O; (0,0) maps to (0,1).
+Run the separate native checker:
+
+```sh
+cargo run --release --locked --manifest-path tools/binary-genus2-cover/Cargo.toml -- \
+  --a both --output "$surface_run_dir/genus2-n83.json"
+```
+
+For a supplied Q, select one a and add `--q-point 0xX,0xY` or `O`;
+omit `--scalar` when unknown. Require the exact pinned basis and subgroup.
+The output includes reduced divisors, order and image-inverse checks, and
+exhaustive controls over fields of size at most 16. See the
+[construction report](../../../research/binary_genus2_cover_20261014/REPORT.md)
+for the geometric proof and the precise partial Lean formalization.
+This cover stays over GF(2^83); it is not a descent to GF(2).
+
+For other genus-2 targets, distinguish the odd-characteristic degree-two cover,
+conditional CM polarization checks, and binary torsion-gluing workflows.
+A product `E x E'` or passing Frobenius polynomial is not a
 certificate of a smooth genus-2 curve and its explicit subgroup map.
 The reference covers higher genus, nonhyperelliptic targets, Kummer quotients,
 kernel checks, unsupported operations, and complete solver-cost accounting.
