@@ -80,7 +80,7 @@ static __global__ void ECC_BOUNDS walk(
         const bool last = step + 1 == p.steps;
         const unsigned long long now = p.iterBase + step + 1;
         const bool guard = p.maxIters && now % ECC_GUARD_PERIOD == 0;
-        P131 inv = batchInverse131(prod, p.threads);
+        P131 inv = batchInverse131(prod, p.threads, unsigned(step));
         P131 next = {};
 #pragma unroll 1
         for (int i = 0; i < ECC_BATCH; ++i) {

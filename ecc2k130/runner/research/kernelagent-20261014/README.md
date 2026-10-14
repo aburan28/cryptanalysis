@@ -226,3 +226,63 @@ below A/A. None changed the deployed preset. The [critical-path problem](../../.
 now points to a structural grouped-inverse barrier reduction with an exact
 data-race proof obligation and independent replay gate before any next
 throughput claim.
+
+## Double-buffered grouped inverse: frozen protocol before execution
+
+The default-off `ECC_INVERSE_DOUBLE_BUFFER=1` candidate gives consecutive
+grouped inverse calls separate shared-memory banks, selected by the walk
+step's parity, and omits the final group barrier. It changes no field
+arithmetic or walk inputs. The predicted benefit is one fewer group barrier
+per inverse. Its cost is another `5 * ECC_THREADS * sizeof(uint32_t)` bytes
+of shared memory and a bank-address calculation; resource or scheduling costs
+may exceed the saved synchronization.
+
+The synchronization argument applies to a full grouped block with the same
+step loop for every warp. Each call's last downward-level barrier precedes
+every lane's final read. A warp may begin the next call before another warp
+finishes that read, but the next call writes the other bank. Before any warp
+can enter the call two steps later and reuse the old bank, it must pass the
+next call's first group barrier, which waits for every warp in the group to
+enter that call. Each warp must have finished its prior read before entering.
+The first call writes its chosen bank before its first barrier; the last call
+does not need a later reuse. Zero inputs follow the same barriers after the
+existing replacement by one. The fallback tail is selected for an entire
+block and does not touch group scratch. This argument assumes CUDA's group
+barrier provides the required shared-memory ordering; a device race check is
+an independent gate, not a substitute for the argument.
+
+The [gate driver](double_buffer_gate.py) first builds the production binary
+with CUDA `sm_120`, records ptxas resources and exact hashes, then tests the
+inverse against the independent device reference at 512 threads for all
+supported group widths and at the production 640 threads for four-warp
+groups. It runs `compute-sanitizer --tool racecheck` at 640 threads with
+different group loop counts and repeated bank reuse. A missing race checker,
+build failure, reference mismatch, race report, or ambiguous checker output
+stops before timing and remains a distinct receipt. Run the existing host
+field/walk gate as an additional check; it does not exercise the new shared
+scratch. Preserve each raw log and machine-readable result.
+
+If those gates pass, run the same pinned production baseline, A/A arm, two
+alternating 64-launch pairs, 120,320 workers, batch 16, four-warp groups,
+run ID 11000 and DP32. Every timing arm must reproduce the frozen 355-record
+sorted corpus SHA-256
+`c80bb8db34e419d53bc946a5fef01c99fd60214a16f9b42ff87b5d52f3668a90`
+with zero drops. Only two candidate ratios above the A/A interval advance
+to five warmed 128-launch pairs and fresh/checkpoint/resume checks. Keep the
+switch off by default unless all compatibility and performance gates pass.
+The screen measures useful update throughput for this one GPU and workload;
+it does not measure full cloud or ECDLP cost.
+
+```sh
+python3 -m py_compile ecc2k130/runner/research/kernelagent-20261014/double_buffer_gate.py ecc2k130/runner/tune_frobenius_v3.py
+python3 ecc2k130/runner/research/kernelagent-20261014/host_gate.py \
+  ecc2k130/runner/research/kernelagent-20261014/inverse-double-buffer-host.json
+modal run ecc2k130/runner/research/kernelagent-20261014/double_buffer_gate.py \
+  --output ecc2k130/runner/research/kernelagent-20261014/inverse-double-buffer-gate.json \
+  > ecc2k130/runner/research/kernelagent-20261014/inverse-double-buffer-gate.log 2>&1
+modal run ecc2k130/runner/tune_frobenius_v3.py --mode screen \
+  --selected production,production_inverse_double_buffer --production-baseline \
+  --baseline-commit 1f8e6847de9e207880bd3be63835c3f56eb182d5 \
+  --output research/kernelagent-20261014/inverse-double-buffer-screen.json \
+  > ecc2k130/runner/research/kernelagent-20261014/inverse-double-buffer-screen.log 2>&1
+```

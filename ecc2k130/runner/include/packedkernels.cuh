@@ -399,7 +399,7 @@ static __global__ void ECC_BOUNDS walk(WalkParams<unsigned> p, unsigned *__restr
         const bool last = step + 1 == p.steps;
         const unsigned long long now = p.iterBase + step + 1;
         const bool guard = p.maxIters && now % ECC_GUARD_PERIOD == 0;
-        P131 inv = batchInverse131(prod, p.threads);
+        P131 inv = batchInverse131(prod, p.threads, unsigned(step));
         P131 next;
 #if ECC_TABLE_FUSED_PIPE
         // The slot's operands are loaded one iteration ahead, before this
@@ -665,7 +665,7 @@ static __global__ void ECC_BOUNDS walk(WalkParams<unsigned> p, unsigned *__restr
 #endif  // ECC_TABLE_PIPE_SELECT
         ECC_PHASE_MARK(ph1);
 #if ECC_PACKED_POLY_CHAIN
-        inv = batchInverse131(prod, p.threads);
+        inv = batchInverse131(prod, p.threads, unsigned(step));
 #else
         inv = inv131(prod);
 #endif
