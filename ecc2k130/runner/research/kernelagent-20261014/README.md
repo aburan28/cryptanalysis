@@ -286,3 +286,9 @@ modal run ecc2k130/runner/tune_frobenius_v3.py --mode screen \
   --output research/kernelagent-20261014/inverse-double-buffer-screen.json \
   > ecc2k130/runner/research/kernelagent-20261014/inverse-double-buffer-screen.log 2>&1
 ```
+
+The first gate invocation stopped locally before GPU allocation because the
+driver did not add the runner directory to its Python import path. Its
+[unchanged log](inverse-double-buffer-gate.log) is retained. The corrected
+driver is rerun with a separate `inverse-double-buffer-gate-r2.log`; the
+original failure is an infrastructure/driver result, not an inverse result.

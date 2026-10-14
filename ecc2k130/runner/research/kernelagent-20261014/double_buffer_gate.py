@@ -12,6 +12,7 @@ import sys
 import modal
 
 RUNNER = Path(__file__).resolve().parents[2] if modal.is_local() else Path("/opt/ecc2k130")
+sys.path.insert(0, str(RUNNER))
 IMAGE_ID = os.environ.get("ECC_BENCH_IMAGE", "im-LEaik53IOCmWvHm1O2UUPQ")
 app = modal.App("ecc2k130-double-buffer-inverse-gate")
 image = modal.Image.from_id(IMAGE_ID) if modal.is_local() else None
