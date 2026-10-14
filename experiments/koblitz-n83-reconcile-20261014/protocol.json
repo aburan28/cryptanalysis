@@ -1,0 +1,388 @@
+{
+  "arms": {
+    "iA770f": {
+      "binary": "ic_fast_r770",
+      "kind": "ic_fast",
+      "log_source": "fresh in-process sequential rank",
+      "producer": "koblitz_orbit_dlp_fast (A)",
+      "revision": "r770",
+      "role": "revision contrast for A's IC",
+      "side": "ic"
+    },
+    "iA819f": {
+      "binary": "ic_fast_r819",
+      "kind": "ic_fast",
+      "log_source": "fresh in-process sequential rank",
+      "producer": "koblitz_orbit_dlp_fast (A)",
+      "revision": "r819",
+      "role": "A's exact IC",
+      "side": "ic"
+    },
+    "iB770c": {
+      "binary": "ic_online_logcache_r770",
+      "kind": "ic_online_cached",
+      "log_source": "verified cached table (KIC_LOG_TABLE_IN)",
+      "producer": "koblitz_orbit_dlp_fast_online + ic_log_cache.patch (B)",
+      "revision": "r770",
+      "role": "B's exact IC",
+      "side": "ic"
+    },
+    "iB770caa": {
+      "binary": "ic_online_logcache_r770",
+      "kind": "ic_online_cached",
+      "log_source": "verified cached table (KIC_LOG_TABLE_IN)",
+      "producer": "koblitz_orbit_dlp_fast_online + ic_log_cache.patch (B)",
+      "revision": "r770",
+      "role": "A/A control: an identical second run of iB770c",
+      "side": "ic"
+    },
+    "iB770f": {
+      "binary": "ic_online_logcache_r770",
+      "kind": "ic_online_fresh",
+      "log_source": "fresh in-process sequential rank (writes its table to the arm's receipt folder for the log-identity check)",
+      "producer": "koblitz_orbit_dlp_fast_online + ic_log_cache.patch (B)",
+      "revision": "r770",
+      "role": "producer contrast at fixed revision and log source",
+      "side": "ic"
+    },
+    "rA770": {
+      "binary": "rho_adapter_r770",
+      "dp_bits": 4,
+      "implementation": "default StrongRhoG<WideGf2,u64> (A)",
+      "kind": "rho_adapter",
+      "lanes": 32,
+      "revision": "r770",
+      "role": "revision contrast for A's rho",
+      "side": "rho"
+    },
+    "rA770aa": {
+      "binary": "rho_adapter_r770",
+      "dp_bits": 4,
+      "implementation": "default StrongRhoG<WideGf2,u64> (A)",
+      "kind": "rho_adapter",
+      "lanes": 32,
+      "revision": "r770",
+      "role": "A/A control: an identical second run of rA770 (same binary, seed and point) at a different position in the block",
+      "side": "rho"
+    },
+    "rA819": {
+      "binary": "rho_adapter_r819",
+      "dp_bits": 4,
+      "implementation": "default StrongRhoG<WideGf2,u64> (A)",
+      "kind": "rho_adapter",
+      "lanes": 32,
+      "revision": "r819",
+      "role": "A's exact rho",
+      "side": "rho"
+    },
+    "rB770": {
+      "binary": "rho_rung3_r770",
+      "dp_bits": 4,
+      "implementation": "strong rung 3, koblitz_rho_batch_ks_strong_online wide path (B)",
+      "kind": "rho_rung3",
+      "lanes": 32,
+      "revision": "r770",
+      "role": "B's exact rho",
+      "side": "rho"
+    },
+    "rT770": {
+      "binary": "rho_tuned_r770",
+      "dp_bits": 6,
+      "implementation": "A's tuned StrongRhoG<Gf2_128 fold> (n83_rho_optimization_eval, selected_config.json: fold, 64 lanes, DP 6, escape off)",
+      "kind": "rho_tuned",
+      "lanes": 64,
+      "revision": "r770",
+      "role": "A's optimization follow-up",
+      "side": "rho"
+    }
+  },
+  "build": {
+    "command": "cargo build --release --locked (each crate, one shared CARGO_TARGET_DIR)",
+    "crates": {
+      "r770": "crates/r770/Cargo.toml: ic_online_logcache_r770, ic_fast_r770, rho_rung3_r770, rho_adapter_r770, rho_tuned_r770",
+      "r819": "crates/r819/Cargo.toml: ic_fast_r819, rho_adapter_r819"
+    },
+    "flags": "Cargo default release profile, no RUSTFLAGS, crypto default-features = false (drops the redis TLS feature only); runtime pclmulqdq dispatch in every field kernel",
+    "lockfiles": "crypto's own Cargo.lock (identical at both revisions, sha256 ac5cd7a3...), pruned by Cargo to each crate's dependency set",
+    "toolchain": "rustc 1.99.0, the compiler of both A (crypto research/n83_evaluation_20261012/optimization/records/host_context.json) and B (tier1_github_38523707244/rustc.txt); installed with rustup in the workflow"
+  },
+  "clocks": {
+    "boundary_recut": "arm.py records each rho row at both boundaries from the producers' own phase timers: A boundary for rung 3 = online_ms + target_generation_ms_excluded; B boundary for the adapters = online_phase_ns.walk_and_collision. The boundary factor is the difference between the native and the common-boundary gap.",
+    "excluded_from_every_arm": [
+      "process launch",
+      "input loading",
+      "receipt serialization",
+      "the wrapper's checks and the verifier's replay"
+    ],
+    "ic_A": "koblitz_orbit_dlp_fast: target_ms from query_started (before the scan-origin hash) to after the [d]G = Q recovery check; five laps target_query/pdp/relation_check/descent/recovery_check with a sub-microsecond residual",
+    "ic_B": "koblitz_orbit_dlp_fast_online(+patch): online_ms from target_query_begin (the same scan-origin hash) to recovery_check_end; the same five laps on one PhaseClock, summing exactly; base, normal basis, root index and (cached) table load + full [L_j]G = R_j verification or (fresh) rank stage + linear algebra are excluded",
+    "rho_A": "n83_strong_point_eval / n83_rho_optimization_eval: start before the public target's membership and [r]Q subgroup check; includes Q-dependent walk starts, walk and collision, and a separate generic [d]G = Q replay; stop after the replay. Curve, normal basis and 32 G-only jumps are excluded (preparation_ns_excluded).",
+    "rho_B": "rung 3: start after_target_built (the first operation is the walk start [c]G + Q); includes walk, collision and [d]G = Q checks; stop at recovery_check_true. Curve, normal basis, the 32 G-only jumps and the public-point membership/subgroup check (target_generation_ms_excluded) are excluded."
+  },
+  "controls": {
+    "aa_ic": "iB770caa - iB770c per block; same pass rule; probes must be identical",
+    "aa_rho": "rA770aa - rA770, mean over the six seeds, per block; pass if the 95% interval of its block mean lies in [-0.05, 0.05] and |mean| <= 0.03; walk steps must be identical",
+    "identity_checks": [
+      "every arm on a point recovers the same scalar; Q0's equals fixture_scalar_validation_only; each point's scalar replays as [d]G = Q in oracle.py",
+      "rA819, rA770 and rA770aa take identical walk steps per seed (StrongRhoG's walk is unchanged between the revisions); each rho arm's steps per (seed, point) are identical across blocks",
+      "every IC arm on a point takes identical probes (expected 8,845,441 on Q0) and every fresh rank arm reaches rank 600",
+      "every iB770f table's 600 logs equal B's archived table's logs"
+    ],
+    "positive_control": "known effect from an exact computation: ln(rA770 time at seed 202610064 / at seed 202610063) must be within 0.10 of ln(walk steps 202610064 / walk steps 202610063) (A's receipts: 14,229,982 / 5,353,957, ln = 0.978); shows the timing instrument resolves an effect of the size under study"
+  },
+  "decision_rule": {
+    "contention": "isolated_bench's Tier 1 noise gate (cgroup nr_throttled/throttled_usec, steal on the execution CPU, major faults) is recorded per row as contention_flags. Flagged rows stay in the analysis; the decision is recomputed on the Q blocks with no flagged row, and if it names a different responsible set (or fewer than 3 such blocks remain) the reading is sensitive_to_contention. Fresh-rank IC arms run about 15 min, so a steal tick during their excluded setup is plausible; that is why flags do not void a row.",
+    "controls": "inconclusive_controls if either A/A control or the positive control fails; the factor table is still reported, labelled as such",
+    "factor_classes": {
+      "contributes": "Bonferroni 99.29% interval of D_f excludes 0 and |mean D_f| >= 0.05",
+      "negligible": "95% interval of D_f inside [-0.05, 0.05]",
+      "sufficient_to_flip": "A_reproduces and L_A + D_f has a Bonferroni 99.29% lower bound > 0 (applying f alone to A's configuration makes IC online faster)",
+      "unresolved": "otherwise"
+    },
+    "reproduction": {
+      "A_not_reproduced": "L_A 95% lower bound > 0",
+      "A_reproduces": "L_A 95% upper bound < 0 (rho online faster with A's configuration on the runner)",
+      "B_reproduces": "L_B 95% lower bound > 0",
+      "otherwise": "not_separated for that cell"
+    },
+    "responsible": "If A_not_reproduced: 'host_or_instance' (A's direction does not survive the move to this runner) is named responsible, and the chain factors are reported as modifiers. Else, if A_reproduces and B_reproduces: every sufficient_to_flip factor is named, ranked by mean D_f; if none is sufficient alone, the smallest set of contributing factors, taken in decreasing order of mean D_f, whose summed per-block effect makes L_A + sum have a Bonferroni lower bound > 0. If B does not reproduce, B's Q0 direction is reported as instance-specific and the responsible set is 'host_or_instance' for B. Otherwise not_separated.",
+    "validity": "no_result unless every executed row of the counted segments is valid (exit 0, verified=1, no timeout, no cgroup memory event oom/oom_kill/max, binary unchanged), every identity check passes, and at least 3 Q blocks and 12 fresh points completed. Invalid rows are kept and reported; no row is re-run.",
+    "what_does_not_count": "changing blocks, seeds, points, arms, statistics or thresholds after seeing any timing; any such change is a new, labelled protocol version reported beside this one. The verdict is about one target (Q0) and one runner for the chain, and 16 points for the rho factors over targets; it is not a speed claim for either method."
+  },
+  "design": {
+    "envelope": "one process at a time on one pinned exposed CPU (the lowest CPU of the runner's affinity mask), sched_setaffinity before exec, RAYON/KIC thread variables 1, clean whitelisted environment, no builds or other heavy jobs during the panel",
+    "minimum_for_a_result": "3 complete Q blocks and 12 complete fresh points",
+    "order": "segments Q1, F(points 0-3), Q2, F(4-7), Q3, F(8-11), Q4, F(12-15); inside a Q block the 35 runs are in a frozen pseudo-random order (random.Random(2026101400 + block).shuffle); inside an F segment the points run in order and each point's 9 runs are shuffled with random.Random(2026101500 + w). make_schedule.py writes schedule.json from this protocol; the workflow regenerates it and requires byte identity.",
+    "schedule_file": "schedule.json",
+    "time_guard": "before each segment, if (now - job start) + max(the segment's frozen upper estimate, 1.1 x the longest segment of the same panel already run in this job) exceeds 325 min, the segment and all later ones are recorded as skipped_time_guard and not run; a skipped segment is never re-run or replaced",
+    "type": "full factorial in analysis, by complete blocks: every arm runs in every Q0 block, so every rho-arm x seed x IC-arm combination is a within-block paired ratio. Crossed factors: rho implementation (3 levels: A default, B rung 3, A tuned) x rho seed set (SA, SB) on Q0 and (SA_rule, SB_rule) on fresh points. Nested where the code does not exist: rho revision only for A's default rho (rung 3 has no n=83 wide path at a8194d61); IC revision only for A's producer; IC log source only for B's producer (A's producer has no cache). The IC chain A -> B is therefore revision (iA819f -> iA770f), producer (iA770f -> iB770f), log source (iB770f -> iB770c)."
+  },
+  "frozen_at_utc": "2026-10-14",
+  "frozen_files_note": "checked by verify_receipt.py against the files at audit time; schedule.json is also regenerated and compared by the workflow",
+  "frozen_files_sha256": {
+    "../../scripts/isolated_bench.py": "48361f0d0a5138e9e2f1264ff3de689fddb9d1a5181afd089e70c153e3a089cc",
+    "arm.py": "499b7a849edd52f9db0db668bfcbd863106e400fc5a14c54f1e53a87d689e28b",
+    "crates/r770/Cargo.lock": "2e8bc4b3cae633777ce6325dba77fb60c367bea2cd399fc6b7e977a9ec277596",
+    "crates/r770/Cargo.toml": "bb98b5b8f3e0aab66d210f26bc28cbedb19a498b5e1bd0eb9178e47190290b92",
+    "crates/r819/Cargo.lock": "ebb8ca2bd4c5e9286c3271c722c0b04a67d687621fe8d2341cca8aa3545c965c",
+    "crates/r819/Cargo.toml": "0b7da858a446af921d6d685fdae7627181809a951d27154bb7f55f4a89a3aaeb",
+    "make_schedule.py": "e9de9833739c4664886f4e15c9f575976bb21e669b28db1f87fae94f0326a2f7",
+    "restore_sources.py": "1437662dbdb2fed8816da1f87c26013620d98580d7a14aab196e5215c03bb121",
+    "run_schedule.py": "cf85d6f93416cb3fe742717b94e57e2a5224e5c35501bd64ff126da8ad4c1efb",
+    "schedule.json": "fb52a9e3099db8cf2096c211e402983fe79cb1508dc990d7e08520ec9768cf45",
+    "verify_log_table.py": "b44527e63a29d03c31d458eb1b44d2b970b721a4e7289f1a8ef6e5ebbed7d68e",
+    "verify_receipt.py": "0e260573b62d9dbaa05406d672304ffc44a75de78bf868486c6dcd6a6e7849ba"
+  },
+  "ic_rank_seed": {
+    "cached_arms": "7 (B's; unused because the rank stage is skipped)",
+    "fresh_arms": "20 + block (21..24 for blocks 1..4), A's seed family 21..25",
+    "why_it_does_not_matter_online": "the target scan starts at a hash of Q alone; A's five seeds and B's seed 7 all took 8,845,441 probes on Q0 (SOURCE_AUDIT.md section 3)"
+  },
+  "inputs": {
+    "base": "snapshots/r770/experiments/koblitz-single-target-n83-20261006/base_n83_K600.jsonl",
+    "base_hash": "d4a4da26d6e7cb09367de922d9806631fe49989f70d378cae76f347f8d76a9f7",
+    "curve": "y^2 + xy = x^3 + x^2 + 1 over GF(2)[z]/(z^83+z^7+z^4+z^2+1)",
+    "curve_id": "EC1N83Ce1h35c7ced6b497",
+    "fresh_points": "B's 16 Panel B points (inputs/targets.json panel_b, seeds 0..15 of the public hash-to-curve law kic-n83-single-target-public-point-v1); no scalar is known for any of them",
+    "icv1_slug": "icv1-f2m83-t6151469093347-9eba6cd5",
+    "orbit_columns": 600,
+    "q0": [
+      "2655898345537166180532960",
+      "3881526307991673265292615"
+    ],
+    "q0_validation_scalar_source": "snapshots/r770/experiments/koblitz-single-target-n83-20261006/frozen/fixture.json, opened only by verify_receipt.py",
+    "subgroup_order": "8569786107849059"
+  },
+  "kind": "n83_reconcile_factorial_tier1_v1",
+  "measurement_tier": "tier1_instance",
+  "panels": {
+    "F": {
+      "design_note": "fresh-rank IC arms cost about 15 min each and are measured on Q0 only; the IC producer, revision and log-source effects are per-probe costs of the same scan (identical probe sequence), so Q0 measures them; the fresh points carry the rho implementation and seed effects over targets",
+      "ic_arms": [
+        "iB770c"
+      ],
+      "label": "B's 16 fresh public points, one IC run and eight rho runs per point",
+      "points": 16,
+      "rho_arms": [
+        "rA819",
+        "rA770",
+        "rB770",
+        "rT770"
+      ],
+      "rho_seeds_per_point": {
+        "SA_rule": "202610061 + w (A's seed family)",
+        "SB_rule": "830000 + w (B's Panel B rule)"
+      },
+      "runs_per_point": 9,
+      "timeout_s": {
+        "ic_cached": 900,
+        "rho": 300
+      }
+    },
+    "Q": {
+      "blocks": 4,
+      "ic_arms": [
+        "iA819f",
+        "iA770f",
+        "iB770f",
+        "iB770c",
+        "iB770caa"
+      ],
+      "label": "Q0, full rho arm x seed grid and all five IC arms in every block",
+      "point": "q0",
+      "rho_arms": [
+        "rA819",
+        "rA770",
+        "rA770aa",
+        "rB770",
+        "rT770"
+      ],
+      "rho_seed_note": "SA are A's five strong seeds; SB is B's Panel A seed. Every rho arm runs every seed in every block (5 arms x 6 seeds = 30 rho runs per block).",
+      "rho_seeds": {
+        "SA": [
+          202610061,
+          202610062,
+          202610063,
+          202610064,
+          202610065
+        ],
+        "SB": [
+          831000
+        ]
+      },
+      "runs_per_block": 35,
+      "timeout_s": {
+        "ic_cached": 900,
+        "ic_fresh": 2400,
+        "rho": 300
+      }
+    }
+  },
+  "question": "Why do two measurements of the same n=83 a=1 point Q0 disagree in direction? A (crypto research/n83_evaluation_20261012, 2026-10-12): IC/strong-rho online 1.38 [1.04, 1.88] (rho faster). B (cryptanalysis experiments/koblitz-single-target-n83-tier1-20261014, run 38523707244): rho/IC online 1.78 [1.775, 1.783] on Q0 (IC faster). Identify which factor(s) flip the direction by re-running both configurations and every intermediate one, interleaved, in one job on one GitHub ubuntu-24.04 runner, on the same points.",
+  "resources": {
+    "estimate_s": {
+      "basis": "B's runner receipts (run 38523707244): fresh-rank B producer 888 s process wall, cached IC 46.5 s setup + 5.07 s online on Q0, rung 3 0.705 us/step; A's host: A's IC 1,054 s per process; builds here: 5.6 + 4.7 min at -j3",
+      "f_segment_4_points": [
+        350,
+        500
+      ],
+      "q_block": [
+        2900,
+        3700
+      ],
+      "segment_upper_estimates_for_the_guard": {
+        "F": 500,
+        "Q": 3700
+      },
+      "toolchain_build_and_bin_tests": [
+        900,
+        1800
+      ],
+      "total": [
+        14800,
+        19100
+      ],
+      "verify_and_upload": [
+        300,
+        900
+      ]
+    },
+    "memory": "fresh-rank IC peaks at 5.8 GB (A and B receipts), cached IC about 4.4-5.8 GB, rho about 0.1 GB; one process at a time",
+    "runner": "GitHub Actions ubuntu-24.04 standard: 4 vCPU, 16 GB RAM, 6 h job limit; job timeout 350 min"
+  },
+  "result_files": [
+    "result.json",
+    "result_table.md"
+  ],
+  "source_audit": "SOURCE_AUDIT.md (written before this protocol was frozen; it already explains which components carry the gap and which candidate factors cannot)",
+  "sources": {
+    "r770": {
+      "commit": "770f6a6925a0d29b768bd79074f54a173e967fe7",
+      "role": "B's crypto revision; also hosts A's adapter, A's tuned worker and A's IC producer at this revision",
+      "sha256": {
+        "base_n83_K600": "0d290b14a350db6271c9a49f0cd6ba246edd8c9bc6754387ad1ceebf08ec0c09",
+        "crypto_lock": "ac5cd7a3459be776180afe1eb2975c76b1a88f84bd1e99aa20475927ec260a90",
+        "crypto_manifest": "49b5f9478f133f905d5388d8c609d097830d69fe912c46dbc95b387b5d14a3de",
+        "crypto_rust_source_tree": "421a743cd2299d585b974862e870a7ef114a8f773c3cfcca27ce80ab7d61a5fb",
+        "harness:docs/ic/boundary_targets.json": "1e062aa4fed838279028871b60a3b23a018d18d4d60d07a0e89700d2ae4aba64",
+        "harness:research/ic_candidate_tournament_20260915/identity.py": "1fcb72308e6353c55c30c2184c1d99edef7c84ef8283db6615e5fb3075fb307f",
+        "harness:research/ic_candidate_tournament_20260915/oracle.py": "2804ac7ae42cde3d8c108ec262ac34797cf0315c647eeae68860085a472f2a19",
+        "harness:research/ic_single_target_20260930/curve_ids.json": "f98a8c3a152ed2da06a5d1079633daa7eed024a6b4837c243a7a689eea07d637",
+        "harness:research/sat_factor_base_review_20260908/autolab/boundary_autolab.py": "7b0f210becfbfee2683ca0b5301cd9dca6f50fa729b918bc344d10047a9498bf",
+        "harness:research/sat_factor_base_review_20260908/autolab/op_accounting.py": "12bbddc092b9f5f4b4d6c4ba849469257f879f51b4dffd4a4275103cfb19e6a9",
+        "harness:research/sat_factor_base_review_20260908/autolab/protocol.json": "53d070be27b3968db85e62b4d4885976cd681e0bae1c31217dcedd461bcc6b9f",
+        "harness:research/sat_factor_base_review_20260908/autolab/single_target_panel.py": "aa9059a388ddd620b0b6cc998c5846486344367c0114642f6829866b05317491",
+        "harness:tools/curve_identity.py": "39aeb32829ab7b5aec7c8fa0448f324ed755248bc3dd25df1b47e74cac067a9e",
+        "ic_fast": "64171575e58b97c4ad9041b4b49e5f2b5697d26f71be73861fc36ea879db9161",
+        "ic_online_patched": "76531bc6abbe432d309abd835ba025674197ce103d51a77bff1064de1918942e",
+        "ic_online_upstream": "4729f3b9aac5d20e36a2560aabae76c40ab4baf2c88cf6da9bd7bcb3c17550e2",
+        "rho_adapter": "82bc92d24e096109d4c35288d034c02f63c08241ed87dc83c93655ed668c4cbf",
+        "rho_rung3": "9a62bdcdf17c7bd05c38ce75190d163e6ee108950f7eca7a8002e2c7fb7bf634",
+        "rho_tuned": "fb14072f4fa5d08e18d8b79130b6d58a220adae0f76369cc9be949691c83eaa0",
+        "snapshot_tree": "3285cd7d4e2260270fe995ded5640607a733ca0252a2ffe7a878b23450755457",
+        "target_points": "d4f9872d9d4e22d26770ecb749b29f1da944d701fb85c8bbc8f20489cd0345c5",
+        "tuned_config": "249526beeb4a2c68d9d2fe97114aa0f4901cdb6c1c892c8c39d93dfbd40b9d5a",
+        "validation_fixture": "f3605f0d1739e4542ced9b5c12200c5582f60ae3a4b94bc48189bf525873aea5"
+      }
+    },
+    "r819": {
+      "commit": "a8194d616ed8c04489ec46177d369f1b1670360a",
+      "role": "A's source baseline; A's IC producer and A's strong adapter (the adapter file A built, SHA-256 82bc92d2..., merged unchanged later and copied from 770f6a69)",
+      "sha256": {
+        "crypto_lock": "ac5cd7a3459be776180afe1eb2975c76b1a88f84bd1e99aa20475927ec260a90",
+        "crypto_manifest": "ae3ac94705e6e3bbda0d67da340800ebad492d2151edb3767e2ab4ae00da31c5",
+        "crypto_rust_source_tree": "5698cd62a598731fca5a3f77eec56ef254c354b33c86ae2762665d816fe01787",
+        "ic_fast": "5d6cca46e56a582108fc4bf97e6658a5af4a3a09a11fff3eeec26e4304d58ef1",
+        "rho_adapter": "82bc92d24e096109d4c35288d034c02f63c08241ed87dc83c93655ed668c4cbf",
+        "snapshot_tree": "65b7637622b7cd3ac9fcc3e2d085d3bf5caa6cb8784be7b13a659f722c754228"
+      }
+    },
+    "reused_from_B": {
+      "directory": "experiments/koblitz-single-target-n83-tier1-20261014",
+      "factor_log_table": "tier1_github_38523707244/precompute/factor_logs_n83_K600.json",
+      "factor_log_table_policy": "B's archived table from run 38523707244 replaces B's per-job rank stage. Before any timing, verify_log_table.py re-checks every [L_j]G = R_j in the pinned pure-Python oracle.py; every fresh-rank B-producer arm in the panel writes its own table, and the verifier requires its 600 logs to equal this table's (the logs are a function of the base alone).",
+      "factor_log_table_sha256": "a771716f284bb826e7407e1e7b5ef882409c9e7e1df8b8a3ed5b60b421d9f17e",
+      "ic_log_cache_patch": "ic_log_cache.patch (sha256 c2c969a9172bfc3cf03b7588fbd466957d5c500b47c11bec6b514478bbc83b26, checked against B's tier1_protocol.json before it is applied)",
+      "targets_file": "inputs/targets.json",
+      "targets_file_sha256": "146bfd70b3f3c39368743ff611107a259de52c88fcf115ccc37b52c62d252d50"
+    }
+  },
+  "statistics": {
+    "also_reported": [
+      "tuned: D_tuned = mean_SA ln rT770 - mean_SA ln rA770, and the cells L_T = mean_SA ln rT770 - ln iA819f (A with the tuned rho) and ln rT770[SB] - ln iB770c (B with the tuned rho)",
+      "both orders of the implementation x seed chain (interaction = their difference)",
+      "the deterministic split of every rho time into ln(steps) + ln(ns per step) and of every IC time into ln(probes) + ln(ns per probe)",
+      "host/instance residuals: H_A = ln(1/1.382330) (A as published) - L_A, H_B = ln(1.779) (B run 38523707244, Panel A median) - L_B; descriptive, no interval",
+      "every arm's median online ms, ns/step or ns/probe, setup ms, peak RSS and process CPU"
+    ],
+    "chain": {
+      "boundary": "ln rB770[SB] at B's boundary - the same run at A's boundary (IC boundaries are identical by audit; their phase sums are checked per row)",
+      "cache": "-(ln iB770c - ln iB770f)",
+      "identity": "rev_rho + impl_rho + seed + boundary + rev_ic + prod_ic + cache = G exactly, per block",
+      "impl_rho": "Shapley value over {implementation, seed}: half of [(mean_SA ln rB770 - mean_SA ln rA770) + (ln rB770[SB] - ln rA770[SB])], rB770 at the A boundary",
+      "prod_ic": "-(ln iB770f - ln iA770f)",
+      "rev_ic": "-(ln iA770f - ln iA819f)",
+      "rev_rho": "mean_SA ln rA770 - mean_SA ln rA819 (A boundary)",
+      "seed": "Shapley value: half of [(ln rA770[SB] - mean_SA ln rA770) + (ln rB770[SB] - mean_SA ln rB770)], rB770 at the A boundary"
+    },
+    "f_panel": {
+      "contrasts": {
+        "impl_rho": "x[rB770] - x[rA770]",
+        "rev_rho": "x[rA770] - x[rA819]",
+        "seed_family_negative_control": "mean over the four rho arms of ln rho(830000 + w) - ln rho(202610061 + w); expected 0, it is a seed relabeling",
+        "tuned": "x[rT770] - x[rA770]"
+      },
+      "interval": "10,000 bootstrap resamples of the 16 points (seed 2026101402), percentile 95%",
+      "per_point": "x[w, arm] = mean over the two seeds of ln rho; y[w] = ln iB770c",
+      "section_23_per_rho_arm": "mean over points of rho online / mean over points of IC online (B's Panel B statistic), and the median of per-point ratios"
+    },
+    "q_interval": "per-block values; 10,000 bootstrap resamples of the blocks (seed 2026101401); percentile 95% interval, and the Bonferroni 99.29% interval (m = 7 chain factors) for the factor classification. With 4 blocks these intervals cover repeat/timing variation on one target, not seed or target variation: the seed sets are fixed and their effect is conditional on them.",
+    "q_panel_cells": {
+      "G": "L_B - L_A",
+      "L_A": "A's configuration on the runner, per block: mean over SA of ln rA819 - ln iA819f (A's estimator: geometric mean of per-seed ratios)",
+      "L_B": "B's configuration on the runner, per block: ln rB770[831000] - ln iB770c"
+    },
+    "unit": "natural log of online ms per run; a ratio R is rho_online_ms / ic_online_ms, so ln R > 0 means IC online is faster"
+  },
+  "status": "FROZEN_BEFORE_ANY_TIMING"
+}

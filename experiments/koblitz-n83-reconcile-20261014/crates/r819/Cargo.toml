@@ -1,0 +1,26 @@
+[package]
+name = "n83-reconcile-r819"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Binaries restored from crypto a8194d61 (A's source baseline) by
+# ../../restore_sources.py. The adapter is A's file (SHA-256 82bc92d2...),
+# which A compiled against this tree; it was merged unchanged later.
+[[bin]]
+name = "ic_fast_r819"              # A's IC producer, A's revision
+path = "../../snapshots/r819/examples/koblitz_orbit_dlp_fast.rs"
+
+[[bin]]
+name = "rho_adapter_r819"          # A's default strong rho, A's revision
+path = "../../snapshots/r819/examples/n83_strong_point_eval.rs"
+
+[dependencies]
+crypto_lib = { package = "crypto", path = "../../snapshots/r819", default-features = false }
+blake3 = "1.5"
+libc = "0.2"
+num-bigint = { version = "0.4", features = ["rand"] }
+num-traits = "0.2"
+rand = { version = "0.8", features = ["small_rng"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["arbitrary_precision", "raw_value"] }
