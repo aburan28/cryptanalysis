@@ -386,3 +386,16 @@ build used compile-only placeholders for 31 unavailable, unrelated atlas
 includes in this sparse checkout; the selected scalar test did not read
 them. A clean source-pinned Pod build and serial online comparison are
 needed to place this memory format on the measured time/memory frontier.
+
+The generated `split_prime_packed_lookup_exhaustive` test now decodes all
+3,301 residue words in both packed layouts. For each word it checks the
+minimum-orbit seed, six-unit image, digit norm, and packed quotient
+corrections, then replays nine signed coefficient inputs through the
+actual Rust step function: **29,709 exact quotient cases per layout**.
+Each layout also passed the 128-scalar independent binary replay in a
+separate Cargo target directory. The ordinary packed and split layouts
+reported 1,823,132 and 519,452 retained bytes respectively. The
+[native lookup receipt](packed-lut-validation.json) pins the generated and
+compiled sources, binaries, raw logs, and temporary include shims. It
+also preserves an earlier shared-target run that loaded the wrong layout;
+that run is excluded from these results.

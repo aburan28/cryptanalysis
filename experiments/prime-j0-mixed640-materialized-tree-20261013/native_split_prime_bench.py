@@ -423,6 +423,85 @@ UNIT_PACKED_LUT_RUST = r"""        let mut residue_packed = vec![u32::MAX; SPLIT
 """
 
 
+PACKED_LUT_TEST_RUST = r"""    #[test]
+    fn split_prime_packed_lookup_exhaustive() {
+        fn centered(value: i32) -> i32 {
+            let residue = value.rem_euclid(SPLIT_PRIME_NORM);
+            residue.min(SPLIT_PRIME_NORM - residue)
+        }
+        fn canonical_seed(residue: i32) -> i32 {
+            [centered(residue), centered(1726 * residue),
+             centered(1574 * residue)].into_iter().min().unwrap()
+        }
+        fn small_value(value: Signed192) -> i32 {
+            assert_eq!(value.limbs[1..], [0, 0]);
+            let magnitude = i32::try_from(value.limbs[0]).unwrap();
+            if value.negative { -magnitude } else { magnitude }
+        }
+        let tables = &*SPLIT_PRIME_TABLES;
+        let mut seeds = vec![0i32];
+        seeds.extend((1..=1064).filter(|&seed| canonical_seed(seed) == seed));
+        assert_eq!(seeds.len(), 551);
+        let mut checked_steps = 0usize;
+        for residue in 0..SPLIT_PRIME_NORM {
+            let packed = tables.residue_packed[residue as usize];
+            let index = (packed & __INDEX_MASK__) as usize;
+            let seed = if __SPLIT_TABLE__ { index as i32 } else { seeds[index] };
+            let unit = ((packed >> __UNIT_SHIFT__) & 7) as usize;
+            let correction_a = ((packed >> __A_SHIFT__) & 63) as i32 - 20;
+            let correction_b = ((packed >> __B_SHIFT__) & 63) as i32 - 7;
+            assert_eq!(seed, canonical_seed(residue), "seed residue {residue}");
+            assert!(unit < 6, "unit residue {residue}");
+            let (da, db) = unit_images((seed, 0))[unit];
+            let digit_word = da + SPLIT_PRIME_TAU_RESIDUE * db;
+            assert_eq!(digit_word.rem_euclid(SPLIT_PRIME_NORM), residue);
+            assert!(norm((da, db)) <= i64::from(1064 * 1064));
+            let digit_q = digit_word.div_euclid(SPLIT_PRIME_NORM);
+            assert_eq!(correction_a, -23 * digit_q + 11 * db);
+            assert_eq!(correction_b, -21 * digit_q + 10 * db);
+            for b in [-7i32, 0, 7] {
+                for shift in [-SPLIT_PRIME_NORM, 0, SPLIT_PRIME_NORM] {
+                    let a = residue - SPLIT_PRIME_TAU_RESIDUE * b + shift;
+                    let numerator = (a - da) + SPLIT_PRIME_TAU_RESIDUE * (b - db);
+                    assert_eq!(numerator.rem_euclid(SPLIT_PRIME_NORM), 0);
+                    let k = numerator.div_euclid(SPLIT_PRIME_NORM);
+                    let expected_a = 23 * k - 11 * (b - db);
+                    let expected_b = 21 * k - 10 * (b - db);
+                    let (next_a, next_b, actual_index, actual_unit) =
+                        split_prime_unit_step(Signed192::from_i32(a),
+                                              Signed192::from_i32(b), tables);
+                    assert_eq!(actual_index, index);
+                    assert_eq!(actual_unit, unit);
+                    assert_eq!(small_value(next_a), expected_a,
+                               "next a residue {residue} b {b} shift {shift}");
+                    assert_eq!(small_value(next_b), expected_b,
+                               "next b residue {residue} b {b} shift {shift}");
+                    checked_steps += 1;
+                }
+            }
+        }
+        assert_eq!(checked_steps, 3301 * 9);
+        println!("packed_lookup_residues=3301 checked_steps={checked_steps}");
+    }
+
+"""
+
+
+def packed_lut_test_source(split_seed_tables: bool) -> str:
+    fields = {
+        "__INDEX_MASK__": "2047" if split_seed_tables else "1023",
+        "__UNIT_SHIFT__": "11" if split_seed_tables else "10",
+        "__A_SHIFT__": "14" if split_seed_tables else "13",
+        "__B_SHIFT__": "20" if split_seed_tables else "19",
+        "__SPLIT_TABLE__": "true" if split_seed_tables else "false",
+    }
+    source = PACKED_LUT_TEST_RUST
+    for old, new in fields.items():
+        source = source.replace(old, new)
+    assert "__" not in source
+    return source
+
+
 UNIT_PACKED_RETAINED_RUST = r"""        let entries = digit_windows.iter().map(|row| row.len()).sum::<usize>()
             + terminal_plain.len() + terminal_tau.len();
         assert_eq!(entries, 12_899);
@@ -678,6 +757,10 @@ def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
         if not tight_terminal:
             raise ValueError("split seed tables require tight packed unit compression")
         split_source = split_unit_seed_tables(split_source)
+    if packed_correction:
+        anchor = "    #[test]\n    fn split_prime_holdout_matches_independent_binary() {"
+        split_source = replace_once(split_source, anchor,
+                                    packed_lut_test_source(split_seed_tables) + anchor)
     module = replace_once(module_path.read_text(),
         "pub(super) fn warm_mixed640_pretau_table() -> usize {\n",
         split_source + "pub(super) fn warm_mixed640_pretau_table() -> usize {\n")
