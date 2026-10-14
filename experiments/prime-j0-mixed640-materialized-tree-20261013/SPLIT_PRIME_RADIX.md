@@ -460,3 +460,23 @@ and the packed lookup and terminal comparisons. The smaller rows replace
 precomputed x coordinates with an online field subtraction for some unit
 codes, so a serial isolated comparison is needed to determine the time and
 memory tradeoff.
+
+The `--unit-split-batch-affine` evaluator keeps the same 277,704-byte two-x
+table but fuses every selected low/high pair with one Montgomery batch
+inversion over the at most 21 radix positions. It then adds one affine point
+per nonzero digit to the accumulator. The frozen 128-scalar model records a
+median of 19 positions with both components nonzero (range 14–21); those
+positions each save one mixed accumulator addition. The fusion itself uses
+five field multiplications and one field square per pair, plus one shared
+binary inversion. The point-addition ordering and inversion are charged to
+the online interval when this variant is timed.
+
+The [batch-affine receipt](batch-affine-digit-validation.json) pins a release
+binary with six passing test families: a 21-pair check against the independent
+projective group law, all 8,316 two-x unit images, 646 independent scalar
+replays, 3,301 packed residues and 29,709 quotient cases, and all 3,838
+terminal points. `SplitPrimeBatchAffine.lean` proves that all six unit actions
+distribute over the low/high digit split, including the canonical seed
+reconstruction. The batch inversion's native field implementation is covered
+by the group-law and scalar replays. An isolated paired run will determine
+whether the saved mixed additions exceed the shared inversion cost.

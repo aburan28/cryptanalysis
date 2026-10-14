@@ -765,6 +765,108 @@ def use_two_x_digit_rows(source: str) -> str:
     return replace_once(source, anchor, DIGIT_TWO_X_TEST_RUST + anchor)
 
 
+BATCH_AFFINE_ADD_RUST = r"""fn split_prime_batch_affine_add(
+    pairs: &[(U256Affine, U256Affine)], output: &mut [U256Affine],
+) {
+    assert_eq!(pairs.len(), output.len());
+    assert!(pairs.len() <= SPLIT_PRIME_STEPS);
+    if pairs.is_empty() { return; }
+    let ctx = &super::HYBRID_FIELD.0;
+    let one = ctx.r_mod_n;
+    let mut prefixes = [one; SPLIT_PRIME_STEPS];
+    let mut product = one;
+    for (index, &(left, right)) in pairs.iter().enumerate() {
+        let denominator = u256_sub(right.x, left.x);
+        assert!(!bool::from(denominator.ct_is_zero()),
+                "split-prime affine pair denominator");
+        prefixes[index] = product;
+        product = u256_mul(product, denominator);
+    }
+    let mut suffix_inverse = super::hybrid_binary_invert(product, ctx);
+    for index in (0..pairs.len()).rev() {
+        let (left, right) = pairs[index];
+        let denominator = u256_sub(right.x, left.x);
+        let inverse = u256_mul(suffix_inverse, prefixes[index]);
+        suffix_inverse = u256_mul(suffix_inverse, denominator);
+        let slope = u256_mul(u256_sub(right.y, left.y), inverse);
+        let x = u256_sub(u256_sub(u256_square(slope), left.x), right.x);
+        let y = u256_sub(u256_mul(slope, u256_sub(left.x, x)), left.y);
+        output[index] = U256Affine { x, y };
+    }
+}
+
+"""
+
+
+BATCH_AFFINE_ONLINE_RUST = r"""    let zero = U256Affine { x: super::U256::ZERO, y: super::U256::ZERO };
+    let mut selected: [Option<U256Affine>; SPLIT_PRIME_STEPS] = [None; SPLIT_PRIME_STEPS];
+    let mut pairs = [(zero, zero); SPLIT_PRIME_STEPS];
+    let mut pair_slots = [0usize; SPLIT_PRIME_STEPS];
+    let mut pair_count = 0usize;
+    for (slot, row) in tables.digit_windows.iter().enumerate() {
+        let (next_a, next_b, seed, unit) = split_prime_unit_step(a, b, tables);
+        a = next_a;
+        b = next_b;
+        let low = seed & 31;
+        let high = seed >> 5;
+        match (low != 0, high != 0) {
+            (true, true) => {
+                pairs[pair_count] = (row[low].unit(unit), row[32 + high].unit(unit));
+                pair_slots[pair_count] = slot;
+                pair_count += 1;
+            }
+            (true, false) => selected[slot] = Some(row[low].unit(unit)),
+            (false, true) => selected[slot] = Some(row[32 + high].unit(unit)),
+            (false, false) => {},
+        }
+    }
+    let mut fused = [zero; SPLIT_PRIME_STEPS];
+    split_prime_batch_affine_add(&pairs[..pair_count], &mut fused[..pair_count]);
+    for index in 0..pair_count {
+        selected[pair_slots[index]] = Some(fused[index]);
+    }
+    for point in selected.into_iter().flatten() {
+        bucket = bucket.add_mixed(point);
+        terms += 1;
+    }
+"""
+
+
+BATCH_AFFINE_TEST_RUST = r"""    #[test]
+    fn split_prime_batch_affine_pairs_match_group_law() {
+        let row = &SPLIT_PRIME_TABLES.digit_windows[0];
+        let zero = U256Affine { x: super::super::U256::ZERO,
+                                y: super::super::U256::ZERO };
+        let mut pairs = [(zero, zero); SPLIT_PRIME_STEPS];
+        let mut output = [zero; SPLIT_PRIME_STEPS];
+        for index in 0..SPLIT_PRIME_STEPS {
+            let low = 1 + index % 31;
+            let high = 1 + index % 33;
+            let unit = index % 6;
+            pairs[index] = (row[low].unit(unit), row[32 + high].unit(unit));
+        }
+        split_prime_batch_affine_add(&pairs, &mut output);
+        for index in 0..SPLIT_PRIME_STEPS {
+            let expected = U256Jacobian::from_affine(pairs[index].0)
+                .add_mixed(pairs[index].1).affine_hex_binary_inverse();
+            let actual = U256XYZZ::from_affine(output[index])
+                .affine_hex_binary_inverse();
+            assert_eq!(actual, expected, "batch pair {index}");
+        }
+        println!("batch_affine_pairs={SPLIT_PRIME_STEPS}");
+    }
+
+"""
+
+
+def batch_fuse_digit_rows(source: str) -> str:
+    source = replace_once(source, "impl SplitPrimeTables {\n",
+                          BATCH_AFFINE_ADD_RUST + "impl SplitPrimeTables {\n")
+    source = replace_once(source, UNIT_SPLIT_ONLINE_RUST, BATCH_AFFINE_ONLINE_RUST)
+    anchor = "    #[test]\n    fn split_prime_holdout_matches_independent_binary() {"
+    return replace_once(source, anchor, BATCH_AFFINE_TEST_RUST + anchor)
+
+
 def split_unit_seed_tables(source: str) -> str:
     source = replace_once(source, UNIT_ROW_RUST, UNIT_SPLIT_ROW_RUST)
     source = replace_once(source, UNIT_ONLINE_RUST, UNIT_SPLIT_ONLINE_RUST)
@@ -935,7 +1037,7 @@ def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
          unit_compressed: bool = False, packed_correction: bool = False,
          tight_terminal: bool = False, split_seed_tables: bool = False,
          terminal_orbits: bool = False, no_terminal_fallback: bool = False,
-         digit_two_x: bool = False) -> None:
+         digit_two_x: bool = False, batch_affine_digits: bool = False) -> None:
     if variant not in ("3301", "3307", "5113"):
         raise ValueError("variant must be 3301, 3307, or 5113")
     spec = importlib.util.spec_from_file_location("mixed640_bench_cli", BASE)
@@ -980,6 +1082,10 @@ def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
         if not no_terminal_fallback:
             raise ValueError("two-x digit rows require axis-free terminal table")
         split_source = use_two_x_digit_rows(split_source)
+    if batch_affine_digits:
+        if not digit_two_x:
+            raise ValueError("batch affine digits require two-x digit rows")
+        split_source = batch_fuse_digit_rows(split_source)
     if packed_correction:
         anchor = "    #[test]\n    fn split_prime_holdout_matches_independent_binary() {"
         split_source = replace_once(split_source, anchor,
@@ -1013,7 +1119,8 @@ def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
                     + ("_split_seed_tables" if split_seed_tables else "")
                     + ("_terminal_orbits" if terminal_orbits else "")
                     + ("_no_terminal_fallback" if no_terminal_fallback else "")
-                    + ("_digit_two_x" if digit_two_x else "")),
+                    + ("_digit_two_x" if digit_two_x else "")
+                    + ("_batch_affine_digits" if batch_affine_digits else "")),
         "split_prime_source_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
         "generated_module_sha256": sha256(module_path.read_bytes()).hexdigest(),
         "generated_front_sha256": sha256(front_path.read_bytes()).hexdigest(),
@@ -1054,5 +1161,10 @@ if __name__ == "__main__":
         main(Path(sys.argv[2]), fused_terminal=True, unit_compressed=True,
              packed_correction=True, tight_terminal=True, split_seed_tables=True,
              terminal_orbits=True, no_terminal_fallback=True, digit_two_x=True)
+    elif len(sys.argv) == 3 and sys.argv[1] == "--unit-split-batch-affine":
+        main(Path(sys.argv[2]), fused_terminal=True, unit_compressed=True,
+             packed_correction=True, tight_terminal=True, split_seed_tables=True,
+             terminal_orbits=True, no_terminal_fallback=True, digit_two_x=True,
+             batch_affine_digits=True)
     else:
         raise SystemExit("usage: native_split_prime_bench.py [--linear|--fused-terminal|--short-fused|--unit-fused|--unit-packed|--unit-packed-tight|--unit-split-table] TARGET_DIR")
