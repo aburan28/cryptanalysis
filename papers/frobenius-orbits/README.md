@@ -101,8 +101,18 @@ without TeX can open the paper.
    `experiments/koblitz-n83-index-design-20260929/packed_index_e1_canonical_tier1_20261014/`
    (16 pairs, with the promotion/refutation rule fixed in `tier1_protocol.json`).
    The panel has been pushed to run, but its receipt has not been read back yet.
-3. **Isolated one-target comparison at `n = 83`** (the only observation where
-   a phase-aware index calculus is ahead of rho; currently unisolated).
+3. **Isolated one-target comparison at `n = 83`.**
+   - The historical 8.2× used a packed rho that crypto no longer accepts.
+     Against the current strong rho on the same point, IC is 1.38× *slower*
+     online (diagnostic; `crypto:research/n83_evaluation_20261012/`).
+   - A Tier 1 GitHub-runner protocol extends the n = 61 isolated `vs_rho`
+     protocol to n = 83, in
+     `experiments/koblitz-single-target-n83-tier1-20261014/`:
+     - Panel A: strong rho on Q0, 8 pairs.
+     - Panel B: 16 fresh public points.
+     - Panel C: the legacy packed rho.
+     - Each panel reports the cold ratio and the Bernstein–Lange column.
+   - The protocol has been pushed but not read back.
 4. A **rho arm at `n = 19`** is preregistered in
    `experiments/volcano-ic/rho-arm-20261014/`. It is a matched signed-Frobenius
    rho run in the same job as fresh baseline and Γ-orbit arms, in a pinned Sage
