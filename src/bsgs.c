@@ -18,6 +18,29 @@
  * BSGS_LANES - 1 elements past the last one used, which are not counted. */
 #define BSGS_LANES 64
 
+/* Fill 0, base, ..., (count - 1) * base.  Doubling the filled prefix
+ * lets each level share one inversion on elliptic curves. */
+static void bsgs_multiples(const ca_group *g, ca_elem *out, const ca_elem *base,
+                           size_t count, uint64_t *scratch)
+{
+    ca_group_identity(g, &out[0]);
+    if (count == 1) return;
+    if (g->kind != CA_GROUP_EC) {
+        for (size_t i = 1; i < count; i++)
+            ca_group_op(g, &out[i], &out[i - 1], base);
+        return;
+    }
+    out[1] = *base;
+    ca_elem addends[BSGS_LANES];
+    for (size_t span = 2; span < count; span *= 2) {
+        ca_elem offset;
+        ca_group_dbl(g, &offset, &out[span / 2]);
+        size_t n = count - span < span ? count - span : span;
+        for (size_t i = 0; i < n; i++) addends[i] = offset;
+        ca_group_batch_op(g, out + span, out, addends, n, scratch);
+    }
+}
+
 struct ca_bsgs_table {
     const ca_group *g;
     ca_elem base;
@@ -50,10 +73,11 @@ ca_status ca_bsgs_table_new(const ca_group *g, const ca_elem *base, uint64_t m, 
     ca_elem lane[BSGS_LANES], stride[BSGS_LANES];
     uint64_t scratch[2 * BSGS_LANES];
     const uint64_t first = m < BSGS_LANES ? m : BSGS_LANES;
-    ca_group_identity(g, &lane[0]);
-    for (uint64_t c = 1; c < first; c++) ca_group_op(g, &lane[c], &lane[c - 1], base);
-    ca_group_mul(g, &stride[0], base, BSGS_LANES, NULL);
-    for (int c = 1; c < BSGS_LANES; c++) stride[c] = stride[0];
+    bsgs_multiples(g, lane, base, (size_t)first, scratch);
+    if (m > BSGS_LANES) {
+        ca_group_dbl(g, &stride[0], &lane[BSGS_LANES / 2]);
+        for (int c = 1; c < BSGS_LANES; c++) stride[c] = stride[0];
+    }
     for (uint64_t j0 = 0; j0 < m; j0 += BSGS_LANES) {
         const uint64_t n = m - j0 < BSGS_LANES ? m - j0 : BSGS_LANES;
         for (uint64_t c = 0; c < n; c++) {
@@ -79,10 +103,8 @@ baby_done:
     ca_elem mb;
     ca_group_mul(g, &mb, base, t->m, NULL);
     ca_group_inv(g, &t->neg_m_base, &mb);
-    ca_group_identity(g, &t->giant[0]);
-    for (int k = 1; k < BSGS_LANES; k++)
-        ca_group_op(g, &t->giant[k], &t->giant[k - 1], &t->neg_m_base);
-    ca_group_op(g, &t->giant_block, &t->giant[BSGS_LANES - 1], &t->neg_m_base);
+    bsgs_multiples(g, t->giant, &t->neg_m_base, BSGS_LANES, scratch);
+    ca_group_dbl(g, &t->giant_block, &t->giant[BSGS_LANES / 2]);
     *out = t;
     return CA_OK;
 }
