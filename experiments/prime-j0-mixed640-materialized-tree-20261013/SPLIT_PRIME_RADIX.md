@@ -104,3 +104,34 @@ test matched all 128 frozen points against independent binary multiplication
 and reported 2,308,368 retained bytes including metadata. The norm,
 residue, terminal numeric inequality, and exact quotient update are checked
 in `SplitPrimeRadix.lean`.
+
+The RunPod release build passed all 128 independent binary replay cases.
+Its serial case-0 comparison against the original split-prime evaluator
+completed eight valid pairs. The median original/near-real online ratio was
+**0.9854**, with paired bootstrap interval **0.8894–1.0762**. The data do
+not resolve an online advantage for either radix in this case. The raw
+receipt is `tier1-runpod-20261013/775315ffa9b24cf5ab9715f2878383b6/`;
+the transferred archive SHA-256 is
+`030823cecb0cf226bba3ece12ce2788093b7547c6a62c81fadae8bd3f2a5fc05`.
+The runner, binaries, and artifacts were stable. Host exclusivity was not
+proved, so this remains an instance-scoped comparison.
+
+## Fused terminal pair
+
+The `--fused-terminal` generator replaces the two usual terminal point
+additions with one lookup for terminal Eisenstein norm below `56²=3136`.
+The nearest lattice choice satisfies `3N(z_0)≤n`; the digit contraction gives
+`sqrt(N(z_21))≤sqrt(n/3)/57²¹+1650/56<56`. The strict numeric step follows
+from `28²n<3·743²·57⁴²`, checked in `SplitPrimeRadix.lean`. The complete
+analytic and lattice-cell bridge remains the same open Lean obligation as
+the original coordinate bound. The runtime therefore retains both axis
+rows and uses them whenever the terminal norm is at least 3136.
+
+The fused table contains all 5,680 canonical pairs `(a,b)` with
+`a²+3ab+3b²<3136` modulo sign, including identity. Contiguous `b` ranges
+per nonnegative `a` give constant-time row indexing. With the original
+fallback rows, the native retained size is **2,668,328 bytes**. Local
+release testing matched all 128 frozen scalar points to independent binary
+multiplication; all 128 took the fused path, with maximum terminal norm
+1,861. This is a correctness and layout result pending a serial paired Pod
+measurement of its online cost and table preparation.

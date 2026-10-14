@@ -54,6 +54,13 @@ theorem terminal_numeric :
     2 * (56 * 2252907023369138918423925520396307732351
       + 1650 * 57 ^ 21) < 663 * 56 * 57 ^ 21 := by decide
 
+-- With the nearest-cell bound 3*N(z₀) ≤ n, this strict rational
+-- inequality is the numeric part of N(z₂₁) < 56².
+theorem fused_terminal_numeric :
+    28 ^ 2 *
+      115792089237316195423570985008687907852837564279074904382605163141518161494337
+      < 3 * 743 ^ 2 * 57 ^ 42 := by decide
+
 -- If d is the centered residue of a+1576b modulo 3301, k is its
 -- integral quotient. The two formulas below are exactly division by pi.
 theorem split_step_identity (a b k : Int) :
@@ -133,6 +140,7 @@ theorem linear_split_step_identity (a b k : Int) :
 #print axioms pi_residue_zero
 #print axioms residue_quotient
 #print axioms terminal_numeric
+#print axioms fused_terminal_numeric
 #print axioms split_step_identity
 #print axioms valid_expand
 #print axioms action_expand

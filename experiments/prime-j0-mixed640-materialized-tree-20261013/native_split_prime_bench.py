@@ -202,6 +202,72 @@ mod split_prime_tests {
 """
 
 
+FUSED_TERMINAL_REPLACEMENTS = {
+    "    terminal_tau: Box<[U256Affine]>,\n":
+        "    terminal_tau: Box<[U256Affine]>,\n"
+        "    terminal_pairs: Box<[U256Affine]>,\n"
+        "    terminal_row_start: [u16; 113],\n"
+        "    terminal_row_min: [i16; 112],\n",
+    "        let entries = digit_windows.iter().map(|row| row.len()).sum::<usize>()\n":
+        "        let mut pair_digits = Vec::new();\n"
+        "        let mut terminal_row_start = [0u16; 113];\n"
+        "        let mut terminal_row_min = [0i16; 112];\n"
+        "        for a in 0..112i32 {\n"
+        "            terminal_row_start[a as usize] = pair_digits.len() as u16;\n"
+        "            let mut first = true;\n"
+        "            for b in -65..=65i32 {\n"
+        "                let norm = a*a + 3*a*b + 3*b*b;\n"
+        "                if norm >= 3136 || (a == 0 && b < 0) { continue; }\n"
+        "                if first { terminal_row_min[a as usize] = b as i16; first = false; }\n"
+        "                pair_digits.push((a as i16, b as i16));\n"
+        "            }\n"
+        "            assert!(!first);\n"
+        "        }\n"
+        "        terminal_row_start[112] = pair_digits.len() as u16;\n"
+        "        assert_eq!(pair_digits.len(), 5680);\n"
+        "        assert_eq!(pair_digits[0], (0, 0));\n"
+        "        let terminal_pairs = build_u256_window(&pair_digits, base);\n"
+        "        let entries = digit_windows.iter().map(|row| row.len()).sum::<usize>()\n",
+    "        assert_eq!(entries, 35_999);":
+        "        assert_eq!(entries, 35_999);",
+    "            + size_of::<Self>()\n            + digit_windows.capacity()":
+        "            + terminal_pairs.len() * size_of::<U256Affine>()\n"
+        "            + size_of::<Self>()\n            + digit_windows.capacity()",
+    "        Self { digit_windows, terminal_plain, terminal_tau, retained_bytes }":
+        "        Self { digit_windows, terminal_plain, terminal_tau,\n"
+        "               terminal_pairs, terminal_row_start, terminal_row_min, retained_bytes }",
+    "    for (coordinate, row) in [(a, &tables.terminal_plain),\n":
+        "    // The fused table covers the small terminal norm. Axis rows are\n"
+        "    // retained for exact fallback under the original coordinate bound.\n"
+        "    let (ai, aneg) = a.split_prime_table_index(SPLIT_PRIME_TERMINAL_LIMIT);\n"
+        "    let (bi, bneg) = b.split_prime_table_index(SPLIT_PRIME_TERMINAL_LIMIT);\n"
+        "    let signed_a = if aneg { -(ai as i64) } else { ai as i64 };\n"
+        "    let signed_b = if bneg { -(bi as i64) } else { bi as i64 };\n"
+        "    let terminal_norm = signed_a*signed_a + 3*signed_a*signed_b\n"
+        "        + 3*signed_b*signed_b;\n"
+        "    if terminal_norm < 3136 {\n"
+        "        let negate = signed_a < 0 || (signed_a == 0 && signed_b < 0);\n"
+        "        let ca = if negate { -signed_a } else { signed_a } as usize;\n"
+        "        let cb = if negate { -signed_b } else { signed_b };\n"
+        "        let row_start = tables.terminal_row_start[ca] as usize;\n"
+        "        let row_offset = usize::try_from(\n"
+        "            cb - i64::from(tables.terminal_row_min[ca])).unwrap();\n"
+        "        let index = row_start + row_offset;\n"
+        "        assert!(index < tables.terminal_row_start[ca + 1] as usize);\n"
+        "        if index != 0 {\n"
+        "            let mut point = tables.terminal_pairs[index];\n"
+        "            if negate { point.y = u256_sub(super::U256::ZERO, point.y); }\n"
+        "            bucket = bucket.add_mixed(point);\n"
+        "            terms += 1;\n"
+        "        }\n"
+        "    } else {\n"
+        "    for (coordinate, row) in [(a, &tables.terminal_plain),\n",
+    "    let point = bucket.affine_hex_binary_inverse();":
+        "    }\n"
+        "    let point = bucket.affine_hex_binary_inverse();",
+}
+
+
 LINEAR_REPLACEMENTS = {
     "const SPLIT_PRIME_NORM: i32 = 3301;":
         "const SPLIT_PRIME_NORM: i32 = 3307;",
@@ -228,7 +294,7 @@ LINEAR_REPLACEMENTS = {
 }
 
 
-def main(target: Path, variant: str = "3301") -> None:
+def main(target: Path, variant: str = "3301", fused_terminal: bool = False) -> None:
     if variant not in ("3301", "3307"):
         raise ValueError("variant must be 3301 or 3307")
     spec = importlib.util.spec_from_file_location("mixed640_bench_cli", BASE)
@@ -238,9 +304,15 @@ def main(target: Path, variant: str = "3301") -> None:
     bench.main("selective", target)
     target = target.resolve()
     module_path = target / "src/bin/eisenstein_fixed/unit_orbit_windows.rs"
+    split_source = SPLIT_PRIME_RUST
+    if fused_terminal:
+        if variant != "3301":
+            raise ValueError("fused terminal is defined for norm 3301")
+        for old, new in FUSED_TERMINAL_REPLACEMENTS.items():
+            split_source = replace_once(split_source, old, new)
     module = replace_once(module_path.read_text(),
         "pub(super) fn warm_mixed640_pretau_table() -> usize {\n",
-        SPLIT_PRIME_RUST + "pub(super) fn warm_mixed640_pretau_table() -> usize {\n")
+        split_source + "pub(super) fn warm_mixed640_pretau_table() -> usize {\n")
     if variant == "3307":
         for old, new in LINEAR_REPLACEMENTS.items():
             module = replace_once(module, old, new)
@@ -256,7 +328,7 @@ def main(target: Path, variant: str = "3301") -> None:
     receipt_path = target / "native-bench-overlay.json"
     receipt = json.loads(receipt_path.read_text())
     receipt.update({
-        "variant": f"split_prime_radix_{variant}",
+        "variant": f"split_prime_radix_{variant}" + ("_fused_terminal" if fused_terminal else ""),
         "split_prime_source_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
         "generated_module_sha256": sha256(module_path.read_bytes()).hexdigest(),
         "generated_front_sha256": sha256(front_path.read_bytes()).hexdigest(),
@@ -270,5 +342,7 @@ if __name__ == "__main__":
         main(Path(sys.argv[1]))
     elif len(sys.argv) == 3 and sys.argv[1] == "--linear":
         main(Path(sys.argv[2]), "3307")
+    elif len(sys.argv) == 3 and sys.argv[1] == "--fused-terminal":
+        main(Path(sys.argv[2]), fused_terminal=True)
     else:
-        raise SystemExit("usage: native_split_prime_bench.py [--linear] TARGET_DIR")
+        raise SystemExit("usage: native_split_prime_bench.py [--linear|--fused-terminal] TARGET_DIR")
