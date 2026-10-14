@@ -1,0 +1,166 @@
+✓ Initialized. View run at 
+https://modal.com/apps/a-buran28/main/ap-VludGYvHSKvEP1MW57iv7C
+Building image im-6Gw7FQAjNNBvJrArvVJXJf
+
+=> Step 0: FROM base
+
+=> Step 1: COPY . /
+Saving image...
+Image saved, took 492.74ms
+
+Built image im-6Gw7FQAjNNBvJrArvVJXJf in 2.18s
+
+
+Building image im-8mOXq4a9ksxHXPMVFMkrV7
+
+=> Step 0: FROM base
+
+=> Step 1: RUN nvcc -O2 -lineinfo -arch=sm_120 /root/profile-diagnostic/profile_probe.cu -o /root/profile-diagnostic/probe
+
+=> Step 2: RUN /opt/nvidia/nsight-compute/2025.3.1/ncu --version
+NVIDIA (R) Nsight Compute Command Line Profiler
+Copyright (c) 2018-2025 NVIDIA Corporation
+Version 2025.3.1.0 (build 36398880) (public-release)
+Saving image...
+Image saved, took 466.96ms
+
+Built image im-8mOXq4a9ksxHXPMVFMkrV7 in 3.39s
+
+
+✓ Created objects.
+├── 🔨 Created mount 
+│   /Volumes/SSD990-2/cryptanalysis/wt/codex-kernelagent-ecc2k130/ecc2k130/runne
+│   r/profile_diagnostic.py
+├── 🔨 Created mount 
+│   /Volumes/SSD990-2/cryptanalysis/wt/codex-kernelagent-ecc2k130/ecc2k130/runne
+│   r/src/profile_probe.cu
+├── 🔨 Created mount 
+│   /Volumes/SSD990-2/cryptanalysis/wt/codex-kernelagent-ecc2k130/ecc2k130/runne
+│   r/codegen/profilereport.py
+└── 🔨 Created function diagnose.
+launch_metadata: profiling_failed (exit 9)
+hardware_counters: profiling_failed (exit 9)
+application_replay: profiled (exit 0)
+{
+  "gpu": {
+    "command": [
+      "nvidia-smi",
+      "--query-gpu=name,uuid,driver_version,compute_cap",
+      "--format=csv"
+    ],
+    "returncode": 0,
+    "output": "name, uuid, driver_version, compute_cap\nNVIDIA RTX PRO 6000 Blackwell Server Edition, GPU-666ca9fd-4a35-2f2e-f4d4-0a52ffadd5af, 610.57.04, 12.0\n",
+    "timedOut": false
+  },
+  "profiler": {
+    "command": [
+      "/opt/nvidia/nsight-compute/2025.3.1/ncu",
+      "--version"
+    ],
+    "returncode": 0,
+    "output": "NVIDIA (R) Nsight Compute Command Line Profiler\nCopyright (c) 2018-2025 NVIDIA Corporation\nVersion 2025.3.1.0 (build 36398880) (public-release)\n",
+    "timedOut": false
+  },
+  "process": "Uid:\t0\t0\t0\t0\nCapEff:\t00000000a80405fb\nSeccomp:\t0",
+  "driver": "ResmanDebugLevel: 4294967295\nRmProfilingAdminOnly: 0\nEnableDebuggerInterface: 0",
+  "deviceNodes": [
+    "/dev/nvidia-uvm",
+    "/dev/nvidia-uvm-tools",
+    "/dev/nvidia1",
+    "/dev/nvidiactl"
+  ],
+  "normal": {
+    "command": [
+      "/root/profile-diagnostic/probe"
+    ],
+    "returncode": 0,
+    "output": "PROBE PASS: all 256 output words verified\n",
+    "timedOut": false
+  },
+  "cases": [
+    {
+      "command": [
+        "/opt/nvidia/nsight-compute/2025.3.1/ncu",
+        "--kernel-name",
+        "probeKernel",
+        "--launch-count",
+        "1",
+        "--section",
+        "LaunchStats",
+        "/root/profile-diagnostic/probe"
+      ],
+      "returncode": 9,
+      "output": "==PROF== Connected to process 29 (/root/profile-diagnostic/probe)\n==PROF== Profiling \"probeKernel\": 0%..\n==ERROR== An error was reported by the driver:\n==ERROR== Failed to lock GPU clock frequencies! Try locking the clocks externally (e.g. using 'nvidia-smi --lock-gpu-clocks=tdp,tdp') or profile without fixed frequencies (see '--clock-control').\n==ERROR== Failed to profile \"probeKernel(unsigned int *)\" in process 29\n==PROF== Trying to shutdown target application\n==ERROR== The application returned an error code (9).\n",
+      "timedOut": false,
+      "name": "launch_metadata",
+      "profile": {
+        "available": false,
+        "returncode": 9,
+        "log": "==PROF== Connected to process 29 (/root/profile-diagnostic/probe)\n==PROF== Profiling \"probeKernel\": 0%..\n==ERROR== An error was reported by the driver:\n==ERROR== Failed to lock GPU clock frequencies! Try locking the clocks externally (e.g. using 'nvidia-smi --lock-gpu-clocks=tdp,tdp') or profile without fixed frequencies (see '--clock-control').\n==ERROR== Failed to profile \"probeKernel(unsigned int *)\" in process 29\n==PROF== Trying to shutdown target application\n==ERROR== The application returned an error code (9).\n",
+        "kind": "profiling_failed",
+        "why": "Nsight Compute failed (exit 9): ==ERROR== An error was reported by the driver:",
+        "remedy": "run modal run profile_diagnostic.py to compare a tiny CUDA control with profiling; a generic error does not establish a counter-permission failure"
+      }
+    },
+    {
+      "command": [
+        "/opt/nvidia/nsight-compute/2025.3.1/ncu",
+        "--kernel-name",
+        "probeKernel",
+        "--launch-count",
+        "1",
+        "--section",
+        "SpeedOfLight",
+        "/root/profile-diagnostic/probe"
+      ],
+      "returncode": 9,
+      "output": "==PROF== Connected to process 48 (/root/profile-diagnostic/probe)\n==PROF== Profiling \"probeKernel\": 0%.\n==ERROR== An error was reported by the driver:\n==ERROR== Failed to lock GPU clock frequencies! Try locking the clocks externally (e.g. using 'nvidia-smi --lock-gpu-clocks=tdp,tdp') or profile without fixed frequencies (see '--clock-control').\n==ERROR== Failed to profile \"probeKernel(unsigned int *)\" in process 48\n==PROF== Trying to shutdown target application\n==ERROR== The application returned an error code (9).\n",
+      "timedOut": false,
+      "name": "hardware_counters",
+      "profile": {
+        "available": false,
+        "returncode": 9,
+        "log": "==PROF== Connected to process 48 (/root/profile-diagnostic/probe)\n==PROF== Profiling \"probeKernel\": 0%.\n==ERROR== An error was reported by the driver:\n==ERROR== Failed to lock GPU clock frequencies! Try locking the clocks externally (e.g. using 'nvidia-smi --lock-gpu-clocks=tdp,tdp') or profile without fixed frequencies (see '--clock-control').\n==ERROR== Failed to profile \"probeKernel(unsigned int *)\" in process 48\n==PROF== Trying to shutdown target application\n==ERROR== The application returned an error code (9).\n",
+        "kind": "profiling_failed",
+        "why": "Nsight Compute failed (exit 9): ==ERROR== An error was reported by the driver:",
+        "remedy": "run modal run profile_diagnostic.py to compare a tiny CUDA control with profiling; a generic error does not establish a counter-permission failure"
+      }
+    },
+    {
+      "command": [
+        "/opt/nvidia/nsight-compute/2025.3.1/ncu",
+        "--kernel-name",
+        "probeKernel",
+        "--launch-count",
+        "1",
+        "--section",
+        "SpeedOfLight",
+        "--replay-mode",
+        "application",
+        "--clock-control",
+        "none",
+        "--cache-control",
+        "none",
+        "/root/profile-diagnostic/probe"
+      ],
+      "returncode": 0,
+      "output": "==WARNING== Note: Running with uncontrolled GPU caches. Profiling results may be inconsistent.\n==WARNING== Note: Running with unmodified GPU clocks. If not controlled otherwise, profiling results may be inconsistent.\n==PROF== Connected to process 67 (/root/profile-diagnostic/probe)\n==PROF== Profiling \"probeKernel\": Application replay pass 1\nPROBE PASS: all 256 output words verified\n==PROF== Disconnected from process 67\n==PROF== Connected to process 79 (/root/profile-diagnostic/probe)\n==PROF== Profiling \"probeKernel\": Application replay pass 2\nPROBE PASS: all 256 output words verified\n==PROF== Disconnected from process 79\n==PROF== Connected to process 91 (/root/profile-diagnostic/probe)\n==PROF== Profiling \"probeKernel\": Application replay pass 3\nPROBE PASS: all 256 output words verified\n==PROF== Disconnected from process 91\n==PROF== Connected to process 103 (/root/profile-diagnostic/probe)\n==PROF== Profiling \"probeKernel\": Application replay pass 4\nPROBE PASS: all 256 output words verified\n==PROF== Disconnected from process 103\n==PROF== Connected to process 115 (/root/profile-diagnostic/probe)\n==PROF== Profiling \"probeKernel\": Application replay pass 5\nPROBE PASS: all 256 output words verified\n==PROF== Disconnected from process 115\n==PROF== Connected to process 127 (/root/profile-diagnostic/probe)\n==PROF== Profiling \"probeKernel\": Application replay pass 6\nPROBE PASS: all 256 output words verified\n==PROF== Disconnected from process 127\n==PROF== Connected to process 139 (/root/profile-diagnostic/probe)\n==PROF== Profiling \"probeKernel\": Application replay pass 7\nPROBE PASS: all 256 output words verified\n==PROF== Disconnected from process 139\n==PROF== Connected to process 151 (/root/profile-diagnostic/probe)\n==PROF== Profiling \"probeKernel\": Application replay pass 8\nPROBE PASS: all 256 output words verified\n==PROF== Disconnected from process 151\n==PROF== Connected to process 163 (/root/profile-diagnostic/probe)\n==PROF== Profiling \"probeKernel\": Application replay pass 9\nPROBE PASS: all 256 output words verified\n==PROF== Disconnected from process 163\n==PROF== Creating report from application replay data: 0%...........100%\n[67] probe@127.0.0.1\n  probeKernel(unsigned int *) (1, 1, 1)x(256, 1, 1), Context 1, Stream 7, Device 0, CC 12.0\n    Warning: Data collection happened without fixed GPU frequencies. Profiling results may be inconsistent.\n    Section: GPU Speed Of Light Throughput\n    ----------------------- ----------- ------------\n    Metric Name             Metric Unit Metric Value\n    ----------------------- ----------- ------------\n    DRAM Frequency                  Ghz        12.22\n    SM Frequency                    Ghz         2.29\n    Elapsed Cycles                cycle         4614\n    Memory Throughput                 %         8.85\n    DRAM Throughput                   %         0.07\n    Duration                         us         2.02\n    L1/TEX Cache Throughput           %       455.76\n    L2 Cache Throughput               %         1.16\n    SM Active Cycles              cycle         1.76\n    Compute (SM) Throughput           %         0.01\n    ----------------------- ----------- ------------\n\n    OPT   This kernel grid is too small to fill the available resources on this device, resulting in only 0.0 full      \n          waves across all SMs. Look at Launch Statistics for more details.                                             \n\n",
+      "timedOut": false,
+      "name": "application_replay",
+      "profile": {
+        "available": true,
+        "returncode": 0,
+        "kind": "profiled",
+        "report": "==WARNING== Note: Running with uncontrolled GPU caches. Profiling results may be inconsistent.\n==WARNING== Note: Running with unmodified GPU clocks. If not controlled otherwise, profiling results may be inconsistent.\n==PROF== Connected to process 67 (/root/profile-diagnostic/probe)\n==PROF== Profiling \"probeKernel\": Application replay pass 1\nPROBE PASS: all 256 output words verified\n==PROF== Disconnected from process 67\n==PROF== Connected to process 79 (/root/profile-diagnostic/probe)\n==PROF== Profiling \"probeKernel\": Application replay pass 2\nPROBE PASS: all 256 output words verified\n==PROF== Disconnected from process 79\n==PROF== Connected to process 91 (/root/profile-diagnostic/probe)\n==PROF== Profiling \"probeKernel\": Application replay pass 3\nPROBE PASS: all 256 output words verified\n==PROF== Disconnected from process 91\n==PROF== Connected to process 103 (/root/profile-diagnostic/probe)\n==PROF== Profiling \"probeKernel\": Application replay pass 4\nPROBE PASS: all 256 output words verified\n==PROF== Disconnected from process 103\n==PROF== Connected to process 115 (/root/profile-diagnostic/probe)\n==PROF== Profiling \"probeKernel\": Application replay pass 5\nPROBE PASS: all 256 output words verified\n==PROF== Disconnected from process 115\n==PROF== Connected to process 127 (/root/profile-diagnostic/probe)\n==PROF== Profiling \"probeKernel\": Application replay pass 6\nPROBE PASS: all 256 output words verified\n==PROF== Disconnected from process 127\n==PROF== Connected to process 139 (/root/profile-diagnostic/probe)\n==PROF== Profiling \"probeKernel\": Application replay pass 7\nPROBE PASS: all 256 output words verified\n==PROF== Disconnected from process 139\n==PROF== Connected to process 151 (/root/profile-diagnostic/probe)\n==PROF== Profiling \"probeKernel\": Application replay pass 8\nPROBE PASS: all 256 output words verified\n==PROF== Disconnected from process 151\n==PROF== Connected to process 163 (/root/profile-diagnostic/probe)\n==PROF== Profiling \"probeKernel\": Application replay pass 9\nPROBE PASS: all 256 output words verified\n==PROF== Disconnected from process 163\n==PROF== Creating report from application replay data: 0%...........100%\n[67] probe@127.0.0.1\n  probeKernel(unsigned int *) (1, 1, 1)x(256, 1, 1), Context 1, Stream 7, Device 0, CC 12.0\n    Warning: Data collection happened without fixed GPU frequencies. Profiling results may be inconsistent.\n    Section: GPU Speed Of Light Throughput\n    ----------------------- ----------- ------------\n    Metric Name             Metric Unit Metric Value\n    ----------------------- ----------- ------------\n    DRAM Frequency                  Ghz        12.22\n    SM Frequency                    Ghz         2.29\n    Elapsed Cycles                cycle         4614\n    Memory Throughput                 %         8.85\n    DRAM Throughput                   %         0.07\n    Duration                         us         2.02\n    L1/TEX Cache Throughput           %       455.76\n    L2 Cache Throughput               %         1.16\n    SM Active Cycles              cycle         1.76\n    Compute (SM) Throughput           %         0.01\n    ----------------------- ----------- ------------\n\n    OPT   This kernel grid is too small to fill the available resources on this device, resulting in only 0.0 full      \n          waves across all SMs. Look at Launch Statistics for more details.                                             \n\n"
+      }
+    }
+  ],
+  "outcome": "some_controls_profiled",
+  "availableControls": [
+    "application_replay"
+  ]
+}
+Diagnostic evidence saved to ecc2k130/runner/research/kernelagent-20261013/profile-diagnostic.json
+Stopping app - local entrypoint completed.
+✓ App completed. View run at 
+https://modal.com/apps/a-buran28/main/ap-VludGYvHSKvEP1MW57iv7C

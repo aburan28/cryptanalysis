@@ -36,6 +36,9 @@ CASES = {
     "inline_sigma_untagged": ({}, "inline_sigma_untagged"),
     "production": ({"PACKED_INLINE_SIGMA": 1}, ""),
     "production_top_clmad": ({"PACKED_TOP_CLMAD": 1}, ""),
+    "production_top_hoist": ({"PACKED_TOP_HOIST": 1}, ""),
+    "production_single_noinline": ({"PACKED_INLINE_POLY": 2}, ""),
+    "production_pair_noinline": ({"PACKED_INLINE_POLY": 1}, ""),
     "inline_sigma": ({}, "inline_sigma"),
     "forward_chain_first": ({}, "forward_chain_first"),
     "pair_ilp": ({"PACKED_PAIR_ILP": 1}, ""),
@@ -71,7 +74,7 @@ def experiment(mode: str, selected: str, candidate_sources: dict, baseline_sourc
     import time
 
     names = selected.split(",") if selected else [
-        name for name in CASES if name != "production_top_clmad"]
+        name for name in CASES if not name.startswith("production_")]
     if mode not in ("screen", "confirm") or any(name not in CASES for name in names):
         raise ValueError("choose screen or confirm with known candidates")
     if mode == "confirm" and len(names) != 1:
@@ -100,7 +103,7 @@ def experiment(mode: str, selected: str, candidate_sources: dict, baseline_sourc
         overrides, policy = ({}, "") if name == "baseline" else CASES[name]
         # Prototype screens start from the pinned baseline. Production cases
         # use the current tree without rewriting candidate sources.
-        sources = candidate_sources if name in ("production", "production_top_clmad") else baseline_sources
+        sources = candidate_sources if name == "production" or name.startswith("production_") else baseline_sources
         for relative, content in sources.items():
             (root / relative).write_text(content)
         source = header.read_text()
@@ -337,8 +340,8 @@ def experiment(mode: str, selected: str, candidate_sources: dict, baseline_sourc
 @app.local_entrypoint()
 def main(mode: str = "screen", selected: str = "", output: str = "",
          baseline_commit: str = BASELINE_COMMIT, production_baseline: bool = False):
-    if "production_top_clmad" in selected.split(",") and not production_baseline:
-        raise ValueError("production_top_clmad requires --production-baseline")
+    if any(name.startswith("production_") for name in selected.split(",")) and not production_baseline:
+        raise ValueError("production variants require --production-baseline")
     if production_baseline and not output:
         raise ValueError("production baseline requires an explicit new --output path")
     if production_baseline and not selected:
