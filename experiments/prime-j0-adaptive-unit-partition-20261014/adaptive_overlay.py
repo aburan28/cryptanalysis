@@ -121,6 +121,72 @@ def main(root: Path):
     source = source.replace(anchor,
                             "    SPLIT_PRIME_TABLES.retained_bytes + SPLIT_PRIME_ADAPTIVE_PLANS.len()\n}")
     source = source[:source.index(marker)] + lut + source[source.index(marker):]
+    test_anchor = "\n}\n\npub(super) fn warm_mixed640_pretau_table()"
+    assert source.count(test_anchor) == 1
+    diagnostic = '''
+    #[test]
+    fn split_prime_adaptive_schedule_fixture_diagnostic() {
+        let panel: serde_json::Value = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"), "/src/bin/mixed640_bench_fixture.json"
+        ))).unwrap();
+        let cases = panel["cases"].as_array().unwrap();
+        let tables = &*SPLIT_PRIME_TABLES;
+        let mut two_groups = 0usize;
+        let mut total_saved = 0usize;
+        let mut max_saved = 0usize;
+        for case in cases {
+            let scalar = BigInt::parse_bytes(
+                case["scalar_hex"].as_str().unwrap().as_bytes(), 16).unwrap();
+            let words = super::super::scalar_words_256(&scalar).unwrap();
+            let residue = super::super::Uint(words);
+            let residue = if bool::from(residue.ct_lt(&super::super::SCALAR_ORDER_WORDS)) {
+                residue
+            } else {
+                super::super::U256::sbb(&residue, &super::super::SCALAR_ORDER_WORDS).0
+            };
+            let ((mut a, mut b), _, _) =
+                super::super::hexagonal_certified_fixed_choice_words(residue.0);
+            let mut counts = [0usize; 3];
+            for _ in 0..SPLIT_PRIME_STEPS {
+                let (next_a, next_b, index, unit) = split_prime_unit_step(a, b, tables);
+                a = next_a;
+                b = next_b;
+                if index != 0 { counts[unit / 2] += 1; }
+            }
+            let n = counts.iter().sum::<usize>();
+            let n0 = counts[0];
+            let n1 = counts[1];
+            let plan_index = n * (n + 1) * (n + 2) / 6
+                + n0 * (n + 1) - n0 * n0.saturating_sub(1) / 2 + n1;
+            let plan = SPLIT_PRIME_ADAPTIVE_PLANS[plan_index] as usize;
+            let anchors = [(plan >> 3) & 3, (plan >> 5) & 3];
+            let mut sizes = [0usize; 2];
+            let mut digit_beta = 0usize;
+            for power in 0..3 {
+                let group = (plan >> power) & 1;
+                sizes[group] += counts[power];
+                if (power + 3 - anchors[group]) % 3 != 0 {
+                    digit_beta += counts[power];
+                }
+            }
+            let groups = sizes.iter().filter(|&&size| size != 0).count();
+            let global_beta = (0..2).filter(|&group|
+                sizes[group] != 0 && anchors[group] != 0).count();
+            let direct_beta = counts[1] + counts[2];
+            let direct = (n.saturating_sub(1) * 288) + direct_beta * 23;
+            let adaptive = (n.saturating_sub(groups) * 288)
+                + groups.saturating_sub(1) * 432
+                + (digit_beta + global_beta) * 23;
+            assert!(adaptive <= direct, "schedule cost case {}", case["scalar_hex"]);
+            two_groups += usize::from(groups == 2);
+            total_saved += direct - adaptive;
+            max_saved = max_saved.max(direct - adaptive);
+        }
+        println!("adaptive_fixture_cases={} two_group_cases={} total_model_saved_products={} max_model_saved_products={}",
+                 cases.len(), two_groups, total_saved, max_saved);
+    }
+'''
+    source = source.replace(test_anchor, diagnostic + test_anchor)
     module.write_text(source)
     front_source = front.read_text()
     marker = "    let bucket_x_const_multiplies = answer.7.bucket_x_const_multiplies;"

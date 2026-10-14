@@ -7,7 +7,8 @@ Under the declared XYZZ and Solinas product model, a three-group schedule is
 always dominated when all three unit classes occur. The two-group option is
 selected for 57 of the 231 class-count triples with 20 nonzero digits; the
 one-group option is selected for 174. The native selector passed five
-correctness test families. No controlled wall-time comparison has been run.
+correctness test families and one frozen-fixture schedule diagnostic. No
+controlled wall-time comparison has been run.
 
 For each unit power `c` in `{0,1,2}`, let `S_c` be the sum of selected signed
 affine points before applying the cube-root endomorphism `ω`. The target sum
@@ -56,7 +57,12 @@ hashes and the plan digest.
 The release native suite passed all 4,831 residue codes, 43,479 quotient
 cases, 96,720 unit images, 5,680 terminal indices, 128 frozen scalars, and
 518 additional deterministic or boundary scalars against independent binary
-point multiplication. On frozen fixture case 0, the evaluator reports 20
+point multiplication. Its sixth diagnostic test recoded the 128 frozen
+scalars and selected two groups for 30 of them. Against the fixed
+orientation-zero one-group path it saved 5,317 modeled source-level
+integer products in total, **41.539 per scalar**, with a maximum of 230
+for one scalar. This is a product-count diagnostic on a preexisting fixture.
+On frozen fixture case 0, the evaluator reports 20
 nontrivial mixed additions, no projective joins, 12 digit cube-root
 products, one final bucket rotation, 20 digit reads, one terminal read, and
 12 sign flips. The output point matches the fixture. The local wall-time
