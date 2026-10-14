@@ -76,9 +76,23 @@ without TeX can open the paper.
 
 ## Before submission
 
-1. **Novelty audit** against Galbraith–Granger–Merz–Petit (SAC 2020) in full
-   text (the ledger's note is abstract-only) and against Bailey et al. 2009 for
-   the canonical form; confirm no prior statement of the zero-gap lemma.
+1. ~~**Novelty audit**~~ — done 2026-10-14.
+   - GGMP (SAC 2020) was read in full in both the preproceedings and the
+     peer-reviewed (Birmingham repository) versions; their texts agree on every
+     statement cited, and the orbit representative is chosen "in an ad-hoc
+     manner" and never priced in either.
+   - Bailey et al. 2009 §3 normalizes distinguished points to the
+     lexicographically smallest normal-basis conjugate and avoids per-step
+     canonicalization by using a Hamming-weight Frobenius walk. It is credited
+     as the canonical form.
+   - The zero-gap lemma is **not new as combinatorics**. That a necklace begins
+     with a longest run of its least letter is standard: Ruskey–Sawada 1999
+     §3.2 use its density consequence, and Gabrić–Sawada 2026 Definition 3
+     makes it the first clause of a quasinecklace.
+   - The paper now states the lemma as a standard fact. Its claim is narrowed
+     to using that fact as an exact word-level filter, plus the two
+     implementations, their exactness proofs and the measurements (§1, §4,
+     §8, §9, abstract).
 2. **Isolated replay** of the `n = 83` zero-gap stage through
    `experiments/koblitz-n83-index-design-20260929/packed_index_e1_isolated_replay_20261010/`
    so the canonicalization timing ratio can be promoted from exploratory.
