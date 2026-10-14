@@ -199,6 +199,10 @@ def unit_variant_screen(cases: list[dict], screen,
         1 for a in range(112) for b in range(-65, 66)
         if norm((a, b)) < 56**2 and (a > 0 or b >= 0))
     assert fused_entries == 5680
+    tight_entries = sum(
+        1 for a in range(92) for b in range(-54, 55)
+        if norm((a, b)) < 46**2 and (a > 0 or b >= 0))
+    assert tight_entries == 3838
     return {
         "orbit_count_including_zero": len(seeds),
         "max_seed": max(seeds),
@@ -210,8 +214,11 @@ def unit_variant_screen(cases: list[dict], screen,
         "digit_orbit_entries": digit_entries,
         "axis_fallback_entries": axis_entries,
         "fused_terminal_entries": fused_entries,
+        "tight_terminal_entries": tight_entries,
         "point_payload_bytes": (digit_entries * 128 +
                                 (axis_entries + fused_entries) * 64),
+        "tight_point_payload_bytes": (digit_entries * 128 +
+                                       (2 * 643 + tight_entries) * 64),
         "max_holdout_terminal_norm": max_terminal_norm,
         "max_holdout_terminal_abs_coordinates": max_terminal_coords,
         "holdout_nonzero_point_terms": dict(sorted(term_counts.items())),

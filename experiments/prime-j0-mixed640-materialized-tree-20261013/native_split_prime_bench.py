@@ -489,6 +489,34 @@ def pack_unit_corrections(source: str) -> str:
     return source
 
 
+UNIT_TIGHT_TERMINAL_REPLACEMENTS = {
+    "const SPLIT_PRIME_TERMINAL_LIMIT: usize = 663;":
+        "const SPLIT_PRIME_TERMINAL_LIMIT: usize = 642;",
+    "    terminal_row_start: [u16; 113],":
+        "    terminal_row_start: [u16; 93],",
+    "    terminal_row_min: [i16; 112],":
+        "    terminal_row_min: [i16; 92],",
+    "        let mut terminal_row_start = [0u16; 113];":
+        "        let mut terminal_row_start = [0u16; 93];",
+    "        let mut terminal_row_min = [0i16; 112];":
+        "        let mut terminal_row_min = [0i16; 92];",
+    "        for a in 0..112i32 {":
+        "        for a in 0..92i32 {",
+    "            for b in -65..=65i32 {":
+        "            for b in -54..=54i32 {",
+    "                if norm >= 3136 || (a == 0 && b < 0) { continue; }":
+        "                if norm >= 2116 || (a == 0 && b < 0) { continue; }",
+    "        terminal_row_start[112] = pair_digits.len() as u16;":
+        "        terminal_row_start[92] = pair_digits.len() as u16;",
+    "        assert_eq!(pair_digits.len(), 5680);":
+        "        assert_eq!(pair_digits.len(), 3838);",
+    "        assert_eq!(entries, 12_899);":
+        "        assert_eq!(entries, 12_857);",
+    "    if terminal_norm < 3136 {":
+        "    if terminal_norm < 2116 {",
+}
+
+
 LINEAR_REPLACEMENTS = {
     "const SPLIT_PRIME_NORM: i32 = 3301;":
         "const SPLIT_PRIME_NORM: i32 = 3307;",
@@ -546,7 +574,8 @@ SHORT_REPLACEMENTS = {
 
 
 def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
-         unit_compressed: bool = False, packed_correction: bool = False) -> None:
+         unit_compressed: bool = False, packed_correction: bool = False,
+         tight_terminal: bool = False) -> None:
     if variant not in ("3301", "3307", "5113"):
         raise ValueError("variant must be 3301, 3307, or 5113")
     spec = importlib.util.spec_from_file_location("mixed640_bench_cli", BASE)
@@ -570,6 +599,11 @@ def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
         if not unit_compressed:
             raise ValueError("packed correction requires unit compression")
         split_source = pack_unit_corrections(split_source)
+    if tight_terminal:
+        if not packed_correction:
+            raise ValueError("tight terminal requires packed unit compression")
+        for old, new in UNIT_TIGHT_TERMINAL_REPLACEMENTS.items():
+            split_source = replace_once(split_source, old, new)
     module = replace_once(module_path.read_text(),
         "pub(super) fn warm_mixed640_pretau_table() -> usize {\n",
         split_source + "pub(super) fn warm_mixed640_pretau_table() -> usize {\n")
@@ -594,7 +628,8 @@ def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
         "variant": (f"split_prime_radix_{variant}"
                     + ("_fused_terminal" if fused_terminal else "")
                     + ("_unit_compressed" if unit_compressed else "")
-                    + ("_packed_correction" if packed_correction else "")),
+                    + ("_packed_correction" if packed_correction else "")
+                    + ("_tight_terminal" if tight_terminal else "")),
         "split_prime_source_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
         "generated_module_sha256": sha256(module_path.read_bytes()).hexdigest(),
         "generated_front_sha256": sha256(front_path.read_bytes()).hexdigest(),
@@ -617,5 +652,8 @@ if __name__ == "__main__":
     elif len(sys.argv) == 3 and sys.argv[1] == "--unit-packed":
         main(Path(sys.argv[2]), fused_terminal=True, unit_compressed=True,
              packed_correction=True)
+    elif len(sys.argv) == 3 and sys.argv[1] == "--unit-packed-tight":
+        main(Path(sys.argv[2]), fused_terminal=True, unit_compressed=True,
+             packed_correction=True, tight_terminal=True)
     else:
-        raise SystemExit("usage: native_split_prime_bench.py [--linear|--fused-terminal|--short-fused|--unit-fused|--unit-packed] TARGET_DIR")
+        raise SystemExit("usage: native_split_prime_bench.py [--linear|--fused-terminal|--short-fused|--unit-fused|--unit-packed|--unit-packed-tight] TARGET_DIR")

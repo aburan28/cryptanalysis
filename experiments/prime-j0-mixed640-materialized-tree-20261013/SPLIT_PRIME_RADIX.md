@@ -263,5 +263,31 @@ packed lookup digest and checks every decoded field; the Lean declaration
 `unit_packed_correction_identity` proves that the rewritten quotient step
 is identical for arbitrary coefficients. The generated native release test
 matched all 128 frozen points against independent binary multiplication
-locally and reported **1,943,788 retained bytes**. Online timing is
-evaluated separately from the first unit format.
+locally and on the Pod, and reported **1,943,788 retained bytes**. Its Pod
+build, test, overlay, and manifest logs are under
+`tier1-runpod-20261013/split-prime-validation/`; the transferred validation
+archive SHA-256 is
+`b6f2ef1c27e50aaf0a0e470621fa41a68944847ef76cc6c0fcf1a9ab543ca1f1`.
+
+The direct serial case-0 comparison with the first unit format completed
+eight valid pairs. Median first-unit/packed online ratio was **1.1425**,
+with paired bootstrap interval **0.8683–1.2299**. Median online times by
+arm were 0.03822/0.03483 ms. The raw job is
+`tier1-runpod-20261013/ec98874e4794472892f64d0e567c7d95/`.
+The separate direct comparison with the signed-integer fused evaluator
+also completed eight valid pairs: median signed/packed ratio **0.9164**,
+paired interval **0.7774–1.0291**, and median online times
+0.03349/0.03638 ms. Its raw job is
+`tier1-runpod-20261013/7b7180a0e92a4a9dae3d4a643e5bd8f6/`.
+Both jobs returned verified points with stable artifacts, binaries, and
+runner. The transferred two-job archive SHA-256 is
+`465f2b137a519c12737873c08b81f50d0d8a036546cc3fede552d2ab5d7e2bc7`.
+Packing improved the unit format on this case but did not establish an
+online advantage over the signed-integer fused evaluator.
+
+The `--unit-packed-tight` follow-up uses the checked 46-norm terminal bound
+directly. Its canonical terminal table has 3,838 points instead of 5,680;
+the exact axis fallback is limited to coordinate magnitude 642 instead of
+663. Local native release testing matched all 128 independent binary
+points and reported **1,823,132 retained bytes**. Its online effect is
+measured as a separate arm against the packed and signed-integer formats.
