@@ -5,20 +5,28 @@ import argparse
 from hashlib import sha256
 import json
 from pathlib import Path
+import re
 
 
 HERE = Path(__file__).resolve().parent
 FIXTURE = HERE / "selective-holdout.json"
+ROOT = HERE.parent.parent
 
 
 def files_for_crate(crate):
-    return [
+    files = [
+        crate / "Cargo.toml",
         crate / "Cargo.lock",
         crate / "native-bench-overlay.json",
         crate / "src/bin/mixed640_bench_fixture.json",
-        crate / "src/bin/eisenstein_fixed.rs",
-        crate / "src/bin/eisenstein_fixed/unit_orbit_windows.rs",
     ]
+    sources = sorted((crate / "src").rglob("*.rs"))
+    files.extend(sources)
+    for source in sources:
+        files.extend(Path(path) for path in re.findall(
+            r'include_(?:bytes|str)!\(\s*"(/[^"]+)"\s*\)',
+            source.read_text()))
+    return files
 
 
 def main():
@@ -47,8 +55,10 @@ def main():
     candidate = args.candidate_crate.resolve()
     executable = lambda crate: crate / "target/release/eisenstein_fixed"
     artifacts = [FIXTURE, HERE / "selective-policy.json",
-                 HERE / "native_bench_cli.py", args.allocation_receipt,
-                 args.runner_source]
+                 args.allocation_receipt, args.runner_source]
+    artifacts += sorted(HERE.glob("*.py"))
+    artifacts += sorted((HERE.parent / "prime-j0-mixed-radix640-20261010").glob("*.py"))
+    artifacts += sorted((ROOT / "suite/src").rglob("*.rs"))
     artifacts += files_for_crate(reference) + files_for_crate(candidate)
     paths = sorted({str(path.resolve()) for path in artifacts})
     for path in paths + [str(executable(reference)), str(executable(candidate))]:
