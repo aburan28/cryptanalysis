@@ -1,0 +1,443 @@
+{
+  "amendments": [
+    {
+      "before_commit": true,
+      "date": "2026-10-14",
+      "id": "A1",
+      "what": "Positive-control gate moved from the absolute BL step count to BL's speedup over plain rho (the stated criterion); band unchanged at [0.8, 1.25].",
+      "why": "The local dry run at full N (smoke/control/, before this file was committed) gave absolute BL steps 0.80-0.94 of the model (pc69-rT770 at 2^18 steps: 0.798, below the band) and plain rho 0.92-0.95 of its model, so the random-mapping model overstates both arms by a similar 5-10% at these sizes; the speedup ratio, where that cancels, read 0.99-1.19 of the model (all inside the band). Both versions and every number are in README.md."
+    }
+  ],
+  "bl": {
+    "bl_jump_seed": 20261014,
+    "budget_ms": "P_IC of this job (budget.definition)",
+    "dp_bits": 6,
+    "dp_bits_rationale": "One value for every implementation, chosen before any n=83 BL run from the random-mapping model (model below) at B's measured budget: the online cost is l/c + lanes*2^dp, so a smaller dp is cheaper online but stores T = P/2^dp points. dp 6 keeps T at or below about 5.5e7 (2.2 GB file, under 8 GB RAM) for every declared implementation and per-step cost; dp 5 would need up to 1.1e8 entries; dp 7 adds 2,000-4,000 steps online (5-20%).",
+    "online_walk_seed": "the reference rho's seed for the same target (Q0 blocks 831000..831003, fresh points 830000 + w), so BL and rho share start streams but not jump tables",
+    "oracle_sample": 4096,
+    "oracle_sample_seed": 2026101402,
+    "precompute_seed": 20261015,
+    "precompute_timeout_s": 3600,
+    "stop_rule": "precomputation stops at the first 256-round boundary at which its own clock (started immediately before the first walk start) reads at least budget_ms; its round count is recorded, and a rerun stopped at that round count must write a byte-identical table",
+    "table_format": "table.bin: 40-byte records (x u128 LE, y u128 LE, a u64 LE) in the polynomial basis, sorted strictly by (x, y); BLAKE3 checked by every loader, SHA-256 in every receipt",
+    "what": "Bernstein-Lange precomputation rho (Bernstein and Lange, 'Computing small discrete logarithms faster', INDOCRYPT 2012): walks from c*G (no target) with the chosen implementation's own jumps, partition, canonicalization, distinguished-point hash, lane schedule and batched step; every new distinguished point is stored with its logarithm. Online, the target's walk (starts [c]G+Q) runs with that table preloaded; the first collision with a stored point gives d = (a_stored - a)/b, checked [d]G = Q in the walk. The online walk also stores its own distinguished points, so a self-collision (plain rho) can solve too; which one solved is recorded per row."
+  },
+  "budget": {
+    "definition": "P_IC_ms = timing_ms.rank_stage + timing_ms.setup_total of this job's IC precompute receipt (ic_precompute.py: one cold in-process IC run on Q0 on the execution CPU, one thread): base load + normal basis and self-test + root index build + sequential rank stage (the relations) + linear algebra (the log table)",
+    "excluded_from_P_IC": "the construction of the retained K600 base (done 2026-10-06, not re-timed here). Leaving it out makes the BL budget smaller than the IC's true setup, which can only favour the IC.",
+    "fits": "yes: one sequential precomputation of about P_IC (15 min at B's figure) on one CPU, inside the 6 h job; T and RAM per implementation in sizing; the matched fraction is 1.0",
+    "pre_run_estimate_ms": 882272.8,
+    "pre_run_estimate_source": "B's run 38523707244: rank_stage 835,532.5 ms + setup_total 46,740.4 ms",
+    "unit": "wall milliseconds on the same pinned execution CPU of the same instance, measured by each producer's own monotonic clock"
+  },
+  "clocks": {
+    "bl_and_rho": "B's rho boundary for every rho-family arm: from the first walk start [c]G+Q to the collision whose [d]G = Q check passed (rung 3: online_ms; StrongRhoG: the solve call, 'walk_and_collision'). Table load, curve, field, jumps and the target's membership check are excluded and logged; A's boundary (membership + walk + generic replay) is kept per row as online_ms_at_A_boundary.",
+    "bl_precompute": "the producer's own clock from immediately before the first walk start to the stop round; excluded: curve, field and jump setup (logged), table sort and write (logged)",
+    "ic": "B's: target_query_begin to recovery_check_end, five exclusive phases summing to online_ms; setup (base, normal basis, root index, table load and full verification) excluded"
+  },
+  "controls": {
+    "aa": {
+      "band": [
+        0.9,
+        1.1
+      ],
+      "what": "bl_aa: the BL arm run again on every target with the same seed at another position in the rotation; steps must be identical, and the geometric mean of BL/BL' online time must have a 95% bootstrap interval inside band"
+    },
+    "ic_table": "IC arms load B's archived factor-log table (inputs.factor_log_table_archived, SHA-256 bound), whose 600 logs this job's rank stage reproduced",
+    "ic_work_identity": {
+      "q0_probes": 8845441,
+      "what": "every IC row on Q0 takes B's probe count"
+    },
+    "positive": {
+      "dp_note": "dp 4 keeps the lane-detection term lanes*2^dp at 2-23% of the online cost at these sizes; n=83 uses dp 6, where the same model is checked as a secondary figure",
+      "eligibility": "the n=83 readings are eligible only if every positive control of the chosen implementation passed in the same job",
+      "runs": [
+        {
+          "bl_jump_seed": 20261014,
+          "curve": [
+            41,
+            0
+          ],
+          "dp_bits": 4,
+          "id": "pc41-rA770",
+          "implementation": "rA770",
+          "note": "icv1-f2m41-tm2308219-7f48b14a (E_0 over GF(2^41), r = 549756390943, 2^39.0); StrongRhoG<WideGf2,u64>, the n=83 instantiation (WideGf2 accepts n=41; its table equals the Gf2 one byte for byte)",
+          "precompute_seed": 20261015,
+          "precompute_steps": [
+            524288,
+            2097152
+          ],
+          "targets": 256,
+          "walk_seed_base": 700000
+        },
+        {
+          "bl_jump_seed": 20261014,
+          "curve": [
+            69,
+            0
+          ],
+          "dp_bits": 4,
+          "id": "pc69-rA770",
+          "implementation": "rA770",
+          "note": "E_0 over GF(2^69), r = 254196239707 (2^37.9), 138 signed-Frobenius automorphisms: the smallest wide-path rung, so every implementation runs its n=83 code",
+          "precompute_seed": 20261015,
+          "precompute_steps": [
+            131072,
+            262144
+          ],
+          "targets": 256,
+          "walk_seed_base": 700000
+        },
+        {
+          "bl_jump_seed": 20261014,
+          "curve": [
+            69,
+            0
+          ],
+          "dp_bits": 4,
+          "id": "pc69-rB770",
+          "implementation": "rB770",
+          "note": "rung 3's wide path (n >= 64 only; its u64 path is not patched, so there is no n=41 rung-3 control)",
+          "precompute_seed": 20261015,
+          "precompute_steps": [
+            131072,
+            262144
+          ],
+          "targets": 256,
+          "walk_seed_base": 700000
+        },
+        {
+          "bl_jump_seed": 20261014,
+          "curve": [
+            69,
+            0
+          ],
+          "dp_bits": 4,
+          "id": "pc69-rT770",
+          "implementation": "rT770",
+          "note": "the fold field (Gf2_128 needs n > 64), 64 lanes",
+          "precompute_seed": 20261015,
+          "precompute_steps": [
+            131072,
+            262144
+          ],
+          "targets": 256,
+          "walk_seed_base": 700000
+        }
+      ],
+      "what": "control.py: on small curves, for each declared implementation on its exact n=83 code path, tables built with a step-count stop and every record verified; N known-answer targets solved with the table (BL) and without it (plain rho, same binary, jumps and DP rule). Pass: every scalar recovered, every record verified, mean plain steps within model.positive_control_band of the plain model, and BL's speedup over plain rho (mean plain steps / mean BL steps) within the band of the model's speedup, at every table size. The absolute BL step ratio is reported, not gated (amendment A1). Counts only: no timing is read. The walks are deterministic in their seeds, so the runner must reproduce the local dry run's counts exactly."
+    },
+    "replay": "every recovered scalar replayed [d]G = Q in oracle.py; one scalar per point across all arms; Q0's equals the validation sidecar",
+    "step_identity": {
+      "seed": 831000,
+      "what": "bl_plain: the BL binary with no table and the reference's own jumps and DP rule on Q0 at seed 831000; its walk_steps must equal the reference rho's row at Q0 block 0 (seed 831000). Local check before freezing: 12,804,216 (rB770), 12,592,070 (rT770) at 831000, 5,353,957 (rA770 at A's seed 202610063), the archived counts"
+    },
+    "table": "bl_table.py check: regeneration byte-identical, every record verified by the producer, a 4,096-record oracle.py sample"
+  },
+  "decision_rule": {
+    "aa_failure": "if the A/A interval leaves its band, the readings stand but every online ratio is reported as limited by timing noise of that size",
+    "eligible": "every row valid, every scalar verified in process and replayed in oracle.py, one scalar per point, Q0's equal to the sidecar, IC table byte-identical to B's, BL budget equal to this job's P_IC and reached without a 1% overrun, the three table checks passed, the step-identity and IC work-identity checks passed, BL and BL' steps identical, and the chosen implementation's positive controls passed",
+    "reading": {
+      "bl_online_faster_than_ic": "eligible and the IC/BL interval's lower bound > 1",
+      "ic_online_faster_than_bl": "eligible and its upper bound < 1",
+      "no_result": "not eligible; rows and failures are reported, no ratio is read",
+      "not_separated": "eligible and the interval contains 1"
+    },
+    "scope": "instance-scoped (Tier 1 at best, one runner, one pinned CPU): a measured BL arm on this curve, base and budget; not a speed of the index calculus or of rho in general; no transfer to ECC2K-130 or E_0 over GF(2^83)"
+  },
+  "frozen_at_utc": "2026-10-14",
+  "harness": {
+    "beat_id": "koblitz.compact_orbit.n83_single_target",
+    "replay": "oracle.py pure-Python GF(2^83) arithmetic of the pinned harness (out of process)"
+  },
+  "ic": {
+    "binary": "ic_online_logcache_r770",
+    "kind": "ic_online_cached",
+    "what": "B's IC producer: koblitz_orbit_dlp_fast_online + ic_log_cache.patch, loading B's verified factor-log table (all [L_j]G = R_j re-checked in every process before any target work)"
+  },
+  "inputs": {
+    "base": "experiments/koblitz-single-target-n83-20261006/base_n83_K600.jsonl",
+    "base_hash": "d4a4da26d6e7cb09367de922d9806631fe49989f70d378cae76f347f8d76a9f7",
+    "factor_log_table_archived": "../koblitz-single-target-n83-tier1-20261014/tier1_github_38523707244/precompute/factor_logs_n83_K600.json",
+    "factor_log_table_archived_sha256": "a771716f284bb826e7407e1e7b5ef882409c9e7e1df8b8a3ed5b60b421d9f17e",
+    "orbit_columns": 600,
+    "targets_file": "../koblitz-single-target-n83-tier1-20261014/inputs/targets.json",
+    "targets_note": "B's frozen Q0 and B's 16 fresh public hash-to-curve points (Panel B of experiments/koblitz-single-target-n83-tier1-20261014), used unchanged",
+    "targets_sha256": "146bfd70b3f3c39368743ff611107a259de52c88fcf115ccc37b52c62d252d50",
+    "validation_fixture": "experiments/koblitz-single-target-n83-20261006/frozen/fixture.json",
+    "validation_fixture_use": "opened only by verify_receipt.py, after the panel; never passed to an arm"
+  },
+  "kind": "n83_bl_arm_measured_v1",
+  "measurement_tier": "tier1_instance",
+  "model": {
+    "bl_online_steps": "sqrt(pi*l/2) * exp(z^2) * erfc(z) + lanes*2^dp with z = c/sqrt(2l), c = covered_points of the precomputation (trail points of walks that stored a new point); this is l/c + lanes*2^dp for c >> sqrt(l) and plain rho at c = 0",
+    "bl_paper_reference_point": "Bernstein-Lange's tuned table selection reaches online ~1.93*sqrt(l/T) at precomputation ~1.21*sqrt(l*T) (the ledger's model column); this arm stores every distinguished point found (no selection), which the model above describes",
+    "class": "heuristic estimate (random-mapping model), not a measurement",
+    "derivation": "a fresh step lands on a precomputed trail with probability c/l and on the walk's own past with probability t/l; detecting the merge costs about one walk length 2^dp per lane",
+    "plain_rho_steps": "sqrt(pi*l/2) + lanes*2^dp",
+    "positive_control_band": [
+      0.8,
+      1.25
+    ]
+  },
+  "panels": {
+    "F": {
+      "seed_base": 830000,
+      "seed_rule": "830000 + w (B's Panel B rule)",
+      "targets": 16
+    },
+    "Q": {
+      "blocks": 4,
+      "seeds": [
+        831000,
+        831001,
+        831002,
+        831003
+      ],
+      "target": "q0"
+    },
+    "arms_per_target": [
+      "ic",
+      "bl",
+      "rho",
+      "bl_aa"
+    ],
+    "execution": "run_job.py: one process at a time on one execution CPU (sched_setaffinity), isolated_bench's clean environment and Tier 1 counters; contended rows are kept and flagged, never re-run",
+    "order": "targets Q0b0, w00-w03, Q0b1, w04-w07, Q0b2, w08-w11, Q0b3, w12-w15, then the step-identity control; the k-th target's arms run in rotation k mod 4 of [ic, bl, rho, bl_aa]",
+    "timeout_s": {
+      "bl": 600,
+      "bl_aa": 600,
+      "bl_plain": 900,
+      "ic": 900,
+      "rho": 900
+    }
+  },
+  "precompute": {
+    "rank_seed": 7,
+    "timeout_s": 5400,
+    "what": "ic_precompute.py: B's in-process rank stage with KIC_LOG_TABLE_OUT, as B's precompute.py; its table must equal B's archived table in every field but provenance.rank_stage_ms (the file records its own rank-stage time, so bytes cannot repeat), and its timers give P_IC; the IC arms then load B's archived file itself, SHA-256-bound"
+  },
+  "question": "On EC1N83Ce1h35c7ced6b497 (a=1, n=83, r=8569786107849059, about 2^52.93), a measured Bernstein-Lange arm: a precomputation rho on the signed-Frobenius classes builds a table of T distinguished points with the same walk the online walk uses, at a cost equal (same unit: wall milliseconds on one pinned CPU of the same instance) to the index calculus's setup (base + relations + log table). How does its online cost per target compare with B's IC producer (cached log table) on B's 16 fresh public points and Q0, beside both cold costs and the single-target rho cost? This turns ledger section 23's last column (a model) into a measurement.",
+  "resources": {
+    "deadline_min_for_the_time_guard": 330,
+    "estimate_s": {
+      "audit": [
+        60,
+        300
+      ],
+      "bl_precompute": "P_IC (900-2100)",
+      "build_and_tests": [
+        400,
+        1200
+      ],
+      "ic_precompute": [
+        900,
+        2100
+      ],
+      "panel": [
+        1500,
+        2700
+      ],
+      "positive_controls": [
+        60,
+        600
+      ],
+      "table_checks": [
+        600,
+        2400
+      ],
+      "target_upper": 120,
+      "total": [
+        5300,
+        11500
+      ]
+    },
+    "job_timeout_minutes": 350,
+    "memory": "IC arm peak about 4.4-5.9 GB (B's receipts); BL precompute and online up to about 7 GB at the largest declared T; one process at a time, table checks sequential"
+  },
+  "rho_reference": {
+    "allowed": [
+      "rB770",
+      "rA770",
+      "rT770"
+    ],
+    "decided_by": "item 2: cryptanalysis experiments/koblitz-n83-reconcile-20261014/ on branch claude/n83-reconcile (run 38617911080), which measures the three step implementations on one runner",
+    "rule": "Set value to one key of rho_step_implementations, in a commit made before the push that starts the run; nothing else in this file may change with it. bl_table.py refuses to build the n=83 table while value is null, so the workflow stops before any n=83 timing. The positive control runs for every implementation regardless.",
+    "status": "OPEN",
+    "value": null
+  },
+  "rho_step_implementations": {
+    "rA770": {
+      "bl": {
+        "binary": "bl_sg",
+        "family": "sg",
+        "field": "wide",
+        "kind": "bl_sg",
+        "lanes": 32,
+        "plain_kind": "bl_plain_sg",
+        "source": "snapshot/bl_generated/sg_bl_module.rs (library walk + bl_src/sg_bl_impl.rs, SG_SOLVE_SUBS) and bl_sg.rs"
+      },
+      "label": "A's default StrongRhoG<WideGf2,u64>: library koblitz_strong_rho walk, 32 lanes, DP 4, escape off (n83_strong_point_eval)",
+      "reference": {
+        "binary": "rho_adapter_r770",
+        "dp_bits": 4,
+        "jumps": "blake3('n83-exact-public-strong-jumps-v1\\0' || seed)",
+        "kind": "rho_adapter",
+        "lanes": 32,
+        "starts": "StdRng(seed), [c]G+Q"
+      }
+    },
+    "rB770": {
+      "bl": {
+        "binary": "bl_rung3",
+        "family": "rung3",
+        "kind": "bl_rung3",
+        "lanes": 32,
+        "plain_kind": "bl_plain_rung3",
+        "source": "snapshot/bl_generated/bl_rung3.rs (restore_sources.py R3_SUBS + bl_src/rung3_bl_impl.rs)"
+      },
+      "label": "B's strong rung 3: koblitz_rho_batch_ks_strong_online wide path, library Gf2_128, FastCanon128, 32 lockstep lanes with Gf2::batch_inv",
+      "reference": {
+        "binary": "rho_rung3_r770",
+        "dp_bits": 4,
+        "jumps": "32 G-only jumps from blake3('KIC-KS-BATCH-JUMPS-v1|83|1|seed')",
+        "kind": "rho_rung3",
+        "lanes": 32,
+        "starts": "fixture material of the seed, [c]G+Q"
+      }
+    },
+    "rT770": {
+      "bl": {
+        "binary": "bl_sg",
+        "family": "sg",
+        "field": "fold",
+        "kind": "bl_sg",
+        "lanes": 64,
+        "plain_kind": "bl_plain_sg",
+        "source": "as rA770, field fold"
+      },
+      "label": "A's tuned StrongRhoG<Gf2_128 fold>: the library walk with the fold field, 64 lanes, DP 6, escape off (n83_rho_optimization_eval, selected_config.json)",
+      "reference": {
+        "binary": "rho_tuned_r770",
+        "config": "research/n83_evaluation_20261012/optimization/selected_config.json",
+        "dp_bits": 6,
+        "jumps": "blake3('n83-exact-public-strong-jumps-v1\\0' || seed)",
+        "kind": "rho_tuned",
+        "lanes": 64,
+        "starts": "StdRng(seed), [c]G+Q"
+      }
+    }
+  },
+  "sizing": {
+    "model": "P_steps = P_IC / ns_per_step; T = P_steps / 2^dp (duplicates under 1% at these alphas); online steps = l/c + lanes*2^dp with c ~ P_steps; l = (r-1)/166 = 5.1625e+13",
+    "note": "ns_per_step values are the receipts' (B's runner for rung 3, A's host for StrongRhoG) or assumptions for the tuned field; the run measures its own. These numbers are predictions, not results.",
+    "rA770_at_461ns_A_host": {
+      "P_steps": 1914000000.0,
+      "T_entries": 29900000.0,
+      "alpha": 0.0487,
+      "model_online_ms": 13.4,
+      "model_online_steps": 29000.0,
+      "ns_per_step_assumed": 461,
+      "precompute_peak_RAM_GB_est": 5.8,
+      "table_file_GB": 1.2
+    },
+    "rA770_at_706.7ns": {
+      "P_steps": 1248000000.0,
+      "T_entries": 19510000.0,
+      "alpha": 0.0393,
+      "model_online_ms": 30.7,
+      "model_online_steps": 43400.0,
+      "ns_per_step_assumed": 706.7,
+      "precompute_peak_RAM_GB_est": 3.1,
+      "table_file_GB": 0.78
+    },
+    "rB770_at_B_runner_706.7ns": {
+      "P_steps": 1248000000.0,
+      "T_entries": 19510000.0,
+      "alpha": 0.0393,
+      "model_online_ms": 30.7,
+      "model_online_steps": 43400.0,
+      "ns_per_step_assumed": 706.7,
+      "precompute_peak_RAM_GB_est": 3.1,
+      "table_file_GB": 0.78
+    },
+    "rT770_at_250ns_assumed_fast": {
+      "P_steps": 3529000000.0,
+      "T_entries": 55140000.0,
+      "alpha": 0.0661,
+      "model_online_ms": 4.7,
+      "model_online_steps": 18700.0,
+      "ns_per_step_assumed": 250,
+      "precompute_peak_RAM_GB_est": 7.0,
+      "table_file_GB": 2.21
+    },
+    "rT770_at_461ns": {
+      "P_steps": 1914000000.0,
+      "T_entries": 29900000.0,
+      "alpha": 0.0487,
+      "model_online_ms": 14.3,
+      "model_online_steps": 31100.0,
+      "ns_per_step_assumed": 461,
+      "precompute_peak_RAM_GB_est": 5.8,
+      "table_file_GB": 1.2
+    },
+    "runner": "GitHub Actions ubuntu-24.04 standard: 4 vCPU, 16 GB, 6 h job"
+  },
+  "sources": {
+    "commit": "770f6a6925a0d29b768bd79074f54a173e967fe7",
+    "repository": "https://github.com/aburan28/crypto",
+    "sha256": {
+      "base_n83_K600": "0d290b14a350db6271c9a49f0cd6ba246edd8c9bc6754387ad1ceebf08ec0c09",
+      "bl_src:bl_sg.rs": "d983cfc5644aafb8797aa6143c9f7ef85e055aaef300569b4e91a180fafa3733",
+      "bl_src:bl_table_io.rs": "ebfca87c67b10a7d0c059d45500de29d648859a8f5ac9c9f6769c7cf25156b82",
+      "bl_src:rung3_bl_impl.rs": "481e042db22c510fec51aeeebb78cf2cab7c9a02f54d05c14f518bbcd6c5ff45",
+      "bl_src:sg_bl_impl.rs": "0d5651e6a58d80021736be2133e3a65bd4dcd48f51bc9e5fffaf814193a9aebd",
+      "crypto_lock": "ac5cd7a3459be776180afe1eb2975c76b1a88f84bd1e99aa20475927ec260a90",
+      "crypto_manifest": "49b5f9478f133f905d5388d8c609d097830d69fe912c46dbc95b387b5d14a3de",
+      "crypto_rust_source_tree": "421a743cd2299d585b974862e870a7ef114a8f773c3cfcca27ce80ab7d61a5fb",
+      "generated:bl_rung3": "5ba035c6d6da4a4a79e97f990f8f49c3a6464677b9eb14cb16f7beda4afbddee",
+      "generated:bl_sg": "d983cfc5644aafb8797aa6143c9f7ef85e055aaef300569b4e91a180fafa3733",
+      "generated:bl_table_io": "ebfca87c67b10a7d0c059d45500de29d648859a8f5ac9c9f6769c7cf25156b82",
+      "generated:sg_bl_module": "6242fbfde064a5be3d7701fba8780a2591fac2ce2cf7b3238aecce7d29c649e0",
+      "harness:docs/ic/boundary_targets.json": "1e062aa4fed838279028871b60a3b23a018d18d4d60d07a0e89700d2ae4aba64",
+      "harness:research/ic_candidate_tournament_20260915/identity.py": "1fcb72308e6353c55c30c2184c1d99edef7c84ef8283db6615e5fb3075fb307f",
+      "harness:research/ic_candidate_tournament_20260915/oracle.py": "2804ac7ae42cde3d8c108ec262ac34797cf0315c647eeae68860085a472f2a19",
+      "harness:research/ic_single_target_20260930/curve_ids.json": "f98a8c3a152ed2da06a5d1079633daa7eed024a6b4837c243a7a689eea07d637",
+      "harness:research/sat_factor_base_review_20260908/autolab/boundary_autolab.py": "7b0f210becfbfee2683ca0b5301cd9dca6f50fa729b918bc344d10047a9498bf",
+      "harness:research/sat_factor_base_review_20260908/autolab/op_accounting.py": "12bbddc092b9f5f4b4d6c4ba849469257f879f51b4dffd4a4275103cfb19e6a9",
+      "harness:research/sat_factor_base_review_20260908/autolab/protocol.json": "53d070be27b3968db85e62b4d4885976cd681e0bae1c31217dcedd461bcc6b9f",
+      "harness:research/sat_factor_base_review_20260908/autolab/single_target_panel.py": "aa9059a388ddd620b0b6cc998c5846486344367c0114642f6829866b05317491",
+      "harness:tools/curve_identity.py": "39aeb32829ab7b5aec7c8fa0448f324ed755248bc3dd25df1b47e74cac067a9e",
+      "ic_log_cache_patch": "c2c969a9172bfc3cf03b7588fbd466957d5c500b47c11bec6b514478bbc83b26",
+      "ic_online_patched": "76531bc6abbe432d309abd835ba025674197ce103d51a77bff1064de1918942e",
+      "ic_online_upstream": "4729f3b9aac5d20e36a2560aabae76c40ab4baf2c88cf6da9bd7bcb3c17550e2",
+      "rho_adapter": "82bc92d24e096109d4c35288d034c02f63c08241ed87dc83c93655ed668c4cbf",
+      "rho_rung3": "9a62bdcdf17c7bd05c38ce75190d163e6ee108950f7eca7a8002e2c7fb7bf634",
+      "rho_tuned": "fb14072f4fa5d08e18d8b79130b6d58a220adae0f76369cc9be949691c83eaa0",
+      "sg_library": "f426f06f82cb5ee2afe10c2c68a969637556f2bcc67562d7e4c729d9524517b9",
+      "snapshot_tree": "d8c295d0ff82935d615e19eb10ad404dfd1c90c46c7a4d7d6030223216cbf236",
+      "target_points": "d4f9872d9d4e22d26770ecb749b29f1da944d701fb85c8bbc8f20489cd0345c5",
+      "tuned_config": "249526beeb4a2c68d9d2fe97114aa0f4901cdb6c1c892c8c39d93dfbd40b9d5a",
+      "validation_fixture": "f3605f0d1739e4542ced9b5c12200c5582f60ae3a4b94bc48189bf525873aea5"
+    }
+  },
+  "statistics": {
+    "F_primary": "IC online over BL online: mean IC online / mean BL online over the 16 fresh points, 95% bootstrap over targets (resampling triples)",
+    "F_secondary": [
+      "rho over BL (BL's online speedup over the single-target rho), same statistic",
+      "rho over IC (B's section 23 statistic, re-measured with the chosen reference)",
+      "medians and rows with BL faster"
+    ],
+    "Q": "per block IC/BL, rho/BL, rho/IC; median over the 4 blocks with every block listed (IC on Q0 is one deterministic scan)",
+    "bootstrap_draws": 10000,
+    "bootstrap_seed": 2026101403,
+    "cold": "one fresh target with empty caches: IC = P_IC + mean IC online; BL = BL precompute_ms + median BL per-process setup (curve, jumps, table load) + mean BL online; rho = median rho per-process setup + mean rho online (fresh points)",
+    "model_check": "mean BL online steps over the model's prediction at n=83 (secondary, a model check)",
+    "multiplicity": "one primary reading (F, IC over BL); the others are reported beside it, not tested"
+  },
+  "status": "FROZEN_EXCEPT_RHO_REFERENCE",
+  "toolchain": {
+    "build": "cargo build --release --locked in this directory; default release profile; no RUSTFLAGS; crypto default-features = false",
+    "rustc": "1.99.0 (rustup, as B and the reconciliation)"
+  }
+}
