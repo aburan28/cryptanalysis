@@ -95,22 +95,27 @@ F131_INLINE void mulTiny(uint64_t x, uint64_t y, uint64_t *lo, uint64_t *hi)
     *hi = ((y >> 63) & m1) ^ ((y >> 62) & m2);
 }
 
+// (hi:lo) >> k and (hi:lo) << k, low and high limb respectively, 0 < k < 64.
+// The two halves never share a bit, so | is the same value as ^; written with
+// | the compiler emits one double shift (shrd/shld) for the pair, which runs on
+// a different port from the single shifts this routine is otherwise bound on.
+F131_INLINE uint64_t shr2(uint64_t lo, uint64_t hi, int k) { return (lo >> k) | (hi << (64 - k)); }
+F131_INLINE uint64_t shl2(uint64_t hi, uint64_t lo, int k) { return (hi << k) | (lo >> (64 - k)); }
+
 // H mod m for a product H of degree at most 260, five limbs.
 F131_INLINE F131 reduce(const uint64_t h[5])
 {
-    const uint64_t d0 = (h[2] >> 3) | (h[3] << 61), d1 = (h[3] >> 3) | (h[4] << 61),
-                   d2 = (h[4] >> 3) & 3u;
-    const uint64_t r0 = d0 ^ (d0 >> 1) ^ (d1 << 63) ^ (d0 >> 3) ^ (d1 << 61);
-    const uint64_t r1 = d1 ^ (d1 >> 1) ^ (d2 << 63) ^ (d1 >> 3) ^ (d2 << 61);
+    const uint64_t d0 = shr2(h[2], h[3], 3), d1 = shr2(h[3], h[4], 3), d2 = (h[4] >> 3) & 3u;
+    const uint64_t r0 = d0 ^ shr2(d0, d1, 1) ^ shr2(d0, d1, 3);
+    const uint64_t r1 = d1 ^ shr2(d1, d2, 1) ^ shr2(d1, d2, 3);
     const uint64_t r2 = d2 ^ (d2 >> 1);
-    const uint64_t q0 = d0 ^ (r0 >> 1) ^ (r1 << 63) ^ (r0 >> 9) ^ (r1 << 55) ^ (r0 >> 25) ^
-                        (r1 << 39) ^ (r0 >> 57) ^ (r1 << 7) ^ (r1 >> 57) ^ (r2 << 7);
-    const uint64_t q1 = d1 ^ (r1 >> 1) ^ (r2 << 63) ^ (r1 >> 9) ^ (r2 << 55) ^ (r1 >> 25) ^
-                        (r2 << 39) ^ (r1 >> 57) ^ (r2 << 7);
+    const uint64_t q0 = d0 ^ shr2(r0, r1, 1) ^ shr2(r0, r1, 9) ^ shr2(r0, r1, 25) ^
+                        shr2(r0, r1, 57) ^ shr2(r1, r2, 57);
+    const uint64_t q1 = d1 ^ shr2(r1, r2, 1) ^ shr2(r1, r2, 9) ^ shr2(r1, r2, 25) ^ shr2(r1, r2, 57);
     const uint64_t q2 = d2 ^ (r2 >> 1);
     const uint64_t t0 = q0 ^ (q0 << 2) ^ (q0 << 3);
-    const uint64_t t1 = q1 ^ (q1 << 2) ^ (q0 >> 62) ^ (q1 << 3) ^ (q0 >> 61);
-    const uint64_t t2 = q2 ^ (q2 << 2) ^ (q1 >> 62) ^ (q2 << 3) ^ (q1 >> 61);
+    const uint64_t t1 = q1 ^ shl2(q1, q0, 2) ^ shl2(q1, q0, 3);
+    const uint64_t t2 = q2 ^ shl2(q2, q1, 2) ^ shl2(q2, q1, 3);
     F131 out;
     out.w[0] = h[0] ^ t0;
     out.w[1] = h[1] ^ t1 ^ t0 ^ (t0 << 32) ^ (t0 << 48) ^ (t0 << 56) ^ (q0 << 60);
