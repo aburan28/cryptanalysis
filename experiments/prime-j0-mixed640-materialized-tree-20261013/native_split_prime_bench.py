@@ -202,7 +202,35 @@ mod split_prime_tests {
 """
 
 
-def main(target: Path) -> None:
+LINEAR_REPLACEMENTS = {
+    "const SPLIT_PRIME_NORM: i32 = 3301;":
+        "const SPLIT_PRIME_NORM: i32 = 3307;",
+    "const SPLIT_PRIME_TAU_RESIDUE: i32 = 1576;":
+        "const SPLIT_PRIME_TAU_RESIDUE: i32 = 56;",
+    "const SPLIT_PRIME_DIGIT_LIMIT: usize = 1650;":
+        "const SPLIT_PRIME_DIGIT_LIMIT: usize = 1653;",
+    "// In Z[tau]/(86-21*tau), tau = 1576 mod 3301.":
+        "// In Z[tau]/(56+tau), tau = -56 mod 3307.",
+    "let residue_word = a.add(b.times_split_prime_small(SPLIT_PRIME_TAU_RESIDUE));":
+        "let residue_word = a.sub(b.times_split_prime_small(SPLIT_PRIME_TAU_RESIDUE));",
+    "let next_a = k.times_split_prime_small(23).sub(b.times_split_prime_small(11));":
+        "let next_a = k.times_split_prime_small(59).add(b);",
+    "let next_b = k.times_split_prime_small(21).sub(b.times_split_prime_small(10));":
+        "let next_b = k.neg();",
+    "// pi = 86 - 21*tau. All of this is reusable table preparation.":
+        "// pi = 56 + tau. All of this is reusable table preparation.",
+    "let ordinary = affine_multiples(base, 86).pop().unwrap();":
+        "let ordinary = affine_multiples(base, 56).pop().unwrap();",
+    "let tau = affine_multiples(base.tau(), 21).pop().unwrap().neg().into_affine();":
+        "let tau = base.tau().into_affine();",
+    "assert_eq!(entries, 35_999);":
+        "assert_eq!(entries, 36_062);",
+}
+
+
+def main(target: Path, variant: str = "3301") -> None:
+    if variant not in ("3301", "3307"):
+        raise ValueError("variant must be 3301 or 3307")
     spec = importlib.util.spec_from_file_location("mixed640_bench_cli", BASE)
     bench = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -213,6 +241,9 @@ def main(target: Path) -> None:
     module = replace_once(module_path.read_text(),
         "pub(super) fn warm_mixed640_pretau_table() -> usize {\n",
         SPLIT_PRIME_RUST + "pub(super) fn warm_mixed640_pretau_table() -> usize {\n")
+    if variant == "3307":
+        for old, new in LINEAR_REPLACEMENTS.items():
+            module = replace_once(module, old, new)
     module_path.write_text(module)
     front_path = target / "src/bin/eisenstein_fixed.rs"
     front = replace_once(front_path.read_text(),
@@ -225,7 +256,7 @@ def main(target: Path) -> None:
     receipt_path = target / "native-bench-overlay.json"
     receipt = json.loads(receipt_path.read_text())
     receipt.update({
-        "variant": "split_prime_radix_3301",
+        "variant": f"split_prime_radix_{variant}",
         "split_prime_source_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
         "generated_module_sha256": sha256(module_path.read_bytes()).hexdigest(),
         "generated_front_sha256": sha256(front_path.read_bytes()).hexdigest(),
@@ -235,6 +266,9 @@ def main(target: Path) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        raise SystemExit("usage: native_split_prime_bench.py TARGET_DIR")
-    main(Path(sys.argv[1]))
+    if len(sys.argv) == 2:
+        main(Path(sys.argv[1]))
+    elif len(sys.argv) == 3 and sys.argv[1] == "--linear":
+        main(Path(sys.argv[2]), "3307")
+    else:
+        raise SystemExit("usage: native_split_prime_bench.py [--linear] TARGET_DIR")

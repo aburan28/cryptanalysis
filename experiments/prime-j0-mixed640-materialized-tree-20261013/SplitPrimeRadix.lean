@@ -98,6 +98,33 @@ theorem action_expand {P : Type} (pointAdd : P → P → P)
       simp only [expand, List.foldr_cons]
       rw [act_digit_add, act_pi, ih]
 
+-- The near-real split prime 56+tau has the same fixed-base structure and
+-- a cheaper quotient update: only one small multiplication and one swap.
+def linearPiMul (x : Coeff) : Coeff :=
+  (56 * x.1 - 3 * x.2, x.1 + 59 * x.2)
+
+theorem linear_pi_norm : norm (56, 1) = 3307 := by decide
+theorem norm_linear_pi_mul (z : Coeff) :
+    norm (linearPiMul z) = 3307 * norm z := by
+  cases z with
+  | mk a b =>
+      simp only [norm, linearPiMul]
+      grind
+theorem linear_tau_residue_root :
+    ((-56 : Int) * (-56) - 3 * (-56) + 3) % 3307 = 0 := by decide
+theorem linear_pi_residue_zero :
+    (56 + (-56 : Int)) % 3307 = 0 := by decide
+theorem linear_terminal_numeric :
+    2 * (56 * 2252907023369138918423925520396307732351
+      + 1653 * 57 ^ 21) < 663 * 56 * 57 ^ 21 := by decide
+
+theorem linear_split_step_identity (a b k : Int) :
+    let d := a - 56 * b - 3307 * k
+    let q : Coeff := (59 * k + b, -k)
+    add (d, 0) (linearPiMul q) = (a, b) := by
+  dsimp [add, linearPiMul]
+  apply Prod.ext <;> dsimp <;> omega
+
 #print axioms pi_norm
 #print axioms norm_pi_mul
 #print axioms coordinate_a_bound
@@ -109,5 +136,11 @@ theorem action_expand {P : Type} (pointAdd : P → P → P)
 #print axioms split_step_identity
 #print axioms valid_expand
 #print axioms action_expand
+#print axioms linear_pi_norm
+#print axioms norm_linear_pi_mul
+#print axioms linear_tau_residue_root
+#print axioms linear_pi_residue_zero
+#print axioms linear_terminal_numeric
+#print axioms linear_split_step_identity
 
 end SplitPrimeRadix

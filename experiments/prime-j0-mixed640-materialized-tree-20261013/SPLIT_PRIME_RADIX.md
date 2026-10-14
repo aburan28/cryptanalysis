@@ -51,20 +51,33 @@ remains open.
 `native_split_prime_bench.py` generates the pinned Rust evaluator and a
 128-scalar correctness test against independent binary multiplication. The
 release test passed locally and on the RunPod; the native table retained
-2,304,336 bytes including metadata. Table construction is recorded as
+2,304,336 bytes including metadata. The Pod's build and 128-scalar test
+logs, binary hash, and command receipt are in
+`tier1-runpod-20261013/split-prime-validation/`. Table construction is recorded as
 preparation; the online timer includes recoding, signed lookup, mixed
 additions, and affine recovery.
 
 The case-0 grouped/split-prime comparison completed eight valid serial
 pairs with median online ratio **1.2173** and paired bootstrap interval
 **1.1697–1.4454**. All artifacts, binaries, and the runner stayed stable.
+Median case-0 online times were 0.05037/0.04116 ms for grouped/split-prime;
+median table preparation times were 5,403/9,568 ms respectively. These
+preparation costs are recorded separately from the online interval.
 The raw job is `tier1-runpod-20261013/e4ff7ae8cc93481e9c2c540d3b173f2a/`;
 the transferred archive SHA-256 is
 `4307c078a7300d1d9b5bb27ce24f0baff3d1bcc0249b9148a779c47d75b31f10`.
 The Pod supplies instance-scoped Tier 1 evidence and records
 `host_exclusivity_proved=false`. Eight additional frozen holdout scalars
-are queued as separate five-pair jobs in the same serial service to test
-whether the case-0 direction persists.
+completed as separate five-pair jobs in the same serial service: all 40
+pairs and 80 timed invocations were valid, and all eight case medians were
+above one. The median of case medians was **1.1796**; a 20,000-replicate
+hierarchical bootstrap over cases and within-case pairs gave
+**1.1351–1.2448**. Case medians ranged from 1.1288 to 1.2708. Raw jobs
+and `split-prime-eight-panel.json` are under `tier1-runpod-20261013/`;
+the transferred eight-job archive SHA-256 is
+`4e3a2df6b475e237856a447356fb66073a1d4ae811768ea07625e26ef4d9a9d8`.
+This panel supports the online direction across the frozen cases within
+the instance-scoped measurement envelope.
 
 This variable-index fixed-base evaluator is a
 research benchmark path; use in a secret-scalar API would require a
@@ -76,3 +89,18 @@ scalar multiplication without precomputation* (2014)](https://doi.org/10.1016/j.
 The contribution tested here is the split-prime, single-integer-digit
 fixed-base table layout, its bounded terminal carry, and the matched native
 implementation on this exact curve and workload.
+
+## Near-real base variant
+
+The optional `--linear` generator selects `pi = 56 + tau`, whose norm is
+3307. The quotient relation becomes `tau = -56 (mod 3307)`. With centered
+`d = (a - 56b) mod 3307` and `k = (a - 56b - d)/3307`, the exact update is
+`(a',b') = (59k+b,-k)`. This uses a smaller coefficient in residue
+construction and fewer signed-limb operations per digit. The same 21-step
+bound gives terminal coordinates below 663 because
+`2(M/57^21 + 1653/56) < 663`. Its 21 digit rows and two terminal rows
+contain 36,062 points, or 2,307,968 point bytes. The local native release
+test matched all 128 frozen points against independent binary multiplication
+and reported 2,308,368 retained bytes including metadata. The norm,
+residue, terminal numeric inequality, and exact quotient update are checked
+in `SplitPrimeRadix.lean`.
