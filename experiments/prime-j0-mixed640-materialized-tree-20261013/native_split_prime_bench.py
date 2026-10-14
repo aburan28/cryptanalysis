@@ -712,6 +712,59 @@ def drop_terminal_axis_fallback(source: str) -> str:
     return replace_once(source, anchor, TERMINAL_NO_FALLBACK_TEST_RUST + anchor)
 
 
+DIGIT_TWO_X_TEST_RUST = r"""    #[test]
+    fn split_prime_digit_two_x_orbits_exhaustive() {
+        let tables = &SPLIT_PRIME_TABLES;
+        let mut checked = 0usize;
+        for row in &tables.digit_windows {
+            assert_eq!(row.len(), 66);
+            for &entry in row.iter() {
+                let reference = U256OrbitXAffine::from_affine(entry.unit(0));
+                for unit in 0..6 {
+                    let actual = entry.unit(unit);
+                    let expected = reference.unit(unit);
+                    assert_eq!(actual.x.0, expected.x.0);
+                    assert_eq!(actual.y.0, expected.y.0);
+                    checked += 1;
+                }
+            }
+        }
+        assert_eq!(checked, 21 * 66 * 6);
+        println!("digit_two_x_unit_images={checked}");
+    }
+
+"""
+
+
+def use_two_x_digit_rows(source: str) -> str:
+    source = replace_once(source,
+        "    digit_windows: Vec<Box<[U256OrbitXAffine]>>,\n",
+        "    digit_windows: Vec<Box<[U256TwoXAffine]>>,\n")
+    source = replace_once(source,
+        "fn split_prime_orbit_row(base: Jacobian, _seeds: &[i16])\n"
+        "    -> Box<[U256OrbitXAffine]> {",
+        "fn split_prime_orbit_row(base: Jacobian, _seeds: &[i16])\n"
+        "    -> Box<[U256TwoXAffine]> {")
+    source = replace_once(source,
+        "        U256OrbitXAffine::from_affine(point)\n"
+        "    }).collect::<Vec<_>>().into_boxed_slice()\n}",
+        "        U256TwoXAffine::from_affine(point)\n"
+        "    }).collect::<Vec<_>>().into_boxed_slice()\n}")
+    source = replace_once(source,
+        "        assert_eq!(size_of::<U256OrbitXAffine>(), 128);\n",
+        "        assert_eq!(size_of::<U256TwoXAffine>(), 96);\n")
+    source = replace_once(source,
+        "digit_windows.iter().map(|row| row.len()).sum::<usize>()\n"
+        "                * size_of::<U256OrbitXAffine>()",
+        "digit_windows.iter().map(|row| row.len()).sum::<usize>()\n"
+        "                * size_of::<U256TwoXAffine>()")
+    source = replace_once(source,
+        "digit_windows.capacity() * size_of::<Box<[U256OrbitXAffine]>>()",
+        "digit_windows.capacity() * size_of::<Box<[U256TwoXAffine]>>()")
+    anchor = "    #[test]\n    fn split_prime_holdout_matches_independent_binary() {"
+    return replace_once(source, anchor, DIGIT_TWO_X_TEST_RUST + anchor)
+
+
 def split_unit_seed_tables(source: str) -> str:
     source = replace_once(source, UNIT_ROW_RUST, UNIT_SPLIT_ROW_RUST)
     source = replace_once(source, UNIT_ONLINE_RUST, UNIT_SPLIT_ONLINE_RUST)
@@ -881,7 +934,8 @@ SHORT_REPLACEMENTS = {
 def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
          unit_compressed: bool = False, packed_correction: bool = False,
          tight_terminal: bool = False, split_seed_tables: bool = False,
-         terminal_orbits: bool = False, no_terminal_fallback: bool = False) -> None:
+         terminal_orbits: bool = False, no_terminal_fallback: bool = False,
+         digit_two_x: bool = False) -> None:
     if variant not in ("3301", "3307", "5113"):
         raise ValueError("variant must be 3301, 3307, or 5113")
     spec = importlib.util.spec_from_file_location("mixed640_bench_cli", BASE)
@@ -922,6 +976,10 @@ def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
         if not terminal_orbits:
             raise ValueError("removing terminal fallback requires terminal orbits")
         split_source = drop_terminal_axis_fallback(split_source)
+    if digit_two_x:
+        if not no_terminal_fallback:
+            raise ValueError("two-x digit rows require axis-free terminal table")
+        split_source = use_two_x_digit_rows(split_source)
     if packed_correction:
         anchor = "    #[test]\n    fn split_prime_holdout_matches_independent_binary() {"
         split_source = replace_once(split_source, anchor,
@@ -954,7 +1012,8 @@ def main(target: Path, variant: str = "3301", fused_terminal: bool = False,
                     + ("_tight_terminal" if tight_terminal else "")
                     + ("_split_seed_tables" if split_seed_tables else "")
                     + ("_terminal_orbits" if terminal_orbits else "")
-                    + ("_no_terminal_fallback" if no_terminal_fallback else "")),
+                    + ("_no_terminal_fallback" if no_terminal_fallback else "")
+                    + ("_digit_two_x" if digit_two_x else "")),
         "split_prime_source_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
         "generated_module_sha256": sha256(module_path.read_bytes()).hexdigest(),
         "generated_front_sha256": sha256(front_path.read_bytes()).hexdigest(),
@@ -991,5 +1050,9 @@ if __name__ == "__main__":
         main(Path(sys.argv[2]), fused_terminal=True, unit_compressed=True,
              packed_correction=True, tight_terminal=True, split_seed_tables=True,
              terminal_orbits=True, no_terminal_fallback=True)
+    elif len(sys.argv) == 3 and sys.argv[1] == "--unit-split-terminal-orbit-no-fallback-two-x":
+        main(Path(sys.argv[2]), fused_terminal=True, unit_compressed=True,
+             packed_correction=True, tight_terminal=True, split_seed_tables=True,
+             terminal_orbits=True, no_terminal_fallback=True, digit_two_x=True)
     else:
         raise SystemExit("usage: native_split_prime_bench.py [--linear|--fused-terminal|--short-fused|--unit-fused|--unit-packed|--unit-packed-tight|--unit-split-table] TARGET_DIR")

@@ -443,3 +443,20 @@ direct terminal-point comparisons. This is a retained-memory result. The
 native selector and packed lookup bridge remains checked by the model and
 native tests; a host-isolated online comparison remains the next performance
 measurement.
+
+The `--unit-split-terminal-orbit-no-fallback-two-x` format also stores each
+digit-row orbit in the two-x affine representation. Since
+`β² + β + 1 = 0`, it retains `x`, `x + βx`, and `y`; a field subtraction
+recovers either missing cube-root x image before the mixed addition. Across
+21 rows of 66 points, this changes each digit entry from 128 to 96 bytes.
+The measured retained size is **277,704 bytes**, 44,352 bytes (13.77%) below
+the axis-free format and 84.8% below the packed tight format. It preserves
+the same radix, terminal bound, and number of mixed point additions.
+
+The [two-x digit receipt](digit-two-x-validation.json) pins a separate
+release binary and five passing test families, including all 8,316 digit
+unit images (21 rows × 66 entries × 6 actions), the 646 scalar replays,
+and the packed lookup and terminal comparisons. The smaller rows replace
+precomputed x coordinates with an online field subtraction for some unit
+codes, so a serial isolated comparison is needed to determine the time and
+memory tradeoff.
