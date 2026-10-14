@@ -1,0 +1,29 @@
+[package]
+name = "n83-onetarget-tier1"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Every binary is a crypto example restored from the pinned commit by
+# restore_crypto_source.py; only the IC producer carries ic_log_cache.patch.
+[[bin]]
+name = "ic_online_logcache"
+path = "crypto_source_snapshot/examples/koblitz_orbit_dlp_fast_online_logcache.rs"
+
+[[bin]]
+name = "rho_strong_online"
+path = "crypto_source_snapshot/examples/koblitz_rho_batch_ks_strong_online.rs"
+
+[[bin]]
+name = "rho_packed_legacy"
+path = "crypto_source_snapshot/examples/koblitz_rho_fixture.rs"
+
+[dependencies]
+crypto_lib = { package = "crypto", path = "crypto_source_snapshot", default-features = false }
+blake3 = "1.5"
+libc = "0.2"
+num-bigint = { version = "0.4", features = ["rand"] }
+num-traits = "0.2"
+rand = { version = "0.8", features = ["small_rng"] }
+serde_json = { version = "1.0", features = ["arbitrary_precision", "raw_value"] }
+

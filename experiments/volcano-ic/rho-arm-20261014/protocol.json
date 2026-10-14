@@ -1,0 +1,299 @@
+{
+ "id": "volcano-ic-n19-rho-arm-20261014",
+ "status": "frozen",
+ "frozen_on": "2026-10-14",
+ "frozen_before_data": true,
+ "question": "On E0/F_2^19 (r = 130873), how much CPU does one complete, verified ECDLP cost with the baseline subspace factor base and with the tau-orbit (Gamma-orbit) dim-6 factor base, relative to a matched signed-Frobenius Pollard rho run in the same process, on the same host, on the same ten planted scalars, interleaved?",
+ "rule": "All three arms run in one job, one process, one host, interleaved by scalar. No number from the 2026-09 taucmp run (results/tau-*.jsonl, README 444 s / 70 s / 6.85x) enters any statistic here; those records are used only for the replay check below.",
+ "curve": {
+  "label": "E0",
+  "curve_id": "EC1N19Ckb1h01617b86df6c",
+  "curve_id_source": "experiments/fb-archive/sweeps/volcano-ic.json.gz (label E0, b = 1)",
+  "model": "y^2 + x*y = x^3 + 1",
+  "field": "F_2[z]/(z^19 + z^18 + z^16 + z^11 + z^8 + z^6 + z^4 + z + 1), element encoding sum c_i 2^i",
+  "order": 523492,
+  "cofactor": 4,
+  "r": 130873,
+  "generator": "run.sage generator(cur, 'E0'): random.Random('gen:E0'), x = F.from_integer(randrange(1, 2^19)), P = 4 * E.lift_x(x, all=True)[0]",
+  "frobenius": "tau(x, y) = (x^2, y^2) acts on <P> as lambda, the root of t^2 + t + 2 mod r with lambda P = tau(P) (tau.sage tauEigen)"
+ },
+ "scalars_seed": 20260924,
+ "scalars": [
+  2003,
+  107405,
+  123121,
+  86605,
+  119755,
+  71624,
+  82716,
+  91944,
+  19034,
+  73233
+ ],
+ "targets": "Q_i = scalars[i] * P, fixture construction outside every timed interval",
+ "arms": {
+  "base": {
+   "label": "x in V = span{1..z^9}, dim 10 (baseline subspace base)",
+   "code": "../ic.sage Field(19, MODULUS, 10), Curve(fld, 0, 1, 523492, 4), solveDlp(cur, P, Q, rng)",
+   "rng_seed": "tau:base:%d",
+   "decomposition": "PolyBoRi Groebner, S3, 2 summands",
+   "extra_relations": 10
+  },
+  "tau6": {
+   "label": "tau-orbits of x in V' = span{1..z^5}, dim 6 (Gamma-orbit base)",
+   "code": "../tau.sage TauField(19, MODULUS, 6), TauCurve(fld, 523492, 4), tauDlp(cur, P, Q, rng)",
+   "rng_seed": "tau:tau6:%d",
+   "decomposition": "PolyBoRi Groebner, S3, 19 shifts",
+   "extra_relations": 10
+  },
+  "rho": {
+   "label": "signed-Frobenius rho over <tau, -1>",
+   "code": "rho_frob.py SageBackend on the base arm's Curve.E (same Sage field and point arithmetic as the IC arms), solve()",
+   "reps_per_scalar": 64,
+   "rep_note": "64 independent complete single-target solves of the same Q_i, each with its own walk function and its own collision table; nothing is shared between solves or targets. The per-scalar rho cost is their mean (the expected one-target cost); rep 0 alone is the sensitivity analysis."
+  }
+ },
+ "rho": {
+  "R": 16,
+  "walk_seed_format": "rho-arm-20261014:walk:%d",
+  "walk_seed_note": "walk seed k is used for rep k on every scalar; its table A_i = alpha_i P depends on P and k only (reusable precomputation, built once before slot 0, excluded from the online interval and recorded separately)",
+  "multipliers": "M_i = alpha_i P + eps_i tau^(e_i)(Q), one target-dependent addition each",
+  "canonical_form": "minimum integer encoding of x over its 19 conjugates; then the smaller encoding of y and x + y; (a, b) multiplied by eps * lambda^e",
+  "index": "top 4 bits of (key * 0x9E3779B97F4A7C15 mod 2^64), key = enc(x) * 2^19 + enc(y) of the canonical point",
+  "two_cycle_rule": "BLS look-ahead: if idx(W + M_j) == j use M_(j+1), iterated, at most R tries",
+  "collision_detection": "every visited class stored (distinguished-point probability 1); repeat with different b solves s = (a1 - a0)/(b0 - b1) mod r",
+  "fruitless_cycles": "repeat with identical (a, b): escape to canon(2 * min-key point of the cycle); more than 64 escapes in one solve, or W + M_j = O: restart from A_start + tau^e(Q), table kept",
+  "start": "W0 = Q, (a, b) = (0, 1)",
+  "max_steps": "64 * floor(sqrt(r)) + 1000; reaching it is a failed row",
+  "verification": "s * P == Q by Sage scalar multiplication, and s == scalar mod r",
+  "floor": "S_floor = sqrt(pi / (4 n)) = sqrt(pi / 76) = 0.20331 (random walk on (r - 1)/38 classes)"
+ },
+ "order": {
+  "rule": "scalar by scalar; the three arms of scalar i run in permutation i mod 6 of the lexicographic permutations of (base, tau6, rho); all 64 rho reps of a scalar run consecutively in the rho slot",
+  "slots": [
+   {
+    "slot": 0,
+    "instance": 0,
+    "arm": "base"
+   },
+   {
+    "slot": 1,
+    "instance": 0,
+    "arm": "tau6"
+   },
+   {
+    "slot": 2,
+    "instance": 0,
+    "arm": "rho"
+   },
+   {
+    "slot": 3,
+    "instance": 1,
+    "arm": "base"
+   },
+   {
+    "slot": 4,
+    "instance": 1,
+    "arm": "rho"
+   },
+   {
+    "slot": 5,
+    "instance": 1,
+    "arm": "tau6"
+   },
+   {
+    "slot": 6,
+    "instance": 2,
+    "arm": "tau6"
+   },
+   {
+    "slot": 7,
+    "instance": 2,
+    "arm": "base"
+   },
+   {
+    "slot": 8,
+    "instance": 2,
+    "arm": "rho"
+   },
+   {
+    "slot": 9,
+    "instance": 3,
+    "arm": "tau6"
+   },
+   {
+    "slot": 10,
+    "instance": 3,
+    "arm": "rho"
+   },
+   {
+    "slot": 11,
+    "instance": 3,
+    "arm": "base"
+   },
+   {
+    "slot": 12,
+    "instance": 4,
+    "arm": "rho"
+   },
+   {
+    "slot": 13,
+    "instance": 4,
+    "arm": "base"
+   },
+   {
+    "slot": 14,
+    "instance": 4,
+    "arm": "tau6"
+   },
+   {
+    "slot": 15,
+    "instance": 5,
+    "arm": "rho"
+   },
+   {
+    "slot": 16,
+    "instance": 5,
+    "arm": "tau6"
+   },
+   {
+    "slot": 17,
+    "instance": 5,
+    "arm": "base"
+   },
+   {
+    "slot": 18,
+    "instance": 6,
+    "arm": "base"
+   },
+   {
+    "slot": 19,
+    "instance": 6,
+    "arm": "tau6"
+   },
+   {
+    "slot": 20,
+    "instance": 6,
+    "arm": "rho"
+   },
+   {
+    "slot": 21,
+    "instance": 7,
+    "arm": "base"
+   },
+   {
+    "slot": 22,
+    "instance": 7,
+    "arm": "rho"
+   },
+   {
+    "slot": 23,
+    "instance": 7,
+    "arm": "tau6"
+   },
+   {
+    "slot": 24,
+    "instance": 8,
+    "arm": "tau6"
+   },
+   {
+    "slot": 25,
+    "instance": 8,
+    "arm": "base"
+   },
+   {
+    "slot": 26,
+    "instance": 8,
+    "arm": "rho"
+   },
+   {
+    "slot": 27,
+    "instance": 9,
+    "arm": "tau6"
+   },
+   {
+    "slot": 28,
+    "instance": 9,
+    "arm": "rho"
+   },
+   {
+    "slot": 29,
+    "instance": 9,
+    "arm": "base"
+   }
+  ]
+ },
+ "timing": {
+  "clock": "time.process_time() of the single driver process (CPU seconds); time.perf_counter() recorded alongside",
+  "base": "solveDlp total_cpu_s: first target-dependent query through the left-kernel log; field, factor base and generator setup excluded",
+  "tau6": "tauDlp total_cpu_s: same boundary; TauField / TauCurve construction excluded",
+  "rho": "solve() cpu_s: from the first target-dependent operation (building M_i from Q) through the recovered and verified scalar; the A_i table is excluded and recorded as setup",
+  "verification_note": "the IC arms' s * P == Q check is outside their interval (as in ic.sage / tau.sage); rho's is inside, which can only make rho look slower"
+ },
+ "environment": {
+  "runner": "GitHub-hosted ubuntu-24.04, one job, one process, no other workload in the job",
+  "image": "sagemath/sagemath:10.10@sha256:310dfe23fc786f3a5a06a7b0387c60201ec79b32c0db941b7624505ee5edb565",
+  "recorded": "sage version, Python, platform, /proc/cpuinfo model, nproc, cgroup cpu.max, GITHUB_SHA, run id, sha256 of every executed source and of this file",
+  "tier": "exploratory: a GitHub-hosted VM is neither Tier 0 nor Tier 1 (no allocation receipt, no exclusive pinned CPU). Ratios are labelled exploratory CPU-time ratios."
+ },
+ "operation_counts": {
+  "rho": "steps (accepted walk steps), adds (multiplier builds + every look-ahead try + restart starts), dbls (escapes), group_ops = adds + dbls, fruitless, restarts, Frobenius squarings, table entries",
+  "base": "attempts, gb_calls, relations, columns used, kernel dim; nominal group ops of target construction (double-and-add on the replayed alpha, beta) reported as a lower bound that excludes Groebner work",
+  "tau6": "targets, gb_calls, relations, orbits; nominal group ops as for base"
+ },
+ "unit": {
+  "S_steps_rho": "steps / sqrt(r), compared with S_floor",
+  "S_ops_rho": "group_ops / sqrt(r) (target-dependent operations)",
+  "S_cpu_equiv": "for every arm: CPU seconds / (pooled rho CPU seconds per rho group op in this run) / sqrt(r). This is IC CPU expressed in rho-operation equivalents, a calibrated conversion, not a count. For rho it equals S_ops_rho by construction.",
+  "S_nominal_ic": "IC nominal group ops / sqrt(r): a lower bound on IC cost in group operations; it omits the Groebner work that dominates IC CPU"
+ },
+ "statistics": {
+  "primary": [
+   {
+    "name": "base_over_rho",
+    "per_scalar": "cpu_base_i / mean_k cpu_rho_ik"
+   },
+   {
+    "name": "tau6_over_rho",
+    "per_scalar": "cpu_tau6_i / mean_k cpu_rho_ik"
+   }
+  ],
+  "secondary": [
+   {
+    "name": "base_over_tau6",
+    "per_scalar": "cpu_base_i / cpu_tau6_i (within-run replication of the orbit-base speedup)"
+   },
+   {
+    "name": "rho_S_steps_over_floor",
+    "per_solve": "steps / sqrt(r) / S_floor over all 640 solves"
+   }
+  ],
+  "summary": "geometric mean of the per-scalar ratios; 95% percentile bootstrap over scalars (10000 resamples, random.Random(20261014)); for the rho floor ratio, arithmetic mean over solves with a bootstrap over solves",
+  "online_speedup": "AGENTS.md convention rho_online / IC_online = 1 / (X_over_rho), reported with the inverted interval",
+  "sensitivity": [
+   "rho per-scalar cost = rep 0 only",
+   "rho CPU to recovery (excluding its verification)",
+   "wall clock instead of CPU"
+  ]
+ },
+ "decisions": {
+  "X_over_rho (X in base, tau6)": {
+   "upper_ci < 1": "X solves the ECDLP in less CPU than matched rho in this run: an exploratory advance claim that needs Tier 1 replication and an independent host before it is stated anywhere else",
+   "lower_ci > 1": "X costs more CPU than matched rho; the orbit factor base is not an advance against rho on E0/F_2^19, whatever its speedup over the baseline base",
+   "otherwise": "inconclusive against rho"
+  },
+  "base_over_tau6": {
+   "lower_ci > 1": "the orbit-base speedup over the baseline replicates within this run (report this run's value, not 6.85x)",
+   "upper_ci < 1": "it reverses in this run",
+   "otherwise": "inconclusive"
+  },
+  "rho_validity_gate": "all 640 rho logs verified and S_steps / S_floor in [0.8, 1.5]; otherwise the rho arm is reported as not a matched reference and the X_over_rho conclusions are provisional",
+  "ic_failures": "an unverified or failed IC row stays a row and is not a win; its scalar is excluded from the geometric means and the exclusion is reported. Conclusions require at least 9 of 10 scalars with all three arms verified; otherwise the result is incomplete."
+ },
+ "runtime": {
+  "estimate": "about 444 s (base) + 70 s (tau6) + under 5 s (64 rho solves) per scalar on the 2026-09 host, about 86 min for 10 scalars; GitHub runners assumed 1.3-2.5x slower for PolyBoRi, so about 2-3.6 h, inside the 350-minute job limit",
+  "timeout_policy": "no scalar is dropped in advance. If the job stops at its time limit, the scalars whose three slots completed are analysed and the result is labelled incomplete (fewer than 10 scalars); nothing is extrapolated."
+ },
+ "replay_check": "Because the IC arms reuse the 2026-09 rng seeds, their attempt / gb_calls counts must equal results/tau-*.jsonl exactly (decomposability is a property of the target, not of the solver). Equality is reported as a code-path check only; no timing from those records is used.",
+ "outputs": "results/arms.jsonl (one row per slot), results/runtime-info.json, results/summary.json, report/report.md, figures/*.svg|png, report/report.pdf"
+}

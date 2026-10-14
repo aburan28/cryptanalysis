@@ -81,10 +81,18 @@ operation count agreed between arms on all six runs. The timings are
 on an unisolated host and are stage diagnostics: the three adjacent
 target-stage pairs gave ratios $1.074$, $1.156$ and $1.118$, and the
 canonicalization phase alone fell from $2.216$ to $1.557$~s
-($1.42\times$). An adapter that replays exactly this stage through the
-isolated benchmark service is committed; its receipt is not, so no
-CPU speedup is claimed for the
-shortcut.\art{experiments/koblitz-n83-index-design-20260929/packed_index_e1_isolated_replay_20261010/README.md}
+($1.42\times$). That $1.42\times$ did not survive isolation. A
+Tier~1 replay on one GitHub-hosted \texttt{ubuntu-24.04} instance ran
+sixteen alternating same-target pairs of the same stage under a
+protocol frozen before any timing, with every gate passing. The
+canonicalization phase ratio was $1.086$ (paired bootstrap 95\%
+interval $[1.076, 1.094]$) and the target stage ratio $1.023$
+($[1.017, 1.033]$), against $1.007$ for the stage that does identical
+work in both arms. The frozen rule therefore promotes a speedup of the
+canonicalization phase, at that size and no other, and marks the
+exploratory figure overstated. It is a stage diagnostic on one target
+and one instance, not a complete single-target speedup; no end-to-end
+CPU claim follows.\art{experiments/koblitz-n83-index-design-20260929/packed_index_e1_canonical_tier1_20261014/README.md}
 
 \begin{table}[t]
 \centering\small
@@ -122,6 +130,31 @@ $5.4$--$7.1$ for the chained loop, with identical keys; this round is
 declared and has no end-to-end result
 yet.\art{crypto:research/ic_tool_program/explorations/R06-key-gfni-20261006/README.md}
 
+\paragraph{Three limbs ($n=131$).}
+At the ECC2K-130 degree a word takes three $64$-bit limbs ($64+64+3$
+bits). A dependency-free crate implements five exact canonicalizers on
+that layout and agrees with the exhaustive scan on every word for
+$n\le20$ in several limb widths, on $10^7$ uniform $131$-bit words and
+on structured families (low and high weight, zero runs straddling limb
+boundaries, up to twelve tied longest runs, near-periodic words), with
+four planted mutants all
+caught.\art{experiments/canon-n131-20261014/README.md}
+In retired instructions per word (cachegrind, uniform words), the
+exhaustive scan costs $1850$, variant~B $1435$ ($5.43$ rotations a
+word, but a ctz step for each of about $65$ one bits), a branch-free
+refinement with a fixed $130$ steps and mask selects $4510$, and a
+binary-lifting form of variant~A $514$, the cheapest and not
+branch-free. On near-periodic words variant~B rises to $2738$, more
+than the exhaustive scan, while both branch-free arms retire the same
+count on every input; $72.4\%$ of uniform words have a single longest
+run. No $131$-bit normal-basis multiply exists in the code base, so the
+cost relative to a point operation was not measured, and the
+nanosecond times of that report come from an unisolated host. The
+branch-free form is therefore $2.4\times$ the exhaustive scan and
+$8.8\times$ the lifting form at this degree: being free of branches
+costs instructions here. Class: engineering, negative for the
+branch-free arm.
+
 \subsection{The canonicalization inside the reference}
 \label{sec:bench-rho}
 
@@ -131,13 +164,16 @@ turns out to dominate the walk. Table~\ref{tab:rho-ladder} is the
 instruction-counted ladder at $n=53$, $1024$ targets, in which each
 rung contains the previous
 ones.\art{crypto:research/notes/index-calculus/RESEARCH_STRONG_RHO_LADDER_20260929.md}
-In the starting rung the canonicalization routine was $50.82\%$ of
-retired instructions; replacing it by the normal-basis least rotation
-with the sign chosen by comparing $y$ (rung R2) cut the whole process
+In the merged reference (rung R0) the canonicalization routine was
+$50.82\%$ of retired instructions. From R1 (the same walk on the
+library field) to R2, replacing it by the normal-basis least rotation
+with the sign chosen by comparing $y$, together with a $\lambda^k$
+table and a faster \texttt{mul\_mod}, cut the whole process
 from $281.0$ to $68.9$ billion instructions, $4.08\times$, and still
 left the (then $\Theta(n)$) least-rotation scan at $51.5\%$ of the
 final rung. The index-calculus arm it was measured against moved from
-$0.317$ to $1.923$ times the reference's cost without changing at all.
+$0.317$ (R1) to $1.294$ (R2) and $1.923$ (R3) times the reference's
+cost without changing at all.
 The compact-orbit panel of Section~\ref{sec:bench-e2e} shows the same
 effect in CPU time: at $n=53$ with $1024$ targets the normal-basis
 walk used $4.76$ CPU-seconds against $13.34$ for the same batched
@@ -179,11 +215,13 @@ conservative in the index calculus's favour by up to that factor.
 \paragraph{The factor-base pair table, operation-counted ($n=41$).}
 On the $39$-bit Koblitz rung of the boundary ledger the Frobenius fold
 shrank the pair table from $6\,249\,999$ to $152\,439$ entries
-($41.0\times$), took the factor-base phase from $16.9$ to $0.24$ in
-$S$, and paid $2.7$ back in canonicalizations; net $S$ went from
-$50.4$ to $45.2$. On rungs with large cofactors, where the base was
+($41.0\times$). Against the negation-folded base it replaced, the
+factor-base phase fell from $8.45$ to $0.24$ in $S$ and relation
+collection rose from $41.9$ to $45.0$, paid in canonicalizations;
+net $S$ went from $50.4$ to $45.2$ (from $58.8$ for the unfolded
+base, whose factor-base phase was $16.9$). On rungs with large cofactors, where the base was
 almost the whole cost, the same fold is worth more: $n=29$ from
-$34\,554$ to $728$, $n=31$ from $2489$ to $97.8$. Class:
+$34\,554$ to $728$, $n=31$ from $2489$ to $98.2$. Class:
 engineering.\art{crypto:research/notes/index-calculus/RESEARCH_IC_BOUNDARY_LEDGER.md, section 10.4}
 
 \paragraph{The folded tier at equal memory ($n=61$).}
@@ -241,13 +279,14 @@ evidence above and then re-priced over the whole cold pipeline in
 batched additions, the flip did not survive: at $12\,688$ points
 stored pairs fell $120.85\times$ while total operations rose $1.2\%$
 (holdout targets: $1.016\times$). That is relabelling by definition.
-Re-asked over four widths with every other count held identical,
-Table~\ref{tab:tier}, each tier is cheapest somewhere: full below
+Re-asked in a separate sweep over four widths with every other count
+held identical, Table~\ref{tab:tier}, folded is $2.7\%$ dearer than
+full at $12\,688$ points and $12.0\%$ cheaper at $18\,544$; each tier is cheapest somewhere: full below
 about $8000$ points, compact to about $16\,000$, folded above, with
 the full/folded crossover at $|F|\approx13\,623$ against a
 pre-registered prediction of $13\,600$ from the measured per-probe
-deltas. Every tier costs $12$--$13\times$ the matched rho's $S$ and
-$19$--$21\times$ the floor on this instance; the tier moves the
+deltas. The twelve cells cost $12.1$--$15.4\times$ the matched rho's
+$S$ and $18.9$--$24.1\times$ the floor on this instance; the tier moves the
 constant only. Class: accounting for the sweep, relabelling for the
 flip.\art{crypto:docs/ic/runs/koblitz-tier-crossover-20260921.json}
 
@@ -299,7 +338,7 @@ $220$ orbit columns has $22\,887$ clauses against $1\,815\,492$
 ($79.3\times$), pending independent
 replay.\art{crypto:docs/ic/BOUNDARY_TARGETS.md, factor_base row} The same ledger found that an orbit-union encoding (one system per
 orbit instead of one per shift) is cost-neutral for the solver,
-ratios $1.017$--$1.467$ and never below $1$, and that a fixed-target
+ratios $1.000$--$1.467$ and never below $1$, and that a fixed-target
 orbit constraint is unsound: Frobenius carries one target's system
 to a conjugate target's system, not to
 itself.\art{crypto-autoresearcher:knowledge/findings/KN-FIND-47da4e; crypto-autoresearcher:ledger/hypotheses/H-BINSTD-74b002.yaml} Compression of the formula is therefore not the same as a faster
@@ -327,6 +366,21 @@ against a plain subspace base, not against rho. This is the only
 measurement in the paper in which a phase-aware base makes a complete,
 verified index calculus faster, and it is a toy.
 
+A matched signed-Frobenius rho arm has since been run against the same
+two bases on the same ten planted scalars, interleaved in one process
+on one GitHub-hosted runner (an exploratory tier: no allocation receipt,
+no pinned CPU), under a protocol frozen before the run. All $640$ rho
+logarithms verified and rho used $0.2028\sqrt r$ steps against the
+generic floor of $0.2033\sqrt r$ ($0.997\times$), so the reference is a
+matched one. The baseline base cost $1.77\times10^5$ times rho's CPU
+($95\%$ interval $[1.66,1.89]\times10^5$) and the $\Gamma$-orbit base
+$1.94\times10^4$ times ($[1.69,2.23]\times10^4$). The frozen rule reads
+both as costing more than rho: not an advance against rho on this curve,
+whatever the speedup over the plain base. The orbit-base speedup over the
+plain base replicated within the run, at $9.12\times$ ($8.12$--$10.27$),
+which is this run's value and does not replace the $6.85\times$ of
+Table~\ref{tab:n19}.\art{experiments/volcano-ic/rho-arm-20261014/README.md}
+
 \begin{table}[t]
 \centering\small
 \caption{Complete index calculus on $E_0/\FF_{2^{19}}$, $r=130\,873$, ten scalars each, all logarithms verified. Speedup is the paired mean of baseline/variant CPU with a 95\% bootstrap interval.}
@@ -349,9 +403,11 @@ The whole Rust pipeline with a $300\,608$-point, $2464$-column base
 recovered $32$ of $32$ targets; the orbit tag and row filter cut
 collection $31.4\times$, the solve $64.9\times$ and the descent
 $3.8\times$ relative to the previous folded code, and peak memory from
-$4.68$ to $2.40$~GiB. Priced in operations against the matched rho it
-remains $12$--$13\times$ rho at every tier
-(Table~\ref{tab:tier}).\art{crypto:research/notes/ecc2k130/RESEARCH_KOBLITZ_INDEX_CALCULUS.md}
+$4.68$ to $2.40$~GiB. Its own record charges it $330.7\times$ the
+matched rho with setup included ($86.7\times$ before these changes,
+whose rho reference differed); the $12$--$15\times$ of
+Table~\ref{tab:tier} belongs to the narrower $6.8$k--$18.5$k-point
+sweep and is not this pipeline.\art{crypto:research/notes/ecc2k130/RESEARCH_KOBLITZ_INDEX_CALCULUS.md}
 
 \paragraph{Compact-orbit index calculus against the strong reference ($n=37,41,53$).}
 Table~\ref{tab:cold} is the isolation-gated cold panel: complete
@@ -362,12 +418,15 @@ rho on the same public points, every cell past its preregistered A/A
 and quiet-host gates, $135$ child processes, $46\,170$ target
 logarithms agreed by an independent replay on a second
 machine.\art{crypto:docs/ic/BOUNDARY_TARGETS.md, "Complete cold compact-orbit panel"; crypto:research/notes/ecc2k130/disjoint_cold_v2_outcome_20261001/RESULT.md}
-Every interval lies above parity. The same panel against the
-\emph{previous} rho reference (PCLMUL, Itoh--Tsujii, polynomial-basis
-canonicalization) had read $0.78$, $0.39$ and $0.34$ at the batch
-cells, an apparent index-calculus win; against the normal-basis
-reference it reads $2.08$, $2.99$ and $3.09$. The win was the
-reference's canonicalization, which is the point of
+Every interval lies above parity. An earlier, separate experiment on
+different public points (2026-09-29, not isolation-gated) measured both
+references in one run: at its three batch cells the index calculus
+read $0.78$, $0.39$ and $0.34$ of the \emph{previous} rho reference
+(PCLMUL, Itoh--Tsujii), an apparent index-calculus win, and $2.08$,
+$2.99$ and $3.09$ of the normal-basis reference. Those six numbers
+come from that experiment and are not cells of Table~\ref{tab:cold},
+which reads $3.03$, $1.31$ and $1.61$ at the same nominal cells. The
+win was the reference's canonicalization, which is the point of
 Section~\ref{sec:bench-rho}.\art{crypto:research/notes/ecc2k130/compact_orbit_strong_rho_20260929/RESULT.md}
 
 \begin{table}[t]
@@ -388,17 +447,57 @@ $n=53$, 1024 targets, $K=440$ & blocked prefilter & $1.605$ $[1.566,1.666]$ & $3
 \end{tabular}
 \end{table}
 
-\paragraph{One target at $n=83$.}
-On the $n=83$, $a=1$ curve, index calculus and rho solved the same
-frozen public point in three paired runs with an independent scalar
-replay; recorded online walls were $5.6$--$7.9$~s for index calculus
-against $43$--$71$~s for rho, a median ratio of $8.2$. The host was
-shared with unrelated work and no isolation receipt is attached, so the
-repository records it as a verified-answer, exploratory-timing
-observation and not a controlled
-speedup.\art{crypto:docs/ic/BOUNDARY_TARGETS.md, vs_rho row; crypto:experiments/koblitz-single-target-n83-20261006/} It is the one point in the evidence where a phase-aware index
-calculus is ahead of its reference at a non-toy degree, and the first
-thing the next measurement must do is run it under the isolation gate.
+\paragraph{Online against cold: one target ($n=41$--$83$).}
+Single-target comparisons read differently depending on whether the
+index calculus's setup (base, relations, logarithm table) is charged.
+The boundary ledger's isolated single-target round separates the two
+readings on $64$ public points at each of six sizes,
+$r=2^{36.6}$--$2^{47.2}$, both arms on the same
+point.\art{crypto:research/notes/index-calculus/RESEARCH_IC_BOUNDARY_LEDGER.md, section 23}
+With setup excluded the index calculus's online interval is
+$8.8$--$17.5\times$ faster than single-target rho, every interval
+above $1$ ($4.3$--$9.4\times$ if rho is priced at the canonical
+step). With setup included it is $2.0$--$31.6\times$ slower at every
+size, and the setup pays for itself only after $7$--$37$ targets. The
+same setup used as precomputation for Bernstein and Lange's generic
+walk would, by the ledger's model, reach an online cost $2.0$--$8.0\times$
+below the index calculus's, so the online advantage belongs to the
+precomputation and not to the method. A separate isolated panel at
+$n=61$, $a=0$ ($64$ unseen points per host, two hosts) reads
+$12.9\times$ and $13.9\times$ online ($95\%$ interval $9.8$--$19.1$ on
+the pinned host) with the setup excluded and reported as a cold ratio
+of $83.4$.\art{crypto:docs/ic/BOUNDARY_TARGETS.md, vs_rho row} The
+earlier $n=83$, $a=1$ observation (three runs on one frozen point,
+median online ratio $8.2$, shared host, no isolation receipt) is of
+the same online kind, and the ledger now keeps it as
+history.\art{crypto:experiments/koblitz-single-target-n83-20261006/}
+It was also measured against a packed rho build that the repository no
+longer accepts as a reference, whose jump setup depends on the target.
+Five interleaved pairs on the same point against the current strong
+signed-Frobenius rho, on one virtualized host and labelled diagnostic,
+read index calculus over rho online at $1.38$ ($95\%$ interval
+$1.04$--$1.88$): rho was faster. A follow-up against a tuned rho on
+five fresh targets found no uniform online winner, its interval
+containing parity.\art{crypto:research/n83_evaluation_20261012/README.md; crypto:research/n83_evaluation_20261012/optimization/README.md}
+A Tier~1 panel on one GitHub-hosted instance (protocol frozen before the
+run, every gate passed, setup excluded from the online interval) has since
+paired the retained $600$-column index against the current strong
+signed-Frobenius rho. On the frozen point, eight interleaved pairs give
+rho over index calculus online at $1.78$ ($95\%$ interval
+$1.775$--$1.783$; the interval reflects timing noise on one deterministic
+target, not target variation). On sixteen fresh public points it is $2.77$
+($1.52$--$8.99$), index calculus faster on $12$ of $16$. The frozen rule
+reads both as index calculus faster online, as an instance-scoped result,
+not as a speed of the method: the cold ratio of index calculus to rho is
+$95.4$ and $134$ (rho ahead once the setup is charged), and the online
+interval is $75\times$ and $34\times$ the Bernstein--Lange model given the
+same setup. The legacy packed rho on the same point reads $7.54$ ($7.48$--$7.60$),
+so the $8.2$ above did not survive isolation unchanged, but that rho is not
+an accepted reference. This panel disagrees in direction with the diagnostic
+$1.38$ in rho's favour above; the two differ in host, rho seed and index
+cache, and the disagreement is not resolved here.\art{experiments/koblitz-single-target-n83-tier1-20261014/README.md}
+None of these is an advance under Section~\ref{sec:bench-method}: each
+reads a method with precomputation against a reference without it.
 
 \subsection{What survives complete relation collection}
 \label{sec:survives}
@@ -406,8 +505,10 @@ thing the next measurement must do is run it under the isolation gate.
 Table~\ref{tab:survives} collects the paper's improvements with what
 each one moved and its class. The pattern is uniform. Representation
 changes move constants, sometimes large ones, inside a method that
-remains $1.3$--$300\times$ the matched rho's cost at every degree
-measured; the same representation change inside the reference moves
+remains slower than the matched rho at every degree measured once its
+setup is charged ($1.3$--$331\times$ across the rungs priced) and is
+faster online only by spending precomputation that a generic walk
+could spend better (Section~\ref{sec:bench-e2e}); the same representation change inside the reference moves
 its constant by a comparable factor; and the headline count that a
 fold divides by $2n$ (entries, keys, clauses, unknowns) is never the
 count the end-to-end cost is proportional to.
@@ -421,13 +522,13 @@ count the end-to-end cost is proportional to.
 improvement & what moved & verified & class \\
 \midrule
 normal-basis rotation vs squaring chain & $8.6$--$15\times$ per key; rho process $4.08\times$ fewer instructions & keys identical; 1024/1024 & engineering \\
-zero-gap shortcut (variant B) & $17.1\times$ fewer rotations; canonicalization phase $1.42\times$ (unisolated) & keys and shifts identical & engineering (stage) \\
+zero-gap shortcut (variant B) & $17.1\times$ fewer rotations; canonicalization phase $1.086\times$ $[1.076,1.094]$ (Tier~1, one instance; the unisolated $1.42\times$ was overstated) & keys and shifts identical & engineering (stage) \\
 laned variant A & $1.09$--$1.31\times$ pipeline (isolated) & identical logs & engineering \\
-packed 18-byte record & $2.50\times$ fewer table bytes; $11.8\times$ fewer comparisons & controls identical & engineering (stage) \\
+packed 18-byte record & $2.27\times$ fewer table bytes ($2.50\times$ first layout); $11.8\times$ fewer comparisons across successive layouts on one frozen probe & controls identical & engineering (stage) \\
 folded pair table & $2n$ fewer entries; $+1.2\%$ operations at 12688 pts; cheapest above $\approx16\,000$ pts & 32/32 & relabelling / accounting \\
 orbit tag & recovery $O(|F|)\to O(n)$; widening lever restored ($1.9\times$ predicted, $1.93$--$2.04$ measured) & all targets decomposed & engineering \\
-canonical pair table as a cold job & $0.65$--$0.75$ whole-job time at $n=19,23$ & witnesses verified & engineering \\
-$\Gamma$-orbit Gr\"obner base ($n=19$) & $6.85\times$ CPU per complete ECDLP vs plain base & 40/40 & engineering \\
+canonical pair table as a cold job & $0.75$ ($n=19$) and $0.65$ ($n=23$) whole-job time, two separate experiments & witnesses verified & engineering \\
+$\Gamma$-orbit Gr\"obner base ($n=19$) & $6.85\times$ CPU per complete ECDLP vs plain base; $1.9\times10^4\times$ matched rho's CPU (exploratory rho arm) & 40/40 & engineering \\
 representative+shift SAT encoding & $79.3\times$ fewer clauses; solve time unchanged & pending replay & relabelling \\
 \bottomrule
 \end{tabularx}
