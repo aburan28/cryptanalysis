@@ -193,8 +193,49 @@ this panel; the earlier gauge panel lost 21, so neither panel alone supports
 a general speed assertion. The base-holdout.json, base-test-model.json, and
 gaugebase128 receipt files preserve the paired evidence.
 
+## Selective orbit compression under a 64 MiB table cap
+
+The new table stores each window and tau channel uniformly as either 64-byte
+affine points or 96-byte compressed orbit points. The compressed form carries
+the prepared x coordinate needed to apply beta powers during selection, so
+it avoids a selected-unit Solinas rotation in that channel. Channel-level
+tags avoid per-point dispatch metadata. The frozen 4,096-scalar training
+panel supplied one rotation count and one table cost for each of the 28
+channels. `selective_policy.py` chose the channel subset by exact
+meet-in-the-middle integer optimization under a 64 MiB retained-table cap;
+`selective_optimality_check.py` independently checked the optimum with a
+capacity-indexed dynamic program. The selected 12 channels contain 285,480
+point slots. They remove 17,264 of the training panel's 38,315 affine
+selection rotations while keeping modeled point-and-atlas bytes at
+67,009,660. The native retained table is 67,010,468 bytes, including 808
+metadata bytes, and has 98,396 bytes of headroom below the cap.
+
+The policy and native evaluator were frozen at
+`63d4059b28693951ae3e7cd9beb0d6e2410972f7` before drawing
+`selective-holdout.json`, a disjoint 128-scalar panel. Three instrumented
+native builds returned the same 128 independently checked affine and binary
+scalar results. The integer recoder model predicted every count below.
+
+| Paired format on selective holdout | Retained bytes | Tree generic calls | Selected-unit Solinas rotations |
+| --- | ---: | ---: | ---: |
+| All affine, 128-byte pair | 57,874,660 | 16,128 | 1,209 |
+| Selective compressed channels, up to 64 MiB | 67,010,468 | 16,128 | 674 |
+| Hybrid, 160-byte pair | 71,160,740 | 16,128 | 577 |
+
+Selective compression saves 535 rotations relative to all affine for
+9,135,808 more retained bytes. Relative to the 160-byte hybrid, it saves
+4,150,272 retained bytes at a cost of 97 rotations. Table preparation
+converts 285,480 entries to the compressed form; those conversions,
+recoding, lookup traffic, affine recovery, and cache effects require a
+complete-operation measurement. These are verified operation counts and
+memory sizes, with no isolated wall-time ratio. The three raw logs and
+`selective64-*-receipt.json` files bind the source, generated module,
+binary, fixture, policy, model, and results.
+
 Compare the full operation on a host that passes the repository's isolated
-benchmark preflight before making a CPU speed claim.
+benchmark preflight before making a CPU speed claim. A RunPod CPU Pod can
+qualify only for the separate instance-scoped Tier 1 gate when its paired
+noise and correctness checks pass; it does not establish host exclusivity.
 
 Reproduce the current receipts:
 
@@ -232,4 +273,10 @@ python3 experiments/prime-j0-mixed640-materialized-tree-20261013/base_holdout.py
 python3 experiments/prime-j0-mixed640-materialized-tree-20261013/base_test_model.py
 python3 experiments/prime-j0-mixed640-materialized-tree-20261013/native_gauge128_base_opcount.py /private/tmp/mixed640-gaugebase-replay
 (cd /private/tmp/mixed640-gaugebase-replay && MIXED640_HOLDOUT=/absolute/path/to/base-holdout.json CARGO_TARGET_DIR=/private/tmp/mixed640-gaugebase-target cargo test --offline --locked --release --bin eisenstein_fixed source_frozen_holdout_matches_independent_binary -- --nocapture)
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/selective_policy.py
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/selective_optimality_check.py
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/selective_holdout.py --check
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/selective_test_model.py
+python3 experiments/prime-j0-mixed640-materialized-tree-20261013/native_selective64_opcount.py /private/tmp/mixed640-selective64-replay
+(cd /private/tmp/mixed640-selective64-replay && MIXED640_HOLDOUT=/absolute/path/to/selective-holdout.json CARGO_TARGET_DIR=/private/tmp/mixed640-selective64-target cargo test --offline --locked --release --bin eisenstein_fixed source_frozen_holdout_matches_independent_binary -- --nocapture)
 ```
