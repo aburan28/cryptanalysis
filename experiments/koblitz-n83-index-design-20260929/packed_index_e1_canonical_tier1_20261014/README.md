@@ -205,6 +205,28 @@ single-target IC speedup and is not a Tier 0 result.
 
 ![Paired R/C ratio of each of the 16 alternating pairs, with the median and 95% interval of the primary statistic and the exploratory figure for scale.](figures/tier1_result.png)
 
+## Replicate
+
+Run `38524295231` was started unintentionally: the push that archived the first
+receipt touched this directory, which the workflow's path filter watched. It
+ran the same frozen protocol at commit `7da160a2` on a different runner
+(`GitHub Actions 1000294691`) and is archived as a **replicate** in
+[`tier1_github_38524295231/`](tier1_github_38524295231/). It is reported
+beside the first run and is not pooled with it. `verify_tier1_receipt.py`
+reproduces its `verdict.json` byte for byte; all 16 pairs valid, all gates passed.
+
+| Statistic (paired R/C, median of 16) | Run 38502816475 | Replicate 38524295231 |
+| --- | --- | --- |
+| Primary: canonicalization phase | 1.0856 [1.0757, 1.0939] | 1.0953 [1.0812, 1.1062] |
+| Secondary: target stage | 1.0227 [1.0174, 1.0327] | 1.0215 [1.0162, 1.0350] |
+| Negative control: S3 batch phase | 1.0073 [0.9968, 1.0171] | 1.0176 [0.9994, 1.0277] |
+| Verdict / magnitude | `promoted` / `refuted_overstated` | `promoted` / `refuted_overstated` |
+
+Each run's verdict stands on its own under the frozen rule. Both lower bounds
+are above 1 and both intervals lie far below 1.4233. The workflow's path filter
+now excludes receipts and report files, which stops further retriggers; the
+frozen protocol is unchanged.
+
 ## Graphs checked
 
 `figures/tier1_result.{tex,pdf,png}` is new and plots the receipt. The paper's
