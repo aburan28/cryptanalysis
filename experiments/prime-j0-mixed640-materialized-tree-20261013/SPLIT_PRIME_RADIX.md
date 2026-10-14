@@ -46,8 +46,8 @@ reconstruction, the two coordinate inequalities, and the group-action
 evaluation formula. Its numeric lemma checks the final rational bound.
 The later six-unit variant has a checked 21-step norm contraction in
 `SplitPrimeNormBound.lean` for digits of norm at most 1,064². The
-floor/ceil lattice-cell inequalities remain the missing Lean premise for
-its use on every scalar representative.
+floor/ceil lattice-cell bound for the actual minimum-norm selector is
+checked separately in `SplitPrimeLatticeCell.lean`.
 
 `native_split_prime_bench.py` generates the pinned Rust evaluator and a
 128-scalar correctness test against independent binary multiplication. The
@@ -243,8 +243,20 @@ digit norm bound, with the nearest-cell inequality `3N(z₀)≤n` stated as
 an explicit hypothesis. The checked integer radius sequence starts at
 `B₀=27·57²¹` and ends at `B₂₁=46`; each step is strict against the exact
 norm multiplier 3301, so the theorem concludes `N(z₂₁)<46²`.
-The remaining geometric bridge is a Lean proof that the implemented
-nearest-cell scalar decomposition satisfies `3N(z₀)≤n`.
+`SplitPrimeLatticeCell.selected_norm_bound` closes the initial premise
+for every integer scalar. It proves the four-corner covering inequality,
+the exact secp256k1 basis Gram and determinant identities, the floor
+quotient/remainder equations, and the norm bound inherited by the
+minimum-norm selector. Its source and axiom audit are in
+`split-prime-lattice-cell-lean-receipt.json`. The Python selector orders
+the same four candidates by norm first, then by its documented tie breaks.
+`SplitPrimeComplete.min_norm_scalar_terminal_bound` imports and composes
+the lattice and contraction modules. It applies to any 21-step trajectory
+whose initial norm equals the four-corner minimum, every step is the exact
+`pi` quotient equation, and every chosen unit digit has norm at most
+1,064². The Python selector's tie breaks preserve that minimum norm.
+The imported theorem's source and axiom audit are in
+`split-prime-complete-lean-receipt.json`.
 The generated
 `SplitPrimeUnitCover.lean` proves the complete finite quotient bound:
 for every `0 ≤ r < 3301`, there is a seed `m ≤ 1064` whose image under one
@@ -264,7 +276,8 @@ model checks that this canonical list exactly equals the runtime's greedy
 551-entry list including zero and pins its digest. Direct kernel replay of
 the runtime seen-residue loop was stopped at a local resource ceiling; its
 [attempt receipt](split-prime-greedy-attempt.json) preserves that status.
-The analytic nearest-cell bridge remains a separate open Lean obligation.
+The nearest-cell bound is checked in `SplitPrimeLatticeCell.lean`; the
+runtime greedy seed-list equivalence remains a model-checked bridge.
 The generated native release test matched all 128 frozen points against
 independent binary multiplication locally and reported **1,950,422
 retained bytes** including the residue lookup and metadata. The Pod
