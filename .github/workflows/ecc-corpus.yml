@@ -12,7 +12,7 @@ name: ecc-corpus
 # workflow changes; ordinary pushes stay fast.
 on:
   push:
-    branches: ["**"]
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - "challenges/ecc/**"
       - ".github/workflows/ecc-corpus.yml"
@@ -26,7 +26,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 defaults:
@@ -37,10 +37,10 @@ jobs:
   corpus:
     name: regenerate and validate
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 45 }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 

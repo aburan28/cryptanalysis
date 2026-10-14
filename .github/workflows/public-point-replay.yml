@@ -10,6 +10,7 @@ on:
       - 'experiments/pdp-scaling/**'
       - '.github/workflows/public-point-replay.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - 'experiments/groebner-perf-20260924/round17/**'
       - 'experiments/groebner-perf-20260924/round15/**'
@@ -21,7 +22,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: public-point-replay-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   correctness:
@@ -33,10 +34,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - name: Build native replay and query dependencies

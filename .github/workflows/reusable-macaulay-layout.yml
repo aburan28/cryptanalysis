@@ -1,28 +1,60 @@
 name: Reusable Macaulay layouts
 on:
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
   pull_request:
+  merge_group:
+  workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  changes:
+    name: Select affected jobs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      selected: ${{ steps.scope.outputs.selected }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/actions/ci-scope/
+            /.github/ci/
+            /scripts/ci_scope.py
+      - id: scope
+        uses: ./.github/actions/ci-scope
+        with:
+          workflow: reusable-macaulay-layout.yml
+
   portable:
+    needs: changes
+    if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, macos-15]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 30 }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').portable) != 'false'))
+      - uses: actions/setup-python@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').portable) != 'false'))
         with:
           python-version: '3.13'
       - name: Build and verify complete algebra queries
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').portable) != 'false'))
         env:
           CXX: clang++
         run: python experiments/groebner-perf-20260924/round92/run_validation.py --output macaulay-layout-evidence
       - name: Retain successes and failures
-        if: always()
+        if: ${{ (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').portable) != 'false')) && (!cancelled()) }}
         uses: actions/upload-artifact@v4
         with:
           name: macaulay-layout-${{ matrix.os }}

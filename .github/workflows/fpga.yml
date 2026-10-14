@@ -11,7 +11,7 @@ name: fpga
 
 on:
   push:
-    branches: ["**"]
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - "fpga/**"
       - ".github/workflows/fpga.yml"
@@ -25,7 +25,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 defaults:
@@ -37,7 +37,7 @@ jobs:
   simulate:
     name: model and testbenches (DIGIT=${{ matrix.digit }})
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 40 }}
     strategy:
       fail-fast: false
       matrix:
@@ -46,7 +46,7 @@ jobs:
         # a bug in the folding shows up in one before the other.
         digit: [1, 4, 16]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Icarus Verilog
         run: |
@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install verilator
         run: |
           sudo apt-get update || true
@@ -78,9 +78,9 @@ jobs:
   synthesise:
     name: yosys area report
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 30 }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install yosys
         run: |
           sudo apt-get update || true

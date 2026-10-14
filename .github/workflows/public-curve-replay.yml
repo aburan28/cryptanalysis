@@ -1,13 +1,22 @@
 name: Public curve witness replay
 
 on:
+  merge_group:
+  workflow_dispatch:
   pull_request:
     paths:
+      - ".github/ci/**"
+      - ".github/actions/ci-scope/**"
+      - "scripts/ci_scope.py"
       - 'experiments/groebner-perf-20260924/**'
       - 'experiments/pdp-scaling/**'
       - '.github/workflows/public-curve-replay.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
+      - ".github/ci/**"
+      - ".github/actions/ci-scope/**"
+      - "scripts/ci_scope.py"
       - 'experiments/groebner-perf-20260924/**'
       - 'experiments/pdp-scaling/**'
       - '.github/workflows/public-curve-replay.yml'
@@ -16,29 +25,54 @@ permissions:
   contents: read
 
 concurrency:
-  group: public-curve-replay-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Select affected jobs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      selected: ${{ steps.scope.outputs.selected }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/actions/ci-scope/
+            /.github/ci/
+            /scripts/ci_scope.py
+      - id: scope
+        uses: ./.github/actions/ci-scope
+        with:
+          workflow: public-curve-replay.yml
+
   correctness-and-timing:
+    needs: changes
+    if: ${{ !cancelled() }}
     name: Public curve witness replay (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 30 }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness-and-timing) != 'false'))
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness-and-timing) != 'false'))
         with:
           python-version: '3.12'
       - name: Rebuild, preflight, measure and independently audit the frozen panel
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness-and-timing) != 'false'))
         run: python -u experiments/groebner-perf-20260924/round63/run_validation.py --output public-replay-evidence
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness-and-timing) != 'false')) && (!cancelled()) }}
         with:
           name: public-curve-replay-${{ matrix.os }}
           path: public-replay-evidence/

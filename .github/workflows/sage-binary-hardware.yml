@@ -13,6 +13,7 @@ on:
       - 'ecc2k130/runner/codegen/indexcalc.py'
       - '.github/workflows/sage-binary-hardware.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - 'experiments/sage-binary-hardware/**'
       - 'experiments/sage-ic-campaign/**'
@@ -28,12 +29,16 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   patch-and-receipts:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Reconstruct the Sage patch and check recorded measurements
         run: python3 experiments/sage-binary-hardware/verify_archive.py
       - name: Check native versus hardware rebaseline

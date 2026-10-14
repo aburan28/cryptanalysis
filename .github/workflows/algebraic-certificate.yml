@@ -1,22 +1,53 @@
 name: Algebraic Boolean certificates
 on:
+  merge_group:
+  workflow_dispatch:
   pull_request:
     paths:
+      - ".github/ci/**"
+      - ".github/actions/ci-scope/**"
+      - "scripts/ci_scope.py"
       - 'experiments/groebner-perf-20260924/**'
       - 'experiments/pdp-scaling/boolean_basis.py'
       - '.github/workflows/algebraic-certificate.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
+      - ".github/ci/**"
+      - ".github/actions/ci-scope/**"
+      - "scripts/ci_scope.py"
       - 'experiments/groebner-perf-20260924/**'
       - 'experiments/pdp-scaling/boolean_basis.py'
       - '.github/workflows/algebraic-certificate.yml'
 permissions:
   contents: read
 concurrency:
-  group: algebraic-certificates-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
+  changes:
+    name: Select affected jobs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      selected: ${{ steps.scope.outputs.selected }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/actions/ci-scope/
+            /.github/ci/
+            /scripts/ci_scope.py
+      - id: scope
+        uses: ./.github/actions/ci-scope
+        with:
+          workflow: algebraic-certificate.yml
+
   algebraic:
+    needs: changes
+    if: ${{ !cancelled() }}
     name: Algebraic proof checks (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -29,13 +60,18 @@ jobs:
     env:
       CXX: ${{ matrix.cxx }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').algebraic) != 'false'))
+      - uses: actions/setup-python@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').algebraic) != 'false'))
         with:
           python-version: '3.12'
       - name: Build sparse F4 with proofs and UBSan
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').algebraic) != 'false'))
         run: python experiments/groebner-perf-20260924/round5/build.py
       - name: Independent, adversarial, wide-variable and native checks
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').algebraic) != 'false'))
         run: python -m unittest discover -s experiments/groebner-perf-20260924/round5 -p 'test_*.py' -v
       - name: Source/evidence audit and retained certificate replay
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').algebraic) != 'false'))
         run: python experiments/groebner-perf-20260924/round5/audit.py

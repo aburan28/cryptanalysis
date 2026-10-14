@@ -1,14 +1,23 @@
 name: Partial affine checker locality
 
 on:
+  merge_group:
+  workflow_dispatch:
   pull_request:
     paths:
+      - ".github/ci/**"
+      - ".github/actions/ci-scope/**"
+      - "scripts/ci_scope.py"
       - 'experiments/groebner-perf-20260924/**'
       - 'experiments/pdp-scaling/**'
       - 'experiments/pdp-degree-heuristics/**'
       - '.github/workflows/partial-affine-locality.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
+      - ".github/ci/**"
+      - ".github/actions/ci-scope/**"
+      - "scripts/ci_scope.py"
       - 'experiments/groebner-perf-20260924/**'
       - 'experiments/pdp-scaling/**'
       - 'experiments/pdp-degree-heuristics/**'
@@ -18,28 +27,54 @@ permissions:
   contents: read
 
 concurrency:
-  group: partial-affine-locality-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Select affected jobs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      selected: ${{ steps.scope.outputs.selected }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/actions/ci-scope/
+            /.github/ci/
+            /scripts/ci_scope.py
+      - id: scope
+        uses: ./.github/actions/ci-scope
+        with:
+          workflow: partial-affine-locality.yml
+
   correctness:
+    needs: changes
+    if: ${{ !cancelled() }}
     name: Partial affine checker locality (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 90 }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         with:
           python-version: '3.12'
       - name: Install numerical dependency
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         run: python -m pip install numpy==2.4.0
       - name: Build portable dependencies and selected backend
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         shell: bash
         run: |
           mkdir -p partial-locality-evidence
@@ -56,7 +91,7 @@ jobs:
           python experiments/groebner-perf-20260924/round51/build.py "${flags[@]}" > partial-locality-evidence/build-51.log 2>&1
           python experiments/groebner-perf-20260924/round52/build.py > partial-locality-evidence/build-52.log 2>&1
       - name: Detect actual Metal availability
-        if: runner.os == 'macOS'
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false')) && (runner.os == 'macOS')
         working-directory: experiments/groebner-perf-20260924/round52
         run: |
           python - <<'PY'
@@ -75,8 +110,10 @@ jobs:
                   output.write('QUADRATIC_TEST_METAL=1\n')
           PY
       - name: Exercise proof semantics and charged failure boundaries
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         run: python -m unittest discover -s experiments/groebner-perf-20260924/round52 -p 'test_*.py' -v > partial-locality-evidence/unit-tests.log 2>&1
       - name: Validate frozen systems and fresh complete queries
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         shell: bash
         run: |
           flags=()
@@ -86,11 +123,13 @@ jobs:
           python -u experiments/groebner-perf-20260924/round52/validate_native.py "${flags[@]}" --output partial-locality-evidence/correctness.json.gz > partial-locality-evidence/validation.log 2>&1
           python -u experiments/groebner-perf-20260924/round52/validate_native.py "${flags[@]}" --partial-coefficients strided --output partial-locality-evidence/strided-correctness.json.gz > partial-locality-evidence/strided-validation.log 2>&1
       - name: Audit every copied coefficient against the independent table
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         run: python -u experiments/groebner-perf-20260924/round52/audit_cache.py --input partial-locality-evidence/correctness.json.gz --output partial-locality-evidence/cache-audit.json > partial-locality-evidence/cache-audit.log 2>&1
       - name: Independently audit every complete proof from original equations
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         run: python -u experiments/groebner-perf-20260924/round52/audit_queries.py --input partial-locality-evidence/correctness.json.gz --output partial-locality-evidence/independent-audit.json > partial-locality-evidence/independent-audit.log 2>&1
       - name: Retain rebuilt binaries and actual runner identity
-        if: always()
+        if: ${{ (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false')) && (!cancelled()) }}
         run: |
           python - <<'PY'
           import json, os, pathlib, platform, shutil
@@ -106,7 +145,7 @@ jobs:
               shutil.copytree(kernel, out / 'native' / 'pdp-degree-heuristics', dirs_exist_ok=True)
           PY
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false')) && (!cancelled()) }}
         with:
           name: partial-locality-${{ matrix.os }}
           path: partial-locality-evidence/

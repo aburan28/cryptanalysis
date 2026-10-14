@@ -72,7 +72,9 @@ measured candidates:
 
 | Candidate | Result |
 |---|---|
-| MXL closure on the residual bilinear system (Sec. 4, 4b) | Solving degree 3 up to `d = 9`, 4 up to `d = 18`, 5 at `d = 21`, far below the generic overdetermined-bilinear degree. Still 3.6-700x costlier than enumeration at n = 41 |
+| MXL closure on the residual bilinear system (Sec. 4, 4b) | Solving degree 3 up to `d = 9`, 4 up to `d = 18`, 5 at `d = 21`. Still 3.6-700x costlier than enumeration at n = 41 |
+| Why that degree is low: structure ablations (Sec. 4f, `ablation.py`) | A random Boolean bilinear system of the same shape needs only 1-2 degrees more. The `F_2[T]` convolution saves one degree, and the summand swap `A -> A + D` saves one more at `d = 11`. The target, half-trace and progression do not matter. Neither saving changes the slope |
+| Non-subspace factor bases (Sec. 5, `nonsubspace.py`) | Proved dominated for linear oracles: `d_lin(F) >= 3 log2|F| - n - 2`. Measured excess 9-40 dimensions for powers, unions and random sets |
 | One-block t-closure, y-XL style (Sec. 4c) | 14-100x less work than the full closure at the same degree. Cheaper than enumeration only at `d <= 9`; plain certificates give a Wiedemann exponent of about `1.3 d` |
 | CDCL with XOR reasoning (CryptoMiniSat) on the residual (Sec. 4d) | A constant 19-35x slower than the C enumeration from `d = 15` on |
 | The repository's F4 on the same above-limit base (Sec. 4d') | `PDP2ht` is 75-680x faster per attempt |

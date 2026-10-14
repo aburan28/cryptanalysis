@@ -1,14 +1,23 @@
 name: Partial affine complete-query certificates
 
 on:
+  merge_group:
+  workflow_dispatch:
   pull_request:
     paths:
+      - ".github/ci/**"
+      - ".github/actions/ci-scope/**"
+      - "scripts/ci_scope.py"
       - 'experiments/groebner-perf-20260924/**'
       - 'experiments/pdp-scaling/**'
       - 'experiments/pdp-degree-heuristics/**'
       - '.github/workflows/partial-affine-query.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
+      - ".github/ci/**"
+      - ".github/actions/ci-scope/**"
+      - "scripts/ci_scope.py"
       - 'experiments/groebner-perf-20260924/**'
       - 'experiments/pdp-scaling/**'
       - 'experiments/pdp-degree-heuristics/**'
@@ -18,28 +27,54 @@ permissions:
   contents: read
 
 concurrency:
-  group: partial-affine-query-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Select affected jobs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      selected: ${{ steps.scope.outputs.selected }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/actions/ci-scope/
+            /.github/ci/
+            /scripts/ci_scope.py
+      - id: scope
+        uses: ./.github/actions/ci-scope
+        with:
+          workflow: partial-affine-query.yml
+
   correctness:
+    needs: changes
+    if: ${{ !cancelled() }}
     name: Partial affine query (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 45 }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         with:
           python-version: '3.12'
       - name: Install numerical dependency
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         run: python -m pip install numpy==2.4.0
       - name: Build portable dependencies and selected backend
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         shell: bash
         run: |
           mkdir -p partial-query-evidence
@@ -54,6 +89,7 @@ jobs:
             python "experiments/groebner-perf-20260924/round${version}/build.py" "${flags[@]}" > "partial-query-evidence/build-${version}.log" 2>&1
           done
       - name: Detect actual Metal availability
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         shell: bash
         run: |
           cd experiments/groebner-perf-20260924/round44
@@ -75,9 +111,11 @@ jobs:
           PY
           fi
       - name: Exercise proof semantics and charged failure boundaries
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         working-directory: experiments/groebner-perf-20260924/round44
         run: python -u -m unittest -v test_partial.py test_tagged_edges.py > ../../../partial-query-evidence/unit-tests.log 2>&1
       - name: Validate frozen systems and complete-query ablation
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         shell: bash
         run: |
           flags=()
@@ -86,9 +124,10 @@ jobs:
           fi
           python -u experiments/groebner-perf-20260924/round44/validate_native.py "${flags[@]}" --output partial-query-evidence/correctness.json.gz > partial-query-evidence/validation.log 2>&1
       - name: Independently audit complete proofs from original equations
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false'))
         run: python -u experiments/groebner-perf-20260924/round44/audit_queries.py --input partial-query-evidence/correctness.json.gz --output partial-query-evidence/independent-audit.json > partial-query-evidence/independent-audit.log 2>&1
       - name: Retain actual native binaries and runner identity
-        if: always()
+        if: ${{ (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false')) && (!cancelled()) }}
         run: |
           python - <<'PY'
           import json, os, pathlib, platform, shutil
@@ -101,7 +140,7 @@ jobs:
               shutil.copytree(build, out / 'native' / build.parent.name, dirs_exist_ok=True)
           PY
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness) != 'false')) && (!cancelled()) }}
         with:
           name: partial-query-${{ matrix.os }}
           path: partial-query-evidence/

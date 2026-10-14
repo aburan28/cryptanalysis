@@ -1,13 +1,22 @@
 name: Sparse F4 complete query timing
 
 on:
+  merge_group:
+  workflow_dispatch:
   pull_request:
     paths:
+      - ".github/ci/**"
+      - ".github/actions/ci-scope/**"
+      - "scripts/ci_scope.py"
       - 'experiments/groebner-perf-20260924/**'
       - 'experiments/pdp-scaling/**'
       - '.github/workflows/sparse-f4-query-timing.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
+      - ".github/ci/**"
+      - ".github/actions/ci-scope/**"
+      - "scripts/ci_scope.py"
       - 'experiments/groebner-perf-20260924/**'
       - 'experiments/pdp-scaling/**'
       - '.github/workflows/sparse-f4-query-timing.yml'
@@ -16,38 +25,65 @@ permissions:
   contents: read
 
 concurrency:
-  group: sparse-f4-query-timing-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Select affected jobs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      selected: ${{ steps.scope.outputs.selected }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/actions/ci-scope/
+            /.github/ci/
+            /scripts/ci_scope.py
+      - id: scope
+        uses: ./.github/actions/ci-scope
+        with:
+          workflow: sparse-f4-query-timing.yml
+
   correctness-and-timing:
+    needs: changes
+    if: ${{ !cancelled() }}
     name: Sparse F4 complete query (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 30 }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness-and-timing) != 'false'))
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness-and-timing) != 'false'))
         with:
           python-version: '3.12'
       - name: Rebuild native engines and test measurement rejection rules
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness-and-timing) != 'false'))
         run: |
           mkdir query-timing-evidence
           python -u experiments/groebner-perf-20260924/round57/build.py > query-timing-evidence/build.log 2>&1
           python -m unittest discover -s experiments/groebner-perf-20260924/round57 -p 'test_*.py' -v > query-timing-evidence/unit-tests.log 2>&1
       - name: Independently validate fresh complete queries
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness-and-timing) != 'false'))
         run: python -u experiments/groebner-perf-20260924/round57/preflight.py --output query-timing-evidence/preflight.json.gz > query-timing-evidence/preflight.log 2>&1
       - name: Retain one frozen paired attempt and its analysis
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness-and-timing) != 'false'))
         run: |
           python -u experiments/groebner-perf-20260924/round57/measure.py --preflight query-timing-evidence/preflight.json.gz --output query-timing-evidence/panel > query-timing-evidence/measure.log 2>&1
           python experiments/groebner-perf-20260924/round57/analyze.py --input query-timing-evidence/panel --output query-timing-evidence/analysis.json > query-timing-evidence/analysis.log 2>&1
       - name: Retain actual runner and rebuilt artifacts
-        if: always()
+        if: ${{ (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness-and-timing) != 'false')) && (!cancelled()) }}
         run: |
           python - <<'PY'
           import json, os, pathlib, platform, shutil
@@ -62,7 +98,7 @@ jobs:
                   shutil.copytree(source, out / 'native' / f'round{version}', dirs_exist_ok=True)
           PY
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').correctness-and-timing) != 'false')) && (!cancelled()) }}
         with:
           name: sparse-f4-query-timing-${{ matrix.os }}
           path: query-timing-evidence/

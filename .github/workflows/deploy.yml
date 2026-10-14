@@ -17,7 +17,7 @@ name: deploy
 
 on:
   push:
-    branches: ["**"]
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - "deploy/**"
       - "bindings/go/cmd/ca-coordinator/**"
@@ -39,7 +39,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 defaults:
@@ -52,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: azure/setup-helm@v4
         with:
           version: v3.16.3
@@ -184,13 +184,13 @@ jobs:
   images:
     name: images (coordinator, agent)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 30 }}
     strategy:
       fail-fast: false
       matrix:
         target: [coordinator, agent]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Built, not pushed: this job is here to prove the Dockerfile still
       # works, and publishing is a release decision.

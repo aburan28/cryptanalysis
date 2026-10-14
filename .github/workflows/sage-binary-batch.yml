@@ -10,6 +10,7 @@ on:
       - 'experiments/sage-binary-storage/**'
       - '.github/workflows/sage-binary-batch.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - 'experiments/sage-binary-batch/**'
       - 'experiments/sage-binary-native-addition/**'
@@ -22,12 +23,16 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   recorded-evidence:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check the source patch and recorded measurements
         run: python3 experiments/sage-binary-batch/verify_archive.py
       - name: Check the native Frobenius archive

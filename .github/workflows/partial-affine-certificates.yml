@@ -7,6 +7,7 @@ on:
       - 'experiments/groebner-perf-20260924/round40/fixtures/**'
       - '.github/workflows/partial-affine-certificates.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - 'experiments/groebner-perf-20260924/round43/**'
       - 'experiments/groebner-perf-20260924/round40/fixtures/**'
@@ -16,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: partial-affine-certificates-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -29,10 +30,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - name: Build separate optimized and UBSan libraries

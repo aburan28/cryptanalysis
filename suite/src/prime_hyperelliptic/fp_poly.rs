@@ -295,6 +295,9 @@ impl FpPoly {
 
     /// Equality (canonical after trim).
     pub fn eq_poly(&self, other: &Self) -> bool {
+        if self.p != other.p {
+            return false;
+        }
         let d1 = self.degree();
         let d2 = other.degree();
         if d1 != d2 {
@@ -398,5 +401,18 @@ mod tests {
             let inv = fp_inv(&av, &p).unwrap();
             assert_eq!((&av * &inv) % &p, BigUint::one());
         }
+    }
+
+    #[test]
+    fn equality_includes_the_coefficient_field() {
+        let over_f5 = FpPoly::from_coeffs(
+            vec![BigUint::one(), BigUint::from(2u32)],
+            BigUint::from(5u32),
+        );
+        let over_f7 = FpPoly::from_coeffs(
+            vec![BigUint::one(), BigUint::from(2u32)],
+            BigUint::from(7u32),
+        );
+        assert_ne!(over_f5, over_f7);
     }
 }

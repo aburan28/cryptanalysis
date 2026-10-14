@@ -8,6 +8,7 @@ on:
       - 'experiments/pdp-scaling/**'
       - '.github/workflows/gpu-query.yml'
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths:
       - 'experiments/groebner-perf-20260924/round10/**'
       - 'experiments/groebner-perf-20260924/round4/**'
@@ -17,7 +18,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: gpu-query-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   query:
@@ -29,10 +30,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - name: Linux dependencies and CPU library

@@ -8,10 +8,14 @@ CPU/Metal point-map improvements used by Sage-based experiments. These stage
 optimizations are not an end-to-end elliptic-curve index-calculus speedup claim.
 
 `scripts/sage-release-manifest.json` pins Sage commit
-`671dfa344f4cc4a6d54f343cbfd1272ee81698c9` (10.10.rc0), nine ordered
+`671dfa344f4cc4a6d54f343cbfd1272ee81698c9` (10.10.rc0), eleven ordered
 patches, their SHA-256 digests, and the exact resulting source digests. The
 standalone native Frobenius patch is already included in the first batch patch;
-held experimental patches are excluded.
+held public dispatch changes are excluded. The final two patches add the
+accepted PARI input/result conversion, native batch handling, and fused
+Frobenius-then-add operations. Their recorded decisions and measurements are
+in `experiments/sage-ic-campaign/five-opportunities-20260925/` and
+`experiments/sage-ic-campaign/pari-result-20260926/`.
 
 ## Local build and use
 
@@ -105,3 +109,35 @@ test, then attaches both files to the GitHub release.
 Extract the source kit in any directory, use its `scripts/sage_release.py`
 to apply the patches to a Sage checkout at the pinned commit, configure that
 checkout following Sage's installation guide, then run `build` and `smoke`.
+
+## Hardware compatibility
+
+The [agent rules](../AGENTS.md#sage-hardware-compatibility) require exact
+correctness checks on each claimed backend and a portable CPU fallback.
+From a full repository checkout, after building the current stack, run the
+installed compatibility suite:
+
+```sh
+python3 scripts/sage_release.py run --sage /path/to/built/sage -- -python \
+  experiments/sage-binary-hardware/validate_compatibility.py \
+  --backends cpu --out /tmp/new-sage-compatibility
+```
+
+Add `metal`, `cuda`, or `opencl` to test those devices. Every requested backend
+must execute; missing hardware is recorded as a failure, never a pass. The
+suite uses installed modules and an independent field-arithmetic oracle, not
+archived platform binaries. It records exact imported paths and hashes. On
+the primary local workspace, use `/Volumes/SSD990/cryptanalysis/sage` for
+these commands and record `--runtime-info` before measured work.
+
+Rebuild native extensions and compiled overlays for each target ABI and
+source manifest. Build in a fresh checkout or install a matching new overlay
+when an older installed release stamp refers to a different source manifest; do not disable verification or overwrite a
+shared installation to run an experiment. The existing `run-overlay` route
+keeps a checked release separate from a shared research installation.
+
+See the [2026-09-28 evidence](../experiments/sage-binary-hardware/compatibility-20260928/RESULT.md)
+for ARM64/Metal tests, Rosetta's limited x86 coverage, unavailable GPU results,
+and portable replay commands. Correctness checks do not establish device
+speedups; require matched complete-operation measurements before changing
+automatic routing.

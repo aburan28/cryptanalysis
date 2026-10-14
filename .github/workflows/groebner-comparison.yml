@@ -3,16 +3,21 @@ on:
   pull_request:
     paths: ['groebner_compare/**', 'experiments/pdp-scaling/**', '.github/workflows/groebner-comparison.yml']
   push:
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
     paths: ['groebner_compare/**', 'experiments/pdp-scaling/**', '.github/workflows/groebner-comparison.yml']
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   protocol:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - run: python -m pip install sympy==1.14.0
@@ -32,8 +37,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - run: git clone --depth 1 https://github.com/manschga/M5GB.git /tmp/m5gb-upstream
@@ -47,8 +52,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - uses: julia-actions/setup-julia@v2
@@ -72,7 +77,7 @@ jobs:
       image: sagemath/sagemath:10.6
       options: --user root
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check real PolyBoRi output against original Boolean equations
         env:
           TEST_GROEBNER_SAGE: '1'

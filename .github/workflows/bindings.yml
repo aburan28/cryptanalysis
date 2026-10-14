@@ -5,15 +5,16 @@ name: bindings
 
 on:
   push:
-    branches: ["**"]
+    branches: ["claude/cryptanalysis-repo-setup-p59kek"]
   pull_request:
+  merge_group:
 
 permissions:
   contents: read
 
 # One run per ref per workflow; a new push supersedes the one in flight.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 defaults:
@@ -25,17 +26,39 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  changes:
+    name: Select affected jobs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      selected: ${{ steps.scope.outputs.selected }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/actions/ci-scope/
+            /.github/ci/
+            /scripts/ci_scope.py
+      - id: scope
+        uses: ./.github/actions/ci-scope
+        with:
+          workflow: bindings.yml
+
   # ------------------------------------------------------------------ Rust --
 
   rust:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').rust) != 'false')) }}
     name: Rust (stable)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 30 }}
     defaults:
       run:
         working-directory: bindings/rust
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -56,13 +79,15 @@ jobs:
           RUSTDOCFLAGS: -D warnings
 
   rust-msrv:
+    needs: changes
+    if: ${{ !cancelled() }}
     # The workspace has two floors: cryptanalysis-sys / cryptanalysis build on
     # 1.78 (the oldest Cargo that understands the committed v4 Cargo.lock),
     # while cryptanalysis-cuda needs 1.88 for slice::as_chunks.  Both numbers
     # are declared in the manifests and re-checked here.
     name: Rust MSRV ${{ matrix.rust }} (${{ matrix.label }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 30 }}
     strategy:
       fail-fast: false
       matrix:
@@ -81,15 +106,19 @@ jobs:
       run:
         working-directory: bindings/rust
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').rust-msrv) != 'false'))
       - uses: dtolnay/rust-toolchain@master
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').rust-msrv) != 'false'))
         with:
           toolchain: ${{ matrix.rust }}
       - uses: Swatinem/rust-cache@v2
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').rust-msrv) != 'false'))
         with:
           workspaces: bindings/rust
           key: msrv-${{ matrix.rust }}
       - name: The manifests must declare the version this job tests
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').rust-msrv) != 'false'))
         run: |
           for pkg in ${{ matrix.manifest-crates }}; do
             got=$(cargo metadata --no-deps --format-version 1 \
@@ -100,18 +129,22 @@ jobs:
             fi
           done
       - name: Check
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').rust-msrv) != 'false'))
         run: cargo check ${{ matrix.packages }} --all-targets
       - name: Test
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').rust-msrv) != 'false'))
         run: cargo test ${{ matrix.packages }}
 
   rust-cuda-ptx:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').rust-cuda-ptx) != 'false')) }}
     name: Rust CUDA driver (PTX embedded)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 45 }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - uses: Swatinem/rust-cache@v2
@@ -140,11 +173,13 @@ jobs:
           grep -q 'cargo:rustc-cfg=ca_embedded_ptx' cuda-build.log
 
   rust-supply-chain:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').rust-supply-chain) != 'false')) }}
     name: Rust supply chain (cargo-deny)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@v2
         with:
@@ -161,9 +196,11 @@ jobs:
   # -------------------------------------------------------------------- Go --
 
   go:
+    needs: changes
+    if: ${{ !cancelled() }}
     name: Go ${{ matrix.go }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 30 }}
     strategy:
       fail-fast: false
       matrix:
@@ -174,8 +211,10 @@ jobs:
       run:
         working-directory: bindings/go
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').go) != 'false'))
       - uses: actions/setup-go@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').go) != 'false'))
         with:
           go-version: ${{ matrix.go }}
           # The module has no third-party dependencies and therefore no
@@ -184,6 +223,7 @@ jobs:
           # by the actions/cache step below.
           cache: false
       - name: Cache the Go build cache
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').go) != 'false'))
         uses: actions/cache@v6
         with:
           path: |
@@ -191,26 +231,33 @@ jobs:
           key: go-${{ matrix.go }}-${{ hashFiles('bindings/go/**', 'src/**', 'include/**') }}
           restore-keys: go-${{ matrix.go }}-
       - name: Build
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').go) != 'false'))
         run: go build ./...
       - name: gofmt
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').go) != 'false'))
         run: |
           unformatted=$(gofmt -l .)
           if [ -n "$unformatted" ]; then
             echo "::error::gofmt would rewrite:"; echo "$unformatted"; exit 1
           fi
       - name: Vet
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').go) != 'false'))
         run: go vet ./...
       - name: Test
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').go) != 'false'))
         run: go test ./...
       - name: Test (race detector)
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').go) != 'false'))
         run: go test -race ./...
 
   go-lint:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').go-lint) != 'false')) }}
     name: Go lint (golangci-lint)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           # Pinned to the Go that golangci-lint 2.5.0 was built with.  A
@@ -235,9 +282,11 @@ jobs:
   # ---------------------------------------------------------------- Python --
 
   python:
+    needs: changes
+    if: ${{ !cancelled() }}
     name: Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 30 }}
     strategy:
       fail-fast: false
       matrix:
@@ -250,26 +299,32 @@ jobs:
           - os: ubuntu-22.04
             python: "3.8"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').python) != 'false'))
+      - uses: actions/setup-python@v7
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').python) != 'false'))
         with:
           python-version: ${{ matrix.python }}
       - name: Build the C library
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').python) != 'false'))
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
                 -DCA_BUILD_TOOLS=OFF -DCA_BUILD_TESTS=OFF
           cmake --build build -j 4
       - name: Test against the developer build
+        if: (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').python) != 'false'))
         run: python -m unittest discover -s tests -v
         working-directory: bindings/python
 
   python-package:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').python-package) != 'false')) }}
     name: Python packaging (pip install .)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 30 }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install the package (setup.py compiles the C sources into it)
@@ -302,6 +357,8 @@ jobs:
           python -m unittest discover -s tests -v
 
   python-lint:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (toJSON(fromJSON(needs.changes.outputs.selected || '{}').python-lint) != 'false')) }}
     name: Python lint (ruff + mypy)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -312,8 +369,8 @@ jobs:
       run:
         working-directory: bindings/python
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Cache the pip download cache
