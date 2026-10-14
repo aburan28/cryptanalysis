@@ -44,6 +44,8 @@ CASES = {
     "production_static_128": ({
         "THREADS": 128, "MINBLOCKS": 5,
         "GPUFLAGS": "-Xptxas -v -DECC_STATIC_GROUP_BARRIERS=1"}, ""),
+    "production_skip_root_barriers": ({
+        "GPUFLAGS": "-Xptxas -v -DECC_INVERSE_SKIP_ROOT_BARRIERS=1"}, ""),
     "inline_sigma": ({}, "inline_sigma"),
     "forward_chain_first": ({}, "forward_chain_first"),
     "pair_ilp": ({"PACKED_PAIR_ILP": 1}, ""),
@@ -368,7 +370,11 @@ def main(mode: str = "screen", selected: str = "", output: str = "",
     sources = {name: (LOCAL / name).read_text() for name in names}
     if production_baseline and sources != baseline_sources:
         changed = sorted(name for name in names if sources[name] != baseline_sources[name])
-        raise ValueError(f"production source differs from pinned baseline: {changed}")
+        # The inverse candidate changes exactly one header behind a default-off
+        # flag.  The control still builds the pinned source from git.
+        if changed != ["include/collective_inverse.cuh"] or \
+                "production_skip_root_barriers" not in selected.split(","):
+            raise ValueError(f"production source differs from pinned baseline: {changed}")
     driver_sha256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     result = experiment.remote(mode, selected, sources, baseline_sources,
                                baseline_commit, base_settings)
