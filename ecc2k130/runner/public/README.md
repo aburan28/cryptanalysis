@@ -45,6 +45,12 @@ the image identity to distribute. Verify that an unauthenticated client can
 pull the tagged worker image before giving the command to contributors; GHCR
 visibility can differ from the source repository's visibility.
 
+The [v0.1.0 image prerelease](https://github.com/aburan28/cryptanalysis/releases/tag/ecc2k130-public-v0.1.0)
+is built from merged commit `c8cc56d8c98705c7f84a21aae1e042453e0105e6`.
+Both Linux amd64 image manifests resolved without credentials, and the worker's
+config and all 15 layers accepted anonymous HEAD requests. A full remote image
+download and NVIDIA device run remain unverified.
+
 ## Gateway deployment
 
 Run this on a host with public DNS, TCP 80/443, a persistent Docker volume,
@@ -93,7 +99,7 @@ Create `.env` beside `compose.yaml` on the gateway host (do not commit it):
 
 ```sh
 ECC_PUBLIC_HOST=ecc2k130.example.org
-ECC_GATEWAY_IMAGE=ghcr.io/aburan28/ecc2k130-gateway@sha256:REVIEWED_DIGEST
+ECC_GATEWAY_IMAGE=ghcr.io/aburan28/ecc2k130-gateway@sha256:1ab2ad0d7878edc4ae16395241785b773bcc9349ee36adf6c1e1fe0f7bbe521f
 ECC_PUBLIC_JOIN_TOKEN=GENERATE_A_LONG_RANDOM_TOKEN
 ECC_PUBLIC_STREAM_ID=stable-public-gateway-v1
 ECC_BUCKET=YOUR_EXISTING_CAMPAIGN_BUCKET
@@ -148,7 +154,7 @@ docker run -d --name ecc2k130-gpu0 --restart unless-stopped \
   -e ECC_API_URL=https://ecc2k130.example.org \
   -e ECC_JOIN_TOKEN=TOKEN_FROM_CAMPAIGN_OPERATOR \
   -v "$PWD/ecc2k130-gpu0:/data" \
-  ghcr.io/aburan28/ecc2k130-worker@sha256:REVIEWED_DIGEST
+  ghcr.io/aburan28/ecc2k130-worker@sha256:25299db686c6b73bb59edc1b5f6591d917ada4e5d933172a4eca7274a71e9421
 docker logs -f ecc2k130-gpu0
 ```
 
