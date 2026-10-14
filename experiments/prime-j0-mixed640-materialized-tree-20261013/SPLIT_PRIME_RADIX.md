@@ -242,9 +242,15 @@ Lean's standard `propext` and `Quot.sound`. Regenerate it with
 [Lean receipt](split-prime-unit-cover-lean-receipt.json) pins the source and
 output. `SplitPrimeRadix.unit_seed_residue_forms` identifies those six
 numeric multipliers with the actual coefficient images of the unit action.
-The exact greedy choice of 551 seed representatives and the
-analytic nearest-cell bridge still have exhaustive model checks and written
-proofs, but no full Lean bridge yet.
+`SplitPrimeCanonicalSeeds.canonical_count` proves that the explicit
+minimum-orbit predicate selects exactly 550 positive seeds;
+`canonical_last` proves that the last is 1,064. Both pass with no axioms in
+the [canonical Lean receipt](split-prime-canonical-lean-receipt.json). The
+model checks that this canonical list exactly equals the runtime's greedy
+551-entry list including zero and pins its digest. Direct kernel replay of
+the runtime seen-residue loop was stopped at a local resource ceiling; its
+[attempt receipt](split-prime-greedy-attempt.json) preserves that status.
+The analytic nearest-cell bridge remains a separate open Lean obligation.
 The generated native release test matched all 128 frozen points against
 independent binary multiplication locally and reported **1,950,422
 retained bytes** including the residue lookup and metadata. The Pod

@@ -136,6 +136,18 @@ def unit_variant_screen(cases: list[dict], screen,
             codes[residue] = (index, unit, da, db)
     assert len(seeds) == 551 and max(seeds) == 1064
     assert all(code is not None for code in codes)
+    def centered(residue: int) -> int:
+        value = residue % NORM
+        return min(value, NORM - value)
+
+    canonical_seeds = [0] + [seed for seed in range(1, 1065)
+                             if seed == min(centered(seed),
+                                            centered(1726 * seed),
+                                            centered(1574 * seed))]
+    assert seeds == canonical_seeds
+    canonical_digest = sha256()
+    for seed in canonical_seeds:
+        canonical_digest.update(seed.to_bytes(2, "little"))
     assert screen.ORDER < 3 * 27**2 * 57**42
     assert 2 * (56 * initial_bound + 1064 * 57**STEPS) < (
         642 * 56 * 57**STEPS)
@@ -211,6 +223,7 @@ def unit_variant_screen(cases: list[dict], screen,
     return {
         "orbit_count_including_zero": len(seeds),
         "max_seed": max(seeds),
+        "canonical_seeds_sha256": canonical_digest.hexdigest(),
         "residue_lut_sha256": lut_digest.hexdigest(),
         "packed_residue_lut_sha256": packed_digest.hexdigest(),
         "correction_min": correction_min,
