@@ -403,3 +403,18 @@ modal run ecc2k130/runner/tune_frobenius_v3.py --mode screen \
   --output research/kernelagent-20261014/inverse-double-buffer-exploratory-screen.json \
   > ecc2k130/runner/research/kernelagent-20261014/inverse-double-buffer-exploratory-screen.log 2>&1
 ```
+
+The [exploratory screen receipt](inverse-double-buffer-exploratory-screen.json),
+[full raw log](inverse-double-buffer-exploratory-screen.log), and [independent
+validation](inverse-double-buffer-exploratory-validation.json) show the A/A
+ratios `0.999955` and `1.001893` (median `1.000924`). The double-buffer
+candidate ratios were `0.999034` and `1.007698` (median `1.003366`), with
+median candidate/control rates of `18.0020355` and `17.942078` billion
+useful updates/s. All eight timing arms reproduced the frozen 355-record
+sorted DP32 corpus and reported zero drops. The candidate executable SHA-256
+was `a300810383336e2c057641f4abe25d17851df99d0824067986d3de3533120faf`.
+One candidate ratio fell below the A/A interval, so the predeclared
+two-pair advancement rule failed. The apparent median difference is not a
+confirmed improvement. This run remains exploratory because the Blackwell
+race checker did not run. The switch stays off; no five-pair confirmation or
+production adoption follows from this screen.
