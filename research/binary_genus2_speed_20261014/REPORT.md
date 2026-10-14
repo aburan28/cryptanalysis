@@ -1,20 +1,20 @@
 # Full-subgroup elliptic / genus-two ECDLP comparison
 
-Four independent a=1 targets now have completed, matched elliptic and native
+Seven independent a=1 targets now have completed, matched elliptic and native
 genus-two full-subgroup solves. The three newly completed native searches
-took **984.515, 405.053 and 1,116.430 seconds**; their matched elliptic searches
-took **8.937, 3.392 and 10.603 seconds**. Each target used exactly the same
+took **673.691, 1,083.143 and 1,154.184 seconds**; their matched elliptic searches
+took **5.773, 8.900 and 8.555 seconds**. Each target used exactly the same
 step count in all three arms and passed separate-process verification in
 E and J(C). All eight elliptic and image-inverse targets are complete.
 These are descriptive L0 VM search durations; complete priced cost and
-speedup remain unset. The a=0 full solves and four native a=1 targets remain
+speedup remain unset. The a=0 full solves and one native a=1 target remain
 outstanding in the checkpointed campaign.
 
-Latest snapshot: [run-20261014T2034Z](runs/run-20261014T2034Z/ARCHIVE.md),
-acknowledged pause 20:37:44 UTC. It contains 20 verified resumable completions,
-ten beyond the earlier ten-completion snapshot. The 27 optimized reference
+Latest snapshot: [run-20261014T2148Z](runs/run-20261014T2148Z/ARCHIVE.md),
+acknowledged pause 21:49:26 UTC. It contains 23 verified resumable completions,
+three beyond the preceding 20-completion snapshot. The 27 optimized reference
 runs are retained earlier evidence, not new executions. The immutable
-[earlier snapshot](runs/run-20261014T1901Z/snapshot.json) remains unchanged.
+[earlier snapshots](runs/run-20261014T2034Z/snapshot.json) remain unchanged.
 
 The user selected full-subgroup solves and a longer compute campaign. The
 [protocol](PROTOCOL.md) was pushed before target generation. This is not an
@@ -97,20 +97,23 @@ the frozen counters retain mappings and all other native operations.
 | Q_1 | 10,049,968 | 8.936632815 | 8.726057880 | 984.514533998 |
 | Q_2 | 3,913,125 | 3.392115110 | 3.423350861 | 405.053302451 |
 | Q_3 | 10,875,029 | 10.603287411 | 10.859175528 | 1,116.429875080 |
+| Q_4 | 5,873,249 | 5.773190470 | 6.879262749 | 673.691337740 |
+| Q_5 | 9,896,094 | 8.900080096 | 8.646483486 | 1,083.143331478 |
+| Q_6 | 9,152,588 | 8.555052141 | 8.391081647 | 1,154.184117905 |
 
-Every row has separate-process E and Jacobian verification. All 20 resumable
-candidates were also rechecked in new verifier invocations at this follow-up;
-[additional receipts](runs/run-20261014T2034Z/followup-verification/) contain
+Every row has separate-process E and Jacobian verification. The three new
+native candidates were also rechecked in further verifier invocations;
+[additional receipts](runs/run-20261014T2148Z/followup-verification/) contain
 the public-job hashes and both checks. The held-out witness was not accessed.
-The remaining elliptic/image-inverse completions on Q_4 through Q_7 and all
+The remaining elliptic/image-inverse completions on Q_7 and all
 native counters are retained per target in the native summary. Repeated
 representations and verifier invocations do not add independent targets.
 
-![Four matched completed native full solves](figures/matched-targets.svg)
+![Seven matched completed native full solves](figures/matched-targets.svg)
 
-At the pause, native a=1 Q_4 had 3,786,038 steps with no candidate; Q_5 through
-Q_7 were queued. The a=0 checkpoints had 236,882,500 elliptic steps,
-232,917,459 inverse/E steps and 2,383,516 native Jacobian steps, with no
+At the pause, native a=1 Q_7 had 3,162,845 steps with no candidate.
+The a=0 checkpoints had 410,039,272 elliptic steps,
+404,195,619 inverse/E steps and 4,137,664 native Jacobian steps, with no
 candidates. These are censored work counts. No completed duration is assigned
 to them and no scalar-space restriction was introduced.
 
@@ -176,8 +179,9 @@ performance conclusion. No index-calculus solver was measured here.
 
 ## Evidence and continuing execution
 
-- [Latest frozen native summary](runs/run-20261014T2034Z/snapshot.json), including raw-source paths.
-- [Latest run report](reports/run-20261014T2034Z/REPORT.md).
+- [Latest frozen native summary](runs/run-20261014T2148Z/snapshot.json), including raw-source paths.
+- [Latest run report](reports/run-20261014T2148Z/REPORT.md).
+- [Preceding run report](reports/run-20261014T2034Z/REPORT.md) and its unchanged frozen evidence.
 - [Earlier run report](reports/run-20261014T1901Z/REPORT.md) and its unchanged frozen evidence.
 - [PDF with recorded graphs](report.pdf); [layout source](render_report.py).
 - [Rust commands, methods and checkpoint controls](../../tools/binary-genus2-cover/README.md#full-subgroup-ecdlp-campaign).
@@ -201,8 +205,8 @@ Future snapshots must use new directories; never edit this run's evidence.
 | Requested requirement | Status and evidence |
 | --- | --- |
 | m=83, both pinned prime orders, original uniform public targets | Preserved; unchanged public-job hashes and native input checks |
-| Eight full targets per a, in each matched arm | Partial: a=1 E/image 8/8 each, native 4/8; a=0 0/8 in each arm |
-| Independent candidate verification | Verified for all 20 completed resumable solves and the earlier 27 optimized references; same host, separate processes |
+| Eight full targets per a, in each matched arm | Partial: a=1 E/image 8/8 each, native 7/8; a=0 0/8 in each arm |
+| Independent candidate verification | Verified for all 23 completed resumable solves and the earlier 27 optimized references; three new native candidates additionally checked; same host, separate processes |
 | Exact checkpoint continuation | Executing on the original worker; full state archived after an acknowledged pause; durable retention remains open |
 | Common priced cost, admitted speedup, ecbench audit | Not established; adapter, pricing, isolation and independent-host gates remain open |
 | Reports, graphs and PDF | Refreshed for this snapshot; new benchmark entry preserves earlier copies |

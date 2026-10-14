@@ -11,7 +11,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--run-id", default="run-20261014T2034Z")
+parser.add_argument("--run-id", default="run-20261014T2148Z")
 parser.add_argument("--study-root", type=Path, default=Path(__file__).resolve().parent)
 parser.add_argument("--output-dir", type=Path, default=Path(__file__).resolve().parent)
 args = parser.parse_args()
