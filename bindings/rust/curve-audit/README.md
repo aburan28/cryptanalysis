@@ -19,17 +19,20 @@ bindings/rust/target/debug/ca-curve-audit audit \
   --max-k 6 > p192-audit.json
 ```
 
-The [P-192 input](examples/nist-p192.json) reproduces the parameters in
-[NIST FIPS 186-4, Appendix D.1.2.1](https://nvlpubs.nist.gov/nistpubs/fips/nist.fips.186-4.pdf)
-and demonstrates the 192-bit path. The checked-in
-[recursive prime certificates](examples/nist-p192-pratt.json) bind to the
-input's exact SHA-256 digest. Generate equivalent certificates through the
+The [P-192 input](examples/nist-p192.json) and
+[P-224 input](examples/nist-p224.json) reproduce the parameters in
+[NIST FIPS 186-4, Appendix D.1.2](https://nvlpubs.nist.gov/nistpubs/fips/nist.fips.186-4.pdf)
+and exercise the 192- and 224-bit paths. Their checked-in
+[P-192](examples/nist-p192-pratt.json) and
+[P-224](examples/nist-p224-pratt.json) recursive prime certificates bind to
+each input's exact SHA-256 digest. Generate equivalent certificates through the
 repository's checked Sage launcher:
 
 ```sh
 ./sage -python bindings/rust/curve-audit/tools/generate_pratt.py \
   --input bindings/rust/curve-audit/examples/nist-p192.json \
   --output bindings/rust/curve-audit/examples/nist-p192-pratt.json
+# Repeat with nist-p224.json and nist-p224-pratt.json for P-224.
 ```
 
 The Rust auditor verifies these certificates without Sage. Each large-prime
@@ -76,7 +79,7 @@ using the prime certificates, a checked nonidentity point `G` with
 multiple of `r`; Hasse's interval has width `4√p < r`, so `N` is its unique
 multiple of `r`. The resulting status is
 `hasse_unique_multiple_certificate`. This route certifies the checked-in
-P-192 order and yields its trace, quadratic-twist order, and downstream
+P-192 and P-224 orders and yields their traces, quadratic-twist orders, and downstream
 arithmetic checks. Without a certificate, a larger prime receives the
 fixed-base probable-prime screen and any supplied order remains
 `supplied_unverified`. The default embedding-degree bound is 32, with a maximum
@@ -91,8 +94,8 @@ step for arbitrary natural-number multiples and an interval width less than
 criterion, the elliptic group law, Lagrange divisibility, Hasse's bound,
 and the conversion of the squared inequalities into interval bounds remain
 outside this Lean module. The Rust certificate verifier checks the concrete
-P-192 arithmetic, and an independent checked-Sage point count confirms its
-order and trace. The pinned Lean toolchain and build/axiom output are in
+P-192 and P-224 arithmetic, and independent checked-Sage point counts confirm
+their orders and traces. The pinned Lean toolchain and build/axiom output are in
 [`formal/`](formal/). `lean4checker --fresh` was unavailable on this host.
 
 Independent replay command (run through the repository launcher):
@@ -109,6 +112,11 @@ The [replay receipt](examples/nist-p192-sage-replay.json) retains these
 values, the exact input and certificate digests, and the checked Sage
 runtime manifest digest. The [complete audit report](examples/nist-p192-audit.json)
 is the current 61-criterion result for this input and certificate.
+The corresponding [P-224 replay](examples/nist-p224-sage-replay.json) and
+[audit](examples/nist-p224-audit.json) record exact order
+`26959946667150639794667015087019625940457807714424391721682722368061`,
+trace `4733100108545601916421827343930821`, and twist order
+`26959946667150639794667015087019635406658024805628224565337410229703`.
 
 `condition_verified` means the current input and independently checked
 arithmetic establish the stated mathematical condition. `structural_candidate`
@@ -129,7 +137,7 @@ The bundled [catalog provenance](catalog/PROVENANCE.md) fixes the 23 indexed
 criteria and 38 research checks imported from the WeakCurves atlas.
 
 The next backend should extend the certified-order path to independently
-sampled 192–252-bit controls, then add extension-field arithmetic and
+sampled 192–252-bit controls beyond these standardized examples, then add extension-field arithmetic and
 cover/isogeny transfer modules. Protocol and implementation attacks require
 the actual parser, scalar multiplication and oracle behavior as inputs;
 their rows expose those evidence requirements today. The exact acceptance

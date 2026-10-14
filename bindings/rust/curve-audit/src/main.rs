@@ -715,6 +715,38 @@ mod tests {
     }
 
     #[test]
+    fn p224_certifies_large_field_order_trace_and_twist() {
+        let bytes = include_bytes!("../examples/nist-p224.json");
+        let certificate = include_bytes!("../examples/nist-p224-pratt.json");
+        let report = audit(
+            input::parse(bytes).unwrap(),
+            sha256(bytes),
+            6,
+            100_000,
+            None,
+            Some(certificate),
+        )
+        .unwrap();
+        let claimed = input::parse(bytes).unwrap().curve_order.unwrap();
+        assert_eq!(report["validation"]["field_characteristic"], "proven_prime");
+        assert_eq!(
+            report["derived"]["selected_order_primality"],
+            "proven_prime"
+        );
+        assert_eq!(
+            report["validation"]["curve_order_status"],
+            "hasse_unique_multiple_certificate"
+        );
+        assert_eq!(report["validation"]["generator_exact_order"], true);
+        assert_eq!(report["derived"]["curve_order"], number(&claimed));
+        assert_eq!(
+            report["derived"]["trace"],
+            "4733100108545601916421827343930821"
+        );
+        assert_eq!(status(&report, "anomalous_prime"), "condition_excluded");
+    }
+
+    #[test]
     fn bad_or_misbound_prime_certificates_are_rejected() {
         let bytes = include_bytes!("../examples/nist-p192.json");
         let cert = include_bytes!("../examples/nist-p192-pratt.json");
