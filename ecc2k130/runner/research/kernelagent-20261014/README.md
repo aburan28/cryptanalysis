@@ -359,3 +359,47 @@ modal run ecc2k130/runner/research/kernelagent-20261014/sanitizer_control.py \
   --output ecc2k130/runner/research/kernelagent-20261014/sanitizer-h100-control.json \
   > ecc2k130/runner/research/kernelagent-20261014/sanitizer-h100-control.log 2>&1
 ```
+
+The [Blackwell control receipt](sanitizer-blackwell-control.json) shows that
+even the 64-thread race-free kernel returned exit 86 and `Device not
+supported` under Compute Sanitizer 2026.2.1.0. The [raw control
+log](sanitizer-blackwell-control.log) is retained. The `nvidia-smi` query for
+confidential-compute mode was rejected by this image, so that mode is
+unknown; the tool output does not identify why the device was refused.
+
+On a Modal H100 80GB (driver 580.95.05, CUDA compute capability 9.0), the
+[H100 receipt](sanitizer-h100-control.json) and [raw log](sanitizer-h100-control.log)
+show zero hazards for the clean control and one detected write-after-write
+hazard for the planted control (exit 86). The unchanged double-buffer inverse
+passed 1,280 independent inputs at 640 threads, two bank phases, and repeated
+calls; the calibrated checker reported zero hazards. Its H100 test executable
+SHA-256 is
+`a5978d29cbcfb8333c666ea075067b2602d8cc91f7f6e689ff9cbdf024db24e5`.
+The Blackwell and H100 observations do not identify a race on Blackwell or
+prove an absence of all races; the Blackwell checker still did not run.
+
+### Separate exploratory Blackwell screen: frozen amendment
+
+The original production advancement gate above remains unmet. Given the
+explicit inter-call bank-order argument, the Blackwell device reference, and
+the calibrated H100 race check, run one **exploratory** two-pair 64-launch
+Blackwell screen solely to rank this candidate. This amendment changes the
+timing admission for a diagnostic, not the production gate or the evidence
+needed for a qualified speedup. Keep the pinned baseline, same-allocation A/A
+arm, run ID 11000, 120,320 workers, batch 16, four-warp groups and DP32.
+Require the 355-record sorted corpus SHA-256 above and zero drops in every
+arm; any build, launch, corpus or checker failure is preserved and stops
+interpretation. If either candidate ratio overlaps or falls below the A/A
+interval, leave the switch off and seek another mechanism. If both exceed the
+A/A interval, resolve the Blackwell checker or record a separately reviewed
+equivalent validation gate before five-pair confirmation or production use.
+Report all measured ratios as exploratory; neither a local timing ratio nor
+the H100 race check establishes a full cloud-cost advantage.
+
+```sh
+modal run ecc2k130/runner/tune_frobenius_v3.py --mode screen \
+  --selected production,production_inverse_double_buffer --production-baseline \
+  --baseline-commit 1f8e6847de9e207880bd3be63835c3f56eb182d5 \
+  --output research/kernelagent-20261014/inverse-double-buffer-exploratory-screen.json \
+  > ecc2k130/runner/research/kernelagent-20261014/inverse-double-buffer-exploratory-screen.log 2>&1
+```
