@@ -40,8 +40,10 @@ hash. These fixture counts describe this frozen input law, not all scalars.
 
 Lean 4.34.1 checks the central theorem and its dependencies. The
 [Lean output](lean-check.log) records the build commands and `#print axioms`
-results. No proof uses `sorry`, `admit`, a custom claim axiom, or native
-evaluation.
+results. A second build compiled both imported source modules and all three
+new theorem modules into a fresh Lean path; their source and `.olean` hashes
+are in `validation.json`. No proof uses `sorry`, `admit`, a custom claim
+axiom, or native evaluation.
 
 | Mathematical result | Lean declaration | Scope and verification |
 | --- | --- | --- |
