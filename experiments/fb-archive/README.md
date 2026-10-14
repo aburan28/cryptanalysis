@@ -56,6 +56,28 @@ binary hashes, and the source-bound independent checked-Sage replay receipt.
 `verify --rebuild` also compares it with the tracked source binary and replay
 receipt. The expanded points are not materialized in the archive.
 
+## N83 `a=1` compact-orbit bases
+
+`compact_orbit_base_archive.py` archives the exact K600, K800, K899, K900,
+K1000, K1100, K1200, and K1271 factor bases used by the nested compact-orbit IC experiments.
+Each entry stores its full sorted set of 99,600, 132,800, 149,234, 149,400,
+166,000, 182,600, 199,200, or 210,986 decimal-encoded subgroup points, the exact
+candidate `factor_base` record, field and curve records, column
+representatives, and hashes of the ordered base dump and independent
+full-base replay. The compressed payloads use the existing Git chunk format
+because they exceed the 1 MiB plain-file limit. `fbarchive.py verify` checks
+their content and enumerated-set digests; the builder independently rechecks
+the cited candidate manifests and full-base replay before creating them.
+
+```sh
+python3 experiments/fb-archive/compact_orbit_base_archive.py
+python3 experiments/fb-archive/compact_orbit_base_archive.py --verify-only
+```
+
+The focused verify-only command checks all six archives against the committed
+source point sets and index rows. The repository-wide `fbarchive.py verify`
+currently reports three older unindexed archive files outside this family.
+
 `verify` rechecks every digest and count, and flags files that are not in the index.
 `--rebuild` also regenerates ordinary bases from their recipes and requires
 byte-identical content. For the n83 orbit base it rechecks the tracked

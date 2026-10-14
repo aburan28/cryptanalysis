@@ -233,6 +233,12 @@ $ ./build/ca ic --p 1099511627791 --g 3 --h 123456789 --threads 4
  "relations":1505,"verified_logs":143,"sieve_seconds":0.001,"linalg_seconds":0.049,...}
 ```
 
+The big-integer [curve audit](bindings/rust/curve-audit/README.md) embeds a
+versioned weak-curve criteria catalog and reports the evidence for each check.
+Build it with `cargo build --locked --manifest-path bindings/rust/Cargo.toml -p
+ca-curve-audit`, then run `bindings/rust/target/debug/ca-curve-audit audit
+--input bindings/rust/curve-audit/examples/nist-p192.json --max-k 6`.
+
 Other commands: `ca factor N`, `ca prime N`, `ca solve --alg bsgs|kangaroo|grumpy
 ... --lo L --hi U` for interval problems, `ca_bench generic|interval|ic|cheon|gpu|ops`
 for the benchmark tables.
