@@ -1,0 +1,346 @@
+{
+  "budget_estimate_s": {
+    "basis": "index build 65.5 s (2026-10-06, Apple arm64) and 6.3-6.7 s for K200 at n=65 here; rank 1.37-1.49e9 probes at 1.63e6 probes/s single-thread (n=65 K200 smoke on this container's Xeon) gives 14-15 min, the 2026-10-12 Linux VM measured 1,048 s for all single-worker IC preparation; IC online 5.6-13 s per target; strong rho about 2.5-5 s; packed rho 37-71 s",
+    "build": [
+      300,
+      900
+    ],
+    "job_timeout_minutes": 350,
+    "panel_A": [
+      800,
+      1600
+    ],
+    "panel_B": [
+      1600,
+      3200
+    ],
+    "panel_C": [
+      1100,
+      2400
+    ],
+    "precompute_rank_single_cpu": [
+      900,
+      2100
+    ],
+    "replay_and_claims": [
+      120,
+      600
+    ],
+    "total": [
+      4820,
+      10800
+    ]
+  },
+  "build": {
+    "binaries": {
+      "ic": "ic_online_logcache",
+      "rho": "rho_strong_online",
+      "rho_legacy": "rho_packed_legacy"
+    },
+    "command": "cargo build --release --locked",
+    "crate": "Cargo.toml (this directory)",
+    "crypto_features": "default-features = false (drops the redis TLS feature only; no cryptanalysis code is feature-gated by it)"
+  },
+  "clocks": {
+    "excluded_from_both": [
+      "process launch",
+      "input loading",
+      "receipt serialization",
+      "the wrapper's verification"
+    ],
+    "ic": {
+      "online_start": "target_query_begin: first operation on Q (scan-origin hash), after base, normal basis, root index and the verified factor-log table are ready",
+      "online_stop": "recovery_check_end: [d]G = Q evaluated in the producer",
+      "phase_sum_rule": "five exclusive laps on one clock; their sum equals online_ms",
+      "phases": [
+        "target_query",
+        "target_PDP",
+        "target_relation_check",
+        "target_descent",
+        "target_recovery_check"
+      ],
+      "producer": "koblitz_orbit_dlp_fast_online wide path + ic_log_cache.patch",
+      "reusable_setup_once": "rank stage + linear algebra, measured once in the precompute step on one pinned CPU; logged, excluded from online, charged in the cold ratio and the BL budget",
+      "reusable_setup_per_process": "setup_complete_ns: base load + normal basis self-test + root index + factor-log load and full [L_j]G=R_j verification; logged per arm, excluded from online"
+    },
+    "rho": {
+      "online_start": "after_target_built: the first walk start [c]G + Q",
+      "online_stop": "recovery_check_true: a distinguished-point collision returned d with [d]G = Q",
+      "phases": [
+        "walk",
+        "collision",
+        "recovery_check"
+      ],
+      "producer": "koblitz_rho_batch_ks_strong_online wide path, KIC_RHO_RUNG=3, KIC_RHO_LANES=32, KIC_RHO_DP_BITS=4",
+      "reusable_setup_per_process": "online_start_ns: curve construction, normal basis, the 32 G-only r-adding jumps and parsing Q; logged per arm, excluded from online",
+      "setup_dependence_resolution": "strong rung 3's jumps are known multiples of G and every walk starts at [c]G+Q, so nothing before online_start depends on Q except parsing it; the old packed backend's 7.5 ms jump setup builds aG+bQ and is target dependent, and is inside that backend's total_ms. Both facts are by source inspection of the pinned files and are checked in every row: rho online_start_ns precedes its first walk, and Panel C reports packed setup_ms separately."
+    },
+    "rho_legacy": {
+      "not_a_vs_rho_reference": true,
+      "online": "total_ms = setup_ms (target-dependent aG+bQ jumps) + walk_ms + validation_ms; target_generation 0 for a public point",
+      "producer": "koblitz_rho_fixture packed backend, n>63 wide path"
+    },
+    "symmetry": "Each arm's target-independent setup is measured in its own process on the same pinned CPU and excluded from online; the IC's once-per-job rank stage is measured on the same CPU class and reported, never hidden. Cold ratio = (IC per-process setup + rank stage + IC online) / (rho per-process setup + rho online)."
+  },
+  "crypto_source": {
+    "commit": "770f6a6925a0d29b768bd79074f54a173e967fe7",
+    "commit_is_on": "origin/main (merge of PR #1796)",
+    "repository": "https://github.com/aburan28/crypto",
+    "sha256": {
+      "base_n83_K600": "0d290b14a350db6271c9a49f0cd6ba246edd8c9bc6754387ad1ceebf08ec0c09",
+      "crypto_lock": "ac5cd7a3459be776180afe1eb2975c76b1a88f84bd1e99aa20475927ec260a90",
+      "crypto_manifest": "49b5f9478f133f905d5388d8c609d097830d69fe912c46dbc95b387b5d14a3de",
+      "crypto_rust_source_tree": "421a743cd2299d585b974862e870a7ef114a8f773c3cfcca27ce80ab7d61a5fb",
+      "harness:docs/ic/boundary_targets.json": "1e062aa4fed838279028871b60a3b23a018d18d4d60d07a0e89700d2ae4aba64",
+      "harness:research/ic_candidate_tournament_20260915/identity.py": "1fcb72308e6353c55c30c2184c1d99edef7c84ef8283db6615e5fb3075fb307f",
+      "harness:research/ic_candidate_tournament_20260915/oracle.py": "2804ac7ae42cde3d8c108ec262ac34797cf0315c647eeae68860085a472f2a19",
+      "harness:research/ic_single_target_20260930/curve_ids.json": "f98a8c3a152ed2da06a5d1079633daa7eed024a6b4837c243a7a689eea07d637",
+      "harness:research/sat_factor_base_review_20260908/autolab/boundary_autolab.py": "7b0f210becfbfee2683ca0b5301cd9dca6f50fa729b918bc344d10047a9498bf",
+      "harness:research/sat_factor_base_review_20260908/autolab/op_accounting.py": "12bbddc092b9f5f4b4d6c4ba849469257f879f51b4dffd4a4275103cfb19e6a9",
+      "harness:research/sat_factor_base_review_20260908/autolab/protocol.json": "53d070be27b3968db85e62b4d4885976cd681e0bae1c31217dcedd461bcc6b9f",
+      "harness:research/sat_factor_base_review_20260908/autolab/single_target_panel.py": "aa9059a388ddd620b0b6cc998c5846486344367c0114642f6829866b05317491",
+      "harness:tools/curve_identity.py": "39aeb32829ab7b5aec7c8fa0448f324ed755248bc3dd25df1b47e74cac067a9e",
+      "ic_log_cache_patch": "c2c969a9172bfc3cf03b7588fbd466957d5c500b47c11bec6b514478bbc83b26",
+      "ic_online_patched": "76531bc6abbe432d309abd835ba025674197ce103d51a77bff1064de1918942e",
+      "ic_online_upstream": "4729f3b9aac5d20e36a2560aabae76c40ab4baf2c88cf6da9bd7bcb3c17550e2",
+      "rho_packed_legacy": "a5f1146ff06700b0f7984214c8c54d2cd701018313357c42ec1bc49c81a81752",
+      "rho_strong_online": "9a62bdcdf17c7bd05c38ce75190d163e6ee108950f7eca7a8002e2c7fb7bf634",
+      "snapshot_tree": "b899a179cb851cc9f2e67a657e71c225accbb4ca59b57eafcffaa8875b481fb3",
+      "target_points": "d4f9872d9d4e22d26770ecb749b29f1da944d701fb85c8bbc8f20489cd0345c5",
+      "validation_fixture": "f3605f0d1739e4542ced9b5c12200c5582f60ae3a4b94bc48189bf525873aea5"
+    }
+  },
+  "curve": {
+    "a": 1,
+    "automorphisms": 166,
+    "b": 1,
+    "cofactor": "1128547018",
+    "curve_id": "EC1N83Ce1h35c7ced6b497",
+    "field_modulus_low_terms": [
+      0,
+      2,
+      4,
+      7
+    ],
+    "generator": [
+      "6614244651398184860292015",
+      "8868260410029249391539529"
+    ],
+    "icv1_slug": "icv1-f2m83-t6151469093347-9eba6cd5",
+    "lambda": "2998004823950457",
+    "n": 83,
+    "subgroup_order": "8569786107849059"
+  },
+  "decision_rule": {
+    "abandon": "if Panel A reads rho_online_faster, the n=83 vs_rho row records that the retained K600 IC is slower online than strong rho on this instance; no K or seed is re-chosen after seeing it",
+    "eligible_panel": "all pairs valid under isolated_bench, every row's vs_rho claim passes validate_claim, both certificates replay in oracle.py, both arms recover the same scalar, and for Q0 that scalar equals the validation sidecar",
+    "headline_rule": "Panel A's reading is the Tier 1 instance-scoped online result for Q0; it is always quoted with Panel B's section 23 figure, the cold ratio and the BL column, and never as a speed of the method (AGENTS.md section 2: the method is faster than rho only if its cold S is below rho's)",
+    "reading": {
+      "ic_online_faster": "eligible and interval lower bound > 1",
+      "no_result": "not eligible; rows and failures are reported, no ratio is quoted",
+      "not_separated": "eligible and the interval contains 1",
+      "rho_online_faster": "eligible and interval upper bound < 1"
+    }
+  },
+  "extends": {
+    "crypto_beat": "koblitz.compact_orbit.n83_single_target",
+    "crypto_ledger": "docs/ic/BOUNDARY_TARGETS.md vs_rho row (n=61 a=0 isolated rung, 2026-10-12) and research/notes/index-calculus/RESEARCH_IC_BOUNDARY_LEDGER.md section 23",
+    "deviations_from_beat": [
+      "K fixed at 600 with the retained base base_n83_K600.jsonl (base_hash d4a4da26...), not tuned over {200,600} with construct:83:1:K: the retained base binds this panel to the 2026-10-06 and 2026-10-12 evidence and avoids a tune pass the 6 h job cannot hold",
+      "the rank stage runs once per job (sequential, one pinned CPU, timed) and its factor-log table is reused by every IC arm through ic_log_cache.patch, verified [L_j]G=R_j for all 600 columns in every process; the beat rebuilds it in every process",
+      "processes run under the cryptanalysis Tier 1 runner scripts/isolated_bench.py (one exposed CPU, observed cgroup/steal/throttle counters) instead of taskset-only pinning",
+      "Panel A adds the frozen 2026-10-06 point Q0 with eight interleaved pairs; Panel B is the beat's first 16 eval points with one pair each"
+    ],
+    "replaces_as_primary": "experiments/koblitz-single-target-n83-20261006 (three unisolated packed-rho pairs, median 8.2x); that rho backend is excluded as a vs_rho reference by RESEARCH_FIXED_REFERENCE_RHO_20261001.md and is kept here only as legacy Panel C"
+  },
+  "frozen_at_utc": "2026-10-14",
+  "harness": {
+    "beat_id": "koblitz.compact_orbit.n83_single_target",
+    "claim_builder": "research/sat_factor_base_review_20260908/autolab/single_target_panel.py (primary_claim_fields, method_record, rho_manifest, replay_certificate) at the pinned commit",
+    "claim_checker": "boundary_autolab.validate_claim(claim, stage='vs_rho', ledger=docs/ic/boundary_targets.json) at the pinned commit",
+    "replay": "oracle.py pure-Python GF(2^83) arithmetic, out of process"
+  },
+  "inputs": {
+    "base": "experiments/koblitz-single-target-n83-20261006/base_n83_K600.jsonl",
+    "base_hash": "d4a4da26d6e7cb09367de922d9806631fe49989f70d378cae76f347f8d76a9f7",
+    "factor_base_points": 99600,
+    "frozen_target": "experiments/koblitz-single-target-n83-20261006/frozen/target_points.jsonl",
+    "orbit_columns": 600,
+    "targets_file": "inputs/targets.json",
+    "validation_fixture": "experiments/koblitz-single-target-n83-20261006/frozen/fixture.json",
+    "validation_fixture_use": "opened only by verify_tier1_receipt.py after the panels; never passed to an arm"
+  },
+  "kind": "n83_onetarget_ic_vs_rho_tier1_instance_v1",
+  "measurement_tier": "tier1_instance",
+  "pair_fields": [
+    "panel",
+    "target_sha256",
+    "recovered_scalar",
+    "curve_id",
+    "arm_verified"
+  ],
+  "panels": {
+    "A": {
+      "label": "frozen Q0, strong rho rung 3 vs cached IC, eight interleaved pairs",
+      "pair_order": [
+        [
+          "reference",
+          "candidate"
+        ],
+        [
+          "candidate",
+          "reference"
+        ],
+        [
+          "reference",
+          "candidate"
+        ],
+        [
+          "candidate",
+          "reference"
+        ],
+        [
+          "reference",
+          "candidate"
+        ],
+        [
+          "candidate",
+          "reference"
+        ],
+        [
+          "reference",
+          "candidate"
+        ],
+        [
+          "candidate",
+          "reference"
+        ]
+      ],
+      "repetitions": 8,
+      "rho_seed": 831000,
+      "rho_seed_note": "831000 = beat rho_seed_base 830000 + 1000; not run before freezing (the local smoke used 202610141)",
+      "role": "primary",
+      "target": "q0",
+      "targets": 1,
+      "timeout_s_per_arm": 900
+    },
+    "B": {
+      "label": "16 public hash-to-curve points of the beat, one pair each, order alternating across targets",
+      "repetitions": 1,
+      "rho_seed_rule": "830000 + seed (the beat's rule)",
+      "role": "secondary (section 23 statistic over targets)",
+      "targets": 16,
+      "timeout_s_per_arm": 900
+    },
+    "C": {
+      "label": "frozen Q0, packed rho (historical R1 seed) vs cached IC, eight interleaved pairs",
+      "pair_order": [
+        [
+          "reference",
+          "candidate"
+        ],
+        [
+          "candidate",
+          "reference"
+        ],
+        [
+          "reference",
+          "candidate"
+        ],
+        [
+          "candidate",
+          "reference"
+        ],
+        [
+          "reference",
+          "candidate"
+        ],
+        [
+          "candidate",
+          "reference"
+        ],
+        [
+          "reference",
+          "candidate"
+        ],
+        [
+          "candidate",
+          "reference"
+        ]
+      ],
+      "repetitions": 8,
+      "rho_seed": 202610061,
+      "rho_seed_note": "historical R1 seed; its walk is deterministic (6,608,900 steps, reproduced locally)",
+      "role": "legacy re-measurement, not a vs_rho reference",
+      "target": "q0",
+      "targets": 1,
+      "timeout_s_per_arm": 900
+    }
+  },
+  "precompute": {
+    "binary": "ic",
+    "checks": [
+      "exit 0",
+      "rank 600 with 600 relations",
+      "base_hash equals inputs.base_hash",
+      "the Q0 record verifies",
+      "every [L_j]G = R_j re-verified in oracle.py by verify_log_table.py",
+      "if committed_log_table_sha256 is set, the produced table is byte-identical"
+    ],
+    "committed_log_table_policy": "null until the first Tier 1 run; then commit the archived table under inputs/ and bind its SHA-256 here in a separate change, so later runs check reproduction instead of trusting a cache",
+    "committed_log_table_sha256": null,
+    "cpu": "the Tier 1 execution CPU, via sched_setaffinity",
+    "env": {
+      "KIC_LOG_TABLE_OUT": "<receipt>/factor_logs_n83_K600.json",
+      "RAYON_NUM_THREADS": "1"
+    },
+    "rank_seed": 7,
+    "step": "precompute.py",
+    "target": "Q0 (gives one complete cold in-process IC sample on Q0)",
+    "timeout_s": 5400
+  },
+  "question": "One previously unseen public point on EC1N83Ce1h35c7ced6b497 (a=1, n=83, r=8569786107849059, about 2^52.93): online wall time of the retained K600 compact-orbit IC against strong signed-Frobenius rho rung 3 on the same point, in one pinned-CPU envelope on a fresh instance, reported beside the cold ratio and the Bernstein-Lange model.",
+  "resources": {
+    "ic_peak_rss_expected_bytes": "4.4e9 to 5.9e9 (2026-10-06 receipts)",
+    "memory_cap": "none; cgroup memory.peak and per-arm RSS recorded",
+    "rho_packed_peak_rss_expected_bytes": "about 1.1e9",
+    "rho_strong_peak_rss_expected_bytes": "about 1.2e8",
+    "runner": "GitHub Actions ubuntu-24.04 standard: 4 vCPU, 16 GB RAM, 6 h job limit",
+    "threads": 1
+  },
+  "result_field": "recovered_scalar",
+  "runner": {
+    "contended_rows": "kept and reported, never pooled or re-run into the same panel",
+    "noise_gates": "isolated_bench Tier 1: preflight ok, container cpu.stat nr_throttled and memory.events oom/oom_kill unchanged across each arm, binary unchanged, exit 0, verified=1, positive online_ms, timeout, artifacts stable across the panel; any failure keeps the row and makes the panel ineligible",
+    "tool": "scripts/isolated_bench.py run"
+  },
+  "statistics": {
+    "A": {
+      "interval": "isolated_bench tier1_bootstrap95_by_pair: 10,000 resamples of pairs, seed 20261011, 2.5/97.5 percentiles of the median",
+      "primary": "median of the eight within-pair ratios rho_online_ms / ic_online_ms",
+      "secondary": [
+        "paired geometric mean with 20,000-draw bootstrap (seed 2026101283), the 2026-10-12 estimator",
+        "median IC and rho online ms, phase medians"
+      ]
+    },
+    "B": {
+      "primary": "section 23: mean rho online over mean IC online across targets, 95% bootstrap over targets (10,000 resamples in pairs, seed 2026101400)",
+      "secondary": [
+        "isolated_bench bootstrap95_by_target (median of per-target ratios, seed 20261003)",
+        "rows with IC faster"
+      ]
+    },
+    "C": {
+      "primary": "as A, rho = packed legacy",
+      "reading": "only whether the historical 8.2x median survives isolation"
+    },
+    "all": [
+      "S = native ops / sqrt(r): IC root-index probes and rho walk steps, each in its own unit; no common unit is claimed",
+      "rho steps over the floor sqrt(pi r / (4n))",
+      "cold ratio IC over rho with interval",
+      "break-even targets = IC setup / (rho online - IC online) when positive",
+      "BL model column: IC online / (1.93*1.21*r*c^2/(2n*P)) with c = median rho ms per walk step on this instance and P = IC setup ms (per-process setup + rank stage); a model, no BL walk runs"
+    ]
+  },
+  "status": "FROZEN_BEFORE_TIER1_RUN"
+}

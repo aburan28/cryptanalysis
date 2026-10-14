@@ -14,8 +14,10 @@ normalizes a distinguished point ``by taking the lexicographically
 smallest value among $x_R,x_R^2,\dots,x_R^{2^{130}}$ in normal-basis
 representation'' \citep{bailey2009}. That is the canonical form of
 Definition~\ref{def:sf} with $\prec$ the numeric order of the normal
-word; the form is not new. What is new is the exact shortcut for
-computing it (Section~\ref{sec:canonicalization}), the measurement of
+word; the form is not new, and neither is the fact behind the
+shortcut used to compute it (see \emph{Least rotation} below). What
+this paper adds is the shortcut as an implementation with proofs of
+exactness (Section~\ref{sec:canonicalization}), the measurement of
 what it costs relative to the group operation it sits next to
 (Section~\ref{sec:bench-canon}), and the observation that in a walk
 that canonicalizes every step it is the dominant cost
@@ -37,7 +39,9 @@ to index calculus algorithms faster than Pollard $\rho$ on instances
 used in practice''. The idea descends from Galois-invariant factor
 bases in finite fields \citep{jouxlercier2006}. Everything in
 Section~\ref{sec:ic-recap} is theirs. They define the orbit
-representative ``in an ad-hoc manner'' and do not price it; this paper
+representative ``in an ad-hoc manner'' and do not price it; this holds
+in both the preproceedings and the peer-reviewed version of their
+paper, whose texts agree on every statement cited here; this paper
 is about that price and about the layouts that make the rewritten
 relations cheap to produce and verify. The sibling repository's
 structural finding that a Galois-invariant \emph{subspace} base has a
@@ -74,11 +78,20 @@ cryptographic sizes.
 
 \paragraph{Least rotation.}
 Booth's and Duval's algorithms compute the least rotation of a string
-in linear time with a failure function; Lemma~\ref{lem:zerogap} is the
-binary special case in which the alphabet has two letters and the
-comparison is numeric, and it trades the linear scan for a constant
-number of whole-word rotations. We are not aware of it being stated
-before, but it is elementary and we would not be surprised.
+in linear time \citep{booth1980,duval1983}. Lemma~\ref{lem:zerogap}
+is not new as combinatorics: that a necklace begins with a longest run
+of its least letter is standard in the necklace-generation literature.
+Ruskey and Sawada use its density consequence to bound where the first
+nonzero letter of a fixed-density necklace can sit
+\citep[\S3.2]{ruskeysawada1999}, and Gabri\'c and Sawada make ``$a^\ell$
+is a prefix of $w$'', with $\ell$ the length of a largest run of $a$'s,
+the first clause of their definition of a quasinecklace
+\citep[Definition~3]{gabricsawada2026}. What this paper adds is not the
+fact but its use as an exact candidate filter for word-sized
+normal-basis canonicalization: two branch-light implementations, a
+proof that both are bit-identical to the exhaustive scan including the
+exceptional words, and a measurement of how many whole-word rotations
+it leaves ($4.78$ per $83$-bit word).
 
 \paragraph{Measurement discipline.}
 The unit, the classes and the isolation gate of

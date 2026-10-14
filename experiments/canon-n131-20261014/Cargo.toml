@@ -1,0 +1,17 @@
+[package]
+name = "canon-n131"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Least-rotation canonicalization of 131-bit normal-basis words: exhaustive, zero-gap set-bit scan, branch-free"
+
+# No dependencies: the crate builds offline from the committed Cargo.lock.
+[dependencies]
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "fat"
+debug = 1          # symbols for cachegrind / objdump; does not change codegen
+panic = "abort"
+overflow-checks = false
