@@ -36,5 +36,16 @@ trades a much smaller point table for about fourteen additional mixed
 additions per scalar. Its online timing must include both bucket walks,
 the final `tau`, addition, inversion, and affine recovery. The RunPod
 comparison uses the serial benchmark service and preserves its preflight,
-source hashes, raw invocations, and pair rows; its instance-scoped receipt
-will determine whether the smaller table pays for those additions.
+source hashes, raw invocations, and pair rows.
+
+The Pod release test also passed all 128 frozen scalars. On case 0, the
+serial grouped-versus-axial comparison completed eight valid pairs and
+reported a grouped/axial median online ratio of **0.9709**, with paired
+bootstrap interval **0.9533–1.0324**. This interval leaves the online
+ordering unresolved for that case; the table reduction is exact and
+measured. The raw job is
+`tier1-runpod-20261013/4ba06e16c187415e8756e8da4252e485/`,
+and the transferred archive SHA-256 is
+`6f6f828d11755cf07ad85402c50df6f44044a3e56e567de5fc8a34abe1776a51`.
+The job is instance-scoped Tier 1: its preflight records
+`host_exclusivity_proved=false`.
