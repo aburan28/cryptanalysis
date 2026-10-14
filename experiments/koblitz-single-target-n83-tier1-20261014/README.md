@@ -75,6 +75,33 @@ Limits and caveats:
 
 ![rho/IC online ratio by panel with 95% intervals, and the earlier unisolated figures for scale.](figures/tier1_result.png)
 
+## Replicate
+
+Run `38532240007` was started unintentionally by a later commit that touched
+this directory (the push filter did not yet exclude the result report). It ran
+the same frozen protocol at commit `8dfd8606` on a different runner
+(`GitHub Actions 1000295244`) and is archived as a **replicate** in
+[`tier1_github_38532240007/`](tier1_github_38532240007/). It is reported beside
+the first run and not pooled with it. The verifier reproduced its
+`tier1_result.json`, `tier1_table.md` and verdict byte for byte; status
+`COMPLETE`, all panels eligible, every claim check passed.
+
+| Panel | Run 38523707244: rho / IC [95%] | Replicate 38532240007: rho / IC [95%] | Reading (both) |
+| --- | --- | --- | --- |
+| A: Q0, strong rho | 1.779 [1.775, 1.783] | 1.782 [1.771, 1.788] | `ic_online_faster` |
+| B: 16 points | 2.769 [1.521, 8.990] | 2.771 [1.522, 8.993] | `ic_online_faster` |
+| C: Q0, legacy packed rho | 7.536 [7.476, 7.600] | 7.763 [7.758, 7.827] | `ic_online_faster` (not a reference) |
+| Cold ratio IC/rho (A / B) | 95.4 / 134 | 93.7 / 131 | |
+| IC online / BL model (A / B) | 74.8 / 33.5 | 73.8 / 33.1 | |
+
+Each run's reading stands on its own under the frozen rule. Panel B uses the
+same 16 targets, and Panel A and C the same Q0 and rho seeds, in both runs, so
+the replicate is not an independent sample of targets: it checks instance
+(runner) and timing variation only. The caveats above, including the
+unreconciled disagreement with the 2026-10-12 crypto diagnostic, apply to both.
+The workflow's path filter now excludes receipts and report files, which stops
+further retriggers and does not change the frozen protocol.
+
 ## What changed from the 2026-10-06 runs, and why
 
 1. **The rho reference.** The 8.2× runs used `koblitz_rho_fixture … packed`.
