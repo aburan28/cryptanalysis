@@ -1,0 +1,34 @@
+[package]
+name = "canon-n131-loop"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The five exact n = 131 canonicalizers of canon-n131-20261014 inside a decomposition-style loop"
+
+# One path dependency, the canonicalizers under test; no registry crates, so the
+# crate builds offline from the committed Cargo.lock.
+[lib]
+doctest = false   # rustdoc ignores .cargo rustflags, and the lib needs +pclmulqdq
+
+[dependencies]
+canon-n131 = { path = "../canon-n131-20261014" }
+
+[[bin]]
+name = "loop_verify"
+path = "src/bin/loop_verify.rs"
+
+[[bin]]
+name = "loop_bench"
+path = "src/bin/loop_bench.rs"
+
+[[bin]]
+name = "loop_counts"
+path = "src/bin/loop_counts.rs"
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "fat"
+debug = 1          # symbols for cachegrind; does not change codegen
+panic = "abort"
+overflow-checks = false

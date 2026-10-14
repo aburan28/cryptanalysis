@@ -1,0 +1,5 @@
+# The field port uses PCLMULQDQ (as ecc2k130/src/f131.h does with ECC_HOST_CLMUL=1).
+# Every x86-64 GitHub runner and the cloud-agent VM have it; src/lib.rs refuses to
+# build without it rather than fall back silently.
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "target-feature=+pclmulqdq"]
