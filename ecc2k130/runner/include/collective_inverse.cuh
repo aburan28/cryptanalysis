@@ -8,6 +8,12 @@
 #ifndef ECC_STATIC_GROUP_BARRIERS
 #define ECC_STATIC_GROUP_BARRIERS 0
 #endif
+#ifndef ECC_INVERSE_SKIP_ROOT_BARRIERS
+#define ECC_INVERSE_SKIP_ROOT_BARRIERS 0
+#endif
+#if ECC_INVERSE_SKIP_ROOT_BARRIERS != 0 && ECC_INVERSE_SKIP_ROOT_BARRIERS != 1
+#error "ECC_INVERSE_SKIP_ROOT_BARRIERS must be 0 or 1"
+#endif
 #if ECC_COLLECTIVE_WARPS != 0 && ECC_COLLECTIVE_WARPS != 2 && ECC_COLLECTIVE_WARPS != 4 && ECC_COLLECTIVE_WARPS != 8 && ECC_COLLECTIVE_WARPS != 16
 #error "ECC_COLLECTIVE_WARPS must be 0, 2, 4, 8 or 16"
 #endif
@@ -68,14 +74,23 @@ __device__ __noinline__ P131 goal22CollectiveInverse(P131 input) {
 #pragma unroll
             for (int i = 0; i < 5; ++i) values[i * ECC_THREADS + tid] = acc.v[i];
         }
+        // The last upward level runs only in the root warp.  No other warp
+        // reads its result before the first downward level publishes children.
+#if ECC_INVERSE_SKIP_ROOT_BARRIERS
+        if (level + 1 < LEVELS) goal22GroupBarrier<WARPS>();
+#else
         goal22GroupBarrier<WARPS>();
+#endif
     }
     if ((warp & (WARPS - 1)) == WARPS - 1) {
         acc = toPolynomial131(inv131(fromPolynomial131(acc)));
 #pragma unroll
         for (int i = 0; i < 5; ++i) values[i * ECC_THREADS + tid] = acc.v[i];
     }
+    // The root alone consumes the inverse in the first downward level.
+#if !ECC_INVERSE_SKIP_ROOT_BARRIERS
     goal22GroupBarrier<WARPS>();
+#endif
 #pragma unroll
     for (int level = LEVELS - 1; level >= 0; --level) {
         const int width = 1 << (level + 1), offset = 32 << level;

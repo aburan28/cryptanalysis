@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
 import modal
 
@@ -69,24 +70,54 @@ def profile_exact(sources: dict, settings: dict, baseline_commit: str):
         return result
     result["binary_sha256"] = hashlib.sha256((root / "ecc2k130").read_bytes()).hexdigest()
     target = ["./ecc2k130", "--packed", "--curve", "131", "--threads", "120320",
-              "--steps", "4", "--launches", "1", "--run-id", "11000",
+              "--steps", "64", "--launches", "1", "--run-id", "11000",
               "--dp-weight", "32", "--verify", "0", "--dp-file", "/tmp/profile-dp.bin"]
+    Path(target[-1]).unlink(missing_ok=True)
     result["normal_run"] = command_record(target, cwd=root, timeout=180)
     if result["normal_run"]["returncode"] or "0 dropped)" not in result["normal_run"]["output"]:
         result["outcome"] = "normal_run_failed"
         return result
+    # Application replay starts a fresh process per pass.  The DP file is
+    # append-only and also an input on startup, so each pass needs a new path.
+    launcher = root / "profile_launch.py"
+    launcher.write_text("""import os
+import sys
+import tempfile
+
+fd, path = tempfile.mkstemp(prefix="ecc2k130-profile-dp-", suffix=".bin")
+os.close(fd)
+os.execv("./ecc2k130", ["./ecc2k130", *sys.argv[1:], "--dp-file", path])
+""")
+    result["profile_launcher_sha256"] = hashlib.sha256(launcher.read_bytes()).hexdigest()
+    report_base = Path(tempfile.mkdtemp(prefix="ecc2k130-ncu-")) / "walk"
     command = [NCU_BINARY, "--target-processes", "all", "--kernel-name-base", "demangled",
                "--kernel-name", "regex:eccPacked131::walk", "--launch-count", "1",
                "--section", "SpeedOfLight", "--section", "LaunchStats",
                "--section", "Occupancy", "--section", "WarpStateStats",
                "--section", "SchedulerStats", "--section", "InstructionStats",
+               "--section", "ComputeWorkloadAnalysis", "--section", "SourceCounters",
                "--section", "MemoryWorkloadAnalysis", "--replay-mode", "application",
-               "--clock-control", "none", "--cache-control", "none", *target]
+               "--clock-control", "none", "--cache-control", "none",
+               "--force-overwrite", "--export", str(report_base),
+               sys.executable, str(launcher), *target[1:-2]]
     result["profile_command"] = command
     profile = command_record(command, cwd=root, timeout=900)
     result["profile"] = {**profile, **profileResult(profile["returncode"] or 0,
                                                  profile["output"])}
     result["outcome"] = result["profile"].get("kind", "profile_unknown")
+    report_file = report_base.with_suffix(".ncu-rep")
+    if result["outcome"] == "profiled" and report_file.exists():
+        result["profile_raw"] = command_record(
+            [NCU_BINARY, "--import", str(report_file), "--page", "raw", "--csv"],
+            timeout=180)
+        result["profile_details"] = command_record(
+            [NCU_BINARY, "--import", str(report_file), "--page", "details"],
+            timeout=180)
+        result["ncu_report_sha256"] = hashlib.sha256(report_file.read_bytes()).hexdigest()
+        if result["profile_raw"]["returncode"] or result["profile_details"]["returncode"]:
+            result["outcome"] = "report_import_failed"
+    elif result["outcome"] == "profiled":
+        result["outcome"] = "report_missing"
     result["completed_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     return result
 

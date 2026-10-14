@@ -36,9 +36,20 @@ CASES = {
     "inline_sigma_untagged": ({}, "inline_sigma_untagged"),
     "production": ({"PACKED_INLINE_SIGMA": 1}, ""),
     "production_top_clmad": ({"PACKED_TOP_CLMAD": 1}, ""),
+    "production_top_half_clmad": ({
+        "GPUFLAGS": "-Xptxas -v -DECC_PACKED_TOP_HALF_CLMAD=1"}, ""),
+    "production_zip_square": ({
+        "GPUFLAGS": "-Xptxas -v -DECC_PACKED_ZIP_SQR=1"}, ""),
     "production_top_hoist": ({"PACKED_TOP_HOIST": 1}, ""),
     "production_single_noinline": ({"PACKED_INLINE_POLY": 2}, ""),
     "production_pair_noinline": ({"PACKED_INLINE_POLY": 1}, ""),
+    "production_static_barriers": ({
+        "GPUFLAGS": "-Xptxas -v -DECC_STATIC_GROUP_BARRIERS=1"}, ""),
+    "production_static_128": ({
+        "THREADS": 128, "MINBLOCKS": 5,
+        "GPUFLAGS": "-Xptxas -v -DECC_STATIC_GROUP_BARRIERS=1"}, ""),
+    "production_skip_root_barriers": ({
+        "GPUFLAGS": "-Xptxas -v -DECC_INVERSE_SKIP_ROOT_BARRIERS=1"}, ""),
     "inline_sigma": ({}, "inline_sigma"),
     "forward_chain_first": ({}, "forward_chain_first"),
     "pair_ilp": ({"PACKED_PAIR_ILP": 1}, ""),
@@ -363,7 +374,15 @@ def main(mode: str = "screen", selected: str = "", output: str = "",
     sources = {name: (LOCAL / name).read_text() for name in names}
     if production_baseline and sources != baseline_sources:
         changed = sorted(name for name in names if sources[name] != baseline_sources[name])
-        raise ValueError(f"production source differs from pinned baseline: {changed}")
+        # Both source candidates are default-off.  Keep the complete source
+        # diff explicit; the control still builds the pinned source from git.
+        selected_names = selected.split(",")
+        allowed = ({"include/collective_inverse.cuh"}
+                   if "production_skip_root_barriers" in selected_names else set())
+        if {"production_top_half_clmad", "production_zip_square"} & set(selected_names):
+            allowed.update(("include/collective_inverse.cuh", "include/packed131.h"))
+        if set(changed) != allowed:
+            raise ValueError(f"production source differs from pinned baseline: {changed}")
     driver_sha256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     result = experiment.remote(mode, selected, sources, baseline_sources,
                                baseline_commit, base_settings)
