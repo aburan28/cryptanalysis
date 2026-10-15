@@ -31,6 +31,16 @@ contains 12,288 unique scalars and all expected points; SHA-256
 The benchmark loads the fixture and warms one table before timing, then checks
 every output after the interval.
 
+The recurrence behind the fixture is formalized in
+[StreamFixture.lean](StreamFixture.lean) as `StreamFixture.hom_progression`:
+for any scalar-to-point map preserving addition, adding one fixed scalar step
+on every pass maps to adding its point image on every pass. Its hypotheses
+are the scalar and point additions and the homomorphism law; the file does
+not assert a concrete curve implementation. The pinned Lean 4.34.1 command
+`lean StreamFixture.lean` passed, and `#print axioms` reported none in
+[lean-check.log](lean-check.log). The generator independently checks the
+concrete secp256k1 base points and step point before using that recurrence.
+
 The hash-guarded [stream overlay](native_stream_overlay.py) and
 [ordinary-affine arm](native_affine_stream_overlay.py) produced final front
 source SHA-256 `76417bc6ae1d9eb2f219ffc89b758163cf165cc76793a4fdb654f117f9da1315`.
