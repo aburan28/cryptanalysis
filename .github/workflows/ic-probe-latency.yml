@@ -1,0 +1,180 @@
+name: IC probe latency and huge pages (n83 Q0) Tier 1
+
+# IDEA-20261015-b41f68 stages 1-2 on one fresh GitHub-hosted ubuntu-24.04
+# runner (a VM). The frozen protocol is
+# experiments/ic-probe-latency-20261015/protocol.json. A pointer-chase null
+# object over the root table's byte size under 4k / default / THP pages, then
+# B's n=83 K600 IC producer (cached logs) and the tuned rho on Q0 under the
+# same three page policies, one pinned process at a time. The IC and rho
+# sources, patch and log table are the reconciliation's
+# (experiments/koblitz-n83-reconcile-20261014). analyse.py applies the frozen
+# decision rule; nothing here promotes a result.
+on:
+  push:
+    branches: [claude/ic-probe-latency]
+    paths:
+      - experiments/ic-probe-latency-20261015/**
+      - .github/workflows/ic-probe-latency.yml
+      - '!experiments/ic-probe-latency-20261015/run_github_*/**'
+      - '!experiments/ic-probe-latency-20261015/README.md'
+      - '!experiments/ic-probe-latency-20261015/README.pdf'
+      - '!experiments/ic-probe-latency-20261015/figures/**'
+      - '!experiments/ic-probe-latency-20261015/smoke/**'
+      - '!experiments/ic-probe-latency-20261015/result*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ic-probe-latency-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  EXPERIMENT: experiments/ic-probe-latency-20261015
+  RECONCILE: experiments/koblitz-n83-reconcile-20261014
+  RUSTUP_TOOLCHAIN: 1.99.0
+  CARGO_TERM_COLOR: never
+
+jobs:
+  probe-latency:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Freeze runner and source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          receipt_dir="$RUNNER_TEMP/ic-probe-latency"
+          mkdir -p "$receipt_dir"
+          {
+            echo "PL_RECEIPT_DIR=$receipt_dir"
+            echo "PL_CRYPTO_REPO=$RUNNER_TEMP/ic-probe-latency-crypto"
+            echo "CARGO_TARGET_DIR=$RUNNER_TEMP/ic-probe-latency-cargo"
+          } >> "$GITHUB_ENV"
+          python3 scripts/isolated_bench.py probe-host > "$receipt_dir/host-probe.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          thp = Path('/sys/kernel/mm/transparent_hugepage')
+          receipt = {
+              'provider': 'github_actions',
+              'instance_id': 'gh-{}-{}-{}'.format(os.environ['GITHUB_RUN_ID'],
+                                                  os.environ['GITHUB_RUN_ATTEMPT'],
+                                                  os.environ['GITHUB_JOB']),
+              'runner_name': os.environ.get('RUNNER_NAME'),
+              'image_os': os.environ.get('ImageOS'),
+              'image_version': os.environ.get('ImageVersion'),
+              'advertised_runner': 'ubuntu-24.04 standard (4 vCPU, 16 GB)',
+              'observed_cpu_affinity': sorted(os.sched_getaffinity(0)),
+              'observed_cpu_model': next((line.split(':', 1)[1].strip() for line in
+                  Path('/proc/cpuinfo').read_text().splitlines()
+                  if line.startswith('model name')), None),
+              'observed_mem_total_kib': next((line.split()[1] for line in
+                  Path('/proc/meminfo').read_text().splitlines()
+                  if line.startswith('MemTotal:')), None),
+              'transparent_hugepage': {name: (thp / name).read_text().strip()
+                                       for name in ('enabled', 'defrag', 'khugepaged/defrag', 'hpage_pmd_size')
+                                       if (thp / name).exists()},
+              'glibc': os.confstr('CS_GNU_LIBC_VERSION'),
+              'git_sha': os.environ['GITHUB_SHA'],
+              'git_ref': os.environ['GITHUB_REF'],
+              'run_url': '{}/{}/actions/runs/{}'.format(os.environ['GITHUB_SERVER_URL'],
+                  os.environ['GITHUB_REPOSITORY'], os.environ['GITHUB_RUN_ID']),
+              'recorded_at_utc': datetime.now(timezone.utc).isoformat(),
+          }
+          path = Path(os.environ['RUNNER_TEMP']) / 'ic-probe-latency' / 'allocation.json'
+          path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + '\n')
+          PY
+          sha256sum "$EXPERIMENT"/protocol.json "$EXPERIMENT"/*.py "$EXPERIMENT"/pchase.c \
+            "$RECONCILE"/arm.py "$RECONCILE"/restore_sources.py scripts/isolated_bench.py \
+            | tee "$receipt_dir/frozen.sha256"
+
+      - name: Restore the reconciliation's pinned crypto sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --no-checkout https://github.com/aburan28/crypto.git "$PL_CRYPTO_REPO"
+          for commit in a8194d616ed8c04489ec46177d369f1b1670360a 770f6a6925a0d29b768bd79074f54a173e967fe7; do
+            git -C "$PL_CRYPTO_REPO" cat-file -e "${commit}^{commit}"
+          done
+          python3 "$RECONCILE/restore_sources.py" --crypto-repo "$PL_CRYPTO_REPO"
+
+      - name: Build the pointer chase, the IC producer and the tuned rho
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcc --version | head -1 | tee "$PL_RECEIPT_DIR/gcc.txt"
+          gcc -O2 -Wall -Wextra -Werror -o "$RUNNER_TEMP/pchase" "$EXPERIMENT/pchase.c"
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+          rustc --version | tee "$PL_RECEIPT_DIR/rustc.txt"
+          (cd "$RECONCILE/crates/r770" && cargo build --release --locked --bin ic_online_logcache_r770 --bin rho_tuned_r770)
+          sha256sum "$RUNNER_TEMP/pchase" "$CARGO_TARGET_DIR"/release/{ic_online_logcache_r770,rho_tuned_r770} \
+            | tee "$PL_RECEIPT_DIR/binaries.sha256"
+
+      - name: Re-verify B's archived factor-log table in the pinned oracle
+        shell: bash
+        run: |
+          set -euo pipefail
+          table="experiments/koblitz-single-target-n83-tier1-20261014/tier1_github_38523707244/precompute/factor_logs_n83_K600.json"
+          expected="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sources"]["reused_from_B"]["factor_log_table_sha256"])' "$RECONCILE/protocol.json")"
+          python3 "$RECONCILE/verify_log_table.py" --table "$table" --expect-sha256 "$expected" \
+            --out "$PL_RECEIPT_DIR/log-table-check.json"
+          echo "PL_LOG_TABLE=$GITHUB_WORKSPACE/$table" >> "$GITHUB_ENV"
+
+      - name: "P1: pointer-chase sweep, 4k / default / thp"
+        shell: bash
+        run: |
+          set -euo pipefail
+          cpus="$(python3 -c 'import os; c=sorted(os.sched_getaffinity(0)); print(c[0], c[-1])')"
+          read -r cpu off <<< "$cpus"
+          echo "PL_CPU=$cpu" >> "$GITHUB_ENV"; echo "PL_OFF_CPU=$off" >> "$GITHUB_ENV"
+          python3 "$EXPERIMENT/run_job.py" --bin-dir "$CARGO_TARGET_DIR/release" --pchase "$RUNNER_TEMP/pchase" \
+            --log-table "$PL_LOG_TABLE" --receipt-dir "$PL_RECEIPT_DIR/panel" --cpu "$cpu" --off-cpu "$off" \
+            --only P1 | tee -a "$PL_RECEIPT_DIR/runner-stdout.jsonl"
+
+      - name: "P2: pointer chase on reserved MAP_HUGETLB pages (as available)"
+        shell: bash
+        run: |
+          set +e
+          want="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["pointer_chase"]["hugetlb_pages_requested"])' "$EXPERIMENT/protocol.json")"
+          sudo sysctl -w vm.nr_hugepages="$want" > "$PL_RECEIPT_DIR/hugetlb-reserve.txt" 2>&1
+          got="$(cat /proc/sys/vm/nr_hugepages 2>/dev/null || echo 0)"
+          echo "requested=$want reserved=$got" | tee -a "$PL_RECEIPT_DIR/hugetlb-reserve.txt"
+          python3 "$EXPERIMENT/run_job.py" --bin-dir "$CARGO_TARGET_DIR/release" --pchase "$RUNNER_TEMP/pchase" \
+            --log-table "$PL_LOG_TABLE" --receipt-dir "$PL_RECEIPT_DIR/panel" --cpu "$PL_CPU" --off-cpu "$PL_OFF_CPU" \
+            --only P2 --hugetlb-pages "$got" | tee -a "$PL_RECEIPT_DIR/runner-stdout.jsonl"
+          sudo sysctl -w vm.nr_hugepages=0 >> "$PL_RECEIPT_DIR/hugetlb-reserve.txt" 2>&1
+          echo "released=$(cat /proc/sys/vm/nr_hugepages)" | tee -a "$PL_RECEIPT_DIR/hugetlb-reserve.txt"
+          exit 0
+
+      - name: "P3-P4: IC and tuned rho on Q0 under 4k / default / thp"
+        shell: bash
+        run: |
+          set +e
+          python3 "$EXPERIMENT/run_job.py" --bin-dir "$CARGO_TARGET_DIR/release" --pchase "$RUNNER_TEMP/pchase" \
+            --log-table "$PL_LOG_TABLE" --receipt-dir "$PL_RECEIPT_DIR/panel" --cpu "$PL_CPU" --off-cpu "$PL_OFF_CPU" \
+            --only P3 --only P4 | tee -a "$PL_RECEIPT_DIR/runner-stdout.jsonl"
+          echo "panel_exit=$?" | tee "$PL_RECEIPT_DIR/panel-exit.txt"
+
+      - name: Apply the frozen decision rule
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 "$EXPERIMENT/analyse.py" "$PL_RECEIPT_DIR/panel" | tee "$PL_RECEIPT_DIR/analyse-stdout.json"
+          cat "$PL_RECEIPT_DIR/panel/result_table.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve allocation, builds, raw runs and the result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ic-probe-latency-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ic-probe-latency/
+          if-no-files-found: error
+          retention-days: 30
