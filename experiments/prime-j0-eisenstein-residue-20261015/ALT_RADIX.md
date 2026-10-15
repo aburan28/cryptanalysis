@@ -52,3 +52,16 @@ The completed job `51a80dfd759e4d5e8d5196a0a031aa78` has [raw arms and pair reco
 | Mean timed interval | 66.625558 ms | 65.244457 ms |
 
 The descriptive median paired reference/candidate ratio was `1.019807`, with paired bootstrap 95% interval `[0.995605,1.041598]`. The A/A control after comparison in repeat 4 measured `0.830042`, outside `[0.90,1.11]`. The aggregate remains `unknown_after_tier_gate`; its qualified comparison ratio is `null`.
+
+## Longer serial panel
+
+The [predeclared ten-pass rules](tier1-alt-radix-long10-cpu40-rules.json) and [manifest](tier1-alt-radix-long10-cpu40-manifest.json) were committed before result inspection. Each arm warms one table, then times ten passes over the same frozen 96 batches of 128 distinct scalars: 122,880 checked outputs per arm, with fixture loading and table preparation outside `Instant`. Both binaries use the same timing boundary, CPU 40, fixture, serial worker, and 32 MiB table cap. The [launch receipt](tier1-alt-radix-long10-launch.json) fixes job `14dd3766e7d643e380872b915398ce96` and the uploaded manifest/rules hashes.
+
+The completed Tier 1 job recorded 96 valid arms and 48 valid pairs with stable artifacts. Its [independent archive-backed audit](tier1-alt-radix-long10-cpu40-audit.json) checked every raw arm, matched the source and binary hashes in the [native provenance archive](alt-radix-long10-native-provenance.tar.gz), and verified the [raw result archive](alt-radix-long10-tier1-raw.tar.gz). The provenance SHA-256 is `1f1cc52fb05fab292d9bc88982361af11c4ce0c70524138750062db7759503be`; the raw archive SHA-256 is `7435b737bb3591679fd9b9589759444b509f7ec48c6ec27bb382a7b301b5ed63`.
+
+| Tier 1 ten-pass stream; 122,880 checked outputs per arm | Norm-136531 ten-row cache | Norm-110557 full two-x |
+| --- | ---: | ---: |
+| Retained table bytes | 33,318,020 | 27,429,548 |
+| Mean timed interval | 670.434174 ms | 667.829651 ms |
+
+The descriptive median paired reference/candidate ratio was `0.998244`, with paired bootstrap 95% interval `[0.965751,1.036469]`. The A/A control after comparison in repeat 6 measured `1.111348`, above the frozen upper limit `1.11`. The result status is `unknown_after_tier_gate`, with qualified comparison ratio `null`. The longer interval therefore supplies a tighter cost-shape screen for this batch path while preserving the failed control and every valid arm. Reproduce the audit with `python3 analyze_tier1_alt_radix_long10.py`; it extracts the raw archive when no local run directory is present.

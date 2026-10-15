@@ -4,9 +4,11 @@
 from hashlib import sha256
 from math import exp, log
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import json
 import random
 import statistics
+import tarfile
 
 HERE = Path(__file__).resolve().parent
 JOB = '14dd3766e7d643e380872b915398ce96'
@@ -38,11 +40,10 @@ def interval(values):
     return [boot[250], boot[9749]]
 
 
-def audit():
+def audit_folder(folder: Path):
     rules = load(HERE/'tier1-alt-radix-long10-cpu40-rules.json')
     planned = load(HERE/'tier1-alt-radix-long10-cpu40-manifest.json')
     launch = load(HERE/'tier1-alt-radix-long10-launch.json')
-    folder = HERE/JOB
     manifest, summary = load(folder/'manifest.json'), load(folder/'summary.json')
     runs, pairs = rows(folder/'runs.jsonl'), rows(folder/'pairs.jsonl')
     assert launch['job_id'] == JOB
@@ -55,6 +56,22 @@ def audit():
     assert summary['expected_pairs'] == 48
     assert summary['artifact_sha256'][f'{PANEL}/tier1-alt-radix-long10-cpu40-rules.json'] == launch['rules_sha256']
     assert summary['artifact_sha256'][f'{PANEL}/native_long_alt_panel_overlay.py'] == rules['hashes']['overlay']
+    provenance = HERE/'alt-radix-long10-native-provenance.tar.gz'
+    with tarfile.open(provenance, 'r:gz') as archive:
+        for label, stem in STEMS.items():
+            for key, member in (('front','src/bin/eisenstein_fixed.rs'),
+                                ('windows','src/bin/eisenstein_fixed/unit_orbit_windows.rs'),
+                                ('binary','target/release/eisenstein_fixed')):
+                content = archive.extractfile(f'{stem}/{member}').read()
+                assert sha256(content).hexdigest() == rules['hashes'][f'{label}_{key}']
+            fixture = archive.extractfile(f'{stem}/src/bin/mixed640_uniform_fixture.json').read()
+            assert sha256(fixture).hexdigest() == rules['fixture_sha256']
+        overlay = archive.extractfile('native_long_alt_panel_overlay.py').read()
+        assert sha256(overlay).hexdigest() == rules['hashes']['overlay']
+        assert archive.extractfile('tier1-alt-radix-long10-cpu40-rules.json').read() == (
+            HERE/'tier1-alt-radix-long10-cpu40-rules.json').read_bytes()
+        assert archive.extractfile('tier1-alt-radix-long10-cpu40-manifest.json').read() == (
+            HERE/'tier1-alt-radix-long10-cpu40-manifest.json').read_bytes()
     for label, stem in STEMS.items():
         for key, member in (('front','src/bin/eisenstein_fixed.rs'),
                             ('windows','src/bin/eisenstein_fixed/unit_orbit_windows.rs'),
@@ -107,6 +124,8 @@ def audit():
         'artifact_stable':summary['artifacts_stable'],
         'runner_status':summary['status'], 'tier_gate_passed':tier_gate_passed,
         'fixture_sha256':rules['fixture_sha256'],
+        'provenance_sha256':digest(provenance),
+        'raw_archive_sha256':digest(HERE/'alt-radix-long10-tier1-raw.tar.gz'),
         'runs_sha256':digest(folder/'runs.jsonl'),
         'pairs_sha256':digest(folder/'pairs.jsonl'),
         'comparison':{
@@ -121,6 +140,22 @@ def audit():
             'candidate_retained_bytes':sorted({int(run['fields']['retained_bytes']) for run in cand}),
         },
     }
+
+
+def audit():
+    folder = HERE/JOB
+    if folder.is_dir():
+        return audit_folder(folder)
+    with TemporaryDirectory(prefix='alt-radix-long-audit-') as temp:
+        with tarfile.open(HERE/'alt-radix-long10-tier1-raw.tar.gz', 'r:gz') as archive:
+            for member in archive.getmembers():
+                if member.isdir():
+                    continue
+                assert member.isfile() and member.name.startswith(JOB+'/')
+                path = Path(temp)/member.name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(archive.extractfile(member).read())
+        return audit_folder(Path(temp)/JOB)
 
 
 if __name__ == '__main__':
