@@ -5,27 +5,75 @@
  "frozen_before_timing": true,
  "tier": "Tier 1 (cloud instance; GitHub-hosted ubuntu-24.04 runner), AGENTS.md 'CPU performance evidence tiers'",
  "curves": {
-  "n131": {"curve": "y^2+xy=x^3+1 over GF(2^131) (ECC2K-130's curve), f131.h polynomial basis", "dp_hw": 52, "lanes": 64, "jumps": 32, "multipliers": 8, "cap": 4096},
-  "n83": {"curve": "y^2+xy=x^3+x^2+1 over GF(2)[z]/(z^83+z^7+z^4+z^2+1), r=8569786107849059", "dp_hw": 31, "lanes": 64, "jumps": 32, "multipliers": 8, "cap": 4096}
+  "n131": {
+   "curve": "y^2+xy=x^3+1 over GF(2^131) (ECC2K-130's curve), f131.h polynomial basis",
+   "dp_hw": 52,
+   "lanes": 64,
+   "jumps": 32,
+   "multipliers": 8,
+   "cap": 4096
+  },
+  "n83": {
+   "curve": "y^2+xy=x^3+x^2+1 over GF(2)[z]/(z^83+z^7+z^4+z^2+1), r=8569786107849059",
+   "dp_hw": 31,
+   "lanes": 64,
+   "jumps": 32,
+   "multipliers": 8,
+   "cap": 4096
+  }
  },
  "timing": {
   "binary": "target/release/bench",
   "cpu": 1,
-  "arms": ["bailey", "bailey_aa", "bailey_nodpc", "canon", "canon_aa", "canon_nolift", "canon_null", "canon_exh"],
-  "steps_per_lane_per_block": {"131": 4096, "83": 4096},
+  "arms": [
+   "bailey",
+   "bailey_aa",
+   "bailey_nodpc",
+   "canon",
+   "canon_aa",
+   "canon_nolift",
+   "canon_null",
+   "canon_exh"
+  ],
+  "steps_per_lane_per_block": {
+   "131": 4096,
+   "83": 4096
+  },
   "rounds": 30,
   "warmup_rounds": 1,
   "order": "round k runs the arms in the order rotated by k",
   "estimator": "per-round paired ratio of ns/step; geometric mean over the 30 rounds; 95% percentile bootstrap over rounds, 20000 draws, seed 2026101531",
-  "ir": {"tool": "valgrind --tool=cachegrind --cache-sim=no", "steps_per_lane": [64, 320], "per_step": "(Ir(320) - Ir(64)) / (64 * 256)"}
+  "ir": {
+   "tool": "valgrind --tool=cachegrind --cache-sim=no",
+   "steps_per_lane": [
+    64,
+    320
+   ],
+   "per_step": "(Ir(320) - Ir(64)) / (64 * 256)"
+  }
  },
  "completion": {
   "binary": "target/release/solve",
   "panel": "inputs/panel64.json (64 public points; seeds 0..15 = Panel B of koblitz-single-target-n83-tier1-20261014)",
-  "arms": ["bailey", "canon32", "canon8", "canon32_noneg"],
+  "arms": [
+   "bailey",
+   "canon32",
+   "canon8",
+   "canon32_noneg"
+  ],
   "seeds_per_target": 2,
   "seed_base": 830151,
-  "known_log_positive_control": {"targets": "inputs/known_logs.json", "arms": ["bailey", "canon32", "canon8", "canon32_noneg"], "seeds": 1, "seed_base": 77},
+  "known_log_positive_control": {
+   "targets": "inputs/known_logs.json",
+   "arms": [
+    "bailey",
+    "canon32",
+    "canon8",
+    "canon32_noneg"
+   ],
+   "seeds": 1,
+   "seed_base": 77
+  },
   "processes": 4,
   "step_cap": "400 * floor",
   "floor": "sqrt(pi r / (2 A)), A = 166 asserted (lambda of exact order 83; -1 not a power of lambda)",
@@ -71,5 +119,15 @@
   "ir": "16 short cachegrind runs, < 3 min",
   "job_timeout_min": 150
  },
- "dry_run_disclosure": "Before freezing, correctness dry runs only (no timing read): 1 known-log solve each for bailey, canon32, canon8 and canon32_noneg recovered the known logarithm. A Bailey arm with 2 multipliers (first planned positive control) did not solve within its run and was replaced: Bailey's multipliers commute, so with 2 of them a lane reaches only t+1 distinct multipliers after t steps and walks from different starts almost never merge (a structural degeneracy, not a measurement). Its replacement is canon32_noneg."
+ "dry_run_disclosure": "Before freezing, correctness dry runs only (no timing read): 1 known-log solve each for bailey, canon32, canon8 and canon32_noneg recovered the known logarithm. A Bailey arm with 2 multipliers (first planned positive control) did not solve within its run and was replaced: Bailey's multipliers commute, so with 2 of them a lane reaches only t+1 distinct multipliers after t steps and walks from different starts almost never merge (a structural degeneracy, not a measurement). Its replacement is canon32_noneg.",
+ "amendments": [
+  {
+   "id": 1,
+   "date": "2026-10-15",
+   "before_any_ci_timing": true,
+   "change": "canon_nolift computes the fruitless-cycle test but no longer escapes (doubling with a full inversion).",
+   "reason": "With k forced to 0 the walk meets negation 2-cycles at about 1/(2R) = 1/64 per step instead of 1/(2Rn) for the real canonicalizing walk (the 2-cycle needs k = 0). A local 3-round smoke on the contended cloud-agent VM showed escapes/step 0.0149 for canon_nolift vs 0 for canon over 4096 steps; the escapes would have charged canon_nolift an inversion-bearing doubling per ~64 steps and biased 1 - canon_nolift/canon low.",
+   "disclosure": "The smoke produced scratch timing rows (not committed, not evidence). I read only event counts and the gate outputs of the 3-round smoke ('aa': harness noisy, positive control: pass, on a contended VM), not the timing values or ratios. Original protocol: commit 6df26f743."
+  }
+ ]
 }

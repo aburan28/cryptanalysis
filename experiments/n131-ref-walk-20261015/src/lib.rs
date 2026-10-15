@@ -570,8 +570,9 @@ pub const BAILEY: u8 = 0;
 pub const BAILEY_NODPC: u8 = 1;
 /// Canonicalizing adding walk, lift_scan.
 pub const CANON: u8 = 2;
-/// Canonicalizing walk with lift_scan replaced by `k = 0` (the basis changes,
-/// sign fold and fruitless handling kept): lift_scan's share.  Timing only.
+/// Canonicalizing walk with lift_scan replaced by `k = 0` (the basis changes
+/// and sign fold kept; the fruitless-cycle test computed but not acted on,
+/// amendment 1): lift_scan's share.  Timing only.
 pub const CANON_NOLIFT: u8 = 3;
 /// Adding walk with no canonicalization at all (HW for the DP test kept):
 /// canonicalization's whole share.  Timing only; not a class walk.
@@ -876,7 +877,10 @@ impl Walker {
                 } else {
                     0
                 };
-                if cyc != 0 {
+                // CANON_NOLIFT (k = 0) would meet negation 2-cycles at 1/(2R) per step
+                // instead of 1/(2Rn); it computes the test but does not escape, so the
+                // ablation removes lift_scan only (amendment 1).
+                if cyc != 0 && ARM != CANON_NOLIFT {
                     // Escape from the least point of the cycle by doubling:
                     // a function of the cycle, so merged walks escape alike.
                     let mut cand = [Hist { p: l.p, a: l.a, b: l.b }; 4];

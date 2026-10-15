@@ -38,4 +38,14 @@ tuned n = 83 walk (not run here).
 
 ## Amendments
 
-None.
+**Amendment 1 (2026-10-15, before any CI timing).** `canon_nolift` computes
+the fruitless-cycle test but no longer escapes. With `k` forced to 0 the walk
+meets negation 2-cycles at about 1/(2R) = 1/64 per step, against 1/(2Rn) for
+the real canonicalizing walk (a 2-cycle needs `k = 0`). A local 3-round smoke
+on the contended cloud-agent VM showed 0.0149 escapes per step for
+`canon_nolift` and 0 for `canon` over 4096 lane-steps. Each escape is a
+doubling with a full inversion, which would have biased `1 - canon_nolift/canon`
+low. The smoke's timing rows are scratch output, not committed and not
+evidence. I read only its event counts and gate outputs (A/A "harness
+noisy", positive control "pass", on a contended VM), not the timing values or
+ratios. Original protocol: commit 6df26f743.
