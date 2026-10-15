@@ -57,6 +57,63 @@ int main(void)
     ca_ec_random_point(&g, &P, 9);
     uint64_t ordP = ca_group_elem_order(&g, &P);
     g.order = ordP;
+    CHECK(ordP > 4096);
+    /* Boundary widths exercise the serial scan, batched explicit brute
+     * scan, and the EC AUTO switch to BSGS.  Check the first/last position
+     * and a miss, including a final block at UINT64_MAX. */
+    const uint64_t widths[] = {63, 64, 255, 256, 257, 4095};
+    for (size_t wi = 0; wi < sizeof(widths) / sizeof(widths[0]); wi++) {
+        uint64_t width = widths[wi];
+        uint64_t lo = 12345;
+        uint64_t positions[] = {0, 1, width / 2, width - 1};
+        for (size_t pi = 0; pi < sizeof(positions) / sizeof(positions[0]); pi++) {
+            uint64_t want = lo + positions[pi];
+            fx_instance(&g, &P, want, &h);
+            for (int mode = 0; mode < 2; mode++) {
+                ca_dlog_params dp;
+                ca_dlog_params_default(&dp);
+                dp.solver = mode ? CA_SOLVER_AUTO : CA_SOLVER_BRUTE;
+                ca_stats scan = {0};
+                CHECK(ca_dlog_prime_order(&g, &P, &h, lo, lo + width - 1,
+                                          &dp, &got, &scan) == CA_OK);
+                CHECK_EQ_U64(got, want);
+                CHECK(scan.group_ops > 0);
+            }
+        }
+        fx_instance(&g, &P, lo + width, &h);
+        ca_dlog_params brute;
+        ca_dlog_params_default(&brute);
+        brute.solver = CA_SOLVER_BRUTE;
+        CHECK(ca_dlog_prime_order(&g, &P, &h, lo, lo + width - 1,
+                                  &brute, &got, NULL) == CA_ERR_NOT_FOUND);
+    }
+    {
+        /* A caller-specified BSGS cap below this interval keeps AUTO on
+         * brute force, matching the previous dispatcher behavior. */
+        ca_dlog_params capped, brute;
+        ca_dlog_params_default(&capped);
+        ca_dlog_params_default(&brute);
+        capped.bsgs_max_prime = 128;
+        brute.solver = CA_SOLVER_BRUTE;
+        fx_instance(&g, &P, 12473, &h);
+        ca_stats cs = {0}, bs = {0};
+        CHECK(ca_dlog_prime_order(&g, &P, &h, 12345, 12601,
+                                  &capped, &got, &cs) == CA_OK);
+        CHECK_EQ_U64(got, 12473);
+        CHECK(ca_dlog_prime_order(&g, &P, &h, 12345, 12601,
+                                  &brute, &got, &bs) == CA_OK);
+        CHECK_EQ_U64(cs.group_ops, bs.group_ops);
+    }
+    {
+        ca_dlog_params brute;
+        ca_dlog_params_default(&brute);
+        brute.solver = CA_SOLVER_BRUTE;
+        uint64_t lo = UINT64_MAX - 63;
+        fx_instance(&g, &P, UINT64_MAX, &h);
+        CHECK(ca_dlog_prime_order(&g, &P, &h, lo, UINT64_MAX,
+                                  &brute, &got, NULL) == CA_OK);
+        CHECK_EQ_U64(got, UINT64_MAX);
+    }
     for (int k = 0; k < 10; k++) {
         uint64_t x = ca_rng_below(&rng, ordP);
         fx_instance(&g, &P, x, &h);

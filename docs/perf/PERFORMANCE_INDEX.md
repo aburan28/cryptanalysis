@@ -36,6 +36,11 @@ python3 scripts/perf/perfindex.py instr --base /tmp/ci-base/ca_perfbench \
     --cand /tmp/ci-cand/ca_perfbench --out /tmp/ci-ir
 ```
 
+Scoped engineering measurements that do not meet the full performance-index
+gate are kept separately. The [2026-10-15 bounded EC scan report](POHLIG_EC_SCAN_2026-10-15.md)
+contains fixed-input correctness checks, raw paired wall and process CPU
+receipts, and the limits of its C Pohlig-Hellman result.
+
 Its kernels (`ca_perfbench list --full`) cover `field_ec` (Montgomery
 arithmetic, `ca_powmod`/`ca_invmod`/`ca_sqrtmod_prime`, primality and
 factoring, affine and batched EC addition, scalar multiplication, point
