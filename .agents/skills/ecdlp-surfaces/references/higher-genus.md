@@ -11,6 +11,7 @@ constructor to `tools/ecdlp-surfaces`.
 | Case | Existing entry point | Boundary |
 | --- | --- | --- |
 | Genus-2 cover of `y^2=x^3+a*x+b`, characteristic greater than three | `crypto`: `hyperelliptic-cover construct` / `verify` | The fixed degree-two cover is a smooth sextic with two rational infinity points. Its construction is checked; pullback, norm, and its two-infinity Jacobian arithmetic are not implemented. |
+| Binary genus-2 cover of `y^2+x*y=x^3+a*x^2+1` | `tools/binary-genus2-cover`: `GenusTwoCover`, `binary_genus2_check` | Same-field separable degree-three cover; checked reduced point-class pullback and inverse on the image. CLI pins the two n=83 fixtures. A generic norm is unsupported. |
 | Genus-3 cover of an ordinary binary elliptic curve | Same CLI, plus `OrdinaryBinaryCover` in both native libraries | One-infinity Mumford arithmetic, rational elliptic point-class pullbacks, rational source-point pushforward, and typed pull/push witnesses are supported. Arbitrary Jacobian-class pushforward is unsupported. |
 | Arithmetic on a supplied odd-prime genus-g hyperelliptic curve | `crypto`: `hyperelliptic-cover arithmetic` with `odd_curve` | Monic squarefree `f` of degree `2g+1`, one rational infinity point, positive genus, and deterministically checked odd prime of at most 64 bits. This alone supplies no elliptic transfer. |
 | Other checked binary hyperelliptic models | `HyperellipticCurve::try_new`, `MumfordDivisor` in both libraries | Use the checked odd-degree, one-infinity API; binary field degree is bounded by 4096. The cover CLI's binary `model` selector reconstructs only its fixed genus-3 family. |
@@ -183,6 +184,28 @@ For higher genus, use the caller's checked monic squarefree polynomial of exact
 degree `2g+1`; changing only the `genus` field does not change the curve.
 
 ## Search other genus-2 and higher targets
+
+For the supported binary b=1 family, construct directly before treating an
+explicit genus-2 target as an unresolved gluing search:
+
+```
+C: v^2+u^2*v=u^5+a*u^4+u^3+u
+pi(u,v)=(u^3/(u+1)^2,(u*(u+1)*v+u^2+u+1)/(u+1)^3)
+U=u^2+(1/x)*u+x
+V=(x+(y+1)/x^2)*u+x+y+1.
+```
+
+The U,V formulas apply to finite elliptic P=(x,y) with x nonzero. O maps
+to the identity and (0,1) to (u,0). The inverse reads x=U(0),
+y=V(0)+x+1 and must validate and compare the entire reconstructed pair;
+do not apply it to arbitrary classes. The group law is native Cantor
+arithmetic on J(C). The
+[tool README](../../../../tools/binary-genus2-cover/README.md) gives the
+commands and field bounds; the
+[report](../../../../research/binary_genus2_cover_20261014/REPORT.md)
+proves smoothness, genus, degree, exceptional fibers, and the divisor formula.
+Its Lean proof covers the affine map equation; the geometric and Picard
+arguments remain a written proof, with the formalization gap recorded.
 
 For genus 2, separate two search routes:
 

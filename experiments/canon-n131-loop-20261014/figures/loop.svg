@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="400" viewBox="0 0 900 400" font-family="DejaVu Sans, Helvetica, Arial, sans-serif">
+<rect width="900" height="400" fill="white"/>
+<text x="20" y="28" font-size="15" text-anchor="start" font-weight="bold" fill="#222222">One key of the loop (per key i); the field chain is the only loop-carried dependency</text>
+<rect x="20" y="60" width="170" height="64" rx="6" fill="#eef2fb" stroke="#4269d0" stroke-width="1.5"/>
+<text x="105.0" y="88.0" font-size="13" text-anchor="middle" font-weight="bold" fill="#222222">state s(i-1)</text>
+<text x="105.0" y="105.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#222222">polynomial basis (f131.h)</text>
+<rect x="250" y="60" width="210" height="64" rx="6" fill="#fdf3dc" stroke="#b8860b" stroke-width="1.5"/>
+<text x="355.0" y="88.0" font-size="13" text-anchor="middle" font-weight="bold" fill="#222222">field step</text>
+<text x="355.0" y="105.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#222222">W1: 1M + 1S   W5: 5M + 1S (proxy)</text>
+<rect x="520" y="60" width="170" height="64" rx="6" fill="#eef2fb" stroke="#4269d0" stroke-width="1.5"/>
+<text x="605.0" y="88.0" font-size="13" text-anchor="middle" font-weight="bold" fill="#222222">state s(i)</text>
+<text x="605.0" y="105.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#222222">next key's input</text>
+<line x1="190" y1="92" x2="241.0" y2="92.0" stroke="#333333" stroke-width="1.6"/>
+<polygon points="250,92 241.0,96.0 241.0,88.0" fill="#333333"/>
+<line x1="460" y1="92" x2="511.0" y2="92.0" stroke="#333333" stroke-width="1.6"/>
+<polygon points="520,92 511.0,96.0 511.0,88.0" fill="#333333"/>
+<polyline points="690,92 740,92 740,46 105,46" fill="none" stroke="#b8860b" stroke-width="1.6"/>
+<line x1="105" y1="46" x2="105.0" y2="51.0" stroke="#b8860b" stroke-width="1.6"/>
+<polygon points="105,60 101.0,51.0 109.0,51.0" fill="#b8860b"/>
+<text x="420" y="42" font-size="11" text-anchor="middle" font-weight="normal" fill="#8a6408">serial chain: s(i) feeds key i+1</text>
+<rect x="520" y="170" width="170" height="64" rx="6" fill="#eef2fb" stroke="#4269d0" stroke-width="1.5"/>
+<text x="605.0" y="198.0" font-size="13" text-anchor="middle" font-weight="bold" fill="#222222">to normal basis</text>
+<text x="605.0" y="215.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#222222">fromPolynomial + 131-bit perm</text>
+<rect x="270" y="170" width="190" height="64" rx="6" fill="#e8f6ec" stroke="#3ca951" stroke-width="1.5"/>
+<text x="365.0" y="198.0" font-size="13" text-anchor="middle" font-weight="bold" fill="#222222">canonicalize</text>
+<text x="365.0" y="215.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#222222">arm under test (canon-n131)</text>
+<rect x="20" y="170" width="190" height="64" rx="6" fill="#fde9e6" stroke="#ff725c" stroke-width="1.5"/>
+<text x="115.0" y="198.0" font-size="13" text-anchor="middle" font-weight="bold" fill="#222222">probe table</text>
+<text x="115.0" y="215.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#222222">hash, bucket, exact compare</text>
+<line x1="605" y1="124" x2="605.0" y2="161.0" stroke="#333333" stroke-width="1.6"/>
+<polygon points="605,170 601.0,161.0 609.0,161.0" fill="#333333"/>
+<line x1="520" y1="202" x2="469.0" y2="202.0" stroke="#333333" stroke-width="1.6"/>
+<polygon points="460,202 469.0,198.0 469.0,206.0" fill="#333333"/>
+<line x1="270" y1="202" x2="219.0" y2="202.0" stroke="#333333" stroke-width="1.6"/>
+<polygon points="210,202 219.0,198.0 219.0,206.0" fill="#333333"/>
+<rect x="20" y="290" width="190" height="54" rx="6" fill="#eef2fb" stroke="#4269d0" stroke-width="1.5"/>
+<text x="115.0" y="313.0" font-size="13" text-anchor="middle" font-weight="bold" fill="#222222">hits, key fold, shift sum</text>
+<text x="115.0" y="330.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#222222">accumulators only</text>
+<line x1="115" y1="234" x2="115.0" y2="281.0" stroke="#333333" stroke-width="1.6"/>
+<polygon points="115,290 111.0,281.0 119.0,281.0" fill="#333333"/>
+<text x="720" y="196" font-size="11" text-anchor="start" font-weight="bold" fill="#222222">off the critical path:</text>
+<text x="720" y="212" font-size="11" text-anchor="start" font-weight="normal" fill="#222222">overlaps with the chain of</text>
+<text x="720" y="228" font-size="11" text-anchor="start" font-weight="normal" fill="#222222">keys i+1, i+2, ... as far as</text>
+<text x="720" y="244" font-size="11" text-anchor="start" font-weight="normal" fill="#222222">the reorder window allows</text>
+<text x="270" y="268" font-size="11" text-anchor="start" font-weight="normal" fill="#222222">arms: exhaustive, gap_scan, refine_bf, exhaustive_bf, lift_scan,</text>
+<text x="270" y="284" font-size="11" text-anchor="start" font-weight="normal" fill="#222222">lift_scan_aa (A/A copy), null (no canonicalization: loop floor)</text>
+<text x="270" y="316" font-size="11" text-anchor="start" font-weight="normal" fill="#222222">table: small 2^14 records (0.41 MB) or large 2^22 records (104.9 MB),</text>
+<text x="270" y="332" font-size="11" text-anchor="start" font-weight="normal" fill="#222222">mean bucket load 4; planted hits = canonical keys of 1/64 of the stream</text>
+<text x="20" y="382" font-size="10.5" text-anchor="start" font-weight="normal" fill="#555555">Proxy labels: the field elements are real F_2^131 elements in the ECC2K-130 walk's normal basis, not curve x-coordinates.</text>
+</svg>

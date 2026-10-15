@@ -1,0 +1,80 @@
+name: canon-n131 loop (Tier 1 paired timing)
+# Tier 1 (cloud instance, AGENTS.md "CPU performance evidence tiers") paired,
+# alternating timing of the five exact n = 131 canonicalizers inside the
+# decomposition-style loop of experiments/canon-n131-loop-20261014, under its
+# frozen protocol.json.  The job re-runs build, tests, the f131.h known-answer
+# check and the full exactness verifier first; the timing only starts when they
+# pass.  It commits its receipts to results/ci/run-<id>-<attempt>/ on the branch;
+# those receipts, the README, the figures and the PDF are excluded from the
+# trigger paths, so the commit does not start another run.
+on:
+  push:
+    branches: [claude/n131-canon-loop]
+    paths:
+      - '.github/workflows/canon-n131-loop.yml'
+      - 'experiments/canon-n131-loop-20261014/**'
+      - '!experiments/canon-n131-loop-20261014/results/ci/**'
+      - '!experiments/canon-n131-loop-20261014/README.md'
+      - '!experiments/canon-n131-loop-20261014/figures/**'
+      - '!experiments/canon-n131-loop-20261014/report.pdf'
+      - 'experiments/canon-n131-20261014/src/**'
+      - 'experiments/canon-n131-20261014/Cargo.toml'
+      - 'ecc2k130/src/f131.h'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: canon-n131-loop-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  tier1:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: experiments/canon-n131-loop-20261014
+    env:
+      CARGO_TERM_COLOR: never
+      OUT: results/ci/run-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain (pinned to the local build's rustc)
+        run: |
+          rustup toolchain install 1.97.0 --profile minimal
+          rustup default 1.97.0
+          rustc --version
+          grep -m1 -o pclmulqdq /proc/cpuinfo
+      - name: Build, tests, f131.h KAT, full exactness (must pass before timing)
+        run: |
+          mkdir -p "$OUT"
+          python3 run.py --skip-counts --skip-smoke --results "$OUT"
+      - name: Host receipt before
+        run: python3 receipt.py "$OUT/receipt_pre.json"
+      - name: Paired alternating timing, pinned to CPU 1
+        run: |
+          taskset -c 1 target/release/loop_bench protocol.json "$OUT/rows.jsonl" 2> "$OUT/bench_stderr.txt"
+          tail -3 "$OUT/bench_stderr.txt"
+      - name: Host receipt after
+        if: always()
+        run: python3 receipt.py "$OUT/receipt_post.json"
+      - name: Decision rule (analyze.py)
+        run: |
+          python3 analyze.py "$OUT/rows.jsonl" "$OUT/analysis.json" "$OUT/isolated_ir.json" | tee "$OUT/analysis.txt"
+      - name: Keep the receipts as an artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canon-n131-loop-${{ github.run_id }}-${{ github.run_attempt }}
+          path: experiments/canon-n131-loop-20261014/results/ci/
+          if-no-files-found: warn
+      - name: Commit the receipts to the branch
+        if: always() && github.ref == 'refs/heads/claude/n131-canon-loop'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$OUT"
+          git commit -m "canon-n131-loop: Tier 1 receipts of run ${{ github.run_id }} attempt ${{ github.run_attempt }}" || exit 0
+          for i in 1 2 3; do
+            git pull --rebase origin claude/n131-canon-loop && git push origin HEAD:claude/n131-canon-loop && break
+            sleep 5
+          done

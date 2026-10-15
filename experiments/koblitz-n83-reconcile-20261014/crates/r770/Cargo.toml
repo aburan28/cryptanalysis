@@ -1,0 +1,39 @@
+[package]
+name = "n83-reconcile-r770"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Every binary is a crypto example restored from crypto 770f6a69 by
+# ../../restore_sources.py; only the IC online producer carries B's
+# ic_log_cache.patch. Same dependency versions as crypto's own Cargo.lock.
+[[bin]]
+name = "ic_online_logcache_r770"   # B's IC producer
+path = "../../snapshots/r770/examples/koblitz_orbit_dlp_fast_online_logcache.rs"
+
+[[bin]]
+name = "ic_fast_r770"              # A's IC producer at B's revision
+path = "../../snapshots/r770/examples/koblitz_orbit_dlp_fast.rs"
+
+[[bin]]
+name = "rho_rung3_r770"            # B's rho: strong rung 3
+path = "../../snapshots/r770/examples/koblitz_rho_batch_ks_strong_online.rs"
+
+[[bin]]
+name = "rho_adapter_r770"          # A's default StrongRhoG<WideGf2,u64> adapter
+path = "../../snapshots/r770/examples/n83_strong_point_eval.rs"
+
+[[bin]]
+name = "rho_tuned_r770"            # A's configured worker (Fold/64/DP6)
+path = "../../snapshots/r770/examples/n83_rho_optimization_eval.rs"
+
+[dependencies]
+crypto_lib = { package = "crypto", path = "../../snapshots/r770", default-features = false }
+blake3 = "1.5"
+hex = "0.4"
+libc = "0.2"
+num-bigint = { version = "0.4", features = ["rand"] }
+num-traits = "0.2"
+rand = { version = "0.8", features = ["small_rng"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["arbitrary_precision", "raw_value"] }

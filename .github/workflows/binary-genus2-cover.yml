@@ -1,0 +1,76 @@
+name: Binary genus-two cover
+
+on:
+  pull_request:
+    paths:
+      - 'tools/binary-genus2-cover/**'
+      - 'tools/ecdlp-surfaces/**'
+      - 'docs/ecdlp-surfaces/certificates/**'
+      - 'src/binary_ecc/**'
+      - 'suite/src/binary_ecc/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'suite/Cargo.toml'
+      - 'suite/Cargo.lock'
+      - 'research/binary_genus2_cover_20261014/**'
+      - '.github/workflows/binary-genus2-cover.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /Cargo.toml
+            /Cargo.lock
+            /build.rs
+            /src/
+            /suite/Cargo.toml
+            /suite/Cargo.lock
+            /suite/build.rs
+            /suite/src/
+            /suite/cuda/
+            /suite/docs/ic/calibration.json
+            /challenges/elliptic/corpus.json
+            /bindings/rust/
+            /include/
+            /cuda/
+            /tools/ecdlp-surfaces/
+            /tools/binary-genus2-cover/
+            /docs/ecdlp-surfaces/certificates/
+            /docs/curves/registry.json
+            /docs/ecbench/schema.sql
+            /docs/ic/calibration.json
+            /docs/ic/boundary_targets.json
+            /research/binary_genus2_cover_20261014/
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: tools/binary-genus2-cover/check.sh
+  lean:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: research/binary_genus2_cover_20261014/lean
+      - name: Install pinned Lean and verify download
+        run: |
+          curl --fail --location --output "$RUNNER_TEMP/lean.tar.zst" https://github.com/leanprover/lean4/releases/download/v4.24.0/lean-4.24.0-linux.tar.zst
+          printf '%s  %s\n' b14f5e5159219dd1a1956c3b806813319f5e94ccd5bdfd56f54520609a5bb5ec "$RUNNER_TEMP/lean.tar.zst" | sha256sum --check
+          tar --zstd -xf "$RUNNER_TEMP/lean.tar.zst" -C "$RUNNER_TEMP"
+          printf '%s\n' "$RUNNER_TEMP/lean-4.24.0-linux/bin" >> "$GITHUB_PATH"
+      - name: Build and audit actual theorem declarations
+        working-directory: research/binary_genus2_cover_20261014/lean
+        run: |
+          lake build
+          lean BinaryGenusTwo.lean | tee axioms.log
+          if rg 'sorryAx|sorry|admit' axioms.log; then exit 1; fi
