@@ -1,0 +1,19 @@
+\documentclass[border=4pt]{standalone}
+\usepackage{lmodern}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.16}
+\begin{document}
+\begin{tikzpicture}
+\begin{axis}[width=11cm, height=6.5cm, ymode=log, ybar=2pt, bar width=9pt, ymin=10, ymax=1e6,
+  xtick={1,2,3,4,5}, xticklabels={{$c_{\rm probe}$ (ns)},{$c_{\rm state}$ (ns)},{$c_{\rm step}$ (ns)},
+  {formula $\frac{c_{\rm probe}c_{\rm state}}{2.1\,c_{\rm step}^2}$},{measured IC/BL}},
+  x tick label style={font=\scriptsize, align=center, text width=2.2cm},
+  legend style={font=\scriptsize, at={(0.02,0.98)}, anchor=north west},
+  title={\small n=83 K600, BL arm run 38689817618: the price product, inferred vs measured}]
+\addplot[fill=orange!60] table[x=x, y=idea] {price_product.dat};
+\addplot[fill=blue!55] table[x=x, y=meas] {price_product.dat};
+\legend{idea's inferred prices (notes.md), this run's measured prices}
+\draw[black, thick] (axis cs:5.12,58.860) -- (axis cs:5.12,649.275);
+\end{axis}
+\end{tikzpicture}
+\end{document}

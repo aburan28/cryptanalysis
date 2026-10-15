@@ -1,0 +1,32 @@
+\documentclass[border=4pt]{standalone}
+\usepackage{lmodern}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.16}
+\begin{document}
+\begin{tikzpicture}
+\begin{axis}[axis on top, name=left, width=9cm, height=6.2cm, ymode=log, ymin=0.3, ymax=6,
+  xmin=0.4, xmax=11.6, xtick=data, xticklabels from table={probe_ratio.dat}{label},
+  x tick label style={rotate=60, anchor=east, font=\scriptsize},
+  ylabel={measured / predicted probes}, ytick={0.5,0.7,1,1.3,2,4}, yticklabels={0.5,0.7,1,1.3,2,4},
+  title={\small (a) probes per target vs $r/(A\cdot\#\mathrm{states})$}, title style={font=\small}]
+\fill[green!12] (axis cs:0.4,0.85) rectangle (axis cs:11.6,1.15);
+\draw[red!60, dashed] (axis cs:0.4,0.7) -- (axis cs:11.6,0.7);
+\draw[red!60, dashed] (axis cs:0.4,1.3) -- (axis cs:11.6,1.3);
+\addplot[only marks, mark=*, mark size=1.8pt, error bars/.cd, y dir=both, y explicit]
+  table[x=x, y=y, y error plus expr=\thisrow{hi}-\thisrow{y}, y error minus expr=\thisrow{y}-\thisrow{lo}] {probe_ratio.dat};
+\end{axis}
+\begin{axis}[axis on top, clip=true, at={(left.east)}, anchor=west, xshift=1.6cm, width=9.4cm, height=6.2cm, ymin=0.4, ymax=2.4,
+  xmin=0.4, xmax=11.6, xtick=data, xticklabels from table={probe_cv.dat}{label},
+  x tick label style={rotate=60, anchor=east, font=\scriptsize},
+  ylabel={coefficient of variation of probes},
+  title={\small (b) probe-count CV vs the exponential model}, title style={font=\small}]
+\fill[red!8] (axis cs:0.4,1.5) rectangle (axis cs:11.6,2.4);
+\fill[red!8] (axis cs:0.4,0.4) rectangle (axis cs:11.6,0.6);
+\addplot[only marks, mark=-, mark size=4pt, gray, error bars/.cd, y dir=both, y explicit]
+  table[x=x, y expr=(\thisrow{nlo}+\thisrow{nhi})/2, y error plus expr=(\thisrow{nhi}-\thisrow{nlo})/2,
+        y error minus expr=(\thisrow{nhi}-\thisrow{nlo})/2] {probe_cv.dat};
+\addplot[only marks, mark=square*, mark size=1.6pt, blue!70!black, error bars/.cd, y dir=both, y explicit]
+  table[x=x, y=cv, y error plus expr=\thisrow{hi}-\thisrow{cv}, y error minus expr=\thisrow{cv}-\thisrow{lo}] {probe_cv.dat};
+\end{axis}
+\end{tikzpicture}
+\end{document}
