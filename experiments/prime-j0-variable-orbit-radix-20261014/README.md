@@ -27,3 +27,14 @@ The 96-pass panel completed all 96 arms and 48 pairs with stable artifacts and n
 The direct 16-versus-17 panel used the same 128-scalar law, 96 passes, 16 repetitions, CPU pinning, and A/A gate. Every arm verified, all 48 pairs were valid, and no A/A gate failed. The median ratio of 16-position reference throughput to 17-position candidate throughput was **0.9696**, with repeat-bootstrap interval **[0.9671,0.9762]**. Mean online costs were 11.60 versus 11.92 microseconds per scalar. Mean target-independent table preparation was 1,257 versus 730 ms, and retained native tables were 6,829,948 versus 4,178,836 bytes. The paired interval is below one, so the larger 16-position table was faster on this workload and allocation.
 
 The Lean modules prove the norm-19,183 radix identity, 17 numeric contractions, the exact six-candidate minimum-norm selector, the finite digit certificate over all 9,592 sign-canonical residues, and the unconditional selected 17-step trajectory terminating below `78²`. `NearestOrbit19183Tie.score_selected_eq` additionally checks the runtime score `(norm, |b|, |a|, a, b)` against the selected digit for every canonical residue. The `#print axioms` output for these declarations retains only standard Lean foundations. The point action under the fixed secp256k1 τ eigenvalue is replayed independently in Python and Rust; its candidate-specific Lean bridge remains open. The existing `190−τ` modules provide the proof structure but their numeric certificates do not transfer.
+
+| Mathematical result | Lean declaration | Hypotheses and status |
+| --- | --- | --- |
+| Norm-19,183 radix step and 17-radius contraction | `NearestOrbit19183.radix_norm_identity`, `radius_checks`, `selected_terminal_bound` | Integer coefficient pairs; selected initial lattice cell, bounded valid digits, and the stated recurrence; checked |
+| Six-candidate minimum and residue congruence | `NearestOrbit19183Selector.selected_le_candidate`, `selected_congruent` | Candidate membership and natural residue; checked |
+| Finite sign-canonical digit certificate | `NearestOrbit19183Digits.all_residues_have_small_candidate`, `selected_digit_valid` | `0 ≤ r < 9592`; checked |
+| Unconditional 17-step selected trajectory | `NearestOrbit19183Complete.canonical_scheme_terminal_bound` | Any integer scalar, canonical selected representative, 17 selected steps; checked |
+| Runtime score agrees with selected digit | `NearestOrbit19183Tie.score_selected_eq` | Natural residue `r < 9592`; checked |
+| secp256k1 point action for this radix | Candidate-specific Lean declaration pending | Fixed curve, generator, and τ eigenvalue bridge; independent Python and Rust point replays checked |
+
+Run `bash check_lean140.sh` with Lean 4.34.1 to rebuild these declarations from source and print each theorem's axiom audit. The script also rebuilds its imported split-prime dependencies in a fresh temporary directory.
