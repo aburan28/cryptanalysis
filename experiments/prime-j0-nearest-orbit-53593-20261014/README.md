@@ -9,6 +9,7 @@ The six-candidate selector searches the two centered residue lifts and three nea
 | Full digit and radius screen | [`screen.json`](screen.json) |
 | Independent affine point replay | [`group-replay.json`](group-replay.json) |
 | Lean source and axiom audit | [`NearestOrbit53593.lean`](NearestOrbit53593.lean), [`lean-check.log`](lean-check.log) |
+| Reproducible native source overlay | [`native_overlay.py`](native_overlay.py) |
 
 Run from this repository checkout:
 
@@ -19,5 +20,7 @@ LEAN_PATH=/private/tmp/lean-8011-fresh:/private/tmp/lean-12211-direct:/private/t
 ```
 
 The Lean module proves the radix norm, norm scaling, quotient residue, exact digit-step identity, and unit-action residue identity. Its `#print axioms` output has only standard Lean foundations. The complete minimum-digit selection, terminal bound, and 16-step group reconstruction are verified by the pinned computational screens and affine replay; their full Lean formalization is open. The proof bridge for the point action is the established GLV relation `τG = λτG` from the parent implementation.
+
+The native overlay pins the SHA-256 of the 18-position rolling Rust source before transforming it. The release test binary passed its full 53,593-residue digit test and independently checked all 128 frozen scalar points. It reports 9,363,076 retained bytes, including digit/code arrays and Rust table bookkeeping. This local correctness run does not supply a qualified latency comparison.
 
 The next experiment is a native implementation with a frozen source/input/table manifest, paired against the 18-position radix on the same scalar set and Tier 1 RunPod envelope. Include point precomputation, memory and setup accounting, conversion, and alternating A/A gates. No latency result is attached to this format yet.
