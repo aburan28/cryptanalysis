@@ -12,7 +12,7 @@ import urllib.error
 import urllib.request
 
 BASE = "https://rest.runpod.io/v1"
-NAME = "ecc2k130-rho-pair-5090-20261015a"
+DEFAULT_NAME = "ecc2k130-rho-pair-5090-20261015a"
 GPU = "NVIDIA GeForce RTX 5090"
 
 
@@ -53,7 +53,7 @@ def safe_pod(pod):
     ) if name in pod}
 
 
-def body(public_key, cloud_type):
+def body(public_key, cloud_type, name):
     boot = "\n".join([
         "set -euo pipefail",
         "export DEBIAN_FRONTEND=noninteractive",
@@ -66,7 +66,7 @@ def body(public_key, cloud_type):
         "exec /usr/sbin/sshd -D -e",
     ])
     return {
-        "name": NAME, "computeType": "GPU", "imageName": "nvidia/cuda:13.3.1-devel-ubuntu24.04",
+        "name": name, "computeType": "GPU", "imageName": "nvidia/cuda:13.3.1-devel-ubuntu24.04",
         "cloudType": cloud_type, "containerDiskInGb": 40, "volumeInGb": 0,
         "volumeMountPath": "/workspace", "ports": ["22/tcp"],
         "dockerEntrypoint": ["bash", "-lc"], "dockerStartCmd": [boot],
@@ -80,6 +80,7 @@ def main():
     p.add_argument("action", choices=("create", "status", "delete"))
     p.add_argument("--run-dir", type=Path, required=True)
     p.add_argument("--cloud", choices=("COMMUNITY", "SECURE"), default="COMMUNITY")
+    p.add_argument("--name", default=DEFAULT_NAME)
     p.add_argument("--public-key", type=Path, default=Path.home() / ".ssh/id_ed25519.pub")
     a = p.parse_args()
     out = a.run_dir.resolve()
@@ -91,17 +92,17 @@ def main():
         before_code, before = request(key, "GET", "/pods")
         if before_code != 200 or not isinstance(before, list):
             raise RuntimeError(f"pod inventory failed: HTTP {before_code}")
-        if any(x.get("name") == NAME for x in before):
+        if any(x.get("name") == a.name for x in before):
             raise RuntimeError("a pod with the benchmark name already exists")
         public_key = a.public_key.read_text().strip()
         if not public_key.startswith(("ssh-ed25519 ", "ssh-rsa ")):
             raise ValueError("invalid public key")
-        req_body = body(public_key, a.cloud)
+        req_body = body(public_key, a.cloud, a.name)
         started = stamp()
         code, response = request(key, "POST", "/pods", req_body)
         # A failed/ambiguous create is followed by inventory, never a create retry.
         after_code, after = request(key, "GET", "/pods")
-        named = [safe_pod(x) for x in after if x.get("name") == NAME] if after_code == 200 and isinstance(after, list) else None
+        named = [safe_pod(x) for x in after if x.get("name") == a.name] if after_code == 200 and isinstance(after, list) else None
         receipt = {"started_at_utc": started, "completed_at_utc": stamp(),
                    "request": req_body, "create_http": code,
                    "create_response": (safe_pod(response) if code < 400 else response)
@@ -115,6 +116,7 @@ def main():
         return
 
     created = json.loads((out / "runpod-create.json").read_text())
+    expected_name = created["request"]["name"]
     listed = created.get("matching_after") or []
     ids = {x.get("id") for x in listed if x.get("id")}
     direct = created.get("create_response", {}).get("id")
@@ -132,7 +134,7 @@ def main():
         print(json.dumps(data), flush=True)
         return
     code, pod = request(key, "GET", "/pods/" + pod_id)
-    if code != 200 or not isinstance(pod, dict) or pod.get("name") != NAME:
+    if code != 200 or not isinstance(pod, dict) or pod.get("name") != expected_name:
         raise RuntimeError(f"pod identity/status mismatch: HTTP {code}")
     delete_code, delete_result = request(key, "DELETE", "/pods/" + pod_id)
     time.sleep(2)
