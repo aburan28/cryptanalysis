@@ -1,11 +1,14 @@
 # n131-ref-walk: the n = 131 reference walk (IDEA-20261015-c6f017)
 
-**Status (2026-10-15): code, inputs and protocol frozen; exactness verified
-locally; the Tier 1 run is started by the push to `claude/n131-ref-walk` and
-commits its receipts to `results/ci/run-<id>-<attempt>/`. No timing or
-completion number is reported in this file yet.** Results get filled in from
-those receipts, under the frozen [protocol](PROTOCOL.md)
-([`protocol.json`](protocol.json)).
+**Status (2026-10-15): measured; frozen rules applied.** GitHub run
+[38782995992](https://github.com/aburan28/cryptanalysis/actions/runs/38782995992)
+(attempt 1; `ubuntu-24.04`, Standard_D4ads_v5, AMD EPYC 7763; Tier 1, instance
+scoped; sha `ad193b54`) passed the exactness gate and ran the frozen
+[protocol](PROTOCOL.md) ([`protocol.json`](protocol.json)). Its workflow committed
+the receipts to
+[`results/ci/run-38782995992-1/`](results/ci/run-38782995992-1/). Results are in
+[Results](#results). **The n = 83 timing family is labelled "harness noisy" by
+the frozen A/A rule, so none of its timing ratios is promoted.**
 
 ## Question
 
@@ -27,6 +30,122 @@ steps-to-collision penalty of each selector is measured where walks complete:
 n = 83, a = 1 (r = 8569786107849059), on the 64-point panel.
 
 ![Both walk designs, one lane-step each](figures/design.png)
+
+## Results
+
+Run 38782995992, attempt 1. Source: `results/ci/run-38782995992-1/analysis.json`
+and `analysis.txt`. Intervals are 95% (timing: percentile bootstrap over 30
+paired rounds; completion: bootstrap over the 64 targets), unadjusted, as the
+protocol states; the timing intervals describe round-to-round noise on this one
+runner, not variation between hosts.
+
+### Gates (frozen rules)
+
+| gate | result |
+| --- | --- |
+| exactness (12 cargo tests, KATs with CLMUL on and off, regenerated inputs, independent Python check, known-log solves) | **pass** (528 solves verified, 0 unverified, no failures) |
+| timing A/A at n = 131 (`bailey_aa/bailey` 0.9969 [0.9912, 1.0075]; `canon_aa/canon` 0.9992 [0.9942, 1.0030]) | **pass** |
+| timing positive control at n = 131 (`canon_exh/canon` 1.8401 [1.8317, 1.8449]) | **pass** |
+| timing A/A at n = 83 (`bailey_aa/bailey` 0.9909 [0.9904, 0.9914]; `canon_aa/canon` 0.9932 [0.9926, 0.9938]) | **"harness noisy"**: the point estimates are inside [0.97, 1.03] but both intervals exclude 1 |
+| timing positive control at n = 83 (`canon_exh/canon` 1.2781 [1.2764, 1.2806]) | pass |
+| completion positive control (`canon32_noneg/canon32` 1.5125 [1.3601, 1.6818]; predicted 1.414) | **pass** |
+| completion A/A (bailey seed 0/1: 0.8662 [0.7025, 1.0635]; canon32: 1.0174 [0.8529, 1.2151]) | **pass** (both contain 1) |
+
+Because the n = 83 A/A gate failed, the n = 83 ns/step values, ratios and
+shares below are reported as measured but **not promoted**, and so is the
+n = 131 / n = 83 ns/step ratio derived from them (1.49 bailey, 1.41 canon).
+
+### Step price at n = 131 (promoted)
+
+| arm | ns/lane-step [95%] | Ir/step (cachegrind) |
+| --- | --: | --: |
+| (a) Bailey | 324.07 [323.54, 324.92] | 4,498 |
+| (b) canonicalizing, 32 jumps | 415.83 [414.77, 417.73] | 5,202 |
+| (b) without canonicalization (`canon_null`) | 217.98 [217.77, 218.25] | 2,650 |
+| (b) with lift_scan skipped (`canon_nolift`; fruitless test kept, no escape) | 335.59 [335.45, 335.75] | 4,670 |
+| (b) with the exhaustive canonicalizer (positive control) | 765.17 [764.93, 765.45] | 7,567 |
+| (a) without the at-DP canonicalization (`bailey_nodpc`) | 325.72 [325.16, 326.51] | 4,485 |
+
+Paired ratios: **(a)/(b) = 0.7793 [0.7750, 0.7827]** (Ir: 0.8646). Canonicalization
+share, whole (`1 - canon_null/canon`): **0.476 [0.474, 0.478]** (Ir 0.491).
+lift_scan alone (`1 - canon_nolift/canon`): **0.193 [0.191, 0.197]** (Ir 0.102).
+Bailey's at-DP canonicalization share is -0.005 [-0.008, -0.002], that is, none
+measurable (the sign is timing noise).
+
+### Cycles per iteration, beside the 2009 figure
+
+At the runner's reported nominal clock (2.445 GHz; no maximum clock was
+reported, so no range is available): Bailey 792, canonicalizing 1,017
+cycles/iteration. The 2009 figure is 529 cycles/iteration on one core of a
+2.997 GHz Core 2 Extreme Q6850 (534 with four cores), ePrint 2009/541 sec. 4.
+The numbers are given side by side and not divided: the clock under load is
+not observable, the cores differ, and the 2009 code was bitsliced normal basis
+where design (a) here is polynomial-basis code with basis changes.
+
+### Steps to collision at n = 83, a = 1 (64 targets x 2 seeds per arm)
+
+All 512 solves verified (`[d]G = Q`, checked in Rust and in independent Python).
+
+| arm | steps / floor [95%] | heuristic prediction | escapes per step |
+| --- | --: | --: | --: |
+| (a) Bailey | 1.072 [0.988, 1.160] | 1.075 | 0 |
+| (b) canon32 | 1.006 [0.931, 1.084] | 1.016 | 0.00019 |
+| (b) canon8 | 0.997 [0.889, 1.112] | 1.069 | 0.00075 |
+| canon32_noneg (positive control) | 1.522 [1.398, 1.653] | 1.437 | ~0 |
+
+Ratios: bailey/canon32 **1.0657 [0.9664, 1.1694]**; canon8/canon32 0.9913
+[0.8786, 1.1126]; bailey/canon8 1.0751 [0.9618, 1.2069]. Per the protocol's
+power note, a 7% penalty is not distinguishable from 1 at this N, and it is not
+here.
+
+### Reading against the idea's claims
+
+| claim (IDEA-20261015-c6f017) | measured | reading |
+| --- | --- | --- |
+| 1. canonicalization share at n = 131 in [0.2, 0.5] | whole 0.476 [0.474, 0.478]; lift_scan alone 0.193 [0.191, 0.197] | whole: **inside**. lift_scan alone: just **below** 0.2 (interval upper bound 0.197) |
+| 2. Bailey/canon ns/step <= 0.6 (falsified above 0.85) | 0.7793 [0.7750, 0.7827] | **not met**, and **not falsified** (the interval is above 0.6 and below 0.85) |
+| 3. steps/floor ratio bailey/canon32 in [1.0, 1.25] (falsified above 1.4) | 1.0657 [0.9664, 1.1694] | point estimate **inside**; the interval reaches below 1.0 and excludes 1.4, so **not falsified** |
+
+### Model composition (not a measurement)
+
+ns/step at n = 131 x steps/floor measured at n = 83 x floor(131) = 2^60.81,
+valid only under heuristic H1 (the walk's penalty depends on the selector, not
+on n). Bailey: 2^60.91 steps, about 2.2e4 core-years at this run's 324 ns/step.
+Canonicalizing: 2^60.82 steps, about 2.7e4 core-years at 416 ns/step. The ratio
+is 0.83. This is a reference price for ECC2K-130 at this run's polynomial-basis
+code, not an attack cost, and it is not compared with crypto's tuned n = 83
+walk (not run here).
+
+### Figures
+
+![Per-step price of the two designs](figures/step_price.png)
+
+*Figure 2. ns/step per arm at n = 131 and n = 83 with 95% intervals
+([SVG](figures/step_price.svg)). The n = 83 panel carries the "harness noisy"
+label.*
+
+![Canonicalization shares](figures/shares.png)
+
+*Figure 3. Canonicalization shares from timing and Ir
+([SVG](figures/shares.svg)).*
+
+![Steps to collision](figures/completion.png)
+
+*Figure 4. Steps/floor per arm at n = 83, with the heuristic predictions
+([SVG](figures/completion.svg)).*
+
+Figures 2 to 4 are rendered by `make_figures.py` from the run's
+`analysis.json`; the SVGs are also in `results/ci/run-38782995992-1/figures/`.
+
+### Limits of this result
+
+* Tier 1, instance scoped: one runner, one pinned CPU, exclusivity not proven.
+* The n = 83 timing family failed its A/A gate; its ratios are not promoted.
+* The completion intervals are about +-13% (protocol power note), so the
+  selector penalty at n = 83 is resolved only against the 1.4 falsification
+  line and the sqrt(2) control.
+* Nothing here is about solving ECC2K-130, and the transfer of the n = 83
+  penalty to n = 131 holds only under H1.
 
 ## What was built
 
