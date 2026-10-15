@@ -1,0 +1,25 @@
+import NearestOrbit12211
+
+namespace NearestOrbitCovariance
+open SplitPrime12211NearestStep
+open SplitPrimeRadix
+
+def covarianceCheck (r : Nat) : Bool :=
+  decide (nearestDigit ((12100*r) % 12211) =
+    omegaMul (nearestDigit r))
+
+set_option maxRecDepth 100000 in
+set_option maxHeartbeats 0 in
+theorem all_runtime_digits_covariant :
+    (List.range 12211).all covarianceCheck = true := by decide
+
+theorem runtime_digit_covariant (r : Nat) (hr : r < 12211) :
+    nearestDigit ((12100*r) % 12211) =
+      omegaMul (nearestDigit r) := by
+  have h := (List.all_eq_true.mp all_runtime_digits_covariant) r
+    (List.mem_range.mpr hr)
+  exact of_decide_eq_true h
+
+#print axioms all_runtime_digits_covariant
+#print axioms runtime_digit_covariant
+end NearestOrbitCovariance

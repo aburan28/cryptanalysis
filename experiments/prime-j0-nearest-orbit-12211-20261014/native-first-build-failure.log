@@ -1,0 +1,75 @@
+   Compiling autocfg v1.5.1
+   Compiling serde_core v1.0.229
+   Compiling zmij v1.0.23
+   Compiling serde_json v1.0.151
+   Compiling memchr v2.8.3
+   Compiling itoa v1.0.18
+   Compiling subtle v2.6.1
+   Compiling hex v0.4.3
+   Compiling num-traits v0.2.19
+   Compiling num-integer v0.1.47
+   Compiling num-bigint v0.4.8
+   Compiling prime-j0-secp256k1-native-replay v0.1.0 (/private/tmp/prime-j0-nearest-orbit-12211-native)
+error[E0433]: failed to resolve: could not find `U256` in `super`
+    --> src/bin/eisenstein_fixed/unit_orbit_windows.rs:4471:54
+     |
+4471 |                         expected.y = u256_sub(super::U256::ZERO,expected.y);
+     |                                                      ^^^^ could not find `U256` in `super`
+     |
+help: consider importing this type alias through its public re-export
+     |
+4384 +     use crate::U256;
+     |
+help: if you import `U256`, refer to it directly
+     |
+4471 -                         expected.y = u256_sub(super::U256::ZERO,expected.y);
+4471 +                         expected.y = u256_sub(U256::ZERO,expected.y);
+     |
+
+error[E0369]: binary operation `==` cannot be applied to type `ct_bignum::Uint<4>`
+    --> src/bin/eisenstein_fixed/unit_orbit_windows.rs:4473:21
+     |
+4473 |                     assert_eq!(actual.x,expected.x);
+     |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |                     |
+     |                     ct_bignum::Uint<4>
+     |                     ct_bignum::Uint<4>
+     |
+note: an implementation of `PartialEq` might be missing for `ct_bignum::Uint<4>`
+    --> /Volumes/SSD990/llm/tmp/stack-tree-followup-20261013/suite/src/ct_bignum.rs:48:1
+     |
+  48 | pub struct Uint<const LIMBS: usize>(pub [u64; LIMBS]);
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ must implement `PartialEq`
+     = note: this error originates in the macro `assert_eq` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `ct_bignum::Uint<4>` with `#[derive(PartialEq)]`
+    -->  /Volumes/SSD990/llm/tmp/stack-tree-followup-20261013/suite/src/ct_bignum.rs:48:1
+     |
+  48 + #[derive(PartialEq)]
+  49 | pub struct Uint<const LIMBS: usize>(pub [u64; LIMBS]);
+     |
+
+error[E0369]: binary operation `==` cannot be applied to type `ct_bignum::Uint<4>`
+    --> src/bin/eisenstein_fixed/unit_orbit_windows.rs:4474:21
+     |
+4474 |                     assert_eq!(actual.y,expected.y);
+     |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |                     |
+     |                     ct_bignum::Uint<4>
+     |                     ct_bignum::Uint<4>
+     |
+note: an implementation of `PartialEq` might be missing for `ct_bignum::Uint<4>`
+    --> /Volumes/SSD990/llm/tmp/stack-tree-followup-20261013/suite/src/ct_bignum.rs:48:1
+     |
+  48 | pub struct Uint<const LIMBS: usize>(pub [u64; LIMBS]);
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ must implement `PartialEq`
+     = note: this error originates in the macro `assert_eq` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `ct_bignum::Uint<4>` with `#[derive(PartialEq)]`
+    -->  /Volumes/SSD990/llm/tmp/stack-tree-followup-20261013/suite/src/ct_bignum.rs:48:1
+     |
+  48 + #[derive(PartialEq)]
+  49 | pub struct Uint<const LIMBS: usize>(pub [u64; LIMBS]);
+     |
+
+Some errors have detailed explanations: E0369, E0433.
+For more information about an error, try `rustc --explain E0369`.
+error: could not compile `prime-j0-secp256k1-native-replay` (bin "eisenstein_fixed" test) due to 3 previous errors
