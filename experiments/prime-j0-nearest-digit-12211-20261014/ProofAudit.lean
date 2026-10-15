@@ -1,4 +1,4 @@
-import SplitPrime12211NearestComplete
+import SplitPrime12211GlobalMin
 
 #print axioms SplitPrime12211Nearest.step_bound
 #print axioms SplitPrime12211Nearest.selected_terminal_bound
@@ -10,3 +10,5 @@ import SplitPrime12211NearestComplete
 #print axioms SplitPrime12211NearestStep.digit_valid
 #print axioms SplitPrime12211NearestStep.bounded_step
 #print axioms SplitPrime12211NearestComplete.canonical_scheme_terminal_bound
+#print axioms SplitPrime12211GlobalMin.selected_is_global_minimum
+#print axioms SplitPrime12211GlobalMin.runtime_digit_is_global_minimum

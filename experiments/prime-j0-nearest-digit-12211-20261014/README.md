@@ -59,18 +59,21 @@ sign-canonical residues and proves a digit norm at most 3,997. The
 digit gives an integral quotient and the exact recoding identity. The
 [complete module](SplitPrime12211NearestComplete.lean) applies these facts
 to the certified scalar representative for all 18 positions. The
+[global-minimum module](SplitPrime12211GlobalMin.lean) proves that the
+runtime digit has minimum norm among every Eisenstein integer in its
+residue class. It bounds any competing coordinate from its norm, reduces
+the congruence to two integer lifts, and proves that one of three adjacent
+quotient choices cannot cost more. The
 [consolidated axiom audit](ProofAudit.lean) and build logs retain exact
 verification output; the reported axioms are `propext`,
 `Classical.choice`, and `Quot.sound`. Earlier failed and resource-heavy
 proof attempts remain as separate logs.
 
-The Lean theorem applies to the specified six-candidate selector and proves
-its residue congruence, norm cap, exact recoding, and terminal bound. The
-stronger assertion that this selector is globally minimum-norm among **all**
-congruent Eisenstein integers is verified by the exhaustive integer screen
-and the `|b| < 74` search bound above; a Lean theorem connecting that global
-minimum statement to the finite search remains open. That bridge does not
-enter the terminal-bound proof, which uses the checked norm cap.
+The global-minimum theorem quantifies over every integer-coordinate pair
+congruent to a runtime residue below 12,211. Its proof uses the certified
+3,997 norm cap to bound a potentially better competitor, then derives the
+two possible integer lifts and the locally dominating candidate. The
+full scalar terminal proof uses the independently checked norm cap.
 
 | Result | Lean declaration | Conditions |
 | --- | --- | --- |
@@ -78,6 +81,7 @@ enter the terminal-bound proof, which uses the checked norm cap.
 | Selected digit bound and congruence | `selected_digit_valid` | Canonical residue below 6106. |
 | Integral recoding step | `bounded_step` | Every integer-coordinate state. |
 | Eighteen-step terminal bound | `canonical_scheme_terminal_bound` | Every scalar in the certified representative lattice. |
+| Global minimum digit | `runtime_digit_is_global_minimum` | Every residue below 12,211 and every congruent integer-coordinate pair. |
 
 The local case-0 interval and table build are diagnostics. A Tier 1
 alternating same-scalar panel with A/A calibration is required to rank
