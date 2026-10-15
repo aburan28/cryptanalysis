@@ -27,6 +27,14 @@ The four-corner selector also has a direct coordinate envelope. Its lattice basi
 | Terminal norm below 5,000 after 15 selected-digit steps | `terminal_from_verified_digit_steps` | Checked under exact selector, residue, norm-tracking, and quotient hypotheses |
 | Fixed-limb reciprocal extraction, corner dispatch, actual digit-selection minimum, and 15-step implementation composition | — | Open |
 
+## Native recoder audit
+
+The [digit-selector audit](audit_native_alt_digit_selector.py) extracts the actual `nearest_alt_split_prime_digit` function and constants from the hash-pinned native provenance archive, compiles them with Rust 1.93.1, and compares every signed residue with the independent Python digit construction. Its [receipt](native-alt-digit-selector-audit.json) records **55,279 outputs, zero mismatches**, maximum digit norm 36,631, the archived source hash, extracted selector hash, harness and binary hashes, and stdout digest. This directly checks the implementation's minimum-norm selection for every table index.
+
+The [signed-limb step audit](audit_native_alt_unit_step.py) extracts the same selector and the exact `Signed192` addition, subtraction, small-radix division, small-factor multiplication, and `alt_split_prime_unit_step` methods from the frozen Rust sources. It compares each native next coordinate and folded digit index against independent integer quotient arithmetic for all **110,557 residues**, 121 coordinate edge combinations, and 4,096 seeded 130-bit coordinate pairs. Its [receipt](native-alt-unit-step-audit.json) records **114,774 cases, zero mismatches** and source, harness, input, binary, and stdout digests. Both audits are correctness checks; the pinned Rust source and finite cases support the implementation link while the Lean theorem still states its exact per-step hypotheses explicitly.
+
+Reproduce these receipts from this directory with `python3 audit_native_alt_digit_selector.py` and `python3 audit_native_alt_unit_step.py`. Both scripts verify the native archive SHA-256 before extracting code.
+
 The [hash-guarded overlay](native_alt_radix_overlay.py) applies to the frozen norm-136531 native source and builds the new rows using `334G - τG` as the successive base. It retains the same two-x orbit selection and affine layer reduction. The exact source, binary, failed first assertion receipt, corrected build, and replay are preserved in the [native provenance archive](alt-radix-native-provenance.tar.gz), SHA-256 `38194c291c28fe76efd057cdb6f08c60784e0ce9bc0c5dbdadea9cc9113b7090`. The first assertion failure came from a draft overlay that still used the prior `371` digit coefficient; the corrected hash-guarded overlay uses `334` in both digit selection and window-base advance.
 
 ## Measurement boundary
