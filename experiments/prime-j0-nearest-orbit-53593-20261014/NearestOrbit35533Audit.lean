@@ -2,6 +2,7 @@ import NearestOrbit35533Tie
 import NearestOrbit35533Complete
 import NearestOrbit35533Action
 import NearestOrbit35533Lattice
+import NearestOrbit35533Secp
 
 #print axioms NearestOrbit35533Digits.all_residues_have_small_candidate
 #print axioms NearestOrbit35533Digits.selected_digit_valid
@@ -13,3 +14,8 @@ import NearestOrbit35533Lattice
 #print axioms NearestOrbit35533Lattice.selected_candidate_congruent
 #print axioms NearestOrbit35533Lattice.radix_scalar_congruent
 #print axioms NearestOrbit35533Lattice.selected_scalar_point_replay
+#print axioms NearestOrbit35533Secp.beta_cube
+#print axioms NearestOrbit35533Secp.beta_quadratic
+#print axioms NearestOrbit35533Secp.generator_on_curve
+#print axioms NearestOrbit35533Secp.beta_preserves_curve
+#print axioms NearestOrbit35533Secp.selected_scalar_point_replay
