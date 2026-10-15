@@ -1,0 +1,26 @@
+# Checkpointed sparse Eisenstein scalar multiplication
+
+Five three-digit checkpoints reduce the prepared-table evaluation of 12,288 frozen secp256k1 scalars from **603.91 ms** to **474.79 ms** on the matched Tier 1 RunPod panel. The paired sparse-Horner/checkpoint median is **1.2702**, with predeclared 95% bootstrap interval **[1.2697, 1.2734]**. Every output verified against the frozen fixture, all 96 arms and 48 pairs completed, both surrounding A/A controls passed in every repetition, and the executed artifacts stayed stable. The checkpoint table retains **9,935,996 bytes**, versus **2,636,452 bytes** for sparse Horner.
+
+## Construction
+
+Write the scalar recoding as `d₀ + πd₁ + ⋯ + π¹⁴d₁₄ + π¹⁵t`, where `π=127+128τ`. Partition the 15 digits into five blocks of three. At table construction, build the same orbit-folded two-x digit window at bases `G, π³G, π⁶G, π⁹G, π¹²G`, plus a terminal window at `π¹⁵G`. At evaluation, each block combines its three digits using two `π` actions, then adds its resulting point to an accumulator. The terminal point enters once. This replaces the 15 runtime radix actions of the low-table Horner path with 10; the five checkpoint rows account for the extra retained memory and preparation.
+
+The [hash-guarded overlay](native_checkpointed_sparse_overlay.py) transforms the frozen sparse-radix native source in a separate source tree. The executed checkpoint windows SHA-256 is `d26ac59e430eb6353ac74f9c87980e519625064c6258136a21218bd28c6508b7` and binary SHA-256 is `aea4dc4cad81b7a9db328a27216c8f96fbcd4a2964e8d422c2cae5b8d9cf0631`. The 12,288-output [pilot stdout](checkpoint3-pilot-12288.stdout) records exact verification, 1,172.52 ms preparation, 483.76 ms evaluation, and 9,935,996 retained bytes; it is an untiered implementation check.
+
+## Matched RunPod panels
+
+Both panels used the serial benchmark worker, pinned execution CPU 40, 16 alternating repetitions, and adjacent reference/reference A/A controls. The [online manifest](tier1-checkpoint3-online-cpu40-manifest.json), [rules](tier1-checkpoint3-online-cpu40-rules.json), [launch receipt](tier1-checkpoint3-online-cpu40-launch.json), [auditor](analyze_tier1_checkpoint3_online.py), [audit](tier1-checkpoint3-online-cpu40-audit.json), and [raw archive](checkpoint3-online-tier1-raw.tar.gz) define the prepared-table workload. The [cold manifest](tier1-checkpoint3-cold-cpu40-manifest.json), [rules](tier1-checkpoint3-cold-cpu40-rules.json), [launch receipt](tier1-checkpoint3-cold-cpu40-launch.json), [auditor](analyze_tier1_checkpoint3_cold.py), [audit](tier1-checkpoint3-cold-cpu40-audit.json), and [raw archive](checkpoint3-cold-tier1-raw.tar.gz) define the one-scalar cold workload. Both auditors replay raw stdout, point verification, timing fields, A/A bounds, source and binary digests, and the predeclared aggregate rule. The shared [native provenance archive](checkpoint3-online-native-provenance.tar.gz) retains both executed source trees, fixtures, and binaries.
+
+| Matched workload | Sparse Horner mean | Checkpoint mean | Paired sparse/checkpoint median | 95% interval |
+| --- | ---: | ---: | ---: | ---: |
+| 12,288 outputs, prepared table | 603.91 ms | 474.79 ms | 1.2702 | [1.2697, 1.2734] |
+| One scalar, cold table | 256.41 ms | 1,170.03 ms | 0.21986 | [0.21921, 0.22055] |
+
+The prepared-table panel measures only scalar multiplication inside Rust `Instant`; setup and independent point verification are separate. The cold panel sums process-local table preparation and one scalar multiplication. All timing results are Tier 1 cloud-instance measurements with the observed envelope and controls recorded in the raw archives. The cold result locates this checkpoint schedule on a different preparation/throughput tradeoff from sparse Horner. The online archive SHA-256 is `319fb9e4b73f37a5c33cd82ebbae90550d3274dc0489c908861581c226b5a8c9`; the cold archive SHA-256 is `f45c48b34922af5d82def4bf1365b46848a72db9616e0de256ead37668c28cc6`; the shared provenance archive SHA-256 is `9f7dcd82b2db0121618828938b9ae69041a21772b37825df126f2c7e4666d4ad`.
+
+## Proof map
+
+The pinned Lean 4.34.1 [CheckpointedSparse.lean](CheckpointedSparse.lean) proves `sparse_add` (radix distributes over pair addition), `power_add`, `evaluate_append`, and `evaluate_blocks_flatten` (every partition into blocks evaluates to the original low-digit-first Horner pair). `map_evaluate_blocks` transfers the block identity to an abstract point evaluator under explicit addition and endomorphism-map hypotheses. The [fresh proof check](check_checkpointed_lean.py) and [receipt](checkpointed-lean-check.json) record source hashes, successful builds, and `#print axioms` output; only standard Lean foundations appear. A direct Lean instantiation of the secp256k1 point map and a proof that the Rust overlay implements the abstract block evaluator remain open. Exact native replay checks the frozen fixture separately.
+
+The next experiment should sweep checkpoint spacing and row count with the same matched cold and prepared-table gates, looking for the smallest table that retains a useful prepared-table gain. Each new schedule needs its own exact output replay and retained-byte accounting.

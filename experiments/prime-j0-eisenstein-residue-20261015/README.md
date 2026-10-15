@@ -2,12 +2,17 @@
 
 The current scalar-multiplication frontier in this experiment includes the
 [table-light Horner path](HORNER_RADIX.md) and the
-[sparse `127+128τ` radix](SPARSE_TAU_RADIX.md). The sparse radix verified
+[sparse `127+128τ` radix](SPARSE_TAU_RADIX.md), and the
+[five-block checkpointed schedule](CHECKPOINTED_SPARSE.md). The sparse radix verified
 12,288 frozen secp256k1 points and was 1.377× faster than the earlier Horner
 path in a qualified matched Tier 1 panel. Direct panels against full two-x
 prefetch measured a 12.36× one-scalar cold-start advantage for the sparse
 path and a 10.8× prepared-table throughput cost; the linked notes retain
 the distinct workload boundaries and raw receipts.
+The checkpointed schedule gave a qualified 1.270× prepared-table gain over
+sparse Horner on 12,288 outputs, while its one-scalar cold panel measured
+1,170.03 ms against 256.41 ms for sparse Horner; its note retains the
+independent audit and Lean block-identity proof.
 
 The secp256k1 prime splits in the Eisenstein integers. An exact norm-
 `p` element

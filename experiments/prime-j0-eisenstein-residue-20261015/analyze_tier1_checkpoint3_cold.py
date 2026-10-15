@@ -16,7 +16,7 @@ ROOT = '/workspace/bench-sources/'
 STEMS = {'reference':'prime-j0-sparse-tau-radix',
          'checkpoint':'prime-j0-sparse-checkpoint3'}
 ARCHIVE = HERE/'checkpoint3-cold-tier1-raw.tar.gz'
-PROVENANCE = HERE/'checkpoint3-cold-native-provenance.tar.gz'
+PROVENANCE = HERE/'checkpoint3-online-native-provenance.tar.gz'
 
 
 def load(path):
