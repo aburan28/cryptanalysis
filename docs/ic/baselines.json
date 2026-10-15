@@ -1,0 +1,350 @@
+{
+  "schema": "ic-baselines/v1",
+  "as_of": "2026-10-15",
+  "what_this_is": "The index-calculus baseline ledger (the ratchet). For each curve and size, the current best verified IC pipeline with its protocol, receipts and end-to-end S, and its distance to the matched rho and to Bernstein-Lange. One row, one experiment: no row combines numbers from two experiments. Human view: BASELINES.md.",
+  "rule": "AGENTS.md, 'Success criterion: iterative improvement of the index-calculus baseline' (owner, 2026-10-15; cryptanalysis#919, crypto#1908). Every verified, measured improvement over a baseline row is a success; a landed improvement replaces the row and the old row moves to ratchet_history with its delta. The gap to rho is the distance remaining, not a gate.",
+  "conventions": {
+    "gap_direction": "Every gap is IC cost over the reference's cost, so a value above 1 is the distance still to close and a value below 1 means the IC is cheaper on that boundary. The sources' own 'online speedup' (rho over IC) is the reciprocal; it is kept in each row's source_figure.",
+    "S": "S = cost / sqrt(r) in the unit named on the row. The unit differs between experiments (a batched affine addition in crypto's ic price; a rho step of the run's tuned rho at n=83; a rho group operation of CPU at n=19). S values compare inside a row only; the gap ratios carry no unit.",
+    "cold": "Every phase for one fresh target with empty caches: reusable setup (factor base, relations, linear algebra / log table, index) plus the online interval.",
+    "online": "From the first target-dependent operation to the verified scalar, reusable setup excluded (AGENTS.md, 'The default IC objective is one target').",
+    "intervals": "95% bootstrap over targets unless the row says otherwise. Inverting a ratio of means inverts its interval endpoints exactly.",
+    "evidence_tiers": "Tier 0 / Tier 1 as in AGENTS.md 'CPU performance evidence tiers'. 'crypto isolated_bench container' means one cloud container through crypto's isolation tool (pinned CPU, PSI gate, contended runs re-run), without a provider allocation receipt: it is neither Tier 0 nor Tier 1 here. 'exploratory' has no pinned CPU or allocation receipt.",
+    "tuned_rho": "'Tuned rho' means A's tuned StrongRhoG worker rT770 (Fold field kernel, 64 lanes, DP 6, escape off; crypto 770f6a69 examples/n83_rho_optimization_eval.rs with research/n83_evaluation_20261012/optimization/selected_config.json), the fastest correct n=83 reference found by experiments/koblitz-n83-reconcile-20261014. It has been run at n=83 only. ParallelRho (crypto ic price) is crypto's own 'tuned signed-Frobenius walk' (64 lanes in lockstep); it is reported where it is the matched rho, and it is not rT770."
+  },
+  "sizes": [19, 41, 53, 61, 83],
+  "baselines": [
+    {
+      "n": 19,
+      "a": 1,
+      "curve": {"curve_id": "EC1N19Ckb1h01617b86df6c", "alias": "E0/F_2^19 (volcano-ic surface curve)", "r": 130873},
+      "experiment": "cryptanalysis:experiments/volcano-ic/rho-arm-20261014",
+      "pipeline": {
+        "name": "tau-orbit dim-6 factor base, Sage Groebner decomposition, volcano-ic IC (arm tau6)",
+        "candidate_id": null,
+        "candidate_id_status": "no IC1 manifest was written for this arm",
+        "commit": "cryptanalysis 3f722e2e4897d956438c6bdf2becaf62dbde2f9e",
+        "protocol": "cryptanalysis:experiments/volcano-ic/rho-arm-20261014/protocol.json (sha256 e474ff26af62188cf267db119ae59f1d74addd107bcd4008d41f0f62227d96ed)",
+        "run": "GitHub Actions 38520305068 (sagemath/sagemath:10.10, AMD EPYC 9V45)"
+      },
+      "targets": "10 planted scalars, each a complete ECDLP; 640 rho solves",
+      "unit": "one rho group operation of CPU time (2.170e-5 s), per sqrt(r)",
+      "s_ic_cold": 5154.13,
+      "s_ic_online": null,
+      "s_ic_online_status": "not separable: every IC run here is one complete ECDLP from an empty cache, so only cold is measured",
+      "reference_rho": {
+        "name": "matched signed-Frobenius Pollard rho (rho_frob.py / arms.sage), same scalars, interleaved, same process",
+        "is_tuned_rho_rT770": false,
+        "s_rho_cold": 0.2603,
+        "steps_over_floor": 0.997
+      },
+      "gap_cold_ic_over_rho": {"value": 1.94e4, "ci95": [1.69e4, 2.23e4], "statistic": "geometric mean of CPU per complete ECDLP"},
+      "gap_online_ic_over_rho": null,
+      "gap_tuned_rho": "no tuned-rho comparison exists at n=19; the matched rho is a step-count-faithful (0.997x floor) Python/Sage walk, not a wall-time-tuned one",
+      "gap_bernstein_lange": {"kind": "none", "note": "not measured or modelled at n=19"},
+      "evidence_tier": "exploratory (GitHub-hosted VM, no allocation receipt, no pinned CPU)",
+      "verified": "10/10 scalars, all three arms; 640/640 rho logs",
+      "source_figure": "tau-orbit base / rho 1.94e4 (1.69e4-2.23e4); baseline base / rho 1.77e5; baseline / tau-orbit 9.124 (8.122-10.270)",
+      "next_improvement": "Move the tau6 arm's per-relation Groebner decomposition out of Sage into native code (or the subspace two-summand oracle PDP2ht) and re-run against the same rho arm and scalars; the Sage solve, not the base, is the cost.",
+      "sources": [
+        "cryptanalysis:experiments/volcano-ic/rho-arm-20261014/README.md",
+        "cryptanalysis:experiments/volcano-ic/rho-arm-20261014/results/summary.json",
+        "cryptanalysis:experiments/volcano-ic/rho-arm-20261014/report/report.pdf"
+      ]
+    },
+    {
+      "n": 41,
+      "a": 0,
+      "curve": {"curve_id": "EC1N41Ce0he09550ab560a", "icv1": "icv1-f2m41-tm2308219-7f48b14a", "r": 549756390943, "log2_r": 39.0},
+      "experiment": "crypto:research/ic_tool_program/rule/v3",
+      "pipeline": {
+        "name": "ic price --single-target at IC programme baseline v3: subgroup-orbit base (6,560 points, 80 columns), aimed m=3 collection, m=2 pair-table descent",
+        "candidate_id": "IC1N41Ckb0fb6560PDP3pairtableRCaimedLAsparseTDwalkISO0h5b25909970b3",
+        "commit": "crypto 995ea2071cc7453877a503d30eb561ae82cddab9 (binary sha256 9c3320390d74ae48b74382d2ec3f8b4b5b1585e5e8aa2448c0d78369807a26b4)",
+        "protocol": "crypto:research/ic_tool_program/rule/v3/PROTOCOL.md (under ledger section 23's protocol, crypto:research/ic_single_target_20260930/PROTOCOL.md)",
+        "run": "2026-10-06, one Intel Xeon @ 2.10GHz container, 68 processes"
+      },
+      "targets": "64 public hash-to-curve points T01-T64 (public_hash_seed 23000+i), one process each; T01-T04 again as the A/A",
+      "unit": "one batched affine addition (add_many over 1,024 points) in the row's own process, per sqrt(r)",
+      "s_ic_cold": 11.1691,
+      "s_ic_online": 0.1206,
+      "s_ic_setup": 11.0485,
+      "reference_rho": {
+        "name": "ParallelRho in the same process (crypto's signed-Frobenius walk, 64 lanes in lockstep), as built",
+        "is_tuned_rho_rT770": false,
+        "s_rho_cold": 1.4587,
+        "s_rho_online": 1.3184,
+        "ns_per_step_over_strong_walk": 0.562
+      },
+      "gap_cold_ic_over_rho": {"value": 7.657, "ci95": [6.900, 8.613]},
+      "gap_online_ic_over_rho": {"value": 0.0915, "ci95": [0.0706, 0.1159]},
+      "gap_tuned_rho": "no rT770 (Fold/64/DP6) comparison exists at n=41; experiment koblitz-s23-tuned-rho-20261015 (branch claude/ic-s23-tuned-rho) is frozen to measure it",
+      "gap_bernstein_lange": {"kind": "model", "ic_online_over_bl": 2.209, "note": "Bernstein-Lange given the IC's own setup as budget; a model, no BL walk ran"},
+      "break_even_targets": 9.22,
+      "evidence_tier": "crypto isolated_bench container (68 processes, 0 contended, 0 failed)",
+      "verified": "68/68 rows pass validate_claim at vs_rho; both certificates replayed out of process; logarithms equal ledger section 23's",
+      "source_figure": "online speedup 10.9x [8.63, 14.2] (rho over IC); cold 7.66x [6.90, 8.61] (IC over rho)",
+      "next_improvement": "Setup is 98.9% of cold S. Cut the reusable setup (pair-table build and collection) at fixed recipe; measure as a new IC programme round against v3.",
+      "sources": [
+        "crypto:research/ic_tool_program/rule/v3/README.md",
+        "crypto:research/ic_tool_program/rule/v3/analysis.json",
+        "crypto:research/notes/index-calculus/IC_TOOL_PROGRAM.md (section 7)"
+      ]
+    },
+    {
+      "n": 53,
+      "a": 0,
+      "curve": {"curve_id": "EC1N53Ce0hb097de99be9a", "icv1": "icv1-f2m53-tm56619371-dac20a85", "r": 21044858204113, "log2_r": 44.3},
+      "experiment": "crypto:research/ic_tool_program/rule/v3",
+      "pipeline": {
+        "name": "ic price --single-target at IC programme baseline v3: subgroup-orbit base (27,984 points, 264 columns), aimed m=3 collection, m=2 pair-table descent",
+        "candidate_id": "IC1N53Ckb0fb27984PDP3pairtableRCaimedLAsparseTDwalkISO0h715dd7692112",
+        "commit": "crypto 995ea2071cc7453877a503d30eb561ae82cddab9 (binary sha256 9c3320390d74ae48b74382d2ec3f8b4b5b1585e5e8aa2448c0d78369807a26b4)",
+        "protocol": "crypto:research/ic_tool_program/rule/v3/PROTOCOL.md",
+        "run": "2026-10-06, one Intel Xeon @ 2.10GHz container, 68 processes"
+      },
+      "targets": "64 public hash-to-curve points T01-T64, one process each; T01-T04 again as the A/A",
+      "unit": "one batched affine addition in the row's own process, per sqrt(r)",
+      "s_ic_cold": 16.9762,
+      "s_ic_online": 0.0576,
+      "s_ic_setup": 16.9186,
+      "reference_rho": {
+        "name": "ParallelRho in the same process, as built",
+        "is_tuned_rho_rT770": false,
+        "s_rho_cold": 1.2821,
+        "s_rho_online": 1.2358,
+        "ns_per_step_over_strong_walk": 0.527
+      },
+      "gap_cold_ic_over_rho": {"value": 13.24, "ci95": [11.75, 15.01]},
+      "gap_online_ic_over_rho": {"value": 0.0466, "ci95": [0.0362, 0.0593]},
+      "gap_tuned_rho": "no rT770 comparison exists at n=53; koblitz-s23-tuned-rho-20261015 is frozen to measure it",
+      "gap_bernstein_lange": {"kind": "model", "ic_online_over_bl": 1.771, "note": "model; no BL walk ran"},
+      "break_even_targets": 14.36,
+      "evidence_tier": "crypto isolated_bench container (68 processes, 0 contended, 0 failed)",
+      "verified": "68/68 rows pass validate_claim at vs_rho; certificates replayed; logarithms equal section 23's",
+      "source_figure": "online speedup 21.5x [16.9, 27.6]; cold 13.2x [11.8, 15.0]",
+      "next_improvement": "Setup is 99.7% of cold S. Cut the reusable setup at fixed recipe (R05's presence filter and #1242 made the last cut, 1.135x); then test the n53 representative-plus-Frobenius orbit domain as a setup replacement.",
+      "sources": [
+        "crypto:research/ic_tool_program/rule/v3/README.md",
+        "crypto:research/ic_tool_program/rule/v3/analysis.json"
+      ]
+    },
+    {
+      "n": 61,
+      "a": 0,
+      "curve": {"curve_id": "EC1N61Ce0hd8c15448081e", "icv1": "icv1-f2m61-t158598901-ab42b6c5", "r": 162888033982417, "log2_r": 47.2},
+      "experiment": "crypto:research/ic_tool_program/rule/v3",
+      "pipeline": {
+        "name": "ic price --single-target at IC programme baseline v3: subgroup-orbit base (39,040 points, 320 columns), aimed m=3 collection, m=2 pair-table descent",
+        "candidate_id": "IC1N61Ckb0fb39040PDP3pairtableRCaimedLAsparseTDwalkISO0he9352435e473",
+        "commit": "crypto 995ea2071cc7453877a503d30eb561ae82cddab9 (binary sha256 9c3320390d74ae48b74382d2ec3f8b4b5b1585e5e8aa2448c0d78369807a26b4)",
+        "protocol": "crypto:research/ic_tool_program/rule/v3/PROTOCOL.md",
+        "run": "2026-10-06, one Intel Xeon @ 2.10GHz container, 68 processes"
+      },
+      "targets": "64 public hash-to-curve points T01-T64, one process each; T01-T04 again as the A/A",
+      "unit": "one batched affine addition in the row's own process, per sqrt(r)",
+      "s_ic_cold": 24.9316,
+      "s_ic_online": 0.0788,
+      "s_ic_setup": 24.8528,
+      "reference_rho": {
+        "name": "ParallelRho in the same process, as built",
+        "is_tuned_rho_rT770": false,
+        "s_rho_cold": 1.1889,
+        "s_rho_online": 1.1681,
+        "ns_per_step_over_strong_walk": 0.497
+      },
+      "gap_cold_ic_over_rho": {"value": 20.97, "ci95": [18.60, 23.84]},
+      "gap_online_ic_over_rho": {"value": 0.0675, "ci95": [0.0506, 0.0882]},
+      "gap_tuned_rho": "no rT770 comparison exists at n=61; koblitz-s23-tuned-rho-20261015 is frozen to measure it",
+      "gap_bernstein_lange": {"kind": "model", "ic_online_over_bl": 3.517, "note": "model; no BL walk ran"},
+      "break_even_targets": 22.82,
+      "evidence_tier": "crypto isolated_bench container (68 processes, 0 contended, 0 failed)",
+      "verified": "68/68 rows pass validate_claim at vs_rho; certificates replayed; logarithms equal section 23's",
+      "source_figure": "online speedup 14.8x [11.3, 19.8]; cold 21.0x [18.6, 23.8]",
+      "next_improvement": "Setup is 99.7% of cold S and the cold gap grows as r^0.18 [0.14, 0.21]. Cut the setup at fixed recipe; the compact-orbit n=61 producer (K=500, record below) is the alternative pipeline to price on these 64 points.",
+      "sources": [
+        "crypto:research/ic_tool_program/rule/v3/README.md",
+        "crypto:research/ic_tool_program/rule/v3/analysis.json"
+      ]
+    },
+    {
+      "n": 83,
+      "a": 1,
+      "curve": {"curve_id": "EC1N83Ce1h35c7ced6b497", "icv1": "icv1-f2m83-t6151469093347-9eba6cd5", "r": 8569786107849059, "log2_r": 52.93},
+      "experiment": "cryptanalysis:experiments/koblitz-n83-bl-arm-20261014 (PR #918, branch claude/n83-bl-arm, not yet merged)",
+      "pipeline": {
+        "name": "koblitz_orbit_dlp_fast_online + ic_log_cache.patch: compact-orbit K600 base (99,600 points, 600 orbit columns), S3 root index, verified cached factor-log table",
+        "candidate_id": "IC1N83Ckb1fb99600PDP4s3rootindexRCguidedLAdenseTDsingleISO0hc0ecc1fffbd7",
+        "candidate_id_status": "the ID of B's claims (experiments/koblitz-single-target-n83-tier1-20261014) for the same producer, base and recipe",
+        "commit": "crypto 770f6a6925a0d29b768bd79074f54a173e967fe7; cryptanalysis 507c1ec4eba542f6e4ca584370a53c6e6c05072c",
+        "protocol": "cryptanalysis:experiments/koblitz-n83-bl-arm-20261014/protocol.json (sha256 b8e28e7121d4404fc0f02adcbcf521f41d0c319ce8327e3d595dfb4e16f598c1)",
+        "run": "GitHub Actions 38689817618, one ubuntu-24.04 runner (AMD EPYC 9V45), one pinned CPU"
+      },
+      "targets": "B's 16 fresh public points (one pinned process each), plus Q0 in 4 blocks",
+      "unit": "one rT770 rho step as measured in this run (180.82 ns), per sqrt(r); derived from wall ms of this run only",
+      "s_ic_cold": 32.931,
+      "s_ic_online": 0.0830,
+      "s_ic_setup": 32.848,
+      "wall_ms": {"ic_online_mean": 1389.91, "ic_cold": 551237.0, "P_IC": 549847.1, "P_IC_rank_stage": 520825, "P_IC_per_process_setup": 29022, "rho_online_mean": 1372.72, "rho_cold": 1529.48, "bl_online_mean": 5.914, "bl_cold": 558407.5},
+      "reference_rho": {
+        "name": "rT770, A's tuned StrongRhoG<Gf2_128 fold>, 64 lanes, DP 6, escape off, same points, same runner",
+        "is_tuned_rho_rT770": true,
+        "s_rho_cold": 0.0914,
+        "s_rho_online": 0.0820
+      },
+      "gap_cold_ic_over_rho": {"value": 360.4, "ci95": null, "statistic": "(P_IC + mean IC online) / (median rho setup + mean rho online)"},
+      "gap_online_ic_over_rho": {"value": 1.0125, "ci95": [0.304, 2.116], "reading": "not_separated"},
+      "gap_tuned_rho": "measured on this row: online not separated from parity, cold 360x",
+      "gap_bernstein_lange": {"kind": "measured", "ic_online_over_bl": {"value": 235.0, "ci95": [61.4, 644.8], "reading": "bl_online_faster_than_ic", "rows_bl_faster": "16/16"}, "ic_cold_over_bl_cold": 0.987, "s_bl_online": 0.000353, "note": "BL precomputation matched to P_IC in wall ms on the same CPU (1.6e-6); T = 48,180,186 points (1.93 GB)"},
+      "evidence_tier": "Tier 1 (instance scoped; GitHub-hosted runner; one pinned exposed CPU)",
+      "verified": "81/81 runs valid; every scalar replayed in oracle.py; positive controls, three table checks, step identity, IC work identity and the A/A passed",
+      "source_figure": "IC online / BL online 235 [61, 645]; rho online / IC online 0.988 [0.473, 3.29]; cold IC / rho 360; cold IC / BL 0.987",
+      "next_improvement": "The rank stage is 520.8 s of the 549.8 s precomputation (95% of cold S). Replace the sequential rank stage with the guided minimum-rank policy (eta 1/10 reached rank = columns in exactly that many rows at n=53) on the K600 base, then re-run this BL protocol; online, cut S3-root probes per target.",
+      "sources": [
+        "cryptanalysis:experiments/koblitz-n83-bl-arm-20261014/README.md (branch claude/n83-bl-arm)",
+        "cryptanalysis:experiments/koblitz-n83-bl-arm-20261014/run_github_38689817618/result.json (branch claude/n83-bl-arm)"
+      ]
+    }
+  ],
+  "other_records": [
+    {
+      "n": 41, "a": 0,
+      "role": "previous baseline (v0); superseded by rule v3",
+      "experiment": "crypto:research/ic_single_target_20260930 (ledger section 23)",
+      "pipeline": "ic price --single-target at crypto 0bf67f169f0762c8bd225760196803379cabdcb9; IC1N41Ckb0fb6560PDP3pairtableRCaimedLAsparseTDwalkISO0he13eaebe8e18",
+      "reference_rho": "ParallelRho, same process",
+      "unit": "batched addition of section 23's processes (2.3-3.2x dearer than v3's; S not comparable with v3's)",
+      "s_ic_cold": 5.5806, "s_ic_online": 0.0665, "s_rho_cold": 0.6937, "s_rho_online": 0.6244,
+      "gap_cold_ic_over_rho": {"value": 8.044, "ci95": [7.260, 9.011]},
+      "gap_online_ic_over_rho": {"value": 0.1066, "ci95": [0.0825, 0.1346]},
+      "gap_bernstein_lange": {"kind": "model", "ic_online_over_bl": 2.501},
+      "evidence_tier": "crypto isolated_bench container",
+      "sources": ["crypto:research/notes/index-calculus/RESEARCH_IC_BOUNDARY_LEDGER.md (section 23.4)", "crypto:research/ic_single_target_20260930/analysis.json"]
+    },
+    {
+      "n": 53, "a": 0,
+      "role": "previous baseline (v0); superseded by rule v3",
+      "experiment": "crypto:research/ic_single_target_20260930 (ledger section 23)",
+      "pipeline": "ic price --single-target at crypto 0bf67f16; IC1N53Ckb0fb27984PDP3pairtableRCaimedLAsparseTDwalkISO0hea53259919c9",
+      "reference_rho": "ParallelRho, same process",
+      "unit": "batched addition of section 23's processes",
+      "s_ic_cold": 7.3988, "s_ic_online": 0.0277, "s_rho_cold": 0.5032, "s_rho_online": 0.4848,
+      "gap_cold_ic_over_rho": {"value": 14.70, "ci95": [13.06, 16.66]},
+      "gap_online_ic_over_rho": {"value": 0.0572, "ci95": [0.0443, 0.0734]},
+      "gap_bernstein_lange": {"kind": "model", "ic_online_over_bl": 2.021},
+      "evidence_tier": "crypto isolated_bench container",
+      "sources": ["crypto:research/notes/index-calculus/RESEARCH_IC_BOUNDARY_LEDGER.md (section 23.4)", "crypto:research/ic_single_target_20260930/analysis.json"]
+    },
+    {
+      "n": 61, "a": 0,
+      "role": "previous baseline (v0); superseded by rule v3",
+      "experiment": "crypto:research/ic_single_target_20260930 (ledger section 23)",
+      "pipeline": "ic price --single-target at crypto 0bf67f16; IC1N61Ckb0fb39040PDP3pairtableRCaimedLAsparseTDwalkISO0h031e95eb18e6",
+      "reference_rho": "ParallelRho, same process",
+      "unit": "batched addition of section 23's processes",
+      "s_ic_cold": 15.1490, "s_ic_online": 0.0527, "s_rho_cold": 0.4794, "s_rho_online": 0.4658,
+      "gap_cold_ic_over_rho": {"value": 31.60, "ci95": [28.18, 35.72]},
+      "gap_online_ic_over_rho": {"value": 0.1131, "ci95": [0.0843, 0.1478]},
+      "gap_bernstein_lange": {"kind": "model", "ic_online_over_bl": 8.042},
+      "evidence_tier": "crypto isolated_bench container",
+      "sources": ["crypto:research/notes/index-calculus/RESEARCH_IC_BOUNDARY_LEDGER.md (section 23.4)", "crypto:research/ic_single_target_20260930/analysis.json"]
+    },
+    {
+      "n": 41, "a": 0,
+      "role": "other verified pipeline (complete cold CPU, one target)",
+      "experiment": "crypto:research/notes/ecc2k130/disjoint_cold_v2_outcome_20261001 (hosted run 36803331080)",
+      "pipeline": "compact-orbit W64 policy, K85, unfiltered, fresh complete process (factor base, full rank, LA, descent, check); crypto 38c173072e16f580237447c93b085634275ba048",
+      "reference_rho": "fresh 32-walk signed-Frobenius Kuhn-Struik normal-basis rho, same public points (not rT770)",
+      "unit": "child user+system CPU seconds; S unset by the source",
+      "gap_cold_ic_over_rho": {"value": 13.378, "ci95": [9.367, 18.491], "statistic": "paired compact/rho CPU, geometric mean, log-t interval"},
+      "gap_online_ic_over_rho": null,
+      "gap_bernstein_lange": {"kind": "none"},
+      "evidence_tier": "hosted run with A/A and quiet-host gates passed and a second-host replay; not a Tier 1 allocation receipt",
+      "sources": ["crypto:docs/ic/BOUNDARY_TARGETS.md (complete cold compact-orbit panel)", "crypto:research/notes/ecc2k130/disjoint_cold_v2_outcome_20261001/RESULT.md"]
+    },
+    {
+      "n": 53, "a": 0,
+      "role": "other verified pipeline (complete cold CPU, one target)",
+      "experiment": "crypto:research/notes/ecc2k130/disjoint_cold_v2_outcome_20261001 (hosted run 36803331080)",
+      "pipeline": "compact-orbit W64 policy, K220, unfiltered; crypto 38c17307",
+      "reference_rho": "fresh 32-walk signed-Frobenius normal-basis rho, same public points (not rT770)",
+      "unit": "child CPU seconds; S unset by the source",
+      "gap_cold_ic_over_rho": {"value": 22.675, "ci95": [17.904, 31.595]},
+      "gap_online_ic_over_rho": null,
+      "gap_bernstein_lange": {"kind": "none"},
+      "evidence_tier": "hosted run with A/A and quiet-host gates passed and a second-host replay; not a Tier 1 allocation receipt",
+      "sources": ["crypto:research/notes/ecc2k130/disjoint_cold_v2_outcome_20261001/RESULT.md"]
+    },
+    {
+      "n": 61, "a": 0,
+      "role": "other verified pipeline (one target, online and cold)",
+      "experiment": "crypto autolab run 20261012T202048Z-5521627904 (x86_64 gvisor host); boundary ledger vs_rho record",
+      "pipeline": "compact-orbit IC, K=500 (61,000 base points, 500 orbit columns); IC1N61Ckb0fb61000PDP4s3rootindexRCguidedLAdenseTDsingleISO0h1e817ac07994; crypto e3090cbc98c657106fef10020da8ccc19be49a3f",
+      "reference_rho": "strong rho rung 3 (koblitz_rho_batch_ks_strong_online, 32 lanes, DP 4), same public point (not rT770)",
+      "unit": "wall ms; S unset by the source",
+      "gap_cold_ic_over_rho": {"value": 83.373, "ci95": null, "statistic": "median of per-workload cold ratios"},
+      "gap_online_ic_over_rho": {"value": 0.0717, "ci95": [0.0523, 0.1020], "statistic": "inverse of the median per-workload online speedup 13.94 [9.81, 19.13]"},
+      "gap_bernstein_lange": {"kind": "none"},
+      "evidence_tier": "taskset-pinned container with a CPU-isolation receipt (cpus_allowed_list 2); 64 workloads, claim check PASS 64/64",
+      "sources": ["crypto:docs/ic/BOUNDARY_TARGETS.md (Regime B vs_rho)", "crypto:docs/ic/boundary_targets.json (regimes.koblitz.records.vs_rho.current)"]
+    },
+    {
+      "n": 83, "a": 1,
+      "role": "same pipeline as the n=83 baseline, earlier experiment (merged)",
+      "experiment": "cryptanalysis:experiments/koblitz-n83-reconcile-20261014 (GitHub run 38617911080, AMD EPYC 7763)",
+      "pipeline": "iB770c: koblitz_orbit_dlp_fast_online + ic_log_cache.patch, cached K600 table; crypto 770f6a69",
+      "reference_rho": "rT770 tuned (Fold/64/DP6), seeds 830000+w and 202610061+w averaged per point",
+      "unit": "wall ms; S in rT770 steps (280.3 ns in this run) per sqrt(r)",
+      "s_ic_online": 0.0783, "s_rho_online": 0.0849,
+      "gap_cold_ic_over_rho": {"value": 313.3, "ci95": null, "statistic": "(fresh-rank IC setup on Q0, arm iB770f, + mean IC online) / (median rT770 setup + mean rT770 online)"},
+      "gap_online_ic_over_rho": {"value": 0.923, "ci95": [0.279, 1.779], "reading": "not separated from parity", "statistic": "mean IC / mean rT770 over 16 fresh points"},
+      "gap_bernstein_lange": {"kind": "none"},
+      "evidence_tier": "Tier 1 (instance scoped)",
+      "sources": ["cryptanalysis:experiments/koblitz-n83-reconcile-20261014/README.md", "cryptanalysis:experiments/koblitz-n83-reconcile-20261014/run_github_38617911080/panel/result.json"]
+    },
+    {
+      "n": 83, "a": 1,
+      "role": "same pipeline, first Tier 1 run, against a weaker rho",
+      "experiment": "cryptanalysis:experiments/koblitz-single-target-n83-tier1-20261014 (GitHub run 38523707244, AMD EPYC 9V74)",
+      "pipeline": "koblitz_orbit_dlp_fast_online + ic_log_cache.patch; IC1N83Ckb1fb99600PDP4s3rootindexRCguidedLAdenseTDsingleISO0hc0ecc1fffbd7; crypto 770f6a69",
+      "reference_rho": "strong rho rung 3 (32 lanes, DP 4): 618 vs 490 ns per step against StrongRhoG on one CPU (reconcile), so not the matched tuned rho",
+      "unit": "wall ms; S unset by the source",
+      "gap_cold_ic_over_rho": {"value": 134, "ci95": null, "statistic": "Panel B"},
+      "gap_online_ic_over_rho": {"value": 0.361, "ci95": [0.111, 0.657], "statistic": "inverse of Panel B's section 23 figure 2.769 [1.521, 8.990]"},
+      "gap_bernstein_lange": {"kind": "model", "ic_online_over_bl": 33.5, "note": "the model the BL arm later measured at 235"},
+      "evidence_tier": "Tier 1 (instance scoped); replicate run 38532240007 agrees",
+      "sources": ["cryptanalysis:experiments/koblitz-single-target-n83-tier1-20261014/README.md", "cryptanalysis:experiments/koblitz-single-target-n83-tier1-20261014/tier1_github_38523707244/"]
+    }
+  ],
+  "ratchet_history": [
+    {"n": 41, "from": "section 23 (v0, crypto 0bf67f16)", "to": "rule v3 (crypto 995ea207)", "cold_gap": [8.044, 7.657], "online_gap": [0.1066, 0.0915], "class": "engineering (the IC programme's rounds R03, R05, R07); measured as the rule's comparison, class accounting in that comparison itself", "note": "paired cold-time ratios between baselines are in IC_TOOL_PROGRAM.md section 7; S is not compared across the two units"},
+    {"n": 53, "from": "section 23 (v0)", "to": "rule v3", "cold_gap": [14.70, 13.24], "online_gap": [0.0572, 0.0466], "class": "engineering"},
+    {"n": 61, "from": "section 23 (v0)", "to": "rule v3", "cold_gap": [31.60, 20.97], "online_gap": [0.1131, 0.0675], "class": "engineering"}
+  ],
+  "stage_results": [
+    {
+      "stage": "normal-basis least-rotation canonicalization (word level; no curve, no ECDLP)",
+      "n": 131,
+      "experiment": "cryptanalysis:experiments/canon-n131-20261014",
+      "result": "five exact canonicalizers on [u64; 3]; cachegrind Ir per uniform word: lift_scan 513.6, gap_scan 1,434.9, exhaustive 1,849.6, exhaustive_bf 3,664.0, refine_bf 4,510.0 (0 mismatches on 10M uniform and every structured family)",
+      "evidence_tier": "deterministic instruction counts; wall times exploratory",
+      "pipeline_effect": "none yet: a stage improvement becomes a pipeline improvement only once it moves end-to-end S",
+      "sources": ["cryptanalysis:experiments/canon-n131-20261014/README.md"]
+    },
+    {
+      "stage": "the same five canonicalizers inside a decomposition-style loop",
+      "n": 131,
+      "experiment": "cryptanalysis:experiments/canon-n131-loop-20261014 (GitHub run 38607684318, AMD EPYC 7763)",
+      "result": "lift_scan fastest on all four workloads; 16/16 primary contrasts resolve at the Bonferroni level, ratios 1.83-3.81; in-loop Ir per key over the loop floor: lift_scan 519, gap_scan 1,760, exhaustive 2,883",
+      "evidence_tier": "Tier 1 (instance scoped) for the timing; cachegrind counts local and deterministic",
+      "pipeline_effect": "none yet (no n=131 pipeline exists); at n=53 the isolated ranking did not survive the loop (papers/frobenius-orbits section 4/7)",
+      "sources": ["cryptanalysis:experiments/canon-n131-loop-20261014/README.md"]
+    }
+  ],
+  "open": [
+    "n=41, 53, 61: the gap to the tuned rho rT770 is unmeasured; experiments/koblitz-s23-tuned-rho-20261015 (branch claude/ic-s23-tuned-rho) is frozen to measure it with the v3 pipeline on section 23's 64 points per size",
+    "n=19 and n=41-61: no Bernstein-Lange walk has run; their BL figures are models or absent",
+    "n=83: the baseline row's experiment is on PR #918, not yet merged",
+    "n=19: no IC1 candidate manifest; online S not separable"
+  ]
+}
