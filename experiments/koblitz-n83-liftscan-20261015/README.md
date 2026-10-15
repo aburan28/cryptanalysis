@@ -5,13 +5,15 @@ date: 2026-10-15
 
 # Two-limb lift_scan in the n = 83 index-calculus pipeline
 
-**Status (2026-10-15): protocol frozen and run started; no timing result
-yet.** The Tier 1 run is GitHub Actions run [38776966036](https://github.com/aburan28/cryptanalysis/actions/runs/38776966036), started by the push of commit `37dcdfaf8` to branch `claude/n83-liftscan`. Every number below is an exact
-count, an exactness check, or an earlier experiment's figure. None is a
-timing measurement of this experiment. The stage ratio, the online ratio,
-the new baseline `S` and the tuned-rho gap are **pending**. They will come
-from `verify_receipt.py` on the archived receipt, under the decision rule in
-[`protocol.json`](protocol.json).
+**Status (2026-10-15): measured; frozen decision rule applied; verdict
+`improvement` at both levels.** GitHub Actions run
+[38776966036](https://github.com/aburan28/cryptanalysis/actions/runs/38776966036)
+(attempt 1, one `ubuntu-24.04` runner, AMD EPYC 9V74, Tier 1 instance scope)
+ran the frozen [protocol](protocol.json). Its artifact
+`n83-liftscan-38776966036-1` is archived in
+[`run_github_38776966036/`](run_github_38776966036/). The one-target online
+interval on Q0 and on B's 16 fresh points is **1.53 [1.51, 1.53]** and
+**1.52 [1.51, 1.52]** times faster with `lift_scan`. See [Result](#result).
 
 ## Question
 
@@ -79,7 +81,7 @@ experiment's figures, shown for location only
     baseline interval, with a bootstrap interval.
   - `(qF - qL)/qF` is the saving `lift_scan` realizes.
   - The `target_pdp_ms / online_ms` share is reported too.
-  - All three are **pending** the run.
+  - Measured by this run: see [Result](#result).
 
 ## The canonicalizer
 
@@ -206,18 +208,85 @@ written and committed before any timing. `make_schedule.py --check` and
 
 ## Result
 
-**Pending** run 38776966036. The archive step is:
+Run 38776966036, attempt 1, sha `37dcdfaf8` (`run_github_38776966036/panel/result.json`
+and `result_table.md`). `verify_receipt.py` re-run on a copy of the archived
+panel, with the pinned crypto `770f6a69` verifier sources, reproduced
+`result.json` byte for byte. Intervals are 95% bootstrap (frozen).
 
-1. Download artifact `n83-liftscan-<run_id>-<attempt>` into
-   `run_github_<run_id>/`.
-2. Run `python3 verify_receipt.py run_github_<run_id>/panel` with the
-   snapshots restored (it must reproduce `result.json` byte for byte).
-3. Run `python3 make_figures.py run_github_<run_id>/panel/result.json`.
-4. Fill this section from `result_table.md`:
-   - the stage ratio and the online ratios, each with its interval;
-   - the canonicalization share;
-   - the new baseline `S_rho` and its delta;
-   - the tuned-rho gap on Q0 and the fresh points.
+**Gates.** All hold: every scheduled row valid; stage exactness (12,000,064
+words, 0 disagreements) and online exactness (every probe word on Q0 and the 16
+fresh points); stage pair certificate equals the frozen one; probes, relation
+and scalar identical across arms per point; IC and tuned rho agree on the scalar;
+every point replays as `[d]G = Q`; Q0 equals the validation sidecar. Both A/A
+controls lie inside [0.97, 1.03] and both planted controls exceed 1.
+(Only the untimed `qV` exactness rows carry a `major page faults` contention
+flag.)
+
+**Frozen verdict.** Online: **improvement** (Q0 and the section-23 fresh primary
+are both improvements). Stage: **improvement**. Ratchet: **the `lift_scan`
+pipeline is the new one-target baseline.**
+
+| statistic | estimate [95%] | reading |
+| --- | --- | --- |
+| Online Q0 primary, full scan / lift_scan (median of 8 blocks) | **1.531 [1.509, 1.534]** | improvement |
+| Online fresh primary (section 23, ratio of means over 16 points) | **1.515 [1.506, 1.525]** | improvement |
+| Fresh median per-point ratio | 1.518 [1.511, 1.528] | |
+| Q0 variant B (gap scan) / lift_scan | 1.000 [0.997, 1.012] | tie |
+| Q0 full scan / variant B | 1.518 [1.510, 1.533] | |
+| Online A/A, full / full | 1.000 [0.992, 1.006] | pass |
+| Online planted, full + discarded full / full | 1.408 [1.401, 1.415] | pass |
+| Canonicalization share of the Q0 interval | 0.408 [0.401, 0.415] | derived |
+| Realized saving on Q0, (qF - qL)/qF | 0.347 | |
+| Stage primary, canonicalization phase B / lift_scan | **2.272 [2.268, 2.275]** | improvement |
+| Stage secondary, target stage B / lift_scan | 1.155 [1.140, 1.169] | improvement |
+| Stage A/A (canonicalization; target stage) | 1.000 [0.998, 1.002]; 1.001 [0.989, 1.022] | pass |
+| Stage planted, B + discarded B / B | 1.760 [1.755, 1.763] | pass |
+
+Probes are unchanged by construction (8,845,441 on Q0), so the saving is per
+probe: Q0 ns/probe 480.3 (full scan) to 316.0 (`lift_scan`); variant B in the
+online path is 314.7.
+
+**New baseline `S` and its delta.** `S_probe = probes/sqrt(r)` is unchanged
+(Q0 0.09555, fresh 0.04299). `S_rho` is the online interval in this job's
+tuned-rho steps over sqrt(r) (rho 245.5 ns/step):
+
+| panel | `S_rho` old (full scan) | `S_rho` new (`lift_scan`) | delta |
+| --- | --: | --: | --: |
+| Q0 (online mean 4,248 ms to 2,795 ms) | 0.1869 | 0.1230 | **-0.0639** (-34%) |
+| 16 fresh (1,903 ms to 1,256 ms) | 0.0837 | 0.0552 | **-0.0285** (-34%) |
+
+**Gap to the tuned rho (rT770, Fold/64/DP6), rho online / IC online.** Above 1
+means the IC is faster; below 1, rho is faster.
+
+| panel | old baseline | new baseline |
+| --- | --- | --- |
+| Q0, ratio of means (8 blocks) | 0.597 [0.442, 0.758]: rho faster | **0.911 [0.673, 1.164]: not separated** |
+| Q0, median of block ratios | 0.552 [0.342, 0.917] | 0.838 [0.516, 1.405] |
+| 16 fresh, section 23 | 0.984 [0.476, 3.408] | 1.491 [0.727, 5.145] |
+
+So the change closes the Q0 gap from rho being 1.68 times faster (separated) to
+parity within noise. On the 16 fresh points the gap was never separated and is
+not now; those intervals are wide because three points carry most of the probes.
+No gap to Bernstein-Lange was measured here (this protocol has no BL arm).
+
+**Reading.**
+
+- The improvement is a measured engineering change to the online stage on this
+  instance. It is exact: probes, relations and scalars are identical to the
+  full-scan baseline on all 17 points.
+- The saving matches the planted control: one extra full scan per probe costs
+  40.8% of the interval and `lift_scan` removes 34.7% of it, close to variant B,
+  which is the same within noise (1.000 [0.997, 1.012]).
+- The stage ratio (2.27) is larger than the target-stage ratio (1.155) because
+  the canonicalization phase is a fraction of that stage.
+- Not claimed: a gain at other sizes, a cold or setup gain (the index build
+  still uses the full scan), or any statement about beating rho.
+
+![Result summary](figures/result.png)
+
+*Figure. Every frozen ratio with its 95% bootstrap interval, and the distance
+to the tuned rho ([source](figures/result.tex), [vector](figures/result.pdf),
+rendered by `make_figures.py`).*
 
 ## Local validation (2026-10-15, cloud agent VM; no timing claims)
 
