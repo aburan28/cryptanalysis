@@ -276,12 +276,19 @@ def preflight_tier1(manifest):
     if sys.platform != "linux":
         problems.append("Tier 1 requires Linux")
     else:
-        try:
-            allowed = os.sched_getaffinity(0)
-            if manifest["isolation"]["execution_cpu"] not in allowed:
-                problems.append("execution CPU is outside container affinity")
-        except OSError as exc:
-            problems.append("cannot inspect CPU affinity: " + str(exc))
+        cgroup = tier1_cgroup()
+        effective = read(cgroup / "cpuset.cpus.effective") if cgroup else None
+        if not effective:
+            problems.append("container effective cpuset unavailable")
+        else:
+            try:
+                allowed = cpu_set(effective)
+            except ValueError:
+                problems.append("container effective cpuset invalid: " + effective)
+            else:
+                evidence["container_effective_cpus"] = sorted(allowed)
+                if manifest["isolation"]["execution_cpu"] not in allowed:
+                    problems.append("execution CPU is outside container effective cpuset")
         sampled = tier1_counters(cpus)
         evidence["counter_probe"] = sampled
         if sampled is None or not all(cpu in sampled["per_cpu"] for cpu in cpus):
