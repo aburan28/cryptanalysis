@@ -115,8 +115,46 @@ python3 experiments/prime-j0-nearest-orbit-12211-20261014/rolling_overlay.py /ab
 CARGO_TARGET_DIR=/private/tmp/nearest-orbit-target cargo test --manifest-path /absolute/path/to/source-crate/Cargo.toml --offline --locked --release --bin eisenstein_fixed split_prime_ -- --test-threads=1 --nocapture
 ```
 
-The next gate is a Tier 1 or Tier 0 isolated, alternating same-scalar
-panel with A/A noise controls to rank the direct and rolling orbit
-evaluators against the sign-only nearest-digit and norm-4,831 paths.
-The finite covariance theorem, exhaustive screen, and native point-image
-tests provide separate checks of the selected-map symmetry.
+## RunPod Tier 1 comparison
+
+The [frozen panel](tier1-runpod-20261014/panels/direct-vs-rolling.json)
+compared the direct and rolling orbit evaluators on the first five scalars of
+the pre-existing 128-case holdout, with eight alternating repetitions per
+scalar. The serial service ran on CPU 2 and pinned each child to CPU 13 of
+one 8-vCPU, 16-GB RunPod `cpu3c` Pod (`thyvmdqmzsz5ik`, EU-RO-1). All
+three source crates were rebuilt on Linux with Rust 1.93.1 and their native
+correctness suites passed. The [allocation receipt](tier1-runpod-20261014/panels/allocation.json),
+[host probe](tier1-runpod-20261014/panels/host-probe.json), binary/source
+hashes, raw stdout/stderr, counter snapshots, and the declared A/A bound
+are retained with the panel.
+
+Each direct-versus-rolling pair was bracketed by sign-only-versus-itself
+A/A pairs. The [audit](tier1-analysis.json), reproduced by
+`python3 experiments/prime-j0-nearest-orbit-12211-20261014/analyze_tier1.py`,
+checked every producer output against the frozen scalar and public point.
+All **240 arms** completed and all **120 runner pairs** were valid; every
+artifact hash remained stable. Five of the 40 comparisons had an adjacent
+A/A ratio outside the preregistered `[0.80, 1.25]` interval. The latency
+ranking therefore remains **unqualified** for this panel. The descriptive
+direct/rolling median ratio across all 40 comparisons was **0.9548**;
+their arithmetic mean online intervals were **0.02828 ms** and
+**0.02993 ms**, respectively. These sub-30-µs intervals make calibration
+especially important. The per-case ratios and failed A/A cells remain in
+the audit and [raw ledgers](tier1-runpod-20261014/9cf2881670f8411a8850c19ab6aa0525/).
+
+The first job
+[`6420977ea4ee4ce6ab78c5eb1a4cdd89`](tier1-runpod-20261014/6420977ea4ee4ce6ab78c5eb1a4cdd89/)
+was rejected before any benchmark arm: preflight checked the housekeeping
+service's CPU-2 affinity for the child CPU 13. The corrected runner
+checked the container effective cpuset; its permanent change was merged
+in [PR #900](https://github.com/aburan28/cryptanalysis/pull/900). The
+completed job is
+[`9cf2881670f8411a8850c19ab6aa0525`](tier1-runpod-20261014/9cf2881670f8411a8850c19ab6aa0525/).
+Both jobs retain distinct manifests and preflight receipts.
+
+The next latency experiment should lengthen the measured interval with a
+fixed, independently checked scalar batch inside one warmed process, then
+repeat the same adjacent A/A gate. A separate matched panel can rank the
+rolling orbit table against the sign-only nearest-digit format. The finite
+covariance theorem, exhaustive screen, and native point-image tests remain
+the correctness basis for the selected-map symmetry.
