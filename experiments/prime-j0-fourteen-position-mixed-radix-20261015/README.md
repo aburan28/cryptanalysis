@@ -7,6 +7,7 @@ The ordered radix schedule `394−τ, 380−τ, 380−τ, (371−τ)×11` reduce
 | Exact 50-prime-norm fixed sweep, four-start coordinate search, radius and orbit counts | [`screen14.py`](screen14.py), [`screen14.json`](screen14.json) |
 | Integer reversal and independent affine secp256k1 replay on 164 scalars | [`replay14.py`](replay14.py), [`replay14.json`](replay14.json) |
 | Conditional ordered-radix radius theorem and axiom audit | [`OrderedPrimeNorm14Bound.lean`](OrderedPrimeNorm14Bound.lean), [`check_lean14.sh`](check_lean14.sh), [`lean-check.log`](lean-check.log) |
+| Fixed `371−τ` native timing gate | [`native371_overlay.py`](native371_overlay.py), [`linux-test.log`](linux-test.log), [`linux-build.log`](linux-build.log), [`linux-preflight.stdout`](linux-preflight.stdout), [`tier1-fixed14-rules.json`](tier1-fixed14-rules.json), [`tier1-fixed14-manifest.json`](tier1-fixed14-manifest.json) |
 
 The fixed sweep covers `T=300…600` with prime norm `T²−3T+3`. For each of the 50 rows, the screen enumerates every residue, chooses the minimum-score six-candidate digit, checks sign and six-unit covariance, and counts the terminal lattice and orbit seeds exactly. Four coordinate descents from uniform `T∈{371,380,394,400}` use prime-norm choices in `330…430` and preserve all four local outcomes in the JSON. The selected schedule is the smallest found by that declared local search; no global optimum over ordered schedules is asserted.
 
@@ -21,3 +22,5 @@ Lean 4.34.1 checks the polynomial norm identity for a variable radix, the fourte
 | Selected initial state to terminal radius | `OrderedPrimeNorm14.selected_terminal_bound` | Canonical scalar representative, exact fourteen radix recurrences, stated per-position digit norm bounds; checked |
 | Chosen-digit admissibility | Candidate-specific theorem pending | Exact selector checked for all residues by `screen14.py`; Lean certificate pending |
 | Concrete point action | Candidate-specific theorem pending | 164 independent affine point replays passed |
+
+The fixed `371−τ` native evaluator is a cheaper timing gate for fourteen positions before changing the table structure to support the ordered schedule. A hash-guarded overlay of the checked 15-position Rust source passed the exhaustive 136,531-residue test and the 128-case independent binary point holdout. The standalone 96-pass preflight verified all 12,288 outputs, reported 26,035,988 retained bytes and 3,946.25 ms preparation, and recorded 135.64 ms hot-table online time. That single preflight is a correctness and resource diagnostic; the frozen Tier 1 manifest defines the paired timing gate against the 15-position reference on the same 128 points, with sixteen alternating repeats and adjacent A/A controls.
