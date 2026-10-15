@@ -6,7 +6,7 @@ date: 2026-10-15
 # Two-limb lift_scan in the n = 83 index-calculus pipeline
 
 **Status (2026-10-15): protocol frozen and run started; no timing result
-yet.** The Tier 1 run is started by the push of branch `claude/n83-liftscan`; its run ID is recorded here in a follow-up commit. Every number below is an exact
+yet.** The Tier 1 run is GitHub Actions run [38776966036](https://github.com/aburan28/cryptanalysis/actions/runs/38776966036), started by the push of commit `37dcdfaf8` to branch `claude/n83-liftscan`. Every number below is an exact
 count, an exactness check, or an earlier experiment's figure. None is a
 timing measurement of this experiment. The stage ratio, the online ratio,
 the new baseline `S` and the tuned-rho gap are **pending**. They will come
@@ -206,7 +206,7 @@ written and committed before any timing. `make_schedule.py --check` and
 
 ## Result
 
-**Pending** the Tier 1 run. The archive step is:
+**Pending** run 38776966036. The archive step is:
 
 1. Download artifact `n83-liftscan-<run_id>-<attempt>` into
    `run_github_<run_id>/`.
