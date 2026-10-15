@@ -1,0 +1,12 @@
+import SplitPrime12211NearestComplete
+
+#print axioms SplitPrime12211Nearest.step_bound
+#print axioms SplitPrime12211Nearest.selected_terminal_bound
+#print axioms SplitPrime12211NearestDigits.selected_le_candidate
+#print axioms SplitPrime12211NearestDigits.candidate_congruent
+#print axioms SplitPrime12211NearestDigits.selected_congruent
+#print axioms SplitPrime12211NearestDigits.all_residues_have_small_candidate
+#print axioms SplitPrime12211NearestDigits.selected_digit_valid
+#print axioms SplitPrime12211NearestStep.digit_valid
+#print axioms SplitPrime12211NearestStep.bounded_step
+#print axioms SplitPrime12211NearestComplete.canonical_scheme_terminal_bound
