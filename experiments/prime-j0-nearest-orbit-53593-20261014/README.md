@@ -1,4 +1,6 @@
-# Six-unit radix 233−τ with 16 positions
+# Six-unit prime-norm scalar radices with 16 positions
+
+The `190−τ` implementation has a verified **1.049 paired hot-table throughput ratio** against the 18-position norm-12,211 rolling format on a frozen 128-scalar secp256k1 workload, repeated 64 times per arm. All adjacent A/A controls passed the Tier 1 RunPod gate. The repeat-level bootstrap interval was [1.038,1.061] on this allocation. Its 6,829,948-byte retained table and 1.28-second mean preparation are charged separately from the online interval. The directly measured one-call latency panel remains unqualified because its A/A controls failed. The source, proof checks, and every raw arm are linked below.
 
 The radix π = 233−τ, with τ²−3τ+3 = 0, has norm 53,593. A nearest-norm digit for each quotient residue and a six-unit orbit table give a 16-position scalar recoding on the secp256k1 GLV coefficient lattice. The selected digit table has 8,933 orbit seeds, including zero. Its maximum norm is 17,787. The terminal norm is bounded by 16 after 16 steps, with 10 terminal orbit seeds. A direct 64-byte-per-point payload for all digit windows and terminal seeds is 9,148,032 bytes; table metadata and alignment add to this.
 
@@ -14,6 +16,7 @@ The six-candidate selector searches the two centered residue lifts and three nea
 | RunPod single-scalar Tier 1 panel | [`tier1-analysis.json`](tier1-analysis.json), [`analyze_tier1.py`](analyze_tier1.py), [`tier1-runpod-20261014`](tier1-runpod-20261014) |
 | RunPod hot-table throughput panel | [`tier1-batch-analysis.json`](tier1-batch-analysis.json), [`analyze_batch_tier1.py`](analyze_batch_tier1.py) |
 | Two-radix Tier 1 throughput panel | [`tier1-batch190-analysis.json`](tier1-batch190-analysis.json), [`analyze_batch190_tier1.py`](analyze_batch190_tier1.py) |
+| Direct 18-position versus 190−τ sustained panel | [`tier1-batch64-analysis.json`](tier1-batch64-analysis.json), [`analyze_batch64_tier1.py`](analyze_batch64_tier1.py) |
 | Prime-norm radix shape sweep | [`radix-frontier.json`](radix-frontier.json), [`radix_frontier.py`](radix_frontier.py) |
 | Norm-35,533 refinement | [`screen190.json`](screen190.json), [`group-replay190.json`](group-replay190.json), [`native190_overlay.py`](native190_overlay.py), [`NearestOrbit35533Bound.lean`](NearestOrbit35533Bound.lean) |
 
@@ -42,6 +45,8 @@ For `190−τ`, the wider global digit search agreed with the six-candidate sele
 
 The direct Tier 1 comparison of the two 16-position formats used the same frozen 128-scalar, 16-pass batch. All 96 arms and 48 pairs verified, with stable artifacts and every adjacent A/A control inside [0.90,1.11]. The paired median norm-53,593/norm-35,533 throughput ratio was **1.0143**, with a repeat-level bootstrap interval of **[1.0054,1.0438]**. Mean online cost was 12.12 versus 11.92 microseconds per scalar; mean preparation was 1,727 versus 1,280 ms.
 
-The first direct 18-position versus `190−τ` panel also verified all 96 arms and 48 pairs, with a descriptive median ratio of 1.0423. Two adjacent A/A pairs failed [0.90,1.11] after one reference arm in each pair rose by about 6–7 ms without a recorded involuntary context switch. Its qualified ratio is unknown. The full failed-gate receipts are retained in [`tier1-batch-final-analysis.json`](tier1-batch-final-analysis.json). A separately frozen 64-pass, 8,192-operation-per-arm panel tests whether a longer interval reduces this noise fraction under the same RunPod allocation; it keeps the same A/A gate and retains every arm.
+The first direct 18-position versus `190−τ` panel also verified all 96 arms and 48 pairs, with a descriptive median ratio of 1.0423. Two adjacent A/A pairs failed [0.90,1.11] after one reference arm in each pair rose by about 6–7 ms without a recorded involuntary context switch. Its qualified ratio is unknown. The full failed-gate receipts are retained in [`tier1-batch-final-analysis.json`](tier1-batch-final-analysis.json). The separately frozen 64-pass, 8,192-operation-per-arm panel retained the same A/A gate and every arm to test whether a longer interval reduced this noise fraction under the same RunPod allocation.
+
+That 8,192-operation direct panel completed all 96 arms and 48 pairs with stable artifacts and every adjacent A/A control in [0.90,1.11]. The paired median 18-position/`190−τ` throughput ratio was **1.0492** with a repeat-level bootstrap interval of **[1.0382,1.0608]**. Mean online cost was 12.35 versus 11.77 microseconds per scalar in this repeated workload. Mean target-independent preparation was 506 versus 1,285 ms; retained bytes were 2,448,196 versus 6,829,948. The 2,048-operation direct panel above remains recorded with its failed gate. A repeat-bootstrap interval describes variation across the 16 repetitions on this one cloud allocation and frozen scalar law.
 
 The next experiment is a native implementation with a frozen source/input/table manifest, paired against the 18-position radix on the same scalar set and Tier 1 RunPod envelope. Include point precomputation, memory and setup accounting, conversion, and alternating A/A gates. No latency result is attached to this format yet.
