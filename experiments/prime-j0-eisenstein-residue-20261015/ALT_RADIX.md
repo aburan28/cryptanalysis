@@ -103,6 +103,19 @@ Job `de77e82993f64a88ac9a5c3bb517d98a` completed 96 valid arms and 48 valid pair
 
 Every adjacent A/A ratio passed the frozen `[0.90,1.11]` range. The qualified paired median precomputed/compact ratio is `0.958086`, with paired bootstrap 95% interval `[0.954503,0.959973]`. The compact table saves **8,941,760 bytes (32.6%)** and pays a measured **4.4%** time increase on this Tier 1 batch workload. This result supports a mixed representation that stores the second x coordinate only where its saved multiplication outweighs its cache cost.
 
+### Alternating full and compact rows
+
+The [mixed-row overlay](native_alt_mixed_rows_overlay.py) stores the second x coordinate in digit rows 0, 2, 4, 6, 8, 10, 12, and 14. The other seven digit rows and the terminal table retain compact affine points and compute the rotation when selected. The [smoke receipt](mixed-rows-smoke.stdout) verified 122,880 frozen outputs and 23,205,220 retained bytes. The [rules](tier1-alt-mixed-rows-cpu40-rules.json), [manifest](tier1-alt-mixed-rows-cpu40-manifest.json), [launch receipt](tier1-alt-mixed-rows-launch.json), and [auditor](analyze_tier1_alt_mixed_rows.py) were committed before panel results.
+
+Job `6c0ff61826e444e6b9e6189082a0ceaf` completed 96 valid arms and 48 valid pairs with stable artifacts. The [audit](tier1-alt-mixed-rows-cpu40-audit.json) checked exact output and per-arm table bytes against the sealed [raw archive](alt-mixed-rows-tier1-raw.tar.gz), SHA-256 `da8c4dda844fb317cf6aafe8b5486f765149d4b98a8474fd35b65ae7d536441f`, and the [native provenance archive](alt-mixed-rows-native-provenance.tar.gz), SHA-256 `8319edd97a14bfd874083c0559b667e1374e26482429fa735e99801ea33cdaf8`.
+
+| Tier 1 ten-pass stream; 122,880 checked outputs per arm | Precomputed two-x | Alternating mixed rows |
+| --- | ---: | ---: |
+| Retained table bytes | 27,429,548 | 23,205,220 |
+| Mean timed interval | 575.976729 ms | 599.883383 ms |
+
+Every adjacent A/A ratio passed `[0.90,1.11]`. The qualified paired median precomputed/mixed ratio is `0.960865`, with paired bootstrap 95% interval `[0.952513,0.970107]`. This schedule saves **4,224,328 bytes (15.4%)** and pays a measured **4.1%** time increase on the frozen Tier 1 batch stream. Its time is close to the separate compact-table panel despite retaining more memory; a direct paired mixed/compact panel would be needed to rank those two smaller formats.
+
 ## Eight-lane wavefront gather
 
 The [wavefront overlay](native_alt_wavefront_overlay.py) separates recoding, prefetch, and affine gather across chunks of eight scalar inputs. It uses the same 15 digit rows, terminal table, two-x entries, and affine reduction as the per-scalar prefetch path. The [exact-replay smoke receipt](wavefront8-smoke.stdout) verified 122,880 outputs on the frozen fixture with 27,429,548 retained bytes. The [predeclared rules](tier1-alt-wavefront8-cpu40-rules.json), [manifest](tier1-alt-wavefront8-cpu40-manifest.json), [launch receipt](tier1-alt-wavefront8-launch.json), and [auditor](analyze_tier1_alt_wavefront8.py) were committed before panel results existed.
