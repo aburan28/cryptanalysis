@@ -78,3 +78,16 @@ Job `1445ccaffbf7479793ef49eb9005730e` completed 96 valid arms and 48 valid pair
 | Mean timed interval | 622.543735 ms | 573.521775 ms |
 
 The descriptive median paired baseline/prefetch ratio is `1.086784`, with paired bootstrap 95% interval `[1.037856,1.117295]`. The before-comparison A/A control in repeat 7 measured `0.866888`, outside the frozen range. The aggregate is therefore `unknown_after_tier_gate`, with qualified comparison ratio `null`. This panel establishes exact replay and a promising cost shape for the prefetch path; a fresh independently frozen panel and passing A/A controls are needed to resolve its timing. Reproduce the audit with `python3 analyze_tier1_alt_prefetch.py`.
+
+## Eight-lane wavefront gather
+
+The [wavefront overlay](native_alt_wavefront_overlay.py) separates recoding, prefetch, and affine gather across chunks of eight scalar inputs. It uses the same 15 digit rows, terminal table, two-x entries, and affine reduction as the per-scalar prefetch path. The [exact-replay smoke receipt](wavefront8-smoke.stdout) verified 122,880 outputs on the frozen fixture with 27,429,548 retained bytes. The [predeclared rules](tier1-alt-wavefront8-cpu40-rules.json), [manifest](tier1-alt-wavefront8-cpu40-manifest.json), [launch receipt](tier1-alt-wavefront8-launch.json), and [auditor](analyze_tier1_alt_wavefront8.py) were committed before panel results existed.
+
+Job `d726b8604ac44cbda6612f7906844d8a` completed 96 valid arms and 48 valid pairs with stable artifacts. The [audit](tier1-alt-wavefront8-cpu40-audit.json) checked every output and expected point against the sealed [raw archive](alt-wavefront8-tier1-raw.tar.gz) and exact source and binaries in the [native provenance archive](alt-wavefront8-native-provenance.tar.gz). Their SHA-256 digests are `98fb61ecc74825e5b401892573ffe613c629c053613b606a687a360995635d7d` and `d041f28879788c8bc5fbf3712bbb62f05ccade0e55de125fca49ebf3cdb00cfc`.
+
+| Tier 1 ten-pass stream; 122,880 checked outputs per arm | Per-scalar prefetch | Eight-lane wavefront |
+| --- | ---: | ---: |
+| Retained table bytes | 27,429,548 | 27,429,548 |
+| Mean timed interval | 564.105001 ms | 566.963761 ms |
+
+All adjacent A/A controls passed the frozen `[0.90,1.11]` range. The descriptive median prefetch/wavefront ratio was `1.002449`, with paired bootstrap 95% interval `[0.988639,1.010655]`. The Tier 1 noise gate passed, but the paired interval spans one, so the aggregate status is `unknown_after_tier_gate` and qualified comparison ratio is `null`. The eight-lane schedule has no resolved timing advantage in this panel. Reproduce the audit with `python3 analyze_tier1_alt_wavefront8.py`.
