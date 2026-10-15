@@ -152,6 +152,32 @@ class IsolatedBenchTests(unittest.TestCase):
         after["memory_events"]["oom"] = 1
         self.assertEqual(len(bench.tier1_noise(before, after)), 2)
 
+    def test_tier1_preflight_checks_container_cpuset_with_pinned_service(self):
+        manifest = {"isolation": {"execution_cpu": 13},
+                    "allocation": {"provider": "runpod", "instance_id": "pod-1"}}
+        counters = {"per_cpu": {13: {}}, "cpu_stat": {"nr_throttled": 0},
+                    "memory_events": {"oom": 0}}
+        effective = "2,13"
+
+        def fake_read(path):
+            return effective if str(path).endswith("cpuset.cpus.effective") else None
+
+        with (mock.patch.object(bench, "require_manifest", return_value=({13}, set(), None)),
+              mock.patch.object(bench, "host_probe", return_value={"affinity": [2]}),
+              mock.patch.object(bench, "tier1_cgroup", return_value=bench.CGROUP_ROOT),
+              mock.patch.object(bench, "tier1_counters", return_value=counters),
+              mock.patch.object(bench, "read", side_effect=fake_read),
+              mock.patch.object(bench.sys, "platform", "linux")):
+            result = bench.preflight_tier1(manifest)
+            self.assertTrue(result["ok"], result["problems"])
+            self.assertEqual(result["evidence"]["container_effective_cpus"], [2, 13])
+            effective = "2"
+            self.assertIn("execution CPU is outside container effective cpuset",
+                          bench.preflight_tier1(manifest)["problems"])
+            effective = ""
+            self.assertIn("container effective cpuset unavailable",
+                          bench.preflight_tier1(manifest)["problems"])
+
     def test_tier1_requires_repeated_consistent_pairs_for_claim(self):
         with tempfile.TemporaryDirectory() as dirname:
             root = Path(dirname)
