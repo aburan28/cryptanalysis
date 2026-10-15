@@ -79,6 +79,17 @@ Job `1445ccaffbf7479793ef49eb9005730e` completed 96 valid arms and 48 valid pair
 
 The descriptive median paired baseline/prefetch ratio is `1.086784`, with paired bootstrap 95% interval `[1.037856,1.117295]`. The before-comparison A/A control in repeat 7 measured `0.866888`, outside the frozen range. The aggregate is therefore `unknown_after_tier_gate`, with qualified comparison ratio `null`. This panel establishes exact replay and a promising cost shape for the prefetch path; a fresh independently frozen panel and passing A/A controls are needed to resolve its timing. Reproduce the audit with `python3 analyze_tier1_alt_prefetch.py`.
 
+### Independent prefetch replication
+
+The [replication plan](tier1-alt-prefetch-rep2-plan.json) and [launch receipt](tier1-alt-prefetch-rep2-launch.json) committed the unchanged manifest and acceptance rules before job `b773ba315139428ab2d5935a9c848b33` ran. The second job was audited alone; its pairs were not pooled with the earlier failed-gate panel. It completed 96 valid arms and 48 valid pairs with stable artifacts and exact replay. The [precommitted auditor](analyze_tier1_alt_prefetch_rep2.py) checked the sealed [raw records](alt-prefetch-rep2-tier1-raw.tar.gz), SHA-256 `a12641bbba9e9859273303b00e1253676bbb5debfbcb49a77ab503f22e5cce1b`, against the unchanged [native provenance archive](alt-prefetch-native-provenance.tar.gz), SHA-256 `d7a9cd83f0722cfae10fc540a7b2f18f2109d5a1b20eebeb6a62b4a5caf4a907`.
+
+| Tier 1 ten-pass stream; 122,880 checked outputs per arm | Baseline gather | Per-scalar prefetch |
+| --- | ---: | ---: |
+| Retained table bytes | 27,429,548 | 27,429,548 |
+| Mean timed interval | 636.302152 ms | 565.837533 ms |
+
+Every adjacent A/A ratio passed `[0.90,1.11]`. The paired median baseline/prefetch ratio is **`1.123359`**, with predeclared paired bootstrap 95% interval **`[1.083259,1.169518]`**. The [audit receipt](tier1-alt-prefetch-rep2-cpu40-audit.json) records `tier_gate_passed: true`, `aggregate_status: qualified`, and the preserved earlier failed-gate result remains separate. This is a qualified Tier 1 batch-throughput improvement for the exact ten-pass stream on the observed RunPod instance, with table preparation and fixture loading outside the timed interval.
+
 ## Eight-lane wavefront gather
 
 The [wavefront overlay](native_alt_wavefront_overlay.py) separates recoding, prefetch, and affine gather across chunks of eight scalar inputs. It uses the same 15 digit rows, terminal table, two-x entries, and affine reduction as the per-scalar prefetch path. The [exact-replay smoke receipt](wavefront8-smoke.stdout) verified 122,880 outputs on the frozen fixture with 27,429,548 retained bytes. The [predeclared rules](tier1-alt-wavefront8-cpu40-rules.json), [manifest](tier1-alt-wavefront8-cpu40-manifest.json), [launch receipt](tier1-alt-wavefront8-launch.json), and [auditor](analyze_tier1_alt_wavefront8.py) were committed before panel results existed.
