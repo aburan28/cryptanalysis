@@ -14,13 +14,15 @@ The digit-norm premise has an elementary bound that avoids relying on the exhaus
 
 The [independent digit screen](screen_alt_digit_prime.py) exhaustively enumerates the 55,279 signed residue representatives, checking the congruence and rotation norm for each. Its [record](alt-digit-geometry.json) reports maximum digit norm 36,631 and 18,427 sign/rotation seeds including zero. The terminal construction uses `|a|,|b| ≤ 100` and norm below 5,000; it has 14,901 points and 3,025 orbit seeds including zero. The native replay reached this terminal domain for every frozen input. The remaining formalization bridge is the existing scalar-lattice selector's 130-bit coordinate envelope, which implies `Q(a,b)≤7·2^260`; the Lean recurrence takes this envelope and the digit-norm bound as hypotheses. The current implementation asserts the terminal bound when recoding; the full all-scalar formalization remains partial.
 
+The four-corner selector also has a direct coordinate envelope. Its lattice basis is `W=(671331852483699643819086596696745227419,−367917413016453100223835821029139468248)` and `V=(−238911465918039986966665730306072050094,303414439467246543595250775667605759171)`, with determinant equal to the scalar order `n`. Let `q_w=floor(kV₁/n)` and `q_v=floor(−kW₁/n)`. The identity `k(1,0)=(kV₁/n)W+(−kW₁/n)V` shows that every offset `(d_w,d_v)∈{0,1}²` yields `a+bτ=αW+βV` with `−1≤α,β<1`. Thus `|a|≤|W₀|+|V₀|=910243318401739630785752327002817277513<2^130` and `|b|≤|W₁|+|V₁|=671331852483699643819086596696745227419<2^130`. The [constant screen](screen_selector_corner_bound.py) checks the determinant, subgroup congruences, equal basis norms, and these strict margins. This argument applies to any of the four corners, including the fallback path; a separate faithful Lean theorem for the floor and fixed-limb selector remains open. A direct Lean `omega` attempt on the 256-bit constants was stopped after repeated long runs, so no checked all-scalar selector theorem is reported.
+
 | Result | Lean declaration | Status |
 | --- | --- | --- |
 | Exact quotient by `334−τ` | `quotient_step` | Checked |
 | Centered-error identity for the candidate digit | `digit_candidate_norm_identity` | Checked |
 | Norm contraction for a digit with `Q(d)≤N` | `quotient_norm_step` | Checked |
 | Terminal norm below 5,000 after 15 steps | `terminal_from_prime_norm_digits` | Checked under its stated initial-norm and step hypotheses |
-| Selector coordinate envelope and complete recoder composition | — | Open |
+| Selector corner coordinate envelope and complete recoder composition | — | Integer argument and constants checked; faithful Lean selector theorem open |
 
 The [hash-guarded overlay](native_alt_radix_overlay.py) applies to the frozen norm-136531 native source and builds the new rows using `334G - τG` as the successive base. It retains the same two-x orbit selection and affine layer reduction. The exact source, binary, failed first assertion receipt, corrected build, and replay are preserved in the [native provenance archive](alt-radix-native-provenance.tar.gz), SHA-256 `38194c291c28fe76efd057cdb6f08c60784e0ce9bc0c5dbdadea9cc9113b7090`. The first assertion failure came from a draft overlay that still used the prior `371` digit coefficient; the corrected hash-guarded overlay uses `334` in both digit selection and window-base advance.
 
