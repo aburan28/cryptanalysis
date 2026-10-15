@@ -11,7 +11,8 @@ import subprocess
 
 HERE = Path(__file__).resolve().parent
 THEOREMS = ('family_shortcut','family_norm','family_residue',
-            'family_residue_polynomial','family_norm_scaling')
+            'family_residue_polynomial','family_norm_scaling',
+            'radix64_terminal_from_norm_step')
 
 
 def run(command,env):
