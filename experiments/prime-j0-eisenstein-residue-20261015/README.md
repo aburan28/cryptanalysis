@@ -266,3 +266,8 @@ all frozen points. Its 1,036.845373 ms full-stream diagnostic versus roughly
 64–68 ms for the ordinary-field cached paths falsifies direct pair-field
 accumulation as the next timing candidate; its source, binary, and receipt
 remain archived.
+
+The [hybrid reduction screen](HYBRID_TREE.md) moves the final one or two
+affine tree layers to XYZZ joins and batch-normalizes outputs. Both variants
+replayed 12,288 points with the same norm-110557 table; their diagnostics
+were close to the all-affine path and are retained as stage evidence.
