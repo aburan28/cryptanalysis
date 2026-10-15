@@ -12,16 +12,20 @@ spec = importlib.util.spec_from_file_location("radix_tier1_audit", PARENT)
 auditor = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(auditor)
 auditor.HERE = HERE
-JOBS = ("c24e37df66ad4b1a891f1805798a0887",
-        "fe00f695389443f08d6cbf003f1a8b7e")
+JOBS = {
+    "c24e37df66ad4b1a891f1805798a0887": ("tier1-affine-rules.json","tier1-affine-manifest.json"),
+    "fe00f695389443f08d6cbf003f1a8b7e": ("tier1-affine-rules.json","tier1-affine-manifest.json"),
+    "251bb8443cad471ab3e6162307fd0c46": ("tier1-affine-cpu40-rules.json","tier1-affine-cpu40-manifest.json"),
+}
 
 
 def audit(job):
     assert job in JOBS
-    auditor.PANELS = {96: (job,"tier1-affine-rules.json","tier1-affine-manifest.json")}
+    rules_name,manifest_name = JOBS[job]
+    auditor.PANELS = {96: (job,rules_name,manifest_name)}
     result = auditor.audit(96)
     folder = HERE / job
-    rules = auditor.load(HERE / "tier1-affine-rules.json")
+    rules = auditor.load(HERE / rules_name)
     summary = auditor.load(folder / "summary.json")
     runs = auditor.lines(folder / "runs.jsonl")
     reference = "/workspace/bench-sources/prime-j0-xyzz-batch-size-native"
@@ -44,6 +48,6 @@ def audit(job):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--job",choices=JOBS,default=JOBS[0])
+    parser.add_argument("--job",choices=JOBS,default=next(iter(JOBS)))
     args = parser.parse_args()
     print(json.dumps(audit(args.job),sort_keys=True,indent=2))
