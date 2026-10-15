@@ -68,10 +68,18 @@ the rolling three-class identity, and the two-rotation upper bound. It
 imports the checked nearest-digit global-minimum module.
 Its `#print axioms` output in [lean-check.log](lean-check.log) contains
 only `propext`, `Classical.choice`, and `Quot.sound`. The exact 2,036/699
-counts and covariance of the selected finite digit map are independently
-checked by `screen.py`; a kernel-checked finite-map covariance theorem
-remains to be built. The concrete secp256k1 endomorphism correspondence
-is independently exercised by the affine point replay.
+counts are checked by `screen.py`. The
+[finite covariance module](NearestOrbitCovariance.lean) proves that
+`nearestDigit ((12100*r) % 12211) = ω(nearestDigit r)` for every
+`r < 12211`. It uses 96 generated, kernel-checked chunks of at most
+128 residues; [the build log](covariance-lean-check.log) reports only
+`propext` and `Quot.sound` for the final theorem. The first monolithic
+proof was stopped after 12.2 minutes and 6.6 GB observed RSS; the
+resource-cap [receipt](covariance-monolithic-cap.json), its
+[source attempt](NearestOrbitCovarianceMonolithic.lean.attempt), and a
+subsequent noncomputable-definition build error are preserved separately.
+The concrete secp256k1 endomorphism
+correspondence is independently exercised by the affine point replay.
 
 | Result | Lean declaration | Scope |
 | --- | --- | --- |
@@ -81,6 +89,7 @@ is independently exercised by the affine point replay.
 | Sign action | `negate_residue` | Every integer coefficient pair. |
 | Rolling accumulator identity | `rolling_three_classes` | Arbitrary sums in the three unit classes. |
 | Aggregate rotation bound | `rotation_count_le_two` | Every class-occupancy pattern. |
+| Runtime digit covariance | `runtime_digit_covariant` | Every residue `r < 12211`; exact selected pair. |
 
 Reproduce the screen and proof from this checkout with the pinned Lean
 4.34.1 toolchain and built parent modules:
@@ -89,6 +98,8 @@ Reproduce the screen and proof from this checkout with the pinned Lean
 python3 experiments/prime-j0-nearest-orbit-12211-20261014/screen.py
 python3 experiments/prime-j0-nearest-orbit-12211-20261014/group_replay.py
 LEAN_PATH=/private/tmp/lean-8011-fresh:/private/tmp/lean-12211-direct:/private/tmp/adaptive-unit-lean lean experiments/prime-j0-nearest-orbit-12211-20261014/NearestOrbit12211.lean
+python3 experiments/prime-j0-nearest-orbit-12211-20261014/generate_covariance.py
+LEAN_PATH=/private/tmp/lean-8011-fresh:/private/tmp/lean-12211-direct:/private/tmp/adaptive-unit-lean lean experiments/prime-j0-nearest-orbit-12211-20261014/NearestOrbitCovariance.lean
 ```
 
 For the native checks, prepare the direct one-bucket source crate as
@@ -107,5 +118,5 @@ CARGO_TARGET_DIR=/private/tmp/nearest-orbit-target cargo test --manifest-path /a
 The next gate is a Tier 1 or Tier 0 isolated, alternating same-scalar
 panel with A/A noise controls to rank the direct and rolling orbit
 evaluators against the sign-only nearest-digit and norm-4,831 paths.
-The finite-map covariance theorem remains open in Lean; the exhaustive
-screen and native point-image tests are retained as separate evidence.
+The finite covariance theorem, exhaustive screen, and native point-image
+tests provide separate checks of the selected-map symmetry.
