@@ -64,6 +64,14 @@ verification output; the reported axioms are `propext`,
 `Classical.choice`, and `Quot.sound`. Earlier failed and resource-heavy
 proof attempts remain as separate logs.
 
+The Lean theorem applies to the specified six-candidate selector and proves
+its residue congruence, norm cap, exact recoding, and terminal bound. The
+stronger assertion that this selector is globally minimum-norm among **all**
+congruent Eisenstein integers is verified by the exhaustive integer screen
+and the `|b| < 74` search bound above; a Lean theorem connecting that global
+minimum statement to the finite search remains open. That bridge does not
+enter the terminal-bound proof, which uses the checked norm cap.
+
 | Result | Lean declaration | Conditions |
 | --- | --- | --- |
 | Six-candidate norm cap | `all_residues_have_small_candidate` | Every canonical residue 0–6105. |
