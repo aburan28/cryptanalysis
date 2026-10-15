@@ -1,0 +1,26 @@
+[package]
+name = "n131-ref-walk"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Three-limb signed-Frobenius rho walks at n = 131 (ECC2K-130) and n = 83: Bailey's walk vs a canonicalizing adding walk"
+
+# Path dependencies only (the f131.h port and the canonicalizers); no registry
+# crates, so the crate builds offline from the committed Cargo.lock.
+[lib]
+doctest = false
+
+[dependencies]
+canon-n131 = { path = "../canon-n131-20261014" }
+canon-n131-loop = { path = "../canon-n131-loop-20261014" }
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "fat"
+debug = 1
+panic = "abort"
+overflow-checks = false
+
+[profile.test]
+opt-level = 3

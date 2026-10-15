@@ -1,0 +1,93 @@
+name: n131 ref walk (Tier 1 step price and n=83 completion)
+# IDEA-20261015-c6f017, experiments/n131-ref-walk-20261015 under its frozen
+# protocol.json.  Tier 1 (cloud instance, AGENTS.md "CPU performance evidence
+# tiers").  The exactness gate (cargo tests, f131.h/packed131.h KATs with
+# CLMUL on and off, regenerated inputs, the independent Python check and the
+# known-log solves) runs first; timing starts only when it passes.  The job
+# commits its receipts to results/ci/run-<id>-<attempt>/ on the branch; those
+# receipts, the README, the report, the figures and the figure script are
+# excluded from the trigger paths, so that commit starts no new run.
+on:
+  push:
+    branches: [claude/n131-ref-walk]
+    paths:
+      - '.github/workflows/n131-ref-walk.yml'
+      - 'experiments/n131-ref-walk-20261015/**'
+      - '!experiments/n131-ref-walk-20261015/results/ci/**'
+      - '!experiments/n131-ref-walk-20261015/README.md'
+      - '!experiments/n131-ref-walk-20261015/report.md'
+      - '!experiments/n131-ref-walk-20261015/report.pdf'
+      - '!experiments/n131-ref-walk-20261015/figures/**'
+      - '!experiments/n131-ref-walk-20261015/make_figures.py'
+      - 'experiments/canon-n131-20261014/src/**'
+      - 'experiments/canon-n131-20261014/Cargo.toml'
+      - 'experiments/canon-n131-loop-20261014/src/**'
+      - 'experiments/canon-n131-loop-20261014/Cargo.toml'
+      - 'experiments/canon-n131-loop-20261014/kat/**'
+      - 'ecc2k130/src/f131.h'
+      - 'ecc2k130/include/**'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: n131-ref-walk-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  tier1:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    defaults:
+      run:
+        working-directory: experiments/n131-ref-walk-20261015
+    env:
+      CARGO_TERM_COLOR: never
+      OUT: results/ci/run-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain (pinned to the local build's rustc) and valgrind
+        run: |
+          rustup toolchain install 1.97.0 --profile minimal
+          rustup default 1.97.0
+          rustc --version
+          grep -m1 -o pclmulqdq /proc/cpuinfo
+          sudo apt-get update -q && sudo apt-get install -y -q valgrind
+          valgrind --version
+      - name: Exactness gate (must pass before timing)
+        run: python3 run.py exact "$OUT"
+      - name: Host receipt before
+        run: python3 receipt.py "$OUT/receipt_pre.json"
+      - name: Paired alternating timing, n=131 then n=83, pinned to CPU 1
+        run: python3 run.py time "$OUT"
+      - name: Cachegrind Ir per step
+        run: python3 run.py ir "$OUT"
+      - name: Host receipt after timing
+        if: always()
+        run: python3 receipt.py "$OUT/receipt_post.json"
+      - name: n=83 completion panel (64 targets x 2 seeds x 4 arms)
+        run: python3 run.py solve "$OUT"
+      - name: Independent re-verification of every logarithm
+        run: python3 run.py check "$OUT"
+      - name: Decision rules (analyze.py)
+        if: always()
+        run: python3 analyze.py "$OUT" | tee "$OUT/analysis_stdout.txt"
+      - name: Figures from the receipts
+        if: always()
+        run: python3 make_figures.py "$OUT" || echo "figures failed"
+      - name: Keep the receipts as an artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: n131-ref-walk-${{ github.run_id }}-${{ github.run_attempt }}
+          path: experiments/n131-ref-walk-20261015/results/ci/
+          if-no-files-found: warn
+      - name: Commit the receipts to the branch
+        if: always() && github.ref == 'refs/heads/claude/n131-ref-walk'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$OUT"
+          git commit -m "n131-ref-walk: Tier 1 receipts of run ${{ github.run_id }} attempt ${{ github.run_attempt }}" || exit 0
+          for i in 1 2 3; do
+            git pull --rebase origin claude/n131-ref-walk && git push origin HEAD:claude/n131-ref-walk && break
+            sleep 5
+          done

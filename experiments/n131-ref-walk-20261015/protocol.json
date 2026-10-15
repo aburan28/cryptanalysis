@@ -1,0 +1,133 @@
+{
+ "schema": 1,
+ "experiment": "n131-ref-walk-20261015",
+ "idea": "crypto-autoresearcher:ledger/proposals/IDEA-20261015-c6f017.yaml (branch claude/ideas-20261015, PR #2198)",
+ "frozen_before_timing": true,
+ "tier": "Tier 1 (cloud instance; GitHub-hosted ubuntu-24.04 runner), AGENTS.md 'CPU performance evidence tiers'",
+ "curves": {
+  "n131": {
+   "curve": "y^2+xy=x^3+1 over GF(2^131) (ECC2K-130's curve), f131.h polynomial basis",
+   "dp_hw": 52,
+   "lanes": 64,
+   "jumps": 32,
+   "multipliers": 8,
+   "cap": 4096
+  },
+  "n83": {
+   "curve": "y^2+xy=x^3+x^2+1 over GF(2)[z]/(z^83+z^7+z^4+z^2+1), r=8569786107849059",
+   "dp_hw": 31,
+   "lanes": 64,
+   "jumps": 32,
+   "multipliers": 8,
+   "cap": 4096
+  }
+ },
+ "timing": {
+  "binary": "target/release/bench",
+  "cpu": 1,
+  "arms": [
+   "bailey",
+   "bailey_aa",
+   "bailey_nodpc",
+   "canon",
+   "canon_aa",
+   "canon_nolift",
+   "canon_null",
+   "canon_exh"
+  ],
+  "steps_per_lane_per_block": {
+   "131": 4096,
+   "83": 4096
+  },
+  "rounds": 30,
+  "warmup_rounds": 1,
+  "order": "round k runs the arms in the order rotated by k",
+  "estimator": "per-round paired ratio of ns/step; geometric mean over the 30 rounds; 95% percentile bootstrap over rounds, 20000 draws, seed 2026101531",
+  "ir": {
+   "tool": "valgrind --tool=cachegrind --cache-sim=no",
+   "steps_per_lane": [
+    64,
+    320
+   ],
+   "per_step": "(Ir(320) - Ir(64)) / (64 * 256)"
+  }
+ },
+ "completion": {
+  "binary": "target/release/solve",
+  "panel": "inputs/panel64.json (64 public points; seeds 0..15 = Panel B of koblitz-single-target-n83-tier1-20261014)",
+  "arms": [
+   "bailey",
+   "canon32",
+   "canon8",
+   "canon32_noneg"
+  ],
+  "seeds_per_target": 2,
+  "seed_base": 830151,
+  "known_log_positive_control": {
+   "targets": "inputs/known_logs.json",
+   "arms": [
+    "bailey",
+    "canon32",
+    "canon8",
+    "canon32_noneg"
+   ],
+   "seeds": 1,
+   "seed_base": 77
+  },
+  "processes": 4,
+  "step_cap": "400 * floor",
+  "floor": "sqrt(pi r / (2 A)), A = 166 asserted (lambda of exact order 83; -1 not a power of lambda)",
+  "estimator": "mean steps/floor per arm; ratio of arm means; 95% percentile bootstrap resampling the 64 targets (both seeds together), 20000 draws, seed 2026101583",
+  "aa": "seed-0 rows vs seed-1 rows of the same arm (bailey, canon32)"
+ },
+ "decision_rules": {
+  "exactness_gate": "every test, the f131.h KATs (field and point, CLMUL on and off), the independent Python check and every known-log solve must pass before timing starts; any unverified panel logarithm stops the analysis (falsification 'any unverified logarithm: stop')",
+  "timing_aa": "A/A ratio (bailey_aa/bailey, canon_aa/canon) point estimate in [0.97, 1.03] and its interval containing 1, else the timing family is labelled 'harness noisy' and no timing ratio is promoted",
+  "timing_positive_control": "canon_exh/canon interval lower bound > 1, else timing family invalid",
+  "completion_positive_control": "canon32_noneg/canon32 interval lower bound > 1 (predicted sqrt(2) = 1.414 from the class count), else completion family invalid",
+  "completion_aa": "seed-0/seed-1 ratio interval contains 1",
+  "primary": [
+   "ns/step bailey and canon at n=131, with intervals",
+   "ratio bailey/canon at n=131 (idea claim 2: <= 0.6, falsified above 0.85)",
+   "canonicalization share at n=131: 1 - canon_null/canon (whole canonicalization incl. basis changes, sign fold, fruitless handling) and 1 - canon_nolift/canon (lift_scan alone); idea claim 1: [0.2, 0.5]",
+   "Bailey's at-DP canonicalization share: 1 - bailey_nodpc/bailey",
+   "steps/floor ratio bailey/canon32 at n=83 (idea claim 3: [1.0, 1.25]; falsified above 1.4)"
+  ],
+  "secondary": [
+   "same timing family at n=83; ns/step(131)/ns/step(83) per design (unpaired across processes, both in this run)",
+   "Ir/step per arm and Ir-based shares (cachegrind, deterministic)",
+   "cycles/step = ns/step x clock, at the runner's reported nominal clock and at its maximum boost clock if lscpu reports one (a range: the clock under load is not observable)",
+   "the 2009 figure beside it, not divided into it: 529 cycles/iteration, one core of a 2.997 GHz Core 2 Extreme Q6850 (534 per core with four cores), ePrint 2009/541 sec. 4, frozen PDF crypto-autoresearcher:inputs/BAILEY-2009-541-ECC2K130/ecc2k130-2009-541.pdf sha256 825f19a11b489ee8ed844cf026e6ebbd08d8ad93eadb192e72a8e411a73bf2a4",
+   "model composition, labelled as one: reference cost per design = ns/step(n=131, this run) x steps/floor(n=83, this run) x floor(131), floor(131) = sqrt(pi r131 / (4*131)) = 2^60.81; transfers to 131 only under heuristic H1 of the idea (penalty depends on the selector, not on n)"
+  ],
+  "multiple_comparisons": "5 primary quantities; intervals are 95% and reported unadjusted, with the Bonferroni 99% interval (alpha/5) beside each primary ratio",
+  "does_not_count": "changing N, rounds, arms, estimator, thresholds or the DP rule after seeing data; any change is a dated amendment and both versions are reported"
+ },
+ "predictions_heuristic": {
+  "steps_over_floor": "1/sqrt(1 - sum p_j^2) (Brent-Pollard r-mixing heuristic): canon32 1.016, canon8 1.069, bailey ~1.07 at the HW selector's p_j (computed in analysis from the exact HW law), canon32_noneg = sqrt(2) x canon32; plus DP latency (64 lanes x 2^5.83) under 0.1%",
+  "note": "ePrint 2009/541 sec. 3 and App. B give 1.069993 for the n=131 Bailey selector"
+ },
+ "power": {
+  "completion": "steps-to-collision per solve has CV ~0.52 (Rayleigh); 128 solves/arm give ~4.6% SE per mean and ~6.5% SE per ratio, so a 95% interval of about +-13%: the 1.414 positive control and the idea's 1.4 falsification line are resolvable; a 7% Bailey penalty is not distinguishable from 1 at this N (stated in advance)",
+  "timing": "30 paired rounds; resolution set by the A/A interval"
+ },
+ "preflight_runtime_estimate": {
+  "basis": "no timing taken before freezing; from committed evidence: strong rho at n=83 3-6 s per process on the same runner class (koblitz-single-target-n83-tier1-20261014 README) for ~1 floor of steps",
+  "completion": "512 solves x ~1.0-1.8 floors x 3-6 s / 4 processes = 7-40 min",
+  "known_logs": "16 solves, < 2 min on 4 processes",
+  "timing": "8 arms x 31 rounds x 262144 lane-steps x ~0.2-1.5 us x 2 degrees = 2-13 min; canon_exh dominates",
+  "ir": "16 short cachegrind runs, < 3 min",
+  "job_timeout_min": 150
+ },
+ "dry_run_disclosure": "Before freezing, correctness dry runs only (no timing read): 1 known-log solve each for bailey, canon32, canon8 and canon32_noneg recovered the known logarithm. A Bailey arm with 2 multipliers (first planned positive control) did not solve within its run and was replaced: Bailey's multipliers commute, so with 2 of them a lane reaches only t+1 distinct multipliers after t steps and walks from different starts almost never merge (a structural degeneracy, not a measurement). Its replacement is canon32_noneg.",
+ "amendments": [
+  {
+   "id": 1,
+   "date": "2026-10-15",
+   "before_any_ci_timing": true,
+   "change": "canon_nolift computes the fruitless-cycle test but no longer escapes (doubling with a full inversion).",
+   "reason": "With k forced to 0 the walk meets negation 2-cycles at about 1/(2R) = 1/64 per step instead of 1/(2Rn) for the real canonicalizing walk (the 2-cycle needs k = 0). A local 3-round smoke on the contended cloud-agent VM showed escapes/step 0.0149 for canon_nolift vs 0 for canon over 4096 steps; the escapes would have charged canon_nolift an inversion-bearing doubling per ~64 steps and biased 1 - canon_nolift/canon low.",
+   "disclosure": "The smoke produced scratch timing rows (not committed, not evidence). I read only event counts and the gate outputs of the 3-round smoke ('aa': harness noisy, positive control: pass, on a contended VM), not the timing values or ratios. Original protocol: commit 6df26f743."
+  }
+ ]
+}
