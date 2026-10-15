@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Audit the complete affine-layer versus XYZZ Tier 1 panel."""
 
+import argparse
 import importlib.util
 import json
 from pathlib import Path
@@ -11,13 +12,15 @@ spec = importlib.util.spec_from_file_location("radix_tier1_audit", PARENT)
 auditor = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(auditor)
 auditor.HERE = HERE
-JOB = "c24e37df66ad4b1a891f1805798a0887"
-auditor.PANELS = {96: (JOB,"tier1-affine-rules.json","tier1-affine-manifest.json")}
+JOBS = ("c24e37df66ad4b1a891f1805798a0887",
+        "fe00f695389443f08d6cbf003f1a8b7e")
 
 
-def audit():
+def audit(job):
+    assert job in JOBS
+    auditor.PANELS = {96: (job,"tier1-affine-rules.json","tier1-affine-manifest.json")}
     result = auditor.audit(96)
-    folder = HERE / JOB
+    folder = HERE / job
     rules = auditor.load(HERE / "tier1-affine-rules.json")
     summary = auditor.load(folder / "summary.json")
     runs = auditor.lines(folder / "runs.jsonl")
@@ -40,4 +43,7 @@ def audit():
 
 
 if __name__ == "__main__":
-    print(json.dumps(audit(),sort_keys=True,indent=2))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--job",choices=JOBS,default=JOBS[0])
+    args = parser.parse_args()
+    print(json.dumps(audit(args.job),sort_keys=True,indent=2))
