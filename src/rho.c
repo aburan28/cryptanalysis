@@ -32,6 +32,7 @@ typedef struct rho_shared {
     ca_elem base, target;
     uint64_t n;
     uint32_t r;
+    uint32_t r_mask; /* r - 1 for power-of-two tables, otherwise zero */
     uint64_t r_magic; /* floor(2^64 / r) + 1, for rho_index */
     ca_elem *M;
     uint64_t *alpha, *beta;
@@ -77,11 +78,14 @@ void ca_rho_params_default(ca_rho_params *p)
     p->negation_map = 1;
 }
 
-/* (h >> 32) mod r without a divide: for a 32-bit numerator and divisor,
- * Lemire's fastmod with M = floor(2^64 / r) + 1 is exact. */
+/* Default tables have power-of-two sizes, so index them with one mask.
+ * For arbitrary user-supplied r, Lemire's fastmod with
+ * M = floor(2^64 / r) + 1 is exact for a 32-bit numerator and divisor. */
 static inline uint32_t rho_index(const rho_shared *sh, uint64_t h)
 {
-    uint64_t low = sh->r_magic * (h >> 32);
+    uint32_t upper = (uint32_t)(h >> 32);
+    if (sh->r_mask) return upper & sh->r_mask;
+    uint64_t low = sh->r_magic * upper;
     return (uint32_t)(((ca_u128)low * sh->r) >> 64);
 }
 
@@ -394,7 +398,8 @@ ca_status ca_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *ta
         sh.r = r;
     }
     if (sh.r < 4) sh.r = 4;
-    sh.r_magic = UINT64_MAX / sh.r + 1;
+    if ((sh.r & (sh.r - 1)) == 0) sh.r_mask = sh.r - 1;
+    else sh.r_magic = UINT64_MAX / sh.r + 1;
     sh.seed = ca_seed_or_random(params->seed);
     sh.max_ops = params->max_ops;
     sh.max_table = params->max_table_entries;
