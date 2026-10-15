@@ -1,0 +1,30 @@
+[package]
+name = "n83-scanorder-online"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Binaries are crypto 770f6a69 examples restored by ../restore.py into
+# ../snapshots/r770 (the reconcile experiment's restore, digest-checked).
+# The IC producer is B's log-cache producer with the KIC_SCAN_ORDER
+# selector derived by ../make_online_source.py; the tuned rho is A's
+# configured worker (Fold/64/DP6), unchanged. Dependency set and Cargo.lock
+# are the reconcile r770 crate's (package renamed).
+[[bin]]
+name = "ic_online_scanorder_r770"
+path = "../snapshots/r770/examples/koblitz_orbit_dlp_fast_online_scanorder.rs"
+
+[[bin]]
+name = "rho_tuned_r770"
+path = "../snapshots/r770/examples/n83_rho_optimization_eval.rs"
+
+[dependencies]
+crypto_lib = { package = "crypto", path = "../snapshots/r770", default-features = false }
+blake3 = "1.5"
+hex = "0.4"
+libc = "0.2"
+num-bigint = { version = "0.4", features = ["rand"] }
+num-traits = "0.2"
+rand = { version = "0.8", features = ["small_rng"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["arbitrary_precision", "raw_value"] }
