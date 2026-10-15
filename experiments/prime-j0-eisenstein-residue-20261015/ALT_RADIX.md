@@ -65,3 +65,16 @@ The completed Tier 1 job recorded 96 valid arms and 48 valid pairs with stable a
 | Mean timed interval | 670.434174 ms | 667.829651 ms |
 
 The descriptive median paired reference/candidate ratio was `0.998244`, with paired bootstrap 95% interval `[0.965751,1.036469]`. The A/A control after comparison in repeat 6 measured `1.111348`, above the frozen upper limit `1.11`. The result status is `unknown_after_tier_gate`, with qualified comparison ratio `null`. The longer interval therefore supplies a tighter cost-shape screen for this batch path while preserving the failed control and every valid arm. Reproduce the audit with `python3 analyze_tier1_alt_radix_long10.py`; it extracts the raw archive when no local run directory is present.
+
+## Prefetched affine table gather
+
+The x86-64 [prefetch overlay](native_alt_prefetch_overlay.py) recodes all sixteen windows before gathering their affine entries, then prefetches offsets 0 and 64 of each selected 96-byte entry. Its portable path and table representation remain the same. The [frozen Tier 1 rules](tier1-alt-prefetch-cpu40-rules.json), [manifest](tier1-alt-prefetch-cpu40-manifest.json), and [launch receipt](tier1-alt-prefetch-launch.json) fix the source and binary hashes, 32 MiB cap, CPU 40, ten-pass fixture, sixteen repeats, alternating case order, and adjacent A/A acceptance interval `[0.90,1.11]` before result inspection.
+
+Job `1445ccaffbf7479793ef49eb9005730e` completed 96 valid arms and 48 valid pairs with stable runner artifacts. Each arm checked 122,880 outputs after its timed interval. The [archive-backed audit](tier1-alt-prefetch-cpu40-audit.json) matched every stdout record and expected point, the sealed [raw records](alt-prefetch-tier1-raw.tar.gz), and the exact source, fixture, and binaries in the [native provenance archive](alt-prefetch-native-provenance.tar.gz). Their SHA-256 digests are `269d2cc2525b48bb75c47d0ecad674e2f12c3243c6c844134babda0fefc0f9cc` and `d7a9cd83f0722cfae10fc540a7b2f18f2109d5a1b20eebeb6a62b4a5caf4a907`, respectively.
+
+| Tier 1 ten-pass stream; 122,880 checked outputs per arm | Baseline gather | Prefetched gather |
+| --- | ---: | ---: |
+| Retained table bytes | 27,429,548 | 27,429,548 |
+| Mean timed interval | 622.543735 ms | 573.521775 ms |
+
+The descriptive median paired baseline/prefetch ratio is `1.086784`, with paired bootstrap 95% interval `[1.037856,1.117295]`. The before-comparison A/A control in repeat 7 measured `0.866888`, outside the frozen range. The aggregate is therefore `unknown_after_tier_gate`, with qualified comparison ratio `null`. This panel establishes exact replay and a promising cost shape for the prefetch path; a fresh independently frozen panel and passing A/A controls are needed to resolve its timing. Reproduce the audit with `python3 analyze_tier1_alt_prefetch.py`.
