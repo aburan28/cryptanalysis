@@ -1,0 +1,10 @@
+import NearestOrbit35533Tie
+import NearestOrbit35533Complete
+import NearestOrbit35533Action
+
+#print axioms NearestOrbit35533Digits.all_residues_have_small_candidate
+#print axioms NearestOrbit35533Digits.selected_digit_valid
+#print axioms NearestOrbit35533Tie.score_selected_eq
+#print axioms NearestOrbit35533Step.bounded_step
+#print axioms NearestOrbit35533Complete.canonical_scheme_terminal_bound
+#print axioms NearestOrbit35533Action.selected_scalar_action_replay
