@@ -27,3 +27,7 @@ A second independent serial job, `fe00f695389443f08d6cbf003f1a8b7e`, was submitt
 ## Second paired panel: another noise gate failure
 
 The unchanged-manifest repeat `fe00f695389443f08d6cbf003f1a8b7e` also completed all 96 valid arms and 48 valid pairs with stable artifacts. Its descriptive median XYZZ/affine-layer ratio was 1.164518, bootstrap interval [1.159208,1.173961]. The aggregate is again **unknown after the Tier 1 gate**: repeat 9's post-comparison A/A ratio was 1.165546, outside [0.90,1.11]. That control paired a 62.468 ms candidate arm with 511 involuntary switches and a 72.810 ms reference arm; cgroup throttling and execution-CPU steal counters were zero. The raw archive `affine-layer-repeat-panel.tar.gz` has SHA-256 `bae8558844cbad3e23c1f51b7c40d03c234923a7417cb9b388c7d4a1cdf839e4`, and its unpacked folder, audit, and noise receipt are retained separately. The agreement of the two descriptive ratios is useful diagnostic evidence, but neither satisfies the predeclared A/A gate.
+
+## New CPU placement gate
+
+The pod exposes CPU sibling pairs `2,98`, `13,109`, `40,136`, and `74,170`. The service stays on CPU 2. After the two recorded CPU-13 A/A failures, `freeze_cpu40_panel.py` changes only the execution pin to CPU 40 and records the reason in a new rules file. The code, binary, fixture, arm order, 16 repeats, A/A range, and bootstrap rule are identical. This is a new full panel, with all earlier outcomes retained.
