@@ -1,12 +1,12 @@
 # Section 23 against the tuned rho: one unseen point, six sizes, four rho references
 
-**Status (2026-10-15): protocol frozen; nothing measured yet.** This
-directory freezes the protocol and its tools. The run starts when this
-branch (`claude/ic-s23-tuned-rho`) is pushed: workflow
-[`s23-tuned-rho.yml`](../../.github/workflows/s23-tuned-rho.yml) runs on
-one GitHub-hosted runner (Tier 1, instance scoped). Its artifact will be
-archived here as `run_github_<id>/`. The frozen design is
-[`protocol.json`](protocol.json).
+**Status (2026-10-15): measured; verified.** GitHub run
+[38777903922](https://github.com/aburan28/cryptanalysis/actions/runs/38777903922)
+(one `ubuntu-24.04` runner, Tier 1, instance scoped) completed with the
+frozen protocol ([`protocol.json`](protocol.json)); its artifact
+`s23-tuned-rho-38777903922-1` is archived in
+[`run_github_38777903922/`](run_github_38777903922/). Results are in
+[Result](#result).
 
 ## Question
 
@@ -40,6 +40,130 @@ lists as unmeasured at n=41, 53 and 61.
 
 *Figure 1. The design: four arms on each frozen point, the controls first
 ([source](figures/design.tex), [vector](figures/design.pdf)). Schematic; no data.*
+
+## Result
+
+**Run.** [38777903922](https://github.com/aburan28/cryptanalysis/actions/runs/38777903922),
+sha `e99967c2`, Intel Xeon Platinum 8370C @ 2.80 GHz, image 20261012.334.1,
+one pinned CPU ([`run_github_38777903922/`](run_github_38777903922/),
+`panel/result.json`, `panel/result_table.md`). The receipt is complete and
+valid: all six sizes have 64 R1 rows, no flagged rows were used, no attempt was
+contended or invalid, no block was skipped, and `problems` is empty.
+
+**Controls.** Identity passed (rT770's 5,096,116 steps and rA770's 10,203,425,
+scalar 3141592653589793). The positive control passed (ln time ratio 0.992
+against ln step ratio 0.978, tolerance 0.10). Section 23's claims: 408 of 408
+IC rows pass. Substituted external-rho claims: 1,152 of 1,152 pass.
+`verify_receipt.py` re-run offline on the archived receipt, with the pinned
+checker from crypto `96911f55`, reproduced `result.json` and `result_table.md`
+byte for byte.
+
+**Reading (frozen statistic, per size and reference).** Online and cold gaps
+are IC cost over reference cost; online values below 1 mean the IC is faster
+(the receipt's own figure is the reciprocal, rho over IC, in the next column).
+Every one of the 24 size-by-reference online readings is `ic_online_faster`
+and every cold reading is `rho_cold_faster`; no reading is `not_separated`.
+
+| n | ref | online IC/ref [95%] | rho/IC online | cold IC/ref [95%] | break-even targets | IC online / BL model |
+|--:|:--|--:|--:|--:|--:|--:|
+| 41 | tuned | 0.09 [0.0715, 0.111] | 11.1 [9, 14] | 6.6 [5.91, 7.4] | 7.67 | 0.53 |
+| 41 | parallel | 0.112 [0.0889, 0.14] | 8.96 [7.16, 11.3] | 7.83 [7.08, 8.74] | 9.74 | 0.603 |
+| 41 | strong | 0.0876 [0.0694, 0.11] | 11.4 [9.08, 14.4] | 6.43 [5.67, 7.39] | 7.44 | 0.336 |
+| 41 | strong_wide | 0.0337 [0.0268, 0.0425] | 29.7 [23.5, 37.3] | 2.54 [2.23, 2.93] | 2.7 | 0.05 |
+| 47 | tuned | 0.106 [0.084, 0.133] | 9.41 [7.53, 11.9] | 5.37 [4.86, 5.93] | 7.34 | 0.503 |
+| 47 | parallel | 0.104 [0.0824, 0.13] | 9.58 [7.71, 12.1] | 5 [4.61, 5.47] | 7.19 | 0.49 |
+| 47 | strong | 0.0837 [0.0657, 0.105] | 12 [9.57, 15.2] | 4.4 [4.05, 4.82] | 5.64 | 0.311 |
+| 47 | strong_wide | 0.0325 [0.0256, 0.0407] | 30.8 [24.6, 39.1] | 1.84 [1.68, 2.03] | 2.07 | 0.0471 |
+| 53 | tuned | 0.0423 [0.0325, 0.0534] | 23.6 [18.7, 30.8] | 10.6 [9.45, 12] | 11.3 | 0.322 |
+| 53 | parallel | 0.0478 [0.0372, 0.0604] | 20.9 [16.5, 26.9] | 11.8 [10.5, 13.4] | 12.8 | 0.389 |
+| 53 | strong | 0.0367 [0.0286, 0.0468] | 27.2 [21.4, 35] | 9.2 [8.01, 10.7] | 9.75 | 0.196 |
+| 53 | strong_wide | 0.0119 [0.00915, 0.015] | 84.3 [66.5, 109] | 3.01 [2.62, 3.49] | 3.07 | 0.0203 |
+| 57 | tuned | 0.0774 [0.0632, 0.0944] | 12.9 [10.6, 15.8] | 6.05 [5.51, 6.7] | 8.52 | 0.473 |
+| 57 | parallel | 0.0824 [0.0661, 0.102] | 12.1 [9.8, 15.1] | 6.19 [5.75, 6.73] | 9.12 | 0.419 |
+| 57 | strong | 0.0668 [0.0537, 0.0823] | 15 [12.1, 18.6] | 5.4 [4.94, 5.94] | 7.27 | 0.297 |
+| 57 | strong_wide | 0.0254 [0.0203, 0.0311] | 39.4 [32.1, 49.2] | 2.3 [2.08, 2.56] | 2.65 | 0.043 |
+| 59 | tuned | 0.039 [0.0304, 0.0485] | 25.7 [20.6, 32.8] | 10.7 [9.62, 12] | 11.6 | 0.301 |
+| 59 | parallel | 0.0403 [0.0308, 0.052] | 24.8 [19.2, 32.5] | 11 [9.64, 12.6] | 12 | 0.343 |
+| 59 | strong | 0.033 [0.026, 0.0409] | 30.3 [24.4, 38.4] | 9.12 [8.11, 10.4] | 9.71 | 0.18 |
+| 59 | strong_wide | 0.0106 [0.00836, 0.0132] | 94.3 [75.8, 120] | 2.99 [2.65, 3.41] | 3.05 | 0.0186 |
+| 61 | tuned | 0.0687 [0.051, 0.0903] | 14.5 [11.1, 19.6] | 18.9 [16.7, 21.5] | 20.5 | 0.759 |
+| 61 | parallel | 0.0711 [0.0532, 0.0919] | 14.1 [10.9, 18.8] | 19.4 [17.3, 22.1] | 21.3 | 0.857 |
+| 61 | strong | 0.0496 [0.0363, 0.0657] | 20.2 [15.2, 27.5] | 13.7 [12.1, 15.7] | 14.5 | 0.452 |
+| 61 | strong_wide | 0.0159 [0.0118, 0.021] | 62.8 [47.5, 85] | 4.42 [3.89, 5.08] | 4.5 | 0.0466 |
+
+
+![Gap per size and reference](figures/gap.png)
+
+*Figure 2. IC over reference, online (left) and cold (right), per size and
+rho reference, with 95% paired bootstrap intervals over 64 targets
+([source](figures/gap.tex), [vector](figures/gap.pdf), regenerated from
+`result.json` by [`figures/make_figures.py`](figures/make_figures.py)).*
+
+Per-size context for the `tuned` reference (means over 64 targets):
+
+| n | r | IC online mean ms | IC setup mean ms | tuned rho ms/step (median) | tuned rho online mean ms | tuned/parallel ns per step |
+|--:|--:|--:|--:|--:|--:|--:|
+| 41 | 549,756,390,943 | 1.11 | 86 | 107.3 ns | 12.3 | 1.07 |
+| 47 | 106,781,081,677 | 0.508 | 31.4 | 109.3 ns | 4.78 | 0.99 |
+| 53 | 21,044,858,204,113 | 2.65 | 677 | 109.7 ns | 62.6 | 1.10 |
+| 57 | 275,295,876,199 | 0.583 | 59.2 | 113.7 ns | 7.53 | 0.94 |
+| 59 | 25,179,555,920,633 | 2.6 | 739 | 113.1 ns | 66.6 | 1.07 |
+| 61 | 162,888,033,982,417 | 10.4 | 2.9e+03 | 113.0 ns | 152 | 1.06 |
+
+**Gap to the tuned rho (the `tuned` rows, n=41, 53, 61).**
+
+- **n=41.** Online: the IC takes 0.090 of the tuned rho's time, [0.071, 0.111]
+  (rho/IC 11.1 [9.00, 14.0]). Cold: 6.60 [5.91, 7.40]. Break-even 7.7 targets.
+- **n=53.** Online: 0.042 [0.033, 0.053] (rho/IC 23.6 [18.7, 30.8]). Cold:
+  10.6 [9.45, 12.0]. Break-even 11.3 targets.
+- **n=61.** Online: 0.069 [0.051, 0.090] (rho/IC 14.5 [11.1, 19.6]). Cold:
+  18.9 [16.7, 21.5]. Break-even 20.5 targets.
+- **n=47, 57, 59** (the other three of §23's six): online 0.106, 0.077 and
+  0.039; cold 5.37, 6.05 and 10.7 (intervals in the table).
+
+**Per reference.** The tuned rho and ParallelRho cost about the same at
+every size (tuned/parallel ns per step 0.94 to 1.10; the intervals of
+the two online and cold gaps overlap at every size). The default one-word
+`strong` walk is 1.26 to 1.30× slower per step than `tuned`, so its gaps are
+smaller (the IC looks a little better online, and the cold gap is 3% to 28%
+lower).
+`strong_wide` (rA770) is 3.3 to 4.0× slower per step, and is the reference the
+IC looks best against (online 0.011 to 0.034, cold 1.84 to 4.42). Ranking the
+references by IC online speed-up: `strong_wide` > `strong` > `tuned` and
+`parallel` (the last two about equal), at all six sizes.
+
+**What this says.**
+
+- **Against the strongest reference measured here (`tuned`), the IC's online
+  stage is 9× to 26× cheaper and the cold gap is 5.4× to 18.9× in rho's
+  favour.** The picture of §23 and rule v3 (online advantage, cold
+  disadvantage that grows with n) holds on this host, and the tuned rho does
+  not close it: it is the same as ParallelRho within noise at these sizes.
+- **The `tuned` reference is not rT770's kernel at these sizes.** `Gf2_128`
+  does not exist for n ≤ 64, so `tuned` is rT770's configuration (64 lanes,
+  DP 6) on the one-word `Gf2` (see Limits). A rho tuned further on the
+  one-word kernel could be faster; this run does not measure that.
+- **Break-even** is 7.3 to 20.5 targets at `tuned`; fewer on the slower
+  references.
+- **Bernstein–Lange (model only).** IC online over the BL model is 0.30 to
+  0.76 against `tuned` (below 1 means the IC beats the model's online cost),
+  and 0.019 to 0.050 against `strong_wide`. No BL walk ran.
+- **Online IC times are small.** At n=41, 47 and 57 the IC's online stage is
+  0.5 to 1.1 ms. The A/A (T01–T04 re-run) ratio R2/R1 of the IC's online time
+  ranged 0.90 to 1.06 at n=41, 53, 57, 59 and 61. At n=47 the four ratios
+  were 0.58, 0.85, 0.91 and 1.03 (the IC's online stage is 0.5 ms there). The
+  reference arms' A/A ratios are within 0.98 to 1.02. The ratios above are means over 64 targets with bootstrap
+  intervals, so the A/A spread is inside them, but the n=47 point is the one to
+  distrust.
+- **Class: accounting.** No algorithm changed; the reference did. This
+  result does not promote an IC baseline (no IC change was measured), so
+  [`docs/ic/BASELINES.md`](../../docs/ic/BASELINES.md) records these rows as
+  gaps to the tuned rho, one row for this experiment, and keeps v3's own
+  rows unchanged.
+- **Not claimed.** Nothing here transfers to n=83 or ECC2K-130. The IC
+  binary is rebuilt here with rustc 1.99.0 and runs on a different CPU from
+  rule v3's container, so this run's absolute IC and rho times are not
+  pooled with v3's.
 
 ## What runs
 
@@ -168,7 +292,8 @@ workflow uses 1.99.0. Receipts are in [`smoke/`](smoke/).
 - `inputs/targets.json`: the 384 frozen points.
 - `run_schedule.py`: the schedule.
 - `verify_receipt.py`: the audit and statistics.
-- `figures/`: the design figure.
+- `figures/`: the design figure (`design.*`) and the result figure (`gap.*`, rendered from `result.json` by `make_figures.py`).
+- `run_github_38777903922/`: the archived artifact of run 38777903922.
 - `smoke/`: the local validation receipts.
 
 ## Reproduce
