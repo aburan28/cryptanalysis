@@ -15,6 +15,15 @@ variant gave a qualified 1.143× gain with 6.29 MB retained. Their one-scalar
 cold panels measured 1,170.03 ms and 717.99 ms, respectively, against about
 256 ms for matched sparse Horner; the note retains the independent audits
 and Lean block-identity proof.
+Matched repeated-stream cold panels place the three-row schedule's crossover
+between four and eight passes of the frozen 12,288-point fixture: sparse
+Horner leads at four passes, while checkpointing leads at eight.
+
+The [sparse-radix family](SPARSE_RADIX_FAMILY.md) generalizes the short
+`[2ᵏ](1+τ)−1` point action. Pinned Lean proves its norm, quotient residue,
+norm scaling, and point-action identities. An exact 12,288-scalar integer
+screen identifies `k=6` as the next native candidate: 4,727 orbit-folded
+digit seeds and 17 radix steps on the frozen fixture.
 
 The secp256k1 prime splits in the Eisenstein integers. An exact norm-
 `p` element
