@@ -25,9 +25,28 @@ curve's cube-root endomorphism and sign, adds the 18 digit points and
 the terminal point, then compares with independent binary scalar
 multiplication. The [replay receipt](group-replay.json) includes frozen
 and fresh deterministic scalars, the exact input seed, point-output
-digest, and touched-table counts. This is a correctness and memory
-candidate; no native retained-memory measurement or isolated CPU timing
-has been recorded for this orbit layout.
+digest, and touched-table counts.
+
+The [native overlay](native_overlay.py) generates an orbit-coded evaluator
+from the hash-pinned nearest-digit Rust source. It retains the original
+six-candidate recoder, constructs 2,036 digit seeds and 699 terminal seeds,
+and maps each selected digit or terminal pair to a seed and unit code.
+The release executable reports **2,448,196 retained bytes**, including
+the seed points, digit pairs, Rust code records, table descriptors,
+and terminal index arrays. That is **4,745,148 fewer bytes** than the
+7,193,344-byte sign-only nearest-digit implementation. Its six test
+families passed: all 12,211 residues and 109,899 quotient cases; all
+219,816 signed digit images across 18 windows; all 2,095 canonical
+terminal images; 128 frozen scalar replays; and 518 additional scalar
+replays against independent binary multiplication. The first native
+compilation failed on test expression types; that raw failure log is
+preserved separately from both green runs.
+
+The frozen case-0 executable replay reproduced the parent public point
+with 18 nontrivial mixed additions, no projective join, 10 affine
+`x` constant multiplications, 18 digit reads, and one terminal read.
+The local wall-time field in [native-case0.log](native-case0.log) is an
+ordinary-host diagnostic. It cannot rank latency against the parent.
 
 The [Lean module](NearestOrbit12211.lean) checks `ω³=1`, norm
 preservation across all six images, the residue multiplier, and sign
@@ -55,10 +74,20 @@ python3 experiments/prime-j0-nearest-orbit-12211-20261014/group_replay.py
 LEAN_PATH=/private/tmp/lean-8011-fresh:/private/tmp/lean-12211-direct:/private/tmp/adaptive-unit-lean lean experiments/prime-j0-nearest-orbit-12211-20261014/NearestOrbit12211.lean
 ```
 
-The next implementation gate is a native orbit table with all 12,211
-digit codes, terminal-code coverage, independent scalar replay, and an
-exact retained-byte receipt. Its one-accumulator path applies up to two
-affine `x` multiplications per nontrivial digit unit code. An oriented
-one- or two-accumulator schedule could instead defer some rotations;
-that choice requires source-level operation counts and an isolated
-same-scalar timing panel before a latency ranking.
+For the native checks, prepare the direct one-bucket source crate as
+described in the [parent experiment](../prime-j0-nearest-digit-12211-20261014/README.md),
+apply that experiment's `native_overlay.py`, then apply this experiment's
+`native_overlay.py`. The second overlay checks the resulting Rust source
+hash before editing. Build and test with:
+
+```sh
+python3 experiments/prime-j0-nearest-orbit-12211-20261014/native_overlay.py /absolute/path/to/source-crate
+CARGO_TARGET_DIR=/private/tmp/nearest-orbit-target cargo test --manifest-path /absolute/path/to/source-crate/Cargo.toml --offline --locked --release --bin eisenstein_fixed split_prime_ -- --test-threads=1 --nocapture
+```
+
+The next design gate is an oriented one- or two-accumulator schedule that
+defers some of the 10 case-0 affine `x` multiplications. It must retain
+the 18-position and 2,448,196-byte cost boundaries or account explicitly
+for any change, then pass the same native image and scalar tests. A Tier 1
+or Tier 0 isolated, alternating same-scalar panel is required to rank
+latency against the sign-only nearest-digit and norm-4,831 orbit paths.
