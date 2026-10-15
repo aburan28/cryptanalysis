@@ -134,12 +134,73 @@ has SHA-256 `93271f906b9c43ed5bf7f6588ca70a7132e22078b4c5be5e05bdeaed0245d8b5`;
 the [provenance archive](eisenstein-pair-fixed-provenance.tar.gz) has SHA-256
 `9565e05ca05170a79e0d6fdcae7651348059f91288a8b64e2c41776b10688d3e`.
 
+## Radix-128 Montgomery reduction in the quotient field
+
+The [exact prototype](eisenstein_montgomery.py) changes how a pair-field
+product is reduced. Write `R=2^128`, `π=(a,b)`, and let `(x,y)` be the raw
+three-product result. Since `π·conj(π)=p`, the adjugate numerators are
+
+`N₁=(a-b)x+by` and `N₂=-bx+ay`.
+
+With `s=p⁻¹ mod R`, choose centered 128-bit coefficients
+`q₁=-sN₁ mod R` and `q₂=-sN₂ mod R`. The coordinates
+`x+q₁a-q₂b` and `y+q₁b+q₂(a-b)` are both divisible by `R`; dividing
+them by `R` gives the Montgomery product modulo `π`. The
+[native scalar path](eisenstein_pair_montgomery.rs) derives each quotient
+from low 128-bit products, computes the exact divided pair, and applies
+the prior canonical lattice reducer only when the output exceeds its
+128-bit coordinate bound. Encoded field inputs are `xR mod p`.
+
+The [10,000-pair receipt](montgomery-self-check-10000.json) verifies
+encoding, decoding, exact divisibility, product, rotation, and coordinate
+bounds. The largest observed intermediate coordinate and Montgomery
+quotient occupied 128 and 127 bits, respectively; the subsequent canonical
+quotients occupied at most one bit. Canonical correction changed 1,818
+of the 10,000 product pairs. These are observed bounds for that screen.
+The native path reproduced all 12,288 frozen scalar points, with a
+full-stream diagnostic of `14,211.422772 ms`. Its source SHA-256 is
+`b112265e746cc91adbb09cd954f1c7008fbbd7e2ee35a403606c40d4c6dac1dd`;
+its x86-64 release executable SHA-256 is
+`7501334a41f324ac92e7243c0feca5bdf5de2caf3a58c5cbd19049018983c94c`.
+
+The frozen [Tier 1 manifest](tier1-eisenstein-montgomery-cpu40-manifest.json)
+and [acceptance rules](tier1-eisenstein-montgomery-cpu40-rules.json) pair
+the fixed-limb Solinas and Montgomery kernels on 512 common scalars in
+16 alternating repetitions, with adjacent A/A controls on CPU 40. The
+serial RunPod job is `273359b6d2724700ad59ea1ddc978da8`.
+The completed [panel](273359b6d2724700ad59ea1ddc978da8/summary.json)
+contains all 96 valid arms and 48 valid pairs with stable source and binary
+artifacts. Every A/A ratio passed its frozen `[0.90,1.11]` gate. The
+[independent audit](tier1-eisenstein-montgomery-cpu40-audit.json) checked
+every raw output and pair, regenerated the 10,000-pair exact screen, and
+matched the full native replay and source hashes in the
+[provenance archive](eisenstein-montgomery-native-provenance.tar.gz).
+
+| Tier 1 same-input binary scalar stream, 512 outputs | Fixed-limb Solinas | Radix-128 Montgomery |
+| --- | ---: | ---: |
+| Mean timed multiplication | 726.038362 ms | 605.537759 ms |
+| Mean time per scalar | 1.418044 ms | 1.182691 ms |
+
+The median paired fixed/Montgomery ratio is **1.200722×** across 16
+comparison pairs; the predeclared paired bootstrap 95% interval is
+`[1.187866,1.207221]`. The qualified scope is this conversion-free
+binary scalar path on the observed Tier 1 cloud instance. The timed
+interval starts after fixture loading and generator conversion, includes
+scalar parsing and projective arithmetic, and ends before exact point,
+rotation, and pack/unpack checks. The [raw archive](273359b6d2724700ad59ea1ddc978da8.tar.gz)
+has SHA-256 `2d8f889cd7ecfe2d2532b2c672bf6d51ec368ddf2002a95570fb64c90f91bc1b`;
+the provenance archive has SHA-256
+`a59b84ac34fb3e98df29b8714fd3c0b5cb3b6e74acae32655587472bfbdfcf88`.
+
 ## Proof map
 
 The pinned Lean 4.34.1 module
 [EisensteinResidue.lean](EisensteinResidue.lean) was built with
 `lean EisensteinResidue.lean`; the [output](lean-check.log) records
-`#print axioms` for each declaration.
+`#print axioms` for each declaration. The same toolchain checked
+[EisensteinMontgomery.lean](EisensteinMontgomery.lean) with
+`lean EisensteinMontgomery.lean`; its [output](eisenstein-montgomery-lean-check.log)
+records the additional declarations.
 
 | Result | Lean declaration | Status |
 | --- | --- | --- |
@@ -151,11 +212,18 @@ The pinned Lean 4.34.1 module
 | Pair-coordinate rotation preserves the field map modulo `p` | `eval_rotate_mod` | Checked; Lean foundations `propext`, `Quot.sound` |
 | Three-product pair multiplication preserves the field map modulo `p` | `eval_mul_mod` | Checked; Lean foundations `propext`, `Quot.sound` |
 | One exact quotient correction for a pseudo-Mersenne prime under the asserted correction bound | `solinas_one_correction` | Checked; Lean foundations `propext`, `Classical.choice`, `Quot.sound` |
+| Eisenstein adjugate identities | `adjugate_x`, `adjugate_y` | Checked; Lean foundations `propext`, `Quot.sound` |
+| Modular inverse and quotient congruences give integer witnesses | `inverse_mod_witness`, `quotient_mod_witness` | Checked; Lean foundations `propext`, `Quot.sound` |
+| Both Montgomery numerator coordinates are divisible by the radix under the inverse and quotient congruence hypotheses | `montgomery_numerators_divisible` | Checked; Lean foundations `propext`, `Quot.sound` |
+| Direct radix-congruence form of numerator divisibility | `montgomery_divisible_from_congruences`, `secp_montgomery_divisible` | Checked; Lean foundations `propext`, `Quot.sound` |
+| The divided pair has the intended field residue | `montgomery_field_semantics` | Checked; Lean foundations `propext`, `Quot.sound` |
+| Numeric inverse, norm, and kernel conditions for secp256k1 | `prime_inverse_radix`, `norm_pi`, `pi_kernel`, `omega_pi_kernel` | Checked; no axioms |
 | Full quotient-ring isomorphism, multiplication preservation, and rounding bounds | — | Formalization partial; a concrete `Z[ω]` quotient-ring definition and the map's kernel/index bridge remain open |
+| Bit-level Rust signed-limb operations and the centered quotient implementation | — | Formalization partial; 20,000-case differential limb replay, exact Python screen, and full native point replay are the current executable checks |
 
 The next implementation step is a narrower specialized pair-field kernel
 and packed affine table integrated into the same radix-14, four-layer
-scalar pipeline as the ordinary and two-x variants. The current fixed-limb
-binary path establishes correctness and exposes the remaining field cost;
-the integrated comparison must charge packing/unpacking and all online
-field operations while preserving the same-point fixture and Tier 1 gates.
+scalar pipeline as the ordinary and two-x variants. The binary paths
+establish arithmetic correctness and expose field cost; the integrated
+comparison must charge packing/unpacking and all online field operations
+while preserving the same-point fixture and Tier 1 gates.
