@@ -51,6 +51,14 @@ def main(output: Path):
     assert all((a + TAU_RESIDUE*b - residue) % NORM == 0
                for residue,(a,b) in enumerate(digits))
     assert all(norm(*omega(pair)) == norm(*pair) for pair in digits)
+    for residue,pair in enumerate(digits):
+        center = ((2*TAU_RESIDUE - 3)*residue + NORM)//(2*NORM)
+        candidate = (residue - TAU_RESIDUE*center, center)
+        error = 2*NORM*center - (2*TAU_RESIDUE - 3)*residue
+        assert abs(error) <= NORM
+        assert 4*NORM*norm(*candidate) == error*error + 3*residue*residue
+        assert norm(*candidate) < NORM
+        assert norm(*pair) <= norm(*candidate)
     digit_seeds = sorted({canonical(pair) for pair in digits})
     terminal = [(a,b) for a in range(-TERMINAL_COORD_LIMIT, TERMINAL_COORD_LIMIT+1)
                 for b in range(-TERMINAL_COORD_LIMIT, TERMINAL_COORD_LIMIT+1)
@@ -61,6 +69,7 @@ def main(output: Path):
         'digit_steps': 15, 'digit_residue_count': len(digits),
         'digit_seed_count_including_zero': len(digit_seeds),
         'digit_max_norm': max(norm(*pair) for pair in digits),
+        'analytic_digit_norm_limit_exclusive': NORM,
         'terminal_coordinate_limit': TERMINAL_COORD_LIMIT,
         'terminal_norm_limit': TERMINAL_NORM_LIMIT,
         'terminal_point_count': len(terminal),
