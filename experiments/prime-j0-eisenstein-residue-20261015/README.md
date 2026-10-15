@@ -36,6 +36,15 @@ further, from 93.50 ms for `k=6` to 52.67 ms (qualified paired gain
 and A/A gates. Lean also checks a conditional 20-step terminal norm bound
 for `k=5`.
 
+The [four-checkpoint radix-32 path](CHECKPOINTED_RADIX32.md) stores four
+five-digit windows at selected radix powers, retaining **832,396 bytes**.
+Its matched Tier 1 prepared-table panel evaluated 12,288 verified points
+in **567.90 ms** versus **624.07 ms** for plain radix-64, a qualified
+**1.0998×** paired gain with less retained memory. Its separate one-scalar
+cold panel measured **128.35 ms** versus **93.30 ms** for plain radix-64.
+Lean checks the block-evaluation identity for every member of the radix
+family under explicit point-map hypotheses.
+
 The secp256k1 prime splits in the Eisenstein integers. An exact norm-
 `p` element
 

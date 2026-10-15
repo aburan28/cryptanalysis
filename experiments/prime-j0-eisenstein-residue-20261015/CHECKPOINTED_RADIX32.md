@@ -1,0 +1,24 @@
+# Four-checkpoint radix-32 scalar multiplication
+
+Four five-digit checkpoints for the sparse Eisenstein radix `π=31+32τ` evaluate 12,288 frozen secp256k1 scalar multiples in **567.90 ms**, against **624.07 ms** for plain `63+64τ` Horner evaluation on the matched Tier 1 RunPod panel. The qualified paired reference/checkpoint median is **1.09981** (95% bootstrap interval **[1.09867, 1.10015]**). The checkpointed table retains **832,396 bytes**, compared with **922,596 bytes** for the reference. Every output was independently checked.
+
+## Construction and proof
+
+The [exact radix-family screen](sparse-radix-family-screen.json) reconstructs all 12,288 frozen scalars with 20 digits in radix `31+32τ`. Partition the low-digit-first expansion into four blocks of five. Build orbit-folded digit windows at `G`, `π⁵G`, `π¹⁰G`, and `π¹⁵G`, plus the terminal window at `π²⁰G`. Evaluate each block with four runtime radix actions, then add its result to the accumulator. This uses 16 runtime radix actions versus 20 for plain radix-32 Horner, at the cost of three extra digit windows and checkpoint-base preparation.
+
+The pinned Lean 4.34.1 [CheckpointedRadixFamily.lean](CheckpointedRadixFamily.lean) proves that, for every integer `t`, multiplication by `(t−1)+tτ` distributes over pair addition; every partition into blocks evaluates to the original Horner pair; and the block identity transfers to an abstract point evaluator under explicit addition and radix-map hypotheses. The [fresh checker](check_checkpointed_radix_family_lean.py) and [receipt](checkpointed-radix-family-lean-check.json) record all six declarations, source hashes, successful builds, and `#print axioms`. The proof uses only standard Lean foundations. An instantiation of the abstract point-map hypotheses for secp256k1 and a source-level proof of the Rust overlay remain open; the native point replay and frozen binary/source hashes check the implemented path separately.
+
+The [hash-guarded overlay](native_checkpointed_sparse32_width5_overlay.py) transforms a separate copy of the native radix-32 source and pins its [base checkpoint generator](native_checkpointed_sparse_overlay.py). The executed windows SHA-256 is `1e2a2637d8d1c82e7e1e210bfb35a093b57327d2f8effe9d2255109a81481a0f`; the binary SHA-256 is `6feacb9f638885c18e4627c3119ec2090e9b81efb05167954981fc075a9b3626`. The [one-point](sparse-tau32-checkpoint5-pilot-1.stdout) and [12,288-point](sparse-tau32-checkpoint5-pilot-12288.stdout) native pilots verified the frozen expected points. The [build log](sparse-tau32-checkpoint5-build.log) and [native provenance](tau32cp5-native-provenance.tar.gz) retain the executed artifacts; provenance SHA-256 is `9cd767d6e85517880c83bb9ae79516e4024da93d2121c25f5b92e801a03236ab`.
+
+## Paired Tier 1 results
+
+Both panels used the serial worker on pinned CPU 40, 16 alternating repetitions, adjacent A/A controls, frozen inputs, and exact output verification. All 96 arms and 48 pairs in each panel passed the artifact and timing gates. The prepared-table interval contains scalar evaluation over one pass of 12,288 distinct points after process-local table preparation. The one-scalar cold interval sums table preparation and evaluation for one frozen point; launch, fixture parsing, and independent point check are separate in both panels.
+
+| Matched workload | Plain radix-64 mean | Checkpointed radix-32 mean | Paired plain/checkpoint median | 95% interval |
+| --- | ---: | ---: | ---: | ---: |
+| 12,288 outputs, prepared table | 624.07 ms | **567.90 ms** | **1.09981** | [1.09867, 1.10015] |
+| One scalar, cold table | **93.30 ms** | 128.35 ms | **0.72691** | [0.72501, 0.72878] |
+
+The [prepared manifest](tier1-tau32cp5-online-cpu40-manifest.json), [rules](tier1-tau32cp5-online-cpu40-rules.json), [launch](tier1-tau32cp5-online-cpu40-launch.json), [auditor](analyze_tier1_tau32cp5_online.py), [audit](tier1-tau32cp5-online-cpu40-audit.json), and [raw archive](tau32cp5-online-tier1-raw.tar.gz) preserve job `ac432472940d44c7b8921c9e0ee8a366`. The [cold manifest](tier1-tau32cp5-cold-cpu40-manifest.json), [rules](tier1-tau32cp5-cold-cpu40-rules.json), [launch](tier1-tau32cp5-cold-cpu40-launch.json), [auditor](analyze_tier1_tau32cp5_cold.py), [audit](tier1-tau32cp5-cold-cpu40-audit.json), and [raw archive](tau32cp5-cold-tier1-raw.tar.gz) preserve job `c2587ca888ca47efb8a6afdba6385750`. The prepared and cold raw archive SHA-256 values are `0f25220b98bb385af3f1de7f13e314f5e195335eacc782fb594bb87bcda56a54` and `29b6e68256f0c2c25acc388c24cc7bda55baddb1d5b99e3036658aaef9029ba6`.
+
+The two timed boundaries place this candidate between plain radix-32's low one-scalar preparation cost and the larger checkpoint schedules' prepared throughput. A direct frozen cold panel for a 12,288-point batch would determine whether the prepared gain already repays checkpoint construction within one pass.
