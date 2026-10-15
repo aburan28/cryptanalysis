@@ -236,3 +236,10 @@ The serial Tier 1 panel completed 128 arms with stable artifacts; two
 adjacent A/A controls missed their frozen bounds, so both aggregate timing
 comparisons remain unknown after the Tier 1 gate. The follow-up records
 the exact memory costs, descriptive timings, proofs, and raw receipts.
+
+The [projective class-join follow-up](GAUGE_PROJECTIVE.md) keeps the same
+gauge table and replaces the final affine layer with two XYZZ mixed joins
+and one batch inversion. It reproduced all frozen points. Its 96-arm serial
+Tier 1 panel passed every A/A gate and measured a qualified paired
+reference/projective ratio of `0.983894` with 95% interval
+`[0.974294,0.988284]`, directing further work away from that join.
