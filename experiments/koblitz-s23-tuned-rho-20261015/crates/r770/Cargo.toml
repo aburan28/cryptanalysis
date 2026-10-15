@@ -1,0 +1,25 @@
+[package]
+name = "s23-tuned-rho-r770"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# The rho worker of both strong-rho arms (default and tuned): crypto 770f6a69's
+# library and A's tuned worker (examples/n83_rho_optimization_eval.rs, rT770),
+# generalised to K_a over GF(2^n) as ../../rho/s23_strong_rho_eval.rs and copied
+# into the snapshot by ../../restore_sources.py. Same dependency versions as
+# the reconcile experiment's r770 crate (crypto's own Cargo.lock, pruned).
+[[bin]]
+name = "rho_s23_r770"
+path = "../../snapshots/r770/examples/s23_strong_rho_eval.rs"
+
+[dependencies]
+crypto_lib = { package = "crypto", path = "../../snapshots/r770", default-features = false }
+blake3 = "1.5"
+hex = "0.4"
+libc = "0.2"
+num-bigint = { version = "0.4", features = ["rand"] }
+num-traits = "0.2"
+rand = { version = "0.8", features = ["small_rng"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["arbitrary_precision", "raw_value"] }
