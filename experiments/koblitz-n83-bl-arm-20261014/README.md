@@ -1,14 +1,6 @@
 # N83: a measured Bernstein–Lange arm against the index calculus
 
-**Status (2026-10-14): the protocol is ready except for one open parameter.
-Nothing at n=83 has been measured. `rho_reference.value` in
-[`protocol.json`](protocol.json) (the rho step implementation) stays `null`
-until item 2 decides it, and the workflow stops before any n=83 arm while it
-is `null`.** Item 2 is the reconciliation in
-`experiments/koblitz-n83-reconcile-20261014/` on branch `claude/n83-reconcile`
-(run 38617911080). This directory makes no performance claim. The only
-results here are local validation counts from a shared, contended container;
-they are not timing evidence.
+**Status (2026-10-15): the rho step implementation is set, and the run starts on push. `rho_reference.value` in [`protocol.json`](protocol.json) is `rT770`: A's tuned `StrongRhoG<Gf2_128 fold>`, with 64 lanes and DP 6.** Item 2 chose it: the reconciliation, run 38617911080 on branch `claude/n83-reconcile`, found it to be the fastest correct reference. Nothing else in the protocol changed. No n=83 result exists yet, and this directory makes no performance claim until the run lands. The sections below describe the design as it was frozen, while the value was still open.
 
 ## Question
 
