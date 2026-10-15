@@ -6,4 +6,14 @@ The hash-guarded `native_affine_layer_overlay.py` applies to the source snapshot
 
 The frozen Tier 1 panel compares 128-output affine-layer batches with 128-output XYZZ final-inversion batches on the same 128 scalar fixture, 96 passes per arm, and 16 repeats of A/A, comparison, A/A. The serial runner alternates arm order and checks every output. The pair acceptance requires all 96 arms and 48 pairs valid, adjacent A/A ratios in `[0.90,1.11]`, and a paired bootstrap 95% interval wholly on one side of one. Table preparation and fixture loading precede the online interval; all point additions, inversions, and affine recovery are included.
 
-The mathematical proof obligation is the combination of the prefix/reverse batch-inversion identity at every level with the fact that replacing each pair by its affine group sum preserves the tree's total. The parent `BatchInverse.lean` proves the first identity for arbitrary batch lengths. The native test checks the concrete field/curve bridge; a local Lean proof map for the layer composition is planned alongside the measured result.
+The mathematical result is the composition of the prefix/reverse batch-inversion identity at every level with preservation of each tree's point sum when a pair is replaced by its affine group sum. The proof map is:
+
+| Result | Lean declaration | Exact hypotheses and status |
+| --- | --- | --- |
+| One inverse gives a multiplicative inverse witness for each nonzero denominator | `BatchInverse.prefix_reverse_identity` in the parent experiment | Associative, commutative multiplication; exact prefix and reverse recurrences; inverse witness for the final product. Checked, all batch lengths. |
+| A tree layer preserves the interpreted group sum | `AffineLayer.layer_preserves_sum` | Associative point addition and `decode(pair(a,b)) = decode(a)+decode(b)` for every pair, including identity and exceptional cases. Checked, all lists. |
+| Any finite sequence of layers preserves that sum | `AffineLayer.layers_preserve_sum` | Same point-addition and pair hypotheses, arbitrary depth. Checked. |
+
+`check_lean.sh` builds both theorem modules under Lean 4.34.1 and records `#print axioms` in `lean-check.log`: the layer theorems use `propext`, and the parent batch-inversion theorem uses `propext` and `Quot.sound`. There are no local axioms or placeholders. The concrete bridge from the Rust Montgomery-field operations and affine exceptional-case branches to `decode(pair(a,b)) = decode(a)+decode(b)` is checked by native holdout and boundary replay; a Lean model of that field/curve implementation remains open.
+
+Batch-affine addition itself is established practice. [Eisentraeger, Lauter and Montgomery](https://arxiv.org/abs/math/0208038) study fast affine scalar arithmetic, and the [ZPrize MSM implementation notes](https://github.com/mitschabaude/montgomery/blob/main/doc/zprize22.md) describe batch-affine bucket reduction. This experiment applies per-layer inversion pooling across independent fixed-base `371−τ` scalar outputs with a frozen 15-leaf table schedule and paired CPU measurement.
