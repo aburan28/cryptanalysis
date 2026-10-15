@@ -1,5 +1,14 @@
 # A 33-byte Eisenstein residue x coordinate
 
+The current scalar-multiplication frontier in this experiment includes the
+[table-light Horner path](HORNER_RADIX.md) and the
+[sparse `127+128τ` radix](SPARSE_TAU_RADIX.md). The sparse radix verified
+12,288 frozen secp256k1 points and was 1.377× faster than the earlier Horner
+path in a qualified matched Tier 1 panel. Direct panels against full two-x
+prefetch measured a 12.36× one-scalar cold-start advantage for the sparse
+path and a 10.8× prepared-table throughput cost; the linked notes retain
+the distinct workload boundaries and raw receipts.
+
 The secp256k1 prime splits in the Eisenstein integers. An exact norm-
 `p` element
 
