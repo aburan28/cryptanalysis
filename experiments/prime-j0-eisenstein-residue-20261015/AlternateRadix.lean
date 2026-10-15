@@ -74,11 +74,144 @@ theorem quotient_step (t a b da db k : Int)
 /-- The chosen parameter gives a prime norm of 110557. -/
 theorem norm_334 : norm 334 = 110557 := by decide
 
+private theorem linear_corner_bound (n w v limit x y a : Int)
+    (hn : 0 < n) (hw : 0 < w) (hv : 0 < v)
+    (hm : w + v < limit)
+    (hx : -n ≤ x ∧ x < n) (hy : -n ≤ y ∧ y < n)
+    (ha : n*a = x*w - y*v) :
+    -limit < a ∧ a < limit := by
+  have hxu : x*w < n*w := Int.mul_lt_mul_of_pos_right hx.2 hw
+  have hxl : -n*w ≤ x*w := Int.mul_le_mul_of_nonneg_right hx.1 (Int.le_of_lt hw)
+  have hyu : y*v < n*v := Int.mul_lt_mul_of_pos_right hy.2 hv
+  have hyl : -n*v ≤ y*v := Int.mul_le_mul_of_nonneg_right hy.1 (Int.le_of_lt hv)
+  have hup : x*w - y*v < n*(w+v) := by
+    have hyneg := Int.neg_le_neg hyl
+    have hsum := Int.add_lt_add_of_lt_of_le hxu hyneg
+    have hcalc : x*w - y*v < n*w + n*v := by
+      simpa [Int.sub_eq_add_neg, Int.neg_mul, Int.mul_add] using hsum
+    simpa [Int.mul_add] using hcalc
+  have hlo : -(n*(w+v)) < x*w - y*v := by
+    have hyneg := Int.neg_lt_neg hyu
+    have hsum := Int.add_lt_add_of_le_of_lt hxl hyneg
+    have hcalc : (-n)*w - n*v < x*w - y*v := by
+      simpa [Int.sub_eq_add_neg, Int.neg_mul] using hsum
+    simpa [Int.mul_add, Int.neg_mul, Int.neg_add, Int.sub_eq_add_neg] using hcalc
+  have hmargin : n*(w+v) < n*limit := Int.mul_lt_mul_of_pos_left hm hn
+  have hpos : n*a < n*limit := by rw [ha]; exact Int.lt_trans hup hmargin
+  have hneg : n*(-limit) < n*a := by
+    have hmarginneg := Int.neg_lt_neg hmargin
+    have hsmall : n*(-limit) < -(n*(w+v)) := by
+      simpa [Int.mul_neg] using hmarginneg
+    rw [ha]
+    exact Int.lt_trans hsmall hlo
+  exact ⟨Int.lt_of_mul_lt_mul_left hneg (Int.le_of_lt hn),
+         Int.lt_of_mul_lt_mul_left hpos (Int.le_of_lt hn)⟩
+
+private theorem corner_remainder_bound (n r d : Int)
+    (hn : 0 < n) (hr : 0 ≤ r ∧ r < n) (hd : 0 ≤ d ∧ d ≤ 1) :
+    -n ≤ r - n*d ∧ r - n*d < n := by
+  have hd01 : d = 0 ∨ d = 1 := by omega
+  rcases hd01 with hz | ho
+  · simp [hz]
+    omega
+  · simp [ho]
+    omega
+
+def scalarOrder : Int := 115792089237316195423570985008687907852837564279074904382605163141518161494337
+def cornerW0 : Int := 671331852483699643819086596696745227419
+def cornerV0Abs : Int := 238911465918039986966665730306072050094
+def cornerW1Abs : Int := 367917413016453100223835821029139468248
+def cornerV1 : Int := 303414439467246543595250775667605759171
+def selectorCoordinateLimit : Int := 2^130
+
+/-- Any four-corner lattice output has both coordinates below the recoder limit.
+The hypotheses expose the two exact floor remainders and the basis-coordinate equations. -/
+theorem selector_corner_coordinate_bound (rw rv dw dv a b : Int)
+    (hrw : 0 ≤ rw ∧ rw < scalarOrder)
+    (hrv : 0 ≤ rv ∧ rv < scalarOrder)
+    (hdw : 0 ≤ dw ∧ dw ≤ 1) (hdv : 0 ≤ dv ∧ dv ≤ 1)
+    (ha : scalarOrder*a =
+      (rw-scalarOrder*dw)*cornerW0 - (rv-scalarOrder*dv)*cornerV0Abs)
+    (hb : scalarOrder*b =
+      (rv-scalarOrder*dv)*cornerV1 - (rw-scalarOrder*dw)*cornerW1Abs) :
+    -selectorCoordinateLimit < a ∧ a < selectorCoordinateLimit ∧
+      -selectorCoordinateLimit < b ∧ b < selectorCoordinateLimit := by
+  have hn : 0 < scalarOrder := by decide
+  have hx := corner_remainder_bound scalarOrder rw dw hn hrw hdw
+  have hy := corner_remainder_bound scalarOrder rv dv hn hrv hdv
+  have hwa : 0 < cornerW0 := by decide
+  have hva : 0 < cornerV0Abs := by decide
+  have hwb : 0 < cornerW1Abs := by decide
+  have hvb : 0 < cornerV1 := by decide
+  have hma : cornerW0 + cornerV0Abs < selectorCoordinateLimit := by decide
+  have hmb : cornerV1 + cornerW1Abs < selectorCoordinateLimit := by decide
+  have hab := linear_corner_bound scalarOrder cornerW0 cornerV0Abs
+    selectorCoordinateLimit (rw-scalarOrder*dw) (rv-scalarOrder*dv) a
+    hn hwa hva hma hx hy ha
+  have hbb := linear_corner_bound scalarOrder cornerV1 cornerW1Abs
+    selectorCoordinateLimit (rv-scalarOrder*dv) (rw-scalarOrder*dw) b
+    hn hvb hwb hmb hy hx hb
+  exact ⟨hab.1, hab.2, hbb.1, hbb.2⟩
+
+private theorem nonnegative_square_bound (x limit : Int)
+    (hx : 0 ≤ x) (hlimit : 0 ≤ limit) (h : x ≤ limit) :
+    x*x ≤ limit*limit := by
+  have h1 := Int.mul_le_mul_of_nonneg_right h hx
+  have h2 := Int.mul_le_mul_of_nonneg_left h hlimit
+  exact Int.le_trans h1 h2
+
+private theorem signed_square_bound (x limit : Int)
+    (hlimit : 0 ≤ limit) (h : -limit ≤ x ∧ x ≤ limit) :
+    x*x ≤ limit*limit := by
+  by_cases hx : 0 ≤ x
+  · exact nonnegative_square_bound x limit hx hlimit h.2
+  · have hy : 0 ≤ -x := by omega
+    have hybound : -x ≤ limit := by omega
+    have hs := nonnegative_square_bound (-x) limit hy hlimit hybound
+    simpa [Int.neg_mul, Int.mul_neg] using hs
+
+private theorem pair_norm_coordinate_bound (a b limit : Int)
+    (hlimit : 0 ≤ limit)
+    (ha : -limit ≤ a ∧ a ≤ limit)
+    (hb : -limit ≤ b ∧ b ≤ limit) :
+    a*a + 3*(a*b) + 3*(b*b) ≤ 7*(limit*limit) := by
+  have haa := signed_square_bound a limit hlimit ha
+  have hbb := signed_square_bound b limit hlimit hb
+  have hsq : 0 ≤ (a-b)*(a-b) := by
+    by_cases hx : 0 ≤ a-b
+    · exact Int.mul_nonneg hx hx
+    · have hy : 0 ≤ -(a-b) := by omega
+      have hn := Int.mul_nonneg hy hy
+      simpa [Int.neg_mul, Int.mul_neg] using hn
+  have hcross : 2*(a*b) ≤ a*a + b*b := by
+    have heq : (a-b)*(a-b) = a*a + b*b - 2*(a*b) := by
+      simp [Int.mul_sub, Int.mul_assoc, Int.mul_comm]
+      simp only [← Int.mul_assoc]
+      omega
+    omega
+  omega
+
+/-- The selector coordinate envelope supplies the initial norm budget. -/
+theorem selector_initial_norm_bound (a b : Int)
+    (ha : -selectorCoordinateLimit < a ∧ a < selectorCoordinateLimit)
+    (hb : -selectorCoordinateLimit < b ∧ b < selectorCoordinateLimit) :
+    pairNorm a b ≤ 7*2^260 := by
+  have hcoord := pair_norm_coordinate_bound a b selectorCoordinateLimit
+    (by decide) ⟨Int.le_of_lt ha.1, Int.le_of_lt ha.2⟩
+    ⟨Int.le_of_lt hb.1, Int.le_of_lt hb.2⟩
+  have hnorm : pairNorm a b ≤
+      7*(selectorCoordinateLimit*selectorCoordinateLimit) := by
+    simpa only [pairNorm, Int.mul_assoc] using hcoord
+  have hpow : 7*(selectorCoordinateLimit*selectorCoordinateLimit) =
+      7*2^260 := by decide
+  rw [hpow] at hnorm
+  exact hnorm
+
 /-- The nearest-lift digit has an exact centered-error norm formula. -/
 theorem digit_candidate_norm_identity (r b : Int) :
     4*110557*pairNorm (r-334*b) b =
       (2*110557*b-665*r)*(2*110557*b-665*r)+3*r*r := by
-  simp [pairNorm, Int.mul_add, Int.mul_sub, Int.add_mul,
+  simp [pairNorm, Int.mul_sub, Int.add_mul,
         Int.sub_mul, Int.mul_assoc, Int.mul_comm, Int.mul_left_comm]
   simp only [← Int.mul_assoc]
   omega
@@ -282,11 +415,32 @@ theorem terminal_from_prime_norm_digits (q : Nat → Nat)
     omega
   omega
 
+/-- The corner envelope and per-digit recurrence compose to terminal coverage. -/
+theorem terminal_for_selector_corner (rw rv dw dv a b : Int) (q : Nat → Nat)
+    (hrw : 0 ≤ rw ∧ rw < scalarOrder)
+    (hrv : 0 ≤ rv ∧ rv < scalarOrder)
+    (hdw : 0 ≤ dw ∧ dw ≤ 1) (hdv : 0 ≤ dv ∧ dv ≤ 1)
+    (ha : scalarOrder*a =
+      (rw-scalarOrder*dw)*cornerW0 - (rv-scalarOrder*dv)*cornerV0Abs)
+    (hb : scalarOrder*b =
+      (rv-scalarOrder*dv)*cornerV1 - (rw-scalarOrder*dw)*cornerW1Abs)
+    (hqzero : (q 0 : Int) = pairNorm a b)
+    (hstep : ∀ i : Nat, i < 15 →
+      100*110557*q (i+1) ≤ 101*q i + 10100*110557) :
+    q 15 < 5000 := by
+  obtain ⟨hal, hau, hbl, hbu⟩ :=
+    selector_corner_coordinate_bound rw rv dw dv a b hrw hrv hdw hdv ha hb
+  have hnorm := selector_initial_norm_bound a b ⟨hal, hau⟩ ⟨hbl, hbu⟩
+  have hzero : q 0 ≤ 7*2^260 := by omega
+  exact terminal_from_prime_norm_digits q hzero hstep
+
 #print axioms quotient_step
 #print axioms pair_norm_nonnegative
 #print axioms pair_norm_weighted
 #print axioms multiply_prime_norm
 #print axioms norm_334
+#print axioms selector_corner_coordinate_bound
+#print axioms selector_initial_norm_bound
 #print axioms digit_candidate_norm_identity
 #print axioms quotient_norm_step
 #print axioms norm_334_no_small_divisor
@@ -295,5 +449,6 @@ theorem terminal_from_prime_norm_digits (q : Nat → Nat)
 #print axioms terminal_norm_below_table_limit
 #print axioms terminal_from_recurrence
 #print axioms terminal_from_prime_norm_digits
+#print axioms terminal_for_selector_corner
 
 end AlternateRadix
