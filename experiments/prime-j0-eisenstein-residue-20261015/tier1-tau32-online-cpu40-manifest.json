@@ -1,0 +1,96 @@
+{
+  "allocation": {
+    "instance_id": "thyvmdqmzsz5ik",
+    "provider": "runpod",
+    "receipt": "/workspace/isolated-bench/panels/allocation.json"
+  },
+  "artifacts": [
+    "/workspace/cryptanalysis/scripts/isolated_bench.py",
+    "/workspace/isolated-bench/panels/allocation.json",
+    "/workspace/isolated-bench/panels/host-probe.json",
+    "/workspace/isolated-bench/panels/tier1-tau32-online-cpu40-rules.json",
+    "/workspace/isolated-bench/panels/native_sparse_radix32_overlay.py",
+    "/workspace/isolated-bench/panels/sparse-tau32-build.log",
+    "/workspace/bench-sources/prime-j0-sparse-tau64/Cargo.toml",
+    "/workspace/bench-sources/prime-j0-sparse-tau64/Cargo.lock",
+    "/workspace/bench-sources/prime-j0-sparse-tau64/src/bin/eisenstein_fixed.rs",
+    "/workspace/bench-sources/prime-j0-sparse-tau64/src/bin/eisenstein_fixed/unit_orbit_windows.rs",
+    "/workspace/bench-sources/prime-j0-sparse-tau64/src/bin/mixed640_uniform_fixture.json",
+    "/workspace/bench-sources/prime-j0-sparse-tau64/target/release/eisenstein_fixed",
+    "/workspace/bench-sources/prime-j0-sparse-tau32/Cargo.toml",
+    "/workspace/bench-sources/prime-j0-sparse-tau32/Cargo.lock",
+    "/workspace/bench-sources/prime-j0-sparse-tau32/src/bin/eisenstein_fixed.rs",
+    "/workspace/bench-sources/prime-j0-sparse-tau32/src/bin/eisenstein_fixed/unit_orbit_windows.rs",
+    "/workspace/bench-sources/prime-j0-sparse-tau32/src/bin/mixed640_uniform_fixture.json",
+    "/workspace/bench-sources/prime-j0-sparse-tau32/target/release/eisenstein_fixed"
+  ],
+  "cases": [
+    {
+      "candidate": [
+        "/workspace/bench-sources/prime-j0-sparse-tau64/target/release/eisenstein_fixed",
+        "--pilot-alt-horner",
+        "12288"
+      ],
+      "expected_fields": {
+        "count": "12288"
+      },
+      "expected_result": "741d173790d3cc184bd91f7ad785d5231ce1592d3140ba7189c0e481a0892864:21c429d0b7a2d5828d6c937de87924409cd4d848f039e599374852556111cfaa",
+      "id": "cal_before",
+      "reference": [
+        "/workspace/bench-sources/prime-j0-sparse-tau64/target/release/eisenstein_fixed",
+        "--pilot-alt-horner",
+        "12288"
+      ]
+    },
+    {
+      "candidate": [
+        "/workspace/bench-sources/prime-j0-sparse-tau32/target/release/eisenstein_fixed",
+        "--pilot-alt-horner",
+        "12288"
+      ],
+      "expected_fields": {
+        "count": "12288"
+      },
+      "expected_result": "741d173790d3cc184bd91f7ad785d5231ce1592d3140ba7189c0e481a0892864:21c429d0b7a2d5828d6c937de87924409cd4d848f039e599374852556111cfaa",
+      "id": "compare_tau32_online",
+      "reference": [
+        "/workspace/bench-sources/prime-j0-sparse-tau64/target/release/eisenstein_fixed",
+        "--pilot-alt-horner",
+        "12288"
+      ]
+    },
+    {
+      "candidate": [
+        "/workspace/bench-sources/prime-j0-sparse-tau64/target/release/eisenstein_fixed",
+        "--pilot-alt-horner",
+        "12288"
+      ],
+      "expected_fields": {
+        "count": "12288"
+      },
+      "expected_result": "741d173790d3cc184bd91f7ad785d5231ce1592d3140ba7189c0e481a0892864:21c429d0b7a2d5828d6c937de87924409cd4d848f039e599374852556111cfaa",
+      "id": "cal_after",
+      "reference": [
+        "/workspace/bench-sources/prime-j0-sparse-tau64/target/release/eisenstein_fixed",
+        "--pilot-alt-horner",
+        "12288"
+      ]
+    }
+  ],
+  "comparison_variant": "tau32-vs-tau64-online",
+  "isolation": {
+    "cpus": "40",
+    "execution_cpu": 40
+  },
+  "measurement_boundary": "One pass over 12288 distinct frozen scalars; Rust Instant times scalar multiplication after process-local table preparation. All points are checked after the interval. Runner ratio is tau64 online_ms / tau32 online_ms.",
+  "measurement_tier": "tier1_instance",
+  "outer_repeats": 1,
+  "pair_fields": [
+    "count",
+    "point"
+  ],
+  "repetitions": 16,
+  "schema": 1,
+  "timeout_s": 30,
+  "workdir": "/workspace/bench-sources"
+}
