@@ -8,7 +8,7 @@ The six-candidate selector searches the two centered residue lifts and three nea
 | --- | --- |
 | Full digit and radius screen | [`screen.json`](screen.json) |
 | Independent affine point replay | [`group-replay.json`](group-replay.json) |
-| Lean source and axiom audit | [`NearestOrbit53593.lean`](NearestOrbit53593.lean), [`lean-check.log`](lean-check.log) |
+| Lean algebra and bound audits | [`NearestOrbit53593.lean`](NearestOrbit53593.lean), [`lean-check.log`](lean-check.log), [`NearestOrbit53593Bound.lean`](NearestOrbit53593Bound.lean), [`lean-bound-check.log`](lean-bound-check.log) |
 | Reproducible native source overlay | [`native_overlay.py`](native_overlay.py) |
 
 Run from this repository checkout:
@@ -17,9 +17,10 @@ Run from this repository checkout:
 python3 experiments/prime-j0-nearest-orbit-53593-20261014/screen.py --full-global > experiments/prime-j0-nearest-orbit-53593-20261014/screen.json
 python3 experiments/prime-j0-nearest-orbit-53593-20261014/group_replay.py > experiments/prime-j0-nearest-orbit-53593-20261014/group-replay.json
 LEAN_PATH=/private/tmp/lean-8011-fresh:/private/tmp/lean-12211-direct:/private/tmp/adaptive-unit-lean lean experiments/prime-j0-nearest-orbit-53593-20261014/NearestOrbit53593.lean
+LEAN_PATH=/private/tmp/lean-8011-fresh:/private/tmp/lean-12211-direct:/private/tmp/adaptive-unit-lean lean experiments/prime-j0-nearest-orbit-53593-20261014/NearestOrbit53593Bound.lean
 ```
 
-The Lean module proves the radix norm, norm scaling, quotient residue, exact digit-step identity, and unit-action residue identity. Its `#print axioms` output has only standard Lean foundations. The complete minimum-digit selection, terminal bound, and 16-step group reconstruction are verified by the pinned computational screens and affine replay; their full Lean formalization is open. The proof bridge for the point action is the established GLV relation `τG = λτG` from the parent implementation.
+The Lean algebra module proves the radix norm, norm scaling, quotient residue, exact digit-step identity, and unit-action residue identity. The bound module proves primality by trial division, the one-step norm contraction, all 16 numeric radius inequalities, and `selected_terminal_bound`: every selected lattice representative with 16 valid digit steps of norm at most 134² has terminal norm below 4². Both `#print axioms` audits contain only standard Lean foundations. The selector's exhaustive minimum-digit certificate and the binding of the concrete selector to the theorem's digit hypothesis remain computationally verified; a full Lean proof of that binding and of the point-level 16-step group reconstruction is open. The point action in the affine replay uses the established GLV relation `τG = λτG` from the parent implementation.
 
 The native overlay pins the SHA-256 of the 18-position rolling Rust source before transforming it. The release test binary passed its full 53,593-residue digit test and independently checked all 128 frozen scalar points. It reports 9,363,076 retained bytes, including digit/code arrays and Rust table bookkeeping. This local correctness run does not supply a qualified latency comparison.
 
