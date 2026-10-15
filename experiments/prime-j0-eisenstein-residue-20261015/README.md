@@ -251,3 +251,18 @@ profile found that per-seed hot entries do not transfer to the held-out
 fixture, so the ten-row mask uses evenly spaced rows. Its serial Tier 1
 panel completed all 96 arms, but two A/A controls exceeded the frozen
 range; the timing aggregate remains unknown with all raw receipts retained.
+
+The [norm-110557 alternate radix](ALT_RADIX.md) uses fifteen full two-x
+digit rows and a small terminal set, retaining 27,429,548 bytes under the
+32 MiB cap. It replayed all 12,288 frozen points. Lean checks its quotient
+identity, prime norm, norm scaling, and a conditional terminal recurrence.
+Its serial Tier 1 panel completed 96 arms; one A/A control missed the frozen
+range, and the paired interval crossed one, so the aggregate speed comparison
+remains unknown.
+
+The [balanced-pair accumulation screen](PAIR_ACCUMULATION.md) keeps selected
+points in Eisenstein coordinates throughout the group sum and also replayed
+all frozen points. Its 1,036.845373 ms full-stream diagnostic versus roughly
+64–68 ms for the ordinary-field cached paths falsifies direct pair-field
+accumulation as the next timing candidate; its source, binary, and receipt
+remain archived.
