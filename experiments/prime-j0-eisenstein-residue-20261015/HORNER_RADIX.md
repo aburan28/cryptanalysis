@@ -1,6 +1,6 @@
 # Table-light Eisenstein Horner scalar multiplication
 
-The norm-110557 digit recoder can evaluate a secp256k1 scalar with one reusable digit row and one terminal row. The final native pilot retained **2,566,612 bytes** and reproduced all **12,288 distinct frozen scalar points**. Direct table preparation took `249.647051 ms`; the 12,288-point scalar phase took `846.057887 ms`. These are correctness and cost-shape observations from one untiered pilot. The next timing gate is a frozen, same-input Tier 1 comparison of cold preparation plus scalar work and a separate prepared-table online comparison.
+The norm-110557 digit recoder can evaluate a secp256k1 scalar with one reusable digit row and one terminal row. The final native pilot retained **2,566,612 bytes** and reproduced all **12,288 distinct frozen scalar points**. In a matched Tier 1 single-scalar cold-start panel, its mean preparation plus scalar time was **252.74 ms**, versus **3217.75 ms** for the 27,429,548-byte full two-x prefetch path. The paired median reference/Horner cold ratio was **12.75×** across 16 verified comparisons, with all 32 adjacent A/A controls within their frozen acceptance interval. A prepared-table online comparison remains the next timing gate.
 
 ## Recurrence and table placement
 
@@ -18,6 +18,17 @@ The [pilot audit](horner-pilot-audit.json) checks native source, binaries, fixtu
 
 The first attempt to shorten the existing uniform benchmark with arguments `128 1` reached that command's fixed-fixture assertion and exited 101; its [stderr](horner-invalid-args.stderr) is preserved. The bounded `--pilot-alt-horner` entry point then verified the requested prefix lengths. These timings have no Tier 1 isolation or paired A/A controls, so they are diagnostics and do not rank the new path against the prepared 27,429,548-byte table.
 
+## Matched Tier 1 cold-start panel
+
+The [manifest](tier1-horner-cold-cpu40-manifest.json), [acceptance rules](tier1-horner-cold-cpu40-rules.json), and [launch receipt](tier1-horner-cold-launch.json) were frozen before job `ab1de3ef68f44f12bfa0c56f81b67121` entered the RunPod serial worker. The [hash-guarded reference adapter](native_horner_cold_panel_overlay.py) adds a one-scalar pilot to the existing full two-x prefetch source. Both arms use the first scalar in the same SHAKE256 fixture, `8b0040cf2f698515cf9a3882de34f01c34bc772dbf003d2b8984ad92875d036c`, and independently check the same secp256k1 point after timing. Each invocation starts a fresh process and table. Rust `Instant` measures table preparation and one scalar multiplication separately; fixture parsing, process launch, and exact point verification are outside those intervals. The cold cost for each arm is their sum, and the ratio is formed within each repeat. CPU 40, the exposed NUMA topology, cgroup counters, frequency readback, affinity, noise gates, and source hashes are in the [raw job archive](horner-cold-tier1-raw.tar.gz). This is a cloud-instance Tier 1 measurement; the pod does not establish physical-host exclusivity.
+
+| Variant | Retained table | Mean preparation plus scalar, 16 comparison arms | Mean scalar phase, descriptive |
+| --- | ---: | ---: | ---: |
+| Full two-x prefetch | 27,429,548 bytes | 3217.75 ms | 0.0532 ms |
+| Eisenstein Horner | 2,566,612 bytes | 252.74 ms | 0.0892 ms |
+
+The paired median cold ratio is `12.7521`, with the predeclared 95% bootstrap interval `[12.6767, 12.7854]`. All 96 arms and 48 pairs were valid, the artifacts were stable, and both A/A controls passed on every repeat. The scalar-only intervals are too short for the cold A/A gate to validate a separate online speed claim; their means describe the cost tradeoff only. The runner's generic `paired_speedup` field uses `online_ms` and is not the cold metric. The [independent auditor](analyze_tier1_horner_cold.py) recomputes the cold totals from every raw stdout, checks the fixture's first scalar and point, source/binary hashes against the [native provenance archive](horner-cold-native-provenance.tar.gz), runner status, all noise receipts, A/A bounds, and the bootstrap gate. Its [receipt](tier1-horner-cold-cpu40-audit.json) records the raw archive SHA-256 `d872018620ad53581bf64de2ae24ac3c9d28493d72e75906b8bbadb672df27c8` and native archive SHA-256 `1ab0ec216b143038b7f261bc49af7197e4434f0ef9c301b73ef2ee97d70c153e`.
+
 ## Formal proof map
 
 The pinned toolchain is `leanprover/lean4:v4.34.1`. Run `python3 check_horner_lean.py` to build `AlternateRadix.lean` into a fresh temporary olean and check [HornerRadix.lean](HornerRadix.lean). The [proof receipt](horner-lean-check.json) records both source hashes, commands, outputs, and `#print axioms`; all three new theorems report only `propext`. `lean4checker --fresh` was unavailable in this environment.
@@ -30,4 +41,4 @@ The pinned toolchain is `leanprover/lean4:v4.34.1`. Run `python3 check_horner_le
 | Initial pair evaluates to the Horner point | `HornerRadix.point_horner_of_valid_trace` | Checked under exact trace and point-map hypotheses |
 | The concrete secp256k1 implementation satisfies the point-map and trace hypotheses | — | Open; native exact replay covers the frozen 12,288-point fixture |
 
-The point-map bridge requires the concrete `τ` implementation to be additive and to satisfy `τ²=3τ−3` on the declared subgroup, and requires the Rust recoder's emitted sequence to form the Lean `ValidTrace`. Those are the precise remaining formalization obligations. A matched Tier 1 panel must charge cold preparation and prepared-table scalar work separately before selecting this low-memory route for a workload.
+The point-map bridge requires the concrete `τ` implementation to be additive and to satisfy `τ²=3τ−3` on the declared subgroup, and requires the Rust recoder's emitted sequence to form the Lean `ValidTrace`. Those are the precise remaining formalization obligations. The next measurement is a matched prepared-table online panel over a frozen batch of distinct scalars, with an A/A gate scaled to that interval.

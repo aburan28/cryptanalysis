@@ -2,7 +2,7 @@
 """Audit the frozen one-scalar cold-start panel from its raw serial-worker archive."""
 
 from hashlib import sha256
-from math import exp, log
+from math import exp, isfinite, log
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import json
@@ -16,6 +16,7 @@ ROOT = '/workspace/bench-sources/'
 STEMS = {'reference':'prime-j0-alt-horner-cold-prefetch',
          'horner':'prime-j0-alt-radix-horner-terminal-g'}
 ARCHIVE = HERE/'horner-cold-tier1-raw.tar.gz'
+PROVENANCE = HERE/'horner-cold-native-provenance.tar.gz'
 
 
 def load(path):
@@ -60,6 +61,17 @@ def audit(folder):
                          ('binary','target/release/eisenstein_fixed')):
             assert artifacts[ROOT+stem+'/'+rel] == rules['hashes'][label+'_'+name]
         assert artifacts[ROOT+stem+'/src/bin/mixed640_uniform_fixture.json'] == rules['fixture_sha256']
+    with tarfile.open(PROVENANCE,'r:gz') as archive:
+        for label,stem in STEMS.items():
+            for name,rel in (('front','src/bin/eisenstein_fixed.rs'),
+                             ('windows','src/bin/eisenstein_fixed/unit_orbit_windows.rs'),
+                             ('binary','target/release/eisenstein_fixed')):
+                assert sha256(archive.extractfile(stem+'/'+rel).read()).hexdigest() == rules['hashes'][label+'_'+name]
+            fixture = archive.extractfile(stem+'/src/bin/mixed640_uniform_fixture.json').read()
+            assert sha256(fixture).hexdigest() == rules['fixture_sha256']
+            first = json.loads(fixture)['cases'][0]
+            assert first['scalar_hex'] == rules['scalar_hex']
+            assert first['point_hex'] == rules['point_hex']
     cases = {case['id']:case for case in manifest['cases']}
     run_lookup = {}
     invalid = []
@@ -76,7 +88,8 @@ def audit(folder):
         assert all(fields.get(k) == v for k,v in case['expected_fields'].items())
         expected_kind = 'horner' if run['case']=='compare_horner' and run['variant']=='candidate' else 'reference'
         assert int(fields['retained_bytes']) == rules['table_bytes'][expected_kind]
-        assert float(fields['preparation_ms']) > 0 and float(fields['online_ms']) > 0
+        assert all(isfinite(float(fields[key])) and float(fields[key]) > 0
+                   for key in ('preparation_ms','online_ms'))
         run_lookup[(run['repeat'],run['case'],run['variant'])] = run
         if run['status'] != 'valid' or run['issues'] or run['returncode'] != 0 or run['timed_out'] or not run['postflight']['ok']:
             invalid.append({'serial':serial,'status':run['status'],'issues':run['issues']})
@@ -87,6 +100,7 @@ def audit(folder):
         return float(run['fields']['preparation_ms'])+float(run['fields']['online_ms'])
     low,high = rules['aa_acceptance']
     aa_failures, ratios, reference, horner = [],[],[],[]
+    reference_online, horner_online = [],[]
     for repeat in range(16):
         for name in ('cal_before','cal_after'):
             pair = pair_lookup[(repeat,name)]
@@ -98,6 +112,8 @@ def audit(folder):
         a,b = (run_lookup[(repeat,'compare_horner',variant)] for variant in ('reference','candidate'))
         if pair['status']=='valid' and not pair['issues']:
             reference.append(cold(a)); horner.append(cold(b)); ratios.append(cold(a)/cold(b))
+            reference_online.append(float(a['fields']['online_ms']))
+            horner_online.append(float(b['fields']['online_ms']))
     bounds = interval(ratios)
     tier_gate = summary['status']=='completed' and summary['artifacts_stable'] and not invalid and not aa_failures and len(ratios)==16
     qualified = tier_gate and bounds is not None and (bounds[0]>1 or bounds[1]<1)
@@ -106,10 +122,13 @@ def audit(folder):
             'completed_arms':len(runs),'completed_pairs':len(pairs),'invalid_arms':invalid,
             'aa_failures':aa_failures,'tier_gate_passed':tier_gate,
             'raw_archive_sha256':digest(ARCHIVE),
+            'provenance_sha256':digest(PROVENANCE),
             'runs_sha256':digest(folder/'runs.jsonl'),'pairs_sha256':digest(folder/'pairs.jsonl'),
             'comparison':{'valid_pairs':len(ratios),
                           'reference_cold_ms_mean':statistics.mean(reference) if reference else None,
                           'horner_cold_ms_mean':statistics.mean(horner) if horner else None,
+                          'reference_online_ms_mean':statistics.mean(reference_online) if reference_online else None,
+                          'horner_online_ms_mean':statistics.mean(horner_online) if horner_online else None,
                           'descriptive_reference_over_horner_cold_median':statistics.median(ratios) if ratios else None,
                           'paired_bootstrap95_by_repeat':bounds,
                           'aggregate_status':'qualified' if qualified else 'unknown_after_tier_gate',
