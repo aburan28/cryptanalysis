@@ -31,3 +31,23 @@ The unchanged-manifest repeat `fe00f695389443f08d6cbf003f1a8b7e` also completed 
 ## New CPU placement gate
 
 The pod exposes CPU sibling pairs `2,98`, `13,109`, `40,136`, and `74,170`. The service stays on CPU 2. After the two recorded CPU-13 A/A failures, `freeze_cpu40_panel.py` changes only the execution pin to CPU 40 and records the reason in a new rules file. The code, binary, fixture, arm order, 16 repeats, A/A range, and bootstrap rule are identical. This is a new full panel, with all earlier outcomes retained.
+
+## Qualified CPU-40 panel
+
+The new-core job `251bb8443cad471ab3e6162307fd0c46` completed all 96 valid arms and 48 valid pairs with stable artifacts and **zero A/A failures** under the unchanged [0.90,1.11] gate. Its pinned execution CPU was 40, with service CPU 2. All output points matched the same frozen fixture; observed cgroup throttling and execution-CPU steal increments summed to zero. The maximum recorded child involuntary-switch count was 80. The exact manifest, source and binary hashes, and per-arm counters are in the raw folder.
+
+| Panel | CPU | XYZZ batch mean online ms | Affine-layer mean online ms | Median paired XYZZ/affine ratio | Bootstrap 95% interval | Gate |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `c24e37df66ad4b1a891f1805798a0887` | 13 | 62.1931 | 54.0961 | 1.171280 descriptive | [1.157072,1.177994] | Unknown: A/A repeat 12 |
+| `fe00f695389443f08d6cbf003f1a8b7e` | 13 | 61.8199 | 53.4322 | 1.164518 descriptive | [1.159208,1.173961] | Unknown: A/A repeat 9 |
+| `251bb8443cad471ab3e6162307fd0c46` | 40 | 61.8852 | 53.1564 | **1.169535 qualified** | **[1.163926,1.172300]** | Qualified Tier 1 instance |
+
+The CPU-40 panel establishes a **16.95% sustained throughput increase** for 12,288 verified outputs per arm under this frozen instance envelope. The affine-layer path averaged 4.326 μs per output within the batch, versus 5.036 μs for the XYZZ reference. Both retained 26,035,988 table bytes; mean table preparation was 3,957.984 ms versus 3,981.450 ms, outside the online interval. This is a 128-output batch result, not isolated one-call latency or a claim of physical-host exclusivity.
+
+The CPU-40 raw archive `affine-layer-cpu40-panel.tar.gz` has SHA-256 `46dd8f6af85c30a8a2af3cb9a0844f0b39beb4c9096f00b56ce6267e4a6da372`. The unpacked folder and `tier1-cpu40-analysis.json` accompany it. Reproduce all three independent audits with:
+
+```sh
+python3 experiments/prime-j0-affine-layer-batch-20261015/analyze_affine_tier1.py --job c24e37df66ad4b1a891f1805798a0887
+python3 experiments/prime-j0-affine-layer-batch-20261015/analyze_affine_tier1.py --job fe00f695389443f08d6cbf003f1a8b7e
+python3 experiments/prime-j0-affine-layer-batch-20261015/analyze_affine_tier1.py --job 251bb8443cad471ab3e6162307fd0c46
+```
