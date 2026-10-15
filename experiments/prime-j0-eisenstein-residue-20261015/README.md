@@ -200,7 +200,11 @@ The pinned Lean 4.34.1 module
 `#print axioms` for each declaration. The same toolchain checked
 [EisensteinMontgomery.lean](EisensteinMontgomery.lean) with
 `lean EisensteinMontgomery.lean`; its [output](eisenstein-montgomery-lean-check.log)
-records the additional declarations.
+records the additional declarations. The same toolchain checked
+[EisensteinGaugeLayer.lean](EisensteinGaugeLayer.lean) with
+`lean EisensteinGaugeLayer.lean`; its
+[output](eisenstein-gauge-layer-lean-check.log) records both class-sum
+declarations.
 
 | Result | Lean declaration | Status |
 | --- | --- | --- |
@@ -217,13 +221,18 @@ records the additional declarations.
 | Both Montgomery numerator coordinates are divisible by the radix under the inverse and quotient congruence hypotheses | `montgomery_numerators_divisible` | Checked; Lean foundations `propext`, `Quot.sound` |
 | Direct radix-congruence form of numerator divisibility | `montgomery_divisible_from_congruences`, `secp_montgomery_divisible` | Checked; Lean foundations `propext`, `Quot.sound` |
 | The divided pair has the intended field residue | `montgomery_field_semantics` | Checked; Lean foundations `propext`, `Quot.sound` |
+| An additive rotation commutes with class sums, including two successive rotations | `EisensteinGaugeLayer.rotate_list_sum`, `rotate_twice_list_sum` | Checked in [EisensteinGaugeLayer.lean](EisensteinGaugeLayer.lean); first theorem has no axioms, second uses `propext` |
 | Numeric inverse, norm, and kernel conditions for secp256k1 | `prime_inverse_radix`, `norm_pi`, `pi_kernel`, `omega_pi_kernel` | Checked; no axioms |
 | Full quotient-ring isomorphism, multiplication preservation, and rounding bounds | — | Formalization partial; a concrete `Z[ω]` quotient-ring definition and the map's kernel/index bridge remain open |
 | Bit-level Rust signed-limb operations and the centered quotient implementation | — | Formalization partial; 20,000-case differential limb replay, exact Python screen, and full native point replay are the current executable checks |
 
-The next implementation step is a narrower specialized pair-field kernel
-and packed affine table integrated into the same radix-14, four-layer
-scalar pipeline as the ordinary and two-x variants. The binary paths
-establish arithmetic correctness and expose field cost; the integrated
-comparison must charge packing/unpacking and all online field operations
-while preserving the same-point fixture and Tier 1 gates.
+The binary paths establish arithmetic correctness and expose field cost.
+The integrated comparison charges point selection, field operations, and
+affine recovery on the same frozen fixture under the Tier 1 gates.
+
+The [packed-x and gauge-layer follow-up](PACKED_GAUGE.md) now implements
+two radix-14 variants on that fixture. Both passed all 12,288 point checks.
+The serial Tier 1 panel completed 128 arms with stable artifacts; two
+adjacent A/A controls missed their frozen bounds, so both aggregate timing
+comparisons remain unknown after the Tier 1 gate. The follow-up records
+the exact memory costs, descriptive timings, proofs, and raw receipts.
