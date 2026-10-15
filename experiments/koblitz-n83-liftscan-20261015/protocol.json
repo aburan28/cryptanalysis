@@ -1,0 +1,247 @@
+{
+ "arms": {
+  "fF": {
+   "binary": "ic_online_liftscan_r770",
+   "canon": "full",
+   "kind": "ic",
+   "role": "online baseline on a fresh point"
+  },
+  "fL": {
+   "binary": "ic_online_liftscan_r770",
+   "canon": "lift",
+   "kind": "ic",
+   "role": "online candidate on a fresh point"
+  },
+  "qF": {
+   "binary": "ic_online_liftscan_r770",
+   "canon": "full",
+   "kind": "ic",
+   "role": "online baseline on Q0: the pipeline's full scan"
+  },
+  "qFaa": {
+   "binary": "ic_online_liftscan_r770",
+   "canon": "full",
+   "kind": "ic",
+   "role": "online A/A control on Q0"
+  },
+  "qFx2": {
+   "binary": "ic_online_liftscan_r770",
+   "canon": "full_x2",
+   "kind": "ic",
+   "role": "online planted positive control on Q0 (full scan plus one discarded full scan per probe); also measures the marginal cost of one canonicalization per probe"
+  },
+  "qG": {
+   "binary": "ic_online_liftscan_r770",
+   "canon": "gap",
+   "kind": "ic",
+   "role": "secondary on Q0: variant B in the online path"
+  },
+  "qL": {
+   "binary": "ic_online_liftscan_r770",
+   "canon": "lift",
+   "kind": "ic",
+   "role": "online candidate on Q0: lift_scan"
+  },
+  "qV": {
+   "binary": "ic_online_liftscan_r770",
+   "canon": "verify",
+   "kind": "ic",
+   "role": "online exactness on Q0 and each fresh point, not timed"
+  },
+  "rT": {
+   "binary": "rho_tuned_r770",
+   "kind": "rho_tuned",
+   "role": "A's tuned rho (Fold/64/DP6, crypto 770f6a69), the strongest rho measured at n=83 (reconcile rT770); gap reference on the same points"
+  },
+  "sA": {
+   "binary": "native_packed_index_liftscan",
+   "kind": "stage",
+   "mode": "packed_bucket22_liftcanon",
+   "role": "stage candidate: two-limb lift_scan"
+  },
+  "sB": {
+   "binary": "native_packed_index_liftscan",
+   "kind": "stage",
+   "mode": "packed_bucket22_fastcanon",
+   "role": "stage baseline: variant B (zero-gap scan)"
+  },
+  "sBaa": {
+   "binary": "native_packed_index_liftscan",
+   "kind": "stage",
+   "mode": "packed_bucket22_fastcanon",
+   "role": "stage A/A control (second variant-B arm)"
+  },
+  "sBx2": {
+   "binary": "native_packed_index_liftscan",
+   "kind": "stage",
+   "mode": "packed_bucket22_fastcanon_x2",
+   "role": "stage planted positive control: variant B plus one discarded variant-B call per word"
+  },
+  "sV": {
+   "binary": "native_packed_index_liftscan",
+   "kind": "stage",
+   "mode": "packed_bucket22_verifycanon",
+   "role": "stage exactness, not timed"
+  }
+ },
+ "baselines": {
+  "online": "B's one-target IC pipeline (experiments/koblitz-single-target-n83-tier1-20261014, run 38523707244; reproduced by koblitz-n83-reconcile-20261014 as iB770c): crypto 770f6a69 koblitz_orbit_dlp_fast_online + ic_log_cache.patch, cached verified factor-log table, retained K600 base d4a4da26...a9f7, curve EC1N83Ce1h35c7ced6b497. Its target scan canonicalizes every partner root with NormalBasis128::canonical, the FULL 83-rotation scan (source audit: scan_state128 calls basis.canonical, not canonical_selected; KIC_SPARSE_CANONICAL affects only the index build). KIC_TARGET_CANON=full is that code path, byte-for-byte in behaviour.",
+  "source_audit_finding": "Variant B is the canonicalizer of the E-1 packed-index stage only. In the one-target online pipeline the canonicalization is the full scan, inside target_PDP (scan_state128: per probe, to_normal.apply(partner) then canonical, then the root-table lookup). So the online baseline arm is the full scan; variant B online (qG) is a secondary arm.",
+  "stage": "Variant B, packed_bucket22_fastcanon of experiments/koblitz-n83-index-design-20260929/packed_index_e1_canonical_20261009 (Tier 1 replay packed_index_e1_canonical_tier1_20261014: canonicalization phase 1.086 [1.076, 1.094] over the full scan). Curve EC1N83Ckb1h876c2921cb64, workload 981ac530e67e, 2,000,000 pair states, 22-bit bucket directory, 18-byte records, crypto 904f0f84."
+ },
+ "controls_pass_rule": {
+  "aa": "95% interval inside [0.97, 1.03] (stage: both quantities; online: Q0)",
+  "planted": "95% interval lower bound > 1 (stage canonicalization phase; online Q0)"
+ },
+ "decision_rule": {
+  "improvement": "primary 95% lower bound > 1",
+  "invalid": "any gate, exactness check or control fails, or any primary unit is missing: no verdict at that level; every row is preserved",
+  "levels": "stage verdict from stage_primary; online verdict from online_q0_primary and online_fresh_primary, each classified; a pipeline (online) improvement requires both online primaries 'improvement' and the online controls passing; the stage verdict never changes the online verdict",
+  "not_separated": "interval contains 1",
+  "ratchet": "an online improvement makes the lift_scan pipeline the new one-target baseline, recorded with the online ratio and the S_rho delta; a stage-only improvement is recorded as a stage improvement",
+  "regression": "primary 95% upper bound < 1",
+  "scope": "Tier 1 instance scope, one runner; Q0 intervals cover timing and repeat variation, not targets; the fresh panel has the target variation. Not a claim to beat rho: the tuned-rho gap is reported as distance remaining."
+ },
+ "design": {
+  "deadline_min": 325,
+  "fresh_ic_arms": [
+   "fF",
+   "fL"
+  ],
+  "fresh_points": 16,
+  "host": "one fresh GitHub Actions ubuntu-24.04 runner (Tier 1 instance scope); every run one process pinned to one execution CPU (minimum of the affinity mask), clean environment, RAYON/KIC threads 1",
+  "order": "X (exactness: sV, then qV on Q0 and w00..w15), S1..S16, then Q1, F1(w00,w01), Q2, F2(w02,w03), ..., Q8, F8(w14,w15); within-segment orders from make_schedule.py's seeded shuffles",
+  "q0_blocks": 8,
+  "q0_ic_arms": [
+   "qF",
+   "qL",
+   "qG",
+   "qFaa",
+   "qFx2"
+  ],
+  "rho_seeds": {
+   "fresh": "830000 + w (B's rule)",
+   "q0": "202610060 + block (block 1..8; 202610061..65 are A's five seeds)"
+  },
+  "runtime_estimate": "build+tests 15-25 min; X 17 verify IC processes x 50-90 s + 1 stage verify ~30 s = 15-26 min; S 64 stage processes x 8-15 s = 9-16 min; Q 40 IC x 40-60 s + 8 rho x 2-5 s = 27-41 min; F 32 IC x 40-55 s + 16 rho = 22-30 min; total about 1.5-2.3 h (reconcile run 38617911080: cached IC process wall median 41-45 s, tuned rho 2-3 s)",
+  "segment_upper_estimate_s": {
+   "F": 420,
+   "Q": 600,
+   "S": 240,
+   "X": 2400
+  },
+  "stage_arms": [
+   "sB",
+   "sA",
+   "sBaa",
+   "sBx2"
+  ],
+  "stage_blocks": 16,
+  "timeout_s": {
+   "ic": 900,
+   "ic_verify": 1500,
+   "rho_tuned": 300,
+   "stage": 300,
+   "stage_verify": 600
+  }
+ },
+ "frozen_at_utc": "2026-10-15T17:15:36+00:00",
+ "frozen_before_any_timing": true,
+ "gates": [
+  "isolated_bench Tier 1 counters per run: exit 0, no timeout, verified=1, binary digest unchanged, no memory events (oom/oom_kill); contention flags recorded and reported",
+  "stage arm: frozen pair certificate, frozen canonical-rotation counts of its mode, native control PASS, RSS <= 1024 MiB, phase accounting (query prep + S3 batch + partner check <= target stage; canonical + lookup <= partner check)",
+  "ic arm: verified cached table on the frozen base, requested canonicalizer reported, full-scan index build, five phases sum to the online interval, setup ends before the online interval",
+  "exactness: sV 12,000,064 words with zero variant-B and zero lift_scan disagreements; every qV run (Q0 + 16 fresh) with words = probes and zero disagreements",
+  "pair identity: on each point every IC arm (incl. qV) has the same probe count, relation (point indices) and recovered scalar; IC and tuned rho recover the same scalar on every point; every scalar replays as [d]G = Q in the pinned oracle; Q0's scalar equals the validation sidecar"
+ ],
+ "kind": "n83_liftscan_canonicalizer_stage_and_online_tier1_v1",
+ "multiplicity": "two levels x one primary each (online has two panels, both required); no correction is applied to the controls; secondaries are reported, never decide",
+ "online": {
+  "base": "snapshots/r770/experiments/koblitz-single-target-n83-20261006/base_n83_K600.jsonl",
+  "base_hash": "d4a4da26d6e7cb09367de922d9806631fe49989f70d378cae76f347f8d76a9f7",
+  "curve_id": "EC1N83Ce1h35c7ced6b497",
+  "factor_log_table": "../koblitz-single-target-n83-tier1-20261014/tier1_github_38523707244/precompute/factor_logs_n83_K600.json",
+  "factor_log_table_policy": "B's archived table; re-verified before any timing by ../koblitz-n83-reconcile-20261014/verify_log_table.py in the pinned pure-Python oracle; every IC arm additionally verifies all [L_j]G = R_j in process before target work",
+  "factor_log_table_sha256": "a771716f284bb826e7407e1e7b5ef882409c9e7e1df8b8a3ed5b60b421d9f17e",
+  "online_interval": "producer's own clock: target_query_begin .. recovery_check_end, five exclusive phases (query, PDP, relation check, descent, recovery check); index build, log-table load and verification, process launch outside",
+  "orbit_columns": 600,
+  "q0": [
+   "2655898345537166180532960",
+   "3881526307991673265292615"
+  ],
+  "q0_validation_scalar_source": "snapshots/r770/experiments/koblitz-single-target-n83-20261006/frozen/fixture.json (fixture_scalar_validation_only), opened only by verify_receipt.py",
+  "sqrt_r": 92573139.235,
+  "subgroup_order": "8569786107849059",
+  "targets_file": "../koblitz-single-target-n83-tier1-20261014/inputs/targets.json",
+  "targets_file_sha256": "146bfd70b3f3c39368743ff611107a259de52c88fcf115ccc37b52c62d252d50",
+  "tuned_rho_config": "snapshots/r770/research/n83_evaluation_20261012/optimization/selected_config.json"
+ },
+ "question": "Does the exact two-limb binary-lifting canonicalizer lift_scan (variant-A analogue) lower cost against the current n=83 index-calculus baseline, (1) at stage level against variant B (the zero-gap scan) in the frozen E-1 canonical root stage, and (2) over the full one-target IC online interval of B's pipeline on Q0 and B's 16 fresh points?",
+ "schema": 1,
+ "sources": {
+  "crypto_770f6a69": "770f6a6925a0d29b768bd79074f54a173e967fe7 (snapshots/r770 via ../koblitz-n83-reconcile-20261014/restore_sources.py, checked against that protocol's r770 digests)",
+  "crypto_904f0f84": "904f0f844f3c1e69e8d22ae5e60ecd56e6648611 (frozen E-1 crypto_source_snapshot via packed_index_e1_canonical_tier1_20261014/restore_crypto_source.py)",
+  "local_sha256": {
+   "arm_wrapper": "9e2c955f0b7f769f5deaac5c28338c9916da69196b347bbd646150d75b0cd425",
+   "lift2_lib": "606b8a58d225e93d73d8b26ffaf4080250b0c12a37f8bbf782254fbcf5145463",
+   "lift2_manifest": "77b04fcaa11a3f9f015619612b3e36c1f31a1b20d76116c929e5429e46dc271c",
+   "lift2_tests": "69561fbf09e2137ad1490d5795df54f6f9a5646aeebf3ecf12f1af55a495c566",
+   "online_derivation": "0b9574faddc9363286d5af4c8eb5b7bc1637937eec3b10e6ca6e0428b8cca624",
+   "online_lock": "e3c9f7aa1f49266f7f994c025d1136e4c0c4d515970c15d4fbdc99957a786f32",
+   "online_manifest": "b1339bfeee811b48617ba7fdc73bf5804270be397f720d95b1a9db52f67efb15",
+   "receipt_verifier": "a2d8198410b8a6f4a8f6c4ecfae1731b760eec6e532f71687b6417c332757589",
+   "schedule_builder": "615a8fd8e9686bb2e941b335912f8b007d4b69fe7b106f2f5fb7c7ddf13963fc",
+   "schedule_runner": "f727a22f7dc730b18835c310988a322795a145dec38b1589616eb6c4169bda3f",
+   "stage_lock": "a62aa7a2fb65c0e23b30b4d0bbba5a3a5a0cffbf81fb4432939924b33458f371",
+   "stage_manifest": "1b4cf0b0ca97a642ff758e7cee13b2bd05145922b3c30e74d1b6184b5d811ae9",
+   "stage_source": "180fd23315f3a28ced1a7c70056264273c6bc6541bbe117e0e18d8361564df8e"
+  },
+  "online_source_sha256": "fb3e1707fa43464945a6624b68725fa38c05b6e2a244f608c6356586f448fd04"
+ },
+ "stage": {
+  "curve_id": "EC1N83Ckb1h876c2921cb64",
+  "expected_canonical_rotation_steps": {
+   "packed_bucket22_fastcanon": [
+    19127078,
+    38261354
+   ],
+   "packed_bucket22_fastcanon_x2": [
+    19127078,
+    38261354
+   ],
+   "packed_bucket22_liftcanon": [
+    5661620,
+    11325200
+   ],
+   "packed_bucket22_verifycanon": [
+    328000000,
+    656000000
+   ]
+  },
+  "expected_counts_note": "[index_build, target stage]. Variant B and full-scan counts are the frozen E-1 rows'; the lift_scan counts (nonzero-shift candidate rotations) are deterministic and were read from the local exactness run before freezing; they are correctness expectations, not timing.",
+  "frozen_pair_certificate": "7cfba6355dc0a0dd4c67bfcf585377b57caa50c4391554ac5ab5ec86d7acaff8",
+  "pair_certificate_definition": "sha256 of benchmark_stage.canonical over benchmark_stage.PAIR_FIELDS (20 fields incl. lookup_sample keys and stored shifts, hit counts, outcome, native control); the frozen E-1 rows' certificate",
+  "pair_state_cap": 2000000,
+  "peak_rss_cap_mib": 1024,
+  "verify_words": 12000064,
+  "verify_words_definition": "every word the frozen stage canonicalizes: 4,000,000 index roots + 8,000,000 target partner roots + 64 lookup-sample roots",
+  "workload_id": "981ac530e67e"
+ },
+ "statistics": {
+  "S": "S_probe = root-index probes / sqrt(r) (invariant here by construction: probes are a pair field). S_rho = (IC online ms / tuned-rho ms per walk step) / sqrt(r), the online cost priced in this job's tuned-rho steps (ms per step = median over all rT runs of online_ms / walk_steps); reported for the old (full) and new (lift) baseline on Q0 (median) and fresh (mean), with the delta",
+  "bootstrap": "random.Random(seed); 10,000 resamples with replacement of the units; statistic recomputed per resample; sorted; 95% interval = indices 250 and 9749",
+  "canonicalization_share": "derived, Q0: per block (qFx2 - qF)/qF, the marginal time of one full-scan canonicalization per probe as a fraction of the baseline online interval; median, bootstrap seed 20261021; also (qF - qL)/qF (the realized saving) and the PDP share target_pdp_ms/online_ms of qF",
+  "online_aa": "qF/qFaa per block, median, seed 20261019",
+  "online_fresh_primary": "section 23: mean over the 16 points of fF online_ms / mean of fL online_ms; bootstrap over points, seed 2026101400",
+  "online_fresh_secondary": "median of the 16 per-point ratios fF/fL, bootstrap seed 2026101401",
+  "online_planted": "qFx2/qF per block, median, seed 20261020",
+  "online_q0_primary": "online_ms, per block qF/qL; median of the 8 block ratios; bootstrap seed 20261016",
+  "online_q0_secondary": "qG/qL (variant B vs lift_scan online) and qF/qG, per block, median, seeds 20261017/20261018",
+  "rho_gap": "Q0: per block rT/qF and rT/qL (rho seed varies by block), median and ratio of means over blocks, seeds 20261022/20261023; fresh: section 23 mean rT / mean fF and mean rT / mean fL, bootstrap over points, seeds 2026101402/2026101403",
+  "stage_aa": "sB/sBaa on both quantities, same estimator, seeds 20261013/20261014",
+  "stage_planted": "sBx2/sB on the canonicalization phase, same estimator, seed 20261015",
+  "stage_primary": "canonicalization phase timing_ns.target_cycle_canonical, per block ratio sB/sA; median of the 16 block ratios; bootstrap seed 20261011",
+  "stage_secondary": "target stage timing_ns.target_pdp_and_native_check, per block sB/sA, same estimator, seed 20261012"
+ },
+ "success_criterion": "AGENTS.md 'Success criterion: iterative improvement of the index-calculus baseline' (branch claude/iterative-success-criterion, PR #919): a verified, measured improvement over the current IC baseline under a protocol frozen before timing; a stage win is a stage improvement and becomes a pipeline improvement only when it moves the online/end-to-end cost; each landed improvement becomes the new baseline with its delta."
+}

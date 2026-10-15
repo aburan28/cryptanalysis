@@ -1,0 +1,46 @@
+[package]
+name = "n83-bl-arm"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Every binary is built from crypto 770f6a69 as restored by restore_sources.py.
+# The four reference binaries are the pinned files themselves (the IC producer
+# with B's ic_log_cache.patch); the two BL binaries are generated from them
+# (snapshot/bl_generated/). Dependency set and versions as the reconciliation's
+# r770 crate (crypto's own Cargo.lock, pruned by Cargo).
+[[bin]]
+name = "ic_online_logcache_r770"   # B's IC producer (cached factor-log table)
+path = "snapshot/examples/koblitz_orbit_dlp_fast_online_logcache.rs"
+
+[[bin]]
+name = "rho_rung3_r770"            # rho step implementation rB770: strong rung 3
+path = "snapshot/examples/koblitz_rho_batch_ks_strong_online.rs"
+
+[[bin]]
+name = "rho_adapter_r770"          # rA770: default StrongRhoG<WideGf2,u64>
+path = "snapshot/examples/n83_strong_point_eval.rs"
+
+[[bin]]
+name = "rho_tuned_r770"            # rT770: StrongRhoG<Gf2_128 fold>, 64 lanes, DP 6
+path = "snapshot/examples/n83_rho_optimization_eval.rs"
+
+[[bin]]
+name = "bl_rung3"                  # BL arm on rung 3's walk (generated)
+path = "snapshot/bl_generated/bl_rung3.rs"
+
+[[bin]]
+name = "bl_sg"                     # BL arm on the library walk, field wide|fold|gf2 (generated)
+path = "snapshot/bl_generated/bl_sg.rs"
+
+[dependencies]
+crypto_lib = { package = "crypto", path = "snapshot", default-features = false }
+blake3 = "1.5"
+hex = "0.4"
+libc = "0.2"
+num-integer = "0.1"
+num-bigint = { version = "0.4", features = ["rand"] }
+num-traits = "0.2"
+rand = { version = "0.8", features = ["small_rng"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["arbitrary_precision", "raw_value"] }

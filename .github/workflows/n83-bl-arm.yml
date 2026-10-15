@@ -1,0 +1,213 @@
+name: N83 measured Bernstein-Lange arm Tier 1
+
+# One fresh GitHub-hosted ubuntu-24.04 runner is the Tier 1 instance. The
+# frozen protocol is experiments/koblitz-n83-bl-arm-20261014/protocol.json.
+# In order, on one execution CPU unless noted: the positive controls (counts,
+# all CPUs), B's IC rank stage once (its timers give P_IC, the BL budget), the
+# BL precomputation at that budget with the chosen rho step implementation
+# (protocol rho_reference.value; the job stops if it is still null), the
+# table's three checks, then IC, BL, BL A/A and single-target rho on Q0 (four
+# blocks) and B's 16 fresh public points, one pinned process at a time.
+# Nothing here promotes a result; verify_receipt.py audits the receipt and
+# applies the frozen decision rule.
+on:
+  push:
+    branches: [claude/n83-bl-arm]
+    paths:
+      - experiments/koblitz-n83-bl-arm-20261014/**
+      - .github/workflows/n83-bl-arm.yml
+      - '!experiments/koblitz-n83-bl-arm-20261014/run_github_*/**'
+      - '!experiments/koblitz-n83-bl-arm-20261014/smoke/**'
+      - '!experiments/koblitz-n83-bl-arm-20261014/README.md'
+      - '!experiments/koblitz-n83-bl-arm-20261014/README.pdf'
+      - '!experiments/koblitz-n83-bl-arm-20261014/figures/**'
+      - '!experiments/koblitz-n83-bl-arm-20261014/result*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: n83-bl-arm-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  EXPERIMENT: experiments/koblitz-n83-bl-arm-20261014
+  RUSTUP_TOOLCHAIN: 1.99.0
+  CARGO_TERM_COLOR: never
+
+jobs:
+  bl-arm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Freeze runner and source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          receipt_dir="$RUNNER_TEMP/n83-bl-arm"
+          mkdir -p "$receipt_dir"
+          {
+            echo "N83_JOB_START=$(date +%s)"
+            echo "N83_RECEIPT_DIR=$receipt_dir"
+            echo "N83_CRYPTO_REPO=$RUNNER_TEMP/n83-bl-arm-crypto"
+            echo "CARGO_TARGET_DIR=$RUNNER_TEMP/n83-bl-arm-cargo"
+          } >> "$GITHUB_ENV"
+          python3 scripts/isolated_bench.py probe-host > "$receipt_dir/host-probe.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          receipt = {
+              'provider': 'github_actions',
+              'instance_id': 'gh-{}-{}-{}'.format(os.environ['GITHUB_RUN_ID'],
+                                                  os.environ['GITHUB_RUN_ATTEMPT'],
+                                                  os.environ['GITHUB_JOB']),
+              'runner_name': os.environ.get('RUNNER_NAME'),
+              'image_os': os.environ.get('ImageOS'),
+              'image_version': os.environ.get('ImageVersion'),
+              'advertised_runner': 'ubuntu-24.04 standard (4 vCPU, 16 GB)',
+              'observed_cpu_affinity': sorted(os.sched_getaffinity(0)),
+              'observed_cpu_model': next((line.split(':', 1)[1].strip() for line in
+                  Path('/proc/cpuinfo').read_text().splitlines()
+                  if line.startswith('model name')), None),
+              'observed_mem_total_kib': next((line.split()[1] for line in
+                  Path('/proc/meminfo').read_text().splitlines()
+                  if line.startswith('MemTotal:')), None),
+              'transparent_hugepage': {name: (Path('/sys/kernel/mm/transparent_hugepage') / name).read_text().strip()
+                                       for name in ('enabled', 'defrag')
+                                       if (Path('/sys/kernel/mm/transparent_hugepage') / name).exists()},
+              'git_sha': os.environ['GITHUB_SHA'],
+              'git_ref': os.environ['GITHUB_REF'],
+              'run_url': '{}/{}/actions/runs/{}'.format(os.environ['GITHUB_SERVER_URL'],
+                  os.environ['GITHUB_REPOSITORY'], os.environ['GITHUB_RUN_ID']),
+              'recorded_at_utc': datetime.now(timezone.utc).isoformat(),
+          }
+          path = Path(os.environ['RUNNER_TEMP']) / 'n83-bl-arm' / 'allocation.json'
+          path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + '\n')
+          PY
+
+      - name: Restore the pinned crypto source and generate the BL arms
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --no-checkout https://github.com/aburan28/crypto.git "$N83_CRYPTO_REPO"
+          git -C "$N83_CRYPTO_REPO" cat-file -e "770f6a6925a0d29b768bd79074f54a173e967fe7^{commit}"
+          python3 "$EXPERIMENT/restore_sources.py" --crypto-repo "$N83_CRYPTO_REPO"
+          sha256sum "$EXPERIMENT/protocol.json" | tee "$N83_RECEIPT_DIR/frozen.sha256"
+          python3 "$EXPERIMENT/run_job.py" --print-schedule > "$N83_RECEIPT_DIR/schedule.jsonl"
+
+      - name: Install the pinned toolchain, build and test
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+          rustc --version | tee "$N83_RECEIPT_DIR/rustc.txt"
+          (cd "$EXPERIMENT" && cargo test --release --locked --bins 2>&1 | tee "$N83_RECEIPT_DIR/cargo-test.txt")
+          (cd "$EXPERIMENT" && cargo build --release --locked)
+          sha256sum "$CARGO_TARGET_DIR"/release/{ic_online_logcache_r770,rho_rung3_r770,rho_adapter_r770,rho_tuned_r770,bl_rung3,bl_sg} \
+            | tee "$N83_RECEIPT_DIR/binaries.sha256"
+
+      - name: Positive controls on small curves (step counts only, all CPUs)
+        shell: bash
+        run: |
+          set +e
+          python3 "$EXPERIMENT/control.py" --bin-dir "$CARGO_TARGET_DIR/release" \
+            --out "$N83_RECEIPT_DIR/control" --workers "$(nproc)" | tee "$N83_RECEIPT_DIR/control-stdout.jsonl"
+          echo "control_exit=${PIPESTATUS[0]}" | tee "$N83_RECEIPT_DIR/control-exit.txt"
+
+      - name: Stop unless the rho step implementation is set
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$EXPERIMENT/protocol.json" <<'PY'
+          import json
+          import sys
+          value = json.load(open(sys.argv[1]))['rho_reference']['value']
+          if value is None:
+              sys.exit('protocol.json rho_reference.value is null: the rho step implementation is still open (item 2); no n=83 arm runs')
+          print('rho_reference=' + value)
+          PY
+
+      - name: IC rank stage once on the execution CPU (gives P_IC)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cpu_id="$(python3 -c 'import os; print(min(os.sched_getaffinity(0)))')"
+          echo "N83_CPU=$cpu_id" >> "$GITHUB_ENV"
+          python3 "$EXPERIMENT/ic_precompute.py" run \
+            --binary "$CARGO_TARGET_DIR/release/ic_online_logcache_r770" \
+            --cpu "$cpu_id" --out "$N83_RECEIPT_DIR/ic_precompute"
+
+      - name: BL precomputation at the IC's setup budget
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 "$EXPERIMENT/bl_table.py" precompute --bin-dir "$CARGO_TARGET_DIR/release" \
+            --cpu "$N83_CPU" --ic-receipt "$N83_RECEIPT_DIR/ic_precompute/precompute_receipt.json" \
+            --out "$N83_RECEIPT_DIR/bl"
+
+      - name: Check the stored table (regeneration, every record, oracle sample)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cpus="$(python3 -c 'import os; print(",".join(str(c) for c in sorted(os.sched_getaffinity(0))))')"
+          regen_cpu="$(python3 -c 'import os; c = sorted(os.sched_getaffinity(0)); print(c[1] if len(c) > 1 else c[0])')"
+          python3 "$EXPERIMENT/bl_table.py" check --bin-dir "$CARGO_TARGET_DIR/release" \
+            --receipt-dir "$N83_RECEIPT_DIR/bl" --regen-cpu "$regen_cpu" --verify-cpus "$cpus"
+
+      - name: Run the frozen panel on one pinned CPU
+        shell: bash
+        run: |
+          set +e
+          python3 "$EXPERIMENT/run_job.py" --bin-dir "$CARGO_TARGET_DIR/release" \
+            --log-table "$GITHUB_WORKSPACE/experiments/koblitz-single-target-n83-tier1-20261014/tier1_github_38523707244/precompute/factor_logs_n83_K600.json" \
+            --bl-receipt-dir "$N83_RECEIPT_DIR/bl" --receipt-dir "$N83_RECEIPT_DIR/panel" --cpu "$N83_CPU" \
+            --job-start-epoch "$N83_JOB_START" --deadline-min 330 > "$N83_RECEIPT_DIR/runner-stdout.jsonl"
+          echo "panel_exit=$?" | tee "$N83_RECEIPT_DIR/panel-exit.txt"
+
+      - name: Audit the receipt and apply the frozen decision rule
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f "$N83_RECEIPT_DIR/panel/runner_start.json" ]; then
+            echo "no panel ran; nothing to audit" | tee "$N83_RECEIPT_DIR/verify-stdout.json"
+            exit 0
+          fi
+          python3 "$EXPERIMENT/verify_receipt.py" "$N83_RECEIPT_DIR" | tee "$N83_RECEIPT_DIR/verify-stdout.json"
+          cat "$N83_RECEIPT_DIR/result_table.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Move the BL table out of the receipt
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/n83-bl-arm-table"
+          if [ -f "$N83_RECEIPT_DIR/bl/table.bin" ]; then
+            mv "$N83_RECEIPT_DIR/bl/table.bin" "$RUNNER_TEMP/n83-bl-arm-table/table.bin"
+            cp "$N83_RECEIPT_DIR/bl/precompute_receipt.json" "$RUNNER_TEMP/n83-bl-arm-table/"
+          fi
+
+      - name: Preserve allocation, controls, precomputations, raw runs and the result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: n83-bl-arm-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/n83-bl-arm/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Preserve the stored BL table (table.bin, SHA-256 in the receipt)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: n83-bl-arm-table-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/n83-bl-arm-table/
+          if-no-files-found: ignore
+          retention-days: 30
+          compression-level: 0
