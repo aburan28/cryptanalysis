@@ -1,0 +1,150 @@
+{
+ "experiment": "ic-probe-latency-20261015",
+ "idea": "crypto-autoresearcher IDEA-20261015-b41f68 (stage 1 pointer-chase null; stage 2 huge-page pair), uncommitted proposal",
+ "status": "FROZEN",
+ "frozen_at_utc": "2026-10-15",
+ "question": "On one GitHub ubuntu-24.04 runner (a VM), does backing B's n=83 K600 IC producer with 2 MiB transparent huge pages lower its ns per root-index probe on Q0 by at least 1.5x, while the tuned rho's ns per step moves by under 5%; and how does IC ns/probe compare with a pointer chase over the root table's byte size under the same page policy?",
+ "measurement_tier": "tier1_instance (one runner, one pinned exposed CPU; host exclusivity not certified)",
+ "inputs": {
+  "curve_id": "EC1N83Ce1h35c7ced6b497",
+  "subgroup_order": "8569786107849059",
+  "q0": [
+   "2655898345537166180532960",
+   "3881526307991673265292615"
+  ],
+  "q0_scalar_public": "3141592653589793",
+  "base": "snapshots/r770/experiments/koblitz-single-target-n83-20261006/base_n83_K600.jsonl",
+  "base_hash": "d4a4da26d6e7cb09367de922d9806631fe49989f70d378cae76f347f8d76a9f7",
+  "orbit_columns": 600,
+  "rank_seed": 7,
+  "log_table": "experiments/koblitz-single-target-n83-tier1-20261014/tier1_github_38523707244/precompute/factor_logs_n83_K600.json",
+  "log_table_check": "experiments/koblitz-n83-reconcile-20261014/verify_log_table.py against the reconcile protocol's sources.reused_from_B.factor_log_table_sha256",
+  "restore": "experiments/koblitz-n83-reconcile-20261014/restore_sources.py (crypto 770f6a69 and a8194d61, digest-checked); crate experiments/koblitz-n83-reconcile-20261014/crates/r770, bins ic_online_logcache_r770 and rho_tuned_r770 only, rustc 1.99.0, --locked",
+  "root_table_bytes": 4294967296,
+  "root_table_bytes_derivation": "RootTable128::with_capacity(2*states): (4*29,880,000).next_power_of_two() = 2^27 slots of (u128,u64) = 32 bytes (crypto 770f6a69 examples/koblitz_orbit_dlp_fast_online.rs, wide path); peak RSS 5.81 GB in run 38689817618"
+ },
+ "arms": {
+  "4k": "producer started with prctl(PR_SET_THP_DISABLE, 1): no transparent huge pages anywhere in the process",
+  "thp": "producer started with GLIBC_TUNABLES=glibc.malloc.hugetlb=1: glibc madvise(MADV_HUGEPAGE) on its mmap'd chunks (the 4 GiB root table and the 1.4 GB state vector); the system THP mode is left as the runner has it and recorded",
+  "hugetlb": "pointer chase only: MAP_HUGETLB|MAP_HUGE_2MB from pages the workflow reserved; not interleaved; skipped if the reservation fails",
+  "default": "no prctl, no tunable: the runner's own THP mode decides, as in the earlier n=83 GitHub runs (their allocation.json: enabled=[always], defrag=[madvise]); the workflow does not change the system mode"
+ },
+ "pointer_chase": {
+  "source": "pchase.c (gcc -O2), one dependent load per access, 64-byte slots, one Sattolo cycle, anonymous memory only",
+  "sizes_bytes": [
+   2097152,
+   67108864,
+   1073741824,
+   4294967296,
+   8589934592
+  ],
+  "accesses": 20000000,
+  "reps": 5,
+  "seed": 20261015,
+  "null_size_bytes": 4294967296,
+  "null_accesses": 10000000,
+  "null_reps": 3,
+  "smoke_sizes_bytes": [
+   2097152,
+   67108864,
+   536870912
+  ],
+  "smoke_null_size_bytes": 536870912,
+  "hugetlb_pages_requested": 4200,
+  "modes": [
+   "4k",
+   "default",
+   "thp"
+  ],
+  "round_orders": [
+   [
+    "4k",
+    "default",
+    "thp"
+   ],
+   [
+    "thp",
+    "default",
+    "4k"
+   ]
+  ]
+ },
+ "ic_panel": {
+  "pairs": 4,
+  "order": "block k runs block_orders[k]; each 4k or thp IC process is followed by a pointer chase over null_size_bytes under the same policy",
+  "producer": "B's ic_online_logcache_r770 with the verified cached log table (kind ic_online_cached of the reconcile arm.py, unchanged)",
+  "expected_probes": 8845441,
+  "metric": "ns per probe = producer online_ms * 1e6 / probes (the producer's five-phase online clock)"
+ },
+ "rho_panel": {
+  "pairs": 4,
+  "order": "as ic_panel, without the pointer chase",
+  "binary": "rho_tuned_r770 (A's Fold/64/DP6 worker)",
+  "config": "snapshots/r770/research/n83_evaluation_20261012/optimization/selected_config.json",
+  "seed": 831000,
+  "expected_steps": 12592070,
+  "metric": "ns per step = online_ms * 1e6 / walk_steps"
+ },
+ "smoke": {
+  "ic_pairs": 1,
+  "rho_pairs": 1,
+  "note": "local reduced-size validation; never evidence"
+ },
+ "timeouts_s": {
+  "pchase": 900,
+  "ic": 900,
+  "rho": 300
+ },
+ "statistics": {
+  "primary": "R_IC = geometric mean over the 4 blocks of (ns/probe 4k) / (ns/probe thp); 95% interval from the t distribution on the 4 log ratios (3 df, t = 3.182)",
+  "rho": "R_rho, the same statistic on ns/step",
+  "null": "per pair, pointer-chase ns/access 4k over thp at null_size_bytes, and the IC ns/probe over the same-policy pointer-chase ns/access",
+  "sweep": "per size and mode, median over the two rounds of each run's median ns/access",
+  "secondary": "the same statistic for default/thp and 4k/default (ties the earlier runs' as-run policy to both ends)"
+ },
+ "decision_rule": {
+  "eligible": "every IC and rho row valid and verified; every IC row 8,845,441 probes and scalar 3141592653589793; every rho row 12,592,070 steps; the default arm carries no page-count condition (it is recorded); manipulation check passes: every thp IC process shows max AnonHugePages >= 2,097,152 kB (half the root table) and every 4k IC process shows 0; pointer chase at >= 1 GiB shows anon_huge_kb >= 90% of the size under thp and 0 under 4k. Otherwise the reading is no_result.",
+  "ic_readings": {
+   "thp_cuts_ic_ns_per_probe_ge_1.5x": "R_IC >= 1.5 and the interval's lower bound > 1",
+   "thp_cuts_ic_ns_per_probe_below_1.5x": "lower bound > 1 and R_IC < 1.5",
+   "thp_change_under_10pct": "the whole interval inside [0.9, 1.1] (the idea's falsification condition: TLB mechanism wrong)",
+   "thp_slows_ic": "upper bound < 1",
+   "not_separated": "otherwise"
+  },
+  "rho_readings": {
+   "rho_change_under_5pct": "the whole interval inside [0.95, 1.05]",
+   "rho_changed": "interval excludes 1 and leaves [0.95, 1.05]",
+   "not_resolved": "otherwise"
+  },
+  "idea_prediction_4": "met if ic reading is thp_cuts_ic_ns_per_probe_ge_1.5x and rho reading is rho_change_under_5pct",
+  "baseline_improvement": "If the IC reading is thp_cuts_*, the thp page policy is a measured online-stage improvement of B's K600 IC on this instance (engineering class, AGENTS.md success criterion); the setup (index build) change per arm is reported beside it, and the gap to the tuned rho on Q0 is reported on every row."
+ },
+ "what_does_not_count": [
+  "changing pairs, sizes, policies or the reading thresholds after seeing a timing",
+  "pooling this runner with any other host",
+  "any timing from the local container (smoke only)",
+  "reading a pointer-chase ratio as an IC speedup"
+ ],
+ "block_orders": [
+  [
+   "4k",
+   "default",
+   "thp"
+  ],
+  [
+   "thp",
+   "4k",
+   "default"
+  ],
+  [
+   "default",
+   "thp",
+   "4k"
+  ],
+  [
+   "thp",
+   "default",
+   "4k"
+  ]
+ ]
+}
