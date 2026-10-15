@@ -1,0 +1,47 @@
+{
+  "started_at_utc": "2026-10-15T23:03:18.027106+00:00",
+  "completed_at_utc": "2026-10-15T23:03:19.166087+00:00",
+  "request": {
+    "name": "ecc2k130-5090-restart-20261015c",
+    "computeType": "GPU",
+    "imageName": "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404",
+    "cloudType": "COMMUNITY",
+    "containerDiskInGb": 40,
+    "volumeInGb": 0,
+    "volumeMountPath": "/workspace",
+    "ports": [
+      "22/tcp"
+    ],
+    "dockerEntrypoint": [
+      "bash",
+      "-lc"
+    ],
+    "dockerStartCmd": [
+      "set -euo pipefail\nexport DEBIAN_FRONTEND=noninteractive\napt-get update -qq\napt-get install -y -qq --no-install-recommends openssh-server python3 make g++ ca-certificates\nmkdir -p /run/sshd /root/.ssh\nprintf '%s\\n' \"$PUBLIC_KEY\" > /root/.ssh/authorized_keys\nchmod 700 /root/.ssh\nchmod 600 /root/.ssh/authorized_keys\nexec /usr/sbin/sshd -D -e"
+    ],
+    "env": {
+      "PUBLIC_KEY": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK/m6mosB3AOJOLNfKp9PFGgvEEMV/5K7owo0vmBgV1z adamburan@Adams-MacBook-Pro.local"
+    },
+    "gpuTypeIds": [
+      "NVIDIA GeForce RTX 5090"
+    ],
+    "gpuTypePriority": "custom",
+    "gpuCount": 1,
+    "allowedCudaVersions": [
+      "13.0"
+    ]
+  },
+  "create_http": 500,
+  "create_response": {
+    "error": "create pod: There are no instances currently available",
+    "status": 500
+  },
+  "inventory_before_ids": [
+    "thyvmdqmzsz5ik",
+    "bvu5gh8jhhvnsw",
+    "g57jokvqrjqh3k",
+    "ppgkq14ya0jekx"
+  ],
+  "inventory_after_http": 200,
+  "matching_after": []
+}

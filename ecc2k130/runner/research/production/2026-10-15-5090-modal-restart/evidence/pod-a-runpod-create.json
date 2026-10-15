@@ -1,0 +1,68 @@
+{
+  "started_at_utc": "2026-10-15T22:50:24.742309+00:00",
+  "completed_at_utc": "2026-10-15T22:50:26.556896+00:00",
+  "request": {
+    "name": "ecc2k130-5090-restart-20261015a",
+    "computeType": "GPU",
+    "imageName": "nvidia/cuda:13.3.1-devel-ubuntu24.04",
+    "cloudType": "COMMUNITY",
+    "containerDiskInGb": 40,
+    "volumeInGb": 0,
+    "volumeMountPath": "/workspace",
+    "ports": [
+      "22/tcp"
+    ],
+    "dockerEntrypoint": [
+      "bash",
+      "-lc"
+    ],
+    "dockerStartCmd": [
+      "set -euo pipefail\nexport DEBIAN_FRONTEND=noninteractive\napt-get update -qq\napt-get install -y -qq --no-install-recommends openssh-server python3 make g++ ca-certificates\nmkdir -p /run/sshd /root/.ssh\nprintf '%s\\n' \"$PUBLIC_KEY\" > /root/.ssh/authorized_keys\nchmod 700 /root/.ssh\nchmod 600 /root/.ssh/authorized_keys\nexec /usr/sbin/sshd -D -e"
+    ],
+    "env": {
+      "PUBLIC_KEY": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK/m6mosB3AOJOLNfKp9PFGgvEEMV/5K7owo0vmBgV1z adamburan@Adams-MacBook-Pro.local"
+    },
+    "gpuTypeIds": [
+      "NVIDIA GeForce RTX 5090"
+    ],
+    "gpuTypePriority": "custom",
+    "gpuCount": 1,
+    "allowedCudaVersions": [
+      "13.0"
+    ]
+  },
+  "create_http": 201,
+  "create_response": {
+    "id": "qg95nh9ij7ev4g",
+    "name": "ecc2k130-5090-restart-20261015a",
+    "desiredStatus": "RUNNING",
+    "lastStatusChange": "Rented by User: Thu Oct 15 2026 22:50:25 GMT+0000 (Coordinated Universal Time)",
+    "machineId": "k8o9vla5hy6l",
+    "gpuCount": 1,
+    "costPerHr": 0.69,
+    "createdAt": "2026-10-15 22:50:25.416 +0000 UTC",
+    "imageName": "nvidia/cuda:13.3.1-devel-ubuntu24.04",
+    "containerDiskInGb": 40
+  },
+  "inventory_before_ids": [
+    "thyvmdqmzsz5ik",
+    "bvu5gh8jhhvnsw",
+    "g57jokvqrjqh3k",
+    "ppgkq14ya0jekx"
+  ],
+  "inventory_after_http": 200,
+  "matching_after": [
+    {
+      "id": "qg95nh9ij7ev4g",
+      "name": "ecc2k130-5090-restart-20261015a",
+      "desiredStatus": "RUNNING",
+      "lastStatusChange": "Rented by User: Thu Oct 15 2026 22:50:25 GMT+0000 (Coordinated Universal Time)",
+      "machineId": "k8o9vla5hy6l",
+      "gpuCount": 1,
+      "costPerHr": 0.69,
+      "createdAt": "2026-10-15 22:50:25.416 +0000 UTC",
+      "imageName": "nvidia/cuda:13.3.1-devel-ubuntu24.04",
+      "containerDiskInGb": 40
+    }
+  ]
+}
