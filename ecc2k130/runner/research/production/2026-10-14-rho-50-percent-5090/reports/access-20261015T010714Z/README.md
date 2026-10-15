@@ -1,0 +1,15 @@
+# RTX 5090 allocation observation
+
+This is an operational report of a requested isolated ECC2K-130 rho comparison. It records provider responses before any GPU trial; it changes no research or campaign status. The [frozen plan](../../PLAN.md), [controller](../../runpod_control.py), [remote trial driver](../../remote_pair.py), [derived summary](summary.json), editable [diagram source](../../build_report.py), [SVG](allocation.svg), [Typst source](report.typ) and [PDF](report.pdf) bind the record.
+
+The supplied RunPod key authenticated for a read-only pod inventory (HTTP 200). The earlier production pod IDs `1cfs3b7u5b0658` and `4uuy9yz3x93ngu` returned HTTP 404 and were absent from that account's current pod list. The pinned campaign binary was downloaded read-only from the bucket and hash checked at `0c02a3cfec9553a5def6e9df530c027a246648f6a6b8b7fef39c67e582aae9f4`. A source archive was sealed at SHA-256 `a4e1f5542420269af9771fa4e50c5ab6b76336afefc7633ff9fcda7a7cd4fb95` from commit `fb5ae4b9b9ef5c24780d5a82d04102ecffda2dd5`. Its kernel source is unchanged since the earlier Modal screen. The inputs are under `runs/20261015T010714Z/inputs/`; no AWS credential or RunPod key was put into a pod or artifact.
+
+| Provider request | Receipt | HTTP | Provider observation | Named pods after request |
+| --- | --- | ---: | --- | ---: |
+| Community, initial request | [first receipt](../../runs/20261015T010714Z/runpod-create.json) | 400 | Error body was not retained by the first controller revision; exact validation reason unknown | 0 |
+| Community, corrected request | [second receipt](../../runs/20261015T010929Z/runpod-create.json) | 500 | `There are no instances currently available` | 0 |
+| Secure Cloud | [third receipt](../../runs/20261015T011009Z/runpod-create.json) | 500 | `Your account balance is too low to rent a pod. Please add funds to your account.` | 0 |
+
+The first request included `publicIp: true`; the corrected request omitted it. The initial HTTP 400 reason cannot be assigned to that field because the error body was lost. Each receipt preserves the request, UTC timestamps, HTTP status and follow-up inventory. The earlier Python 3.13 CA failure occurred on the initial inventory GET, before a create request; the controller was rerun using the local Python 3.12 CA bundle. The public GraphQL catalog showed low RTX 5090 stock and quotes of $0.69/GPU-hour Community and $1.19/GPU-hour Secure at the respective checks; those quotes are observations, not billed costs.
+
+No pod was allocated. The requested host-reference controls, paired timing samples, sustained accepted-DP window and 5090 performance ratio remain unmeasured. The prior [Modal RTX PRO 6000 report](../../../2026-10-14-rho-50-percent-test/reports/run-20261015T001834Z/README.md) retains its own scope. A funded account and an available CUDA 13 capable RTX 5090 are needed for a new sealed 5090 run. The result can use the existing source archive, pinned binary and driver with new pod and run receipts.
