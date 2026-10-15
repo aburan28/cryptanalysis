@@ -1,0 +1,59 @@
+    Blocking waiting for file lock on build directory
+   Compiling binary-genus2-cover v0.1.0 (/workspace/repos/crypto/tools/binary-genus2-cover)
+error[E0308]: mismatched types
+   --> src/bin/genus2_identity.rs:92:43
+    |
+ 92 |     let verdict = check_with_extra(&cert, (0x83c2, 32)).map_err(|e| e.to_string())?;
+    |                   ----------------        ^^^^^^^^^^^^ expected `Option<(u64, u32)>`, found `({integer}, {integer})`
+    |                   |
+    |                   arguments to this function are incorrect
+    |
+    = note: expected enum `Option<(u64, u32)>`
+              found tuple `({integer}, {integer})`
+note: function defined here
+   --> /workspace/repos/crypto/docs/ecdlp-surfaces/certificates/src/identity_certificate.rs:534:8
+    |
+534 | pub fn check_with_extra(
+    |        ^^^^^^^^^^^^^^^^
+help: try wrapping the expression in `Some`
+    |
+ 92 |     let verdict = check_with_extra(&cert, Some((0x83c2, 32))).map_err(|e| e.to_string())?;
+    |                                           +++++            +
+
+error[E0599]: no variant named `Verified` found for enum `Verdict`
+  --> src/bin/genus2_identity.rs:93:36
+   |
+93 |     if !matches!(verdict, Verdict::Verified { .. }) {
+   |                                    ^^^^^^^^ variant not found in `Verdict`
+
+error[E0308]: mismatched types
+   --> src/bin/genus2_identity.rs:104:37
+    |
+104 |         check_with_extra(&tampered, (0x83c2, 32)),
+    |         ----------------            ^^^^^^^^^^^^ expected `Option<(u64, u32)>`, found `({integer}, {integer})`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected enum `Option<(u64, u32)>`
+              found tuple `({integer}, {integer})`
+note: function defined here
+   --> /workspace/repos/crypto/docs/ecdlp-surfaces/certificates/src/identity_certificate.rs:534:8
+    |
+534 | pub fn check_with_extra(
+    |        ^^^^^^^^^^^^^^^^
+help: try wrapping the expression in `Some`
+    |
+104 |         check_with_extra(&tampered, Some((0x83c2, 32))),
+    |                                     +++++            +
+
+error[E0599]: no variant named `Verified` found for enum `Verdict`
+   --> src/bin/genus2_identity.rs:105:21
+    |
+105 |         Ok(Verdict::Verified { .. })
+    |                     ^^^^^^^^ variant not found in `Verdict`
+
+Some errors have detailed explanations: E0308, E0599.
+For more information about an error, try `rustc --explain E0308`.
+error: could not compile `binary-genus2-cover` (bin "genus2_identity") due to 4 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `binary-genus2-cover` (bin "genus2_identity" test) due to 4 previous errors
