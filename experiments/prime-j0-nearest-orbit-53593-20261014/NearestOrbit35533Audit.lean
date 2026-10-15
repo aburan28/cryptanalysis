@@ -1,6 +1,7 @@
 import NearestOrbit35533Tie
 import NearestOrbit35533Complete
 import NearestOrbit35533Action
+import NearestOrbit35533Lattice
 
 #print axioms NearestOrbit35533Digits.all_residues_have_small_candidate
 #print axioms NearestOrbit35533Digits.selected_digit_valid
@@ -8,3 +9,7 @@ import NearestOrbit35533Action
 #print axioms NearestOrbit35533Step.bounded_step
 #print axioms NearestOrbit35533Complete.canonical_scheme_terminal_bound
 #print axioms NearestOrbit35533Action.selected_scalar_action_replay
+#print axioms NearestOrbit35533Lattice.tau_polynomial
+#print axioms NearestOrbit35533Lattice.selected_candidate_congruent
+#print axioms NearestOrbit35533Lattice.radix_scalar_congruent
+#print axioms NearestOrbit35533Lattice.selected_scalar_point_replay
