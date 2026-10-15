@@ -12,6 +12,8 @@ The six-candidate selector searches the two centered residue lifts and three nea
 | Reproducible native source overlay | [`native_overlay.py`](native_overlay.py) |
 | Common 128-scalar batch timer | [`native_batch_overlay.py`](native_batch_overlay.py) |
 | RunPod single-scalar Tier 1 panel | [`tier1-analysis.json`](tier1-analysis.json), [`analyze_tier1.py`](analyze_tier1.py), [`tier1-runpod-20261014`](tier1-runpod-20261014) |
+| RunPod hot-table throughput panel | [`tier1-batch-analysis.json`](tier1-batch-analysis.json), [`analyze_batch_tier1.py`](analyze_batch_tier1.py) |
+| Prime-norm radix shape sweep | [`radix-frontier.json`](radix-frontier.json), [`radix_frontier.py`](radix_frontier.py) |
 
 Run from this repository checkout:
 
@@ -28,6 +30,10 @@ The native overlay pins the SHA-256 of the 18-position rolling Rust source befor
 
 The separate batch timer applies the same hash-pinned CLI addition to both native variants. It parses the 128 frozen scalars and builds each table before timing, then runs all 128 multiplications for a declared repetition count and verifies every resulting point after the timer. The timing field covers the entire batch; dividing it by the operation count yields hot-table throughput, not single-scalar latency. The two modes answer different measurement questions and have separate RunPod panels.
 
+The Tier 1 batch panel ran 16 repetitions of 2,048 scalar multiplications per arm, with the 18-position rolling binary in both adjacent A/A controls. All 96 arms and 48 pairs were valid, artifact hashes remained stable, and every adjacent A/A ratio passed the preregistered [0.90,1.11] gate. The comparison's paired median 18-position/16-position throughput ratio was **1.0340**, with a repeat-level bootstrap 95% interval of **[1.0285,1.0366]** for this frozen scalar set and cloud allocation. Mean online cost was 12.57 versus 12.16 microseconds per scalar. Mean target-independent table preparation was 507 versus 1,727 ms, and retained bytes were 2,448,196 versus 9,363,076. These are hot-table throughput measurements for the 128-scalar law; the single-scalar latency panel above remains gated by its calibration failures.
+
 The single-scalar RunPod panel paired the 16-position implementation against the 18-position rolling implementation on the same first five frozen scalars, with eight alternating repetitions and adjacent A/A controls. All 240 arms and 120 pairs were valid and artifact-stable. The descriptive median 18-position/16-position ratio was 1.024; seven of 40 comparisons failed the preregistered adjacent A/A interval [0.80,1.25]. The qualified latency ratio is therefore unknown. The 16-position table averaged 1,745 ms to prepare, versus 516 ms for the 18-position table; those target-independent times are outside the online interval. The full raw receipts, including every calibration failure, are retained with the panel.
+
+A separate exact table-shape sweep checked the prime-norm `T−τ` radices for `180 ≤ T ≤ 233`, retaining only the 10 prime norms. For each row it enumerated every residue, checked sign and six-unit covariance, computed the 16-step terminal radius, and counted the digit and terminal orbit tables. Within this declared sweep, `T=190`, norm 35,533, has the smallest direct point payload: 6,300,480 bytes with 16 positions and terminal radius 78. Its native implementation, selected-digit proof, and matched timing are the next gates for this memory/latency tradeoff.
 
 The next experiment is a native implementation with a frozen source/input/table manifest, paired against the 18-position radix on the same scalar set and Tier 1 RunPod envelope. Include point precomputation, memory and setup accounting, conversion, and alternating A/A gates. No latency result is attached to this format yet.
