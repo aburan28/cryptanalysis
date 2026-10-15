@@ -10,7 +10,8 @@ import shutil
 import subprocess
 
 HERE = Path(__file__).resolve().parent
-THEOREMS = ('sparse_pair_shortcut','sparse_norm','sparse_pair_norm',
+THEOREMS = ('sparse_pair_shortcut','sparse_norm','tau_residue',
+            'tau_residue_polynomial','sparse_residue_multiple','sparse_pair_norm',
             'quotient_step','valid_trace_evaluates','map_evaluatePairs',
             'point_horner_of_valid_trace')
 

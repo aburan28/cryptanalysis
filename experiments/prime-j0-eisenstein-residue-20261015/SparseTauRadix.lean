@@ -26,6 +26,19 @@ theorem sparse_pair_shortcut (x : Pair) :
 
 theorem sparse_norm : AlternateRadix.pairNorm 127 128 = 114049 := by decide
 
+/-- The residue of τ in the cyclic quotient by the composite-norm radix. -/
+theorem tau_residue : 127 + 128*(-892) = -114049 := by decide
+
+theorem tau_residue_polynomial :
+    (-892)^2 - 3*(-892) + 3 = 7*114049 := by decide
+
+/-- Every radix multiple has zero residue modulo 114049. -/
+theorem sparse_residue_multiple (x : Pair) :
+    (sparsePair x).1 - 892*(sparsePair x).2 =
+      -114049*(x.1+4*x.2) := by
+  simp [sparsePair]
+  omega
+
 /-- Exact norm scaling by the sparse radix, including all pairs. -/
 theorem sparse_pair_norm (x : Pair) :
     AlternateRadix.pairNorm (sparsePair x).1 (sparsePair x).2 =
@@ -100,6 +113,9 @@ theorem point_horner_of_valid_trace {Point : Type} (evaluate : Pair → Point)
 
 #print axioms sparse_pair_shortcut
 #print axioms sparse_norm
+#print axioms tau_residue
+#print axioms tau_residue_polynomial
+#print axioms sparse_residue_multiple
 #print axioms sparse_pair_norm
 #print axioms quotient_step
 #print axioms valid_trace_evaluates
