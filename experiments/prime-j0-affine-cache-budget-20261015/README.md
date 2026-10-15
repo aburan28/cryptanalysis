@@ -63,3 +63,31 @@ throttling, steal time, IRQ and memory observations. All raw pairs and noisy
 outcomes remain evidence. The online interval measures fresh-input
 128-output batch throughput; table construction and point verification are
 reported separately.
+
+Job `1b1489f47213478b9aab096de03ce244` completed with 96 valid arms,
+48 valid pairs, stable artifact hashes, and no A/A ratio outside
+`[0.90, 1.11]`. The independent [audit](tier1-affine-stream-cpu40-audit.json)
+re-generated the fixture, checked source and executable bytes against the
+frozen hashes, re-parsed every raw stdout, matched every expected point and
+fixture field, and evaluated all adjacent A/A gates. The comparison-only
+median ordinary-affine/full-two-x ratio is **1.087393**, with a paired
+bootstrap 95% interval **[1.074663, 1.106558]** over 16 comparison
+repetitions. Mean online time per 12,288 distinct outputs is 71.422170 ms
+for ordinary affine-layer and 65.473654 ms for full two-x, or 5.812351 and
+5.328260 µs/output. Mean table preparation is 3966.995 and 3978.971 ms
+respectively. This is a qualified Tier 1 batch-throughput result for the
+specified arithmetic progression of scalars. Uniform random scalars and
+single-scalar latency remain separate measurement questions.
+
+The generic runner's `paired_speedup=1.005872` pools the comparison with
+two A/A case medians. Its `speedup_claim_eligible=false` reflects that this
+three-case calibration panel has no generic cross-case bootstrap. The
+predeclared case-specific audit uses the A/A cases as noise gates and
+computes the comparison interval separately. All raw
+[run receipts](1b1489f47213478b9aab096de03ce244) are committed. Their
+sealed archive had SHA-256
+`2d315d9190b46e8cd0342bf92d046cdda32ec83e5b11372301ed73c5e8869187`
+at both ends of the transfer. The exact source, binary, tests, generator,
+fixture, and direct screen are in
+[prime-j0-affine-stream-panel-provenance.tar.gz](prime-j0-affine-stream-panel-provenance.tar.gz),
+SHA-256 `cf7f53a58eb03c856b4c7a04009893370a678398a0763a4ae7f73b5c24c51d46`.

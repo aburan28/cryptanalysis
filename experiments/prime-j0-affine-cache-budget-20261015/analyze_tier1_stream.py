@@ -37,7 +37,8 @@ def audit():
     pairs = lines(folder / 'pairs.jsonl')
     provenance = HERE / 'prime-j0-affine-stream-panel-provenance.tar.gz'
     with tarfile.open(provenance, 'r:gz') as archive:
-        for suffix, key in (('src/bin/eisenstein_fixed.rs', 'candidate_front_source_sha256'),
+        for suffix, key in (('target/release/eisenstein_fixed', 'candidate_binary_sha256'),
+                            ('src/bin/eisenstein_fixed.rs', 'candidate_front_source_sha256'),
                             ('src/bin/eisenstein_fixed/unit_orbit_windows.rs',
                              'candidate_windows_source_sha256')):
             assert sha256(archive.extractfile(suffix).read()).hexdigest() == rules[key]
