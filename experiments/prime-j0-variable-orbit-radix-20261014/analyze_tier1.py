@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Audit every arm and the frozen A/A gate for the 18-versus-17 panel."""
+"""Audit every arm and frozen A/A gate for orbit-radix Tier 1 panels."""
 from hashlib import sha256
+import argparse
 import json
 from math import exp, log
 from pathlib import Path
@@ -9,8 +10,14 @@ import re
 import statistics
 
 HERE = Path(__file__).resolve().parent
-JOB = 'afe0e12317f848c4a69ac76671362ce6'
-OPERATIONS_PER_ARM = 128*64
+PANELS = {
+    '64': ('afe0e12317f848c4a69ac76671362ce6',
+         'tier1-18v17-rules.json', 'tier1-18v17-manifest.json'),
+    '96': ('339fe1ca977244ab8a862e29d6753dec',
+         'tier1-18v17-96-rules.json', 'tier1-18v17-96-manifest.json'),
+    'direct': ('979b6a61b1e44f67be6e410fbbd4037a',
+               'tier1-16v17-rules.json', 'tier1-16v17-manifest.json'),
+}
 
 
 def load(path):
@@ -21,10 +28,12 @@ def lines(path):
     return [json.loads(line) for line in path.read_text().splitlines()]
 
 
-def audit():
-    rules = load(HERE / 'tier1-18v17-rules.json')
-    planned = load(HERE / 'tier1-18v17-manifest.json')
-    folder = HERE / JOB
+def audit(passes):
+    job, rules_name, manifest_name = PANELS[passes]
+    operations_per_arm = 128*(96 if passes == 'direct' else int(passes))
+    rules = load(HERE / rules_name)
+    planned = load(HERE / manifest_name)
+    folder = HERE / job
     manifest = load(folder / 'manifest.json')
     summary = load(folder / 'summary.json')
     runs = lines(folder / 'runs.jsonl')
@@ -75,8 +84,8 @@ def audit():
         'schema': 1,
         'measurement_tier': 'tier1_instance',
         'runpod_instance_id': manifest['allocation']['instance_id'],
-        'job_id': JOB,
-        'operations_per_arm': OPERATIONS_PER_ARM,
+        'job_id': job,
+        'operations_per_arm': operations_per_arm,
         'completed_runs': len(runs),
         'completed_pairs': len(pairs),
         'artifact_stable': summary['artifacts_stable'],
@@ -88,8 +97,8 @@ def audit():
         'aggregate_status': 'qualified' if qualified else 'unknown_after_tier_gate',
         'reference_online_ms_mean': ref_ms,
         'candidate_online_ms_mean': cand_ms,
-        'reference_us_per_scalar': 1000*ref_ms/OPERATIONS_PER_ARM,
-        'candidate_us_per_scalar': 1000*cand_ms/OPERATIONS_PER_ARM,
+        'reference_us_per_scalar': 1000*ref_ms/operations_per_arm,
+        'candidate_us_per_scalar': 1000*cand_ms/operations_per_arm,
         'reference_preparation_ms_mean': statistics.mean(float(row['fields']['preparation_ms']) for row in reference),
         'candidate_preparation_ms_mean': statistics.mean(float(row['fields']['preparation_ms']) for row in candidate),
         'reference_retained_bytes': sorted({int(row['fields']['retained_bytes']) for row in reference}),
@@ -100,4 +109,7 @@ def audit():
 
 
 if __name__ == '__main__':
-    print(json.dumps(audit(), sort_keys=True, indent=2))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--passes', choices=PANELS, default='64')
+    args = parser.parse_args()
+    print(json.dumps(audit(args.passes), sort_keys=True, indent=2))
