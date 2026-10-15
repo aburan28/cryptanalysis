@@ -243,3 +243,11 @@ and one batch inversion. It reproduced all frozen points. Its 96-arm serial
 Tier 1 panel passed every A/A gate and measured a qualified paired
 reference/projective ratio of `0.983894` with 95% interval
 `[0.974294,0.988284]`, directing further work away from that join.
+
+The [rotation-cache follow-up](ROTATION_CACHE.md) places two-x precomputation
+in ten of fourteen radix-14 digit rows within the 32 MiB table cap and
+replays 12,288 scalar points exactly. An independent 20,000-scalar training
+profile found that per-seed hot entries do not transfer to the held-out
+fixture, so the ten-row mask uses evenly spaced rows. Its serial Tier 1
+panel completed all 96 arms, but two A/A controls exceeded the frozen
+range; the timing aggregate remains unknown with all raw receipts retained.
