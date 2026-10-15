@@ -1,0 +1,108 @@
+warning: unused import: `ToPrimitive`
+  --> snapshot/src/cryptanalysis/curve_traits/mod.rs:50:31
+   |
+50 | use num_traits::{One, Signed, ToPrimitive, Zero};
+   |                               ^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+    --> snapshot/src/cryptanalysis/ic_boundary.rs:1419:13
+     |
+1419 |         let mut consider = |pt: PrimePoint, mu: u64, best: &mut PrimePoint, best_key: &mut u64, best_mu: &mut u64| {
+     |             ----^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+     |
+     = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `trace_on` is never used
+    --> snapshot/src/cryptanalysis/koblitz_groebner.rs:9351:4
+     |
+9351 | fn trace_on() -> bool {
+     |    ^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `trace_cost` is never used
+    --> snapshot/src/cryptanalysis/koblitz_groebner.rs:9357:4
+     |
+9357 | fn trace_cost(w0: Option<u64>, refuted: bool) {
+     |    ^^^^^^^^^^
+
+warning: function `trace` is never used
+    --> snapshot/src/cryptanalysis/koblitz_groebner.rs:9371:4
+     |
+9371 | fn trace(f: impl FnOnce(&mut RefutationDegreeTrace)) {
+     |    ^^^^^
+
+warning: `crypto` (lib) generated 5 warnings (run `cargo fix --lib -p crypto` to apply 1 suggestion)
+   Compiling n83-bl-arm v0.1.0 (/tmp/claude-0/-home-user/554f08b7-7deb-5c54-8751-f6b3ef70d9ee/scratchpad/n83-bl-arm/experiments/koblitz-n83-bl-arm-20261014)
+    Finished `release` profile [optimized] target(s) in 2.54s
+     Running unittests snapshot/bl_generated/bl_rung3.rs (/tmp/claude-0/-home-user/554f08b7-7deb-5c54-8751-f6b3ef70d9ee/scratchpad/cargo-target/release/deps/bl_rung3-1477af6a3b061049)
+
+running 8 tests
+test tests::fast_canonicalization_is_class_invariant_and_multiplier_correct ... ok
+test tests::explicit_scalar_is_planted_and_recovered ... ok
+test tests::gf2_matches_rung0_field_arithmetic ... ok
+test tests::inverse_is_correct_under_every_rung ... ok
+test tests::fast_mod_matches_u128_reference ... ok
+test tests::public_point_target_is_solved_inside_the_online_interval ... ok
+test tests::rung1_walk_is_bit_identical_to_rung0 ... ok
+test tests::every_rung_recovers_every_target_end_to_end ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running unittests snapshot/bl_generated/bl_sg.rs (/tmp/claude-0/-home-user/554f08b7-7deb-5c54-8751-f6b3ef70d9ee/scratchpad/cargo-target/release/deps/bl_sg-c2cd75f75b08852a)
+
+running 2 tests
+test tests::empty_table_solve_is_the_library_solve ... ok
+test tests::precompute_is_exact_reproducible_and_online_uses_it ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.73s
+
+     Running unittests snapshot/examples/koblitz_orbit_dlp_fast_online_logcache.rs (/tmp/claude-0/-home-user/554f08b7-7deb-5c54-8751-f6b3ef70d9ee/scratchpad/cargo-target/release/deps/ic_online_logcache_r770-cedd6a6f2ae66934)
+
+running 3 tests
+test pair_symmetry_tests::unordered_pair_orbits_preserve_every_index_root ... ok
+test root_bloom_table_tests::screened_lookup_matches_exact_table ... ok
+test pair_symmetry_tests::n53_pair_quotient_preserves_the_complete_root_table ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.78s
+
+     Running unittests snapshot/examples/n83_strong_point_eval.rs (/tmp/claude-0/-home-user/554f08b7-7deb-5c54-8751-f6b3ef70d9ee/scratchpad/cargo-target/release/deps/rho_adapter_r770-5d4a275030a70b6a)
+
+running 2 tests
+test tests::point_input_refuses_scalar_sidecars_noncanonical_and_multiple_targets ... ok
+test tests::wide_field_control_reproduces_narrow_reference_on_small_curves ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests snapshot/examples/koblitz_rho_batch_ks_strong_online.rs (/tmp/claude-0/-home-user/554f08b7-7deb-5c54-8751-f6b3ef70d9ee/scratchpad/cargo-target/release/deps/rho_rung3_r770-d53d6adef2dfa1a0)
+
+running 8 tests
+test tests::fast_canonicalization_is_class_invariant_and_multiplier_correct ... ok
+test tests::gf2_matches_rung0_field_arithmetic ... ok
+test tests::fast_mod_matches_u128_reference ... ok
+test tests::explicit_scalar_is_planted_and_recovered ... ok
+test tests::inverse_is_correct_under_every_rung ... ok
+test tests::public_point_target_is_solved_inside_the_online_interval ... ok
+test tests::rung1_walk_is_bit_identical_to_rung0 ... ok
+test tests::every_rung_recovers_every_target_end_to_end ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+     Running unittests snapshot/examples/n83_rho_optimization_eval.rs (/tmp/claude-0/-home-user/554f08b7-7deb-5c54-8751-f6b3ef70d9ee/scratchpad/cargo-target/release/deps/rho_tuned_r770-0832050f4d08ceec)
+
+running 4 tests
+test tests::strict_configs_reject_missing_unknown_duplicate_and_out_of_grid_fields ... ok
+test tests::public_input_refuses_scalars_and_multiple_or_noncanonical_points ... ok
+test tests::exact_n83_fold_mul_square_inverse_and_zero_inclusive_batch_match_wide ... ok
+test tests::exact_n83_jump_canonicalization_solve_trajectory_and_charges_match ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.63s
+
+
+real	0m18.018s
+user	0m20.942s
+sys	0m0.843s
