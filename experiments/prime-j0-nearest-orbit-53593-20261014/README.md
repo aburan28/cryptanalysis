@@ -11,6 +11,7 @@ The six-candidate selector searches the two centered residue lifts and three nea
 | Lean algebra and bound audits | [`NearestOrbit53593.lean`](NearestOrbit53593.lean), [`lean-check.log`](lean-check.log), [`NearestOrbit53593Bound.lean`](NearestOrbit53593Bound.lean), [`lean-bound-check.log`](lean-bound-check.log) |
 | Reproducible native source overlay | [`native_overlay.py`](native_overlay.py) |
 | Common 128-scalar batch timer | [`native_batch_overlay.py`](native_batch_overlay.py) |
+| RunPod single-scalar Tier 1 panel | [`tier1-analysis.json`](tier1-analysis.json), [`analyze_tier1.py`](analyze_tier1.py), [`tier1-runpod-20261014`](tier1-runpod-20261014) |
 
 Run from this repository checkout:
 
@@ -26,5 +27,7 @@ The Lean algebra module proves the radix norm, norm scaling, quotient residue, e
 The native overlay pins the SHA-256 of the 18-position rolling Rust source before transforming it. The release test binary passed its full 53,593-residue digit test and independently checked all 128 frozen scalar points. It reports 9,363,076 retained bytes, including digit/code arrays and Rust table bookkeeping. This local correctness run does not supply a qualified latency comparison.
 
 The separate batch timer applies the same hash-pinned CLI addition to both native variants. It parses the 128 frozen scalars and builds each table before timing, then runs all 128 multiplications for a declared repetition count and verifies every resulting point after the timer. The timing field covers the entire batch; dividing it by the operation count yields hot-table throughput, not single-scalar latency. The two modes answer different measurement questions and have separate RunPod panels.
+
+The single-scalar RunPod panel paired the 16-position implementation against the 18-position rolling implementation on the same first five frozen scalars, with eight alternating repetitions and adjacent A/A controls. All 240 arms and 120 pairs were valid and artifact-stable. The descriptive median 18-position/16-position ratio was 1.024; seven of 40 comparisons failed the preregistered adjacent A/A interval [0.80,1.25]. The qualified latency ratio is therefore unknown. The 16-position table averaged 1,745 ms to prepare, versus 516 ms for the 18-position table; those target-independent times are outside the online interval. The full raw receipts, including every calibration failure, are retained with the panel.
 
 The next experiment is a native implementation with a frozen source/input/table manifest, paired against the 18-position radix on the same scalar set and Tier 1 RunPod envelope. Include point precomputation, memory and setup accounting, conversion, and alternating A/A gates. No latency result is attached to this format yet.
