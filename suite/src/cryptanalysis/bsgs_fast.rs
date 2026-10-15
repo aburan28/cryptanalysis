@@ -66,9 +66,9 @@ use crate::ecc::point::Point;
 /// Montgomery arithmetic mod an odd prime `p < 2^63`, one `u64` per
 /// element.
 ///
-/// The bound is what keeps a REDC in one word: with `p < 2^63` the
-/// reduced value before the conditional subtraction is below `2p < 2^64`,
-/// so a single `u128` product and one compare finish the multiply.
+/// The bound keeps field sums in one word. REDC subtracts the high words
+/// of two `u128` products; their difference lies in `(-p, p)`, so one
+/// conditional addition gives a canonical residue.
 #[derive(Clone, Copy, Debug)]
 pub struct FastField {
     p: u64,
@@ -116,13 +116,16 @@ impl FastField {
     #[inline(always)]
     pub fn mul(&self, a: u64, b: u64) -> u64 {
         let t = a as u128 * b as u128;
-        let m = (t as u64).wrapping_mul(self.n0inv);
-        let t = (t + m as u128 * self.p as u128) >> 64;
-        let t = t as u64;
-        if t >= self.p {
-            t - self.p
+        // t - u*p is divisible by 2^64 for u = low(t)*p^-1.  Its high
+        // word lies in (-p, p), avoiding a 128-bit add and carry test.
+        let u = (t as u64).wrapping_mul(self.n0inv.wrapping_neg());
+        let hi = (t >> 64) as u64;
+        let product_hi = ((u as u128 * self.p as u128) >> 64) as u64;
+        let reduced = hi.wrapping_sub(product_hi);
+        if hi < product_hi {
+            reduced.wrapping_add(self.p)
         } else {
-            t
+            reduced
         }
     }
 
@@ -1087,6 +1090,22 @@ mod tests {
             }
         }
         assert_eq!(f.inv(0), 0, "inv(0) is 0 by convention");
+    }
+
+    #[test]
+    fn field_mul_at_word_boundary() {
+        // The subtraction REDC path must handle a borrow near p = 2^63.
+        let mut rng = Rng(0x4a8f_3021_9bc5_d771);
+        for p in [3u64, 10_007, (1u64 << 63) - 1] {
+            let f = FastField::new(p).unwrap();
+            let mut pairs = vec![(0, p - 1), (1, p - 1), (p - 1, p - 1)];
+            pairs.extend((0..300).map(|_| (rng.below(p), rng.below(p))));
+            for (a, b) in pairs {
+                let got = f.from_mont(f.mul(f.to_mont(a), f.to_mont(b)));
+                let want = ((a as u128 * b as u128) % p as u128) as u64;
+                assert_eq!(got, want, "p={p} a={a} b={b}");
+            }
+        }
     }
 
     #[test]
