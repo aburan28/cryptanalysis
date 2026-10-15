@@ -1,6 +1,109 @@
 # N83: a measured Bernstein–Lange arm against the index calculus
 
-**Status (2026-10-15): the rho step implementation is set, and the run starts on push. `rho_reference.value` in [`protocol.json`](protocol.json) is `rT770`: A's tuned `StrongRhoG<Gf2_128 fold>`, with 64 lanes and DP 6.** Item 2 chose it: the reconciliation, run 38617911080 on branch `claude/n83-reconcile`, found it to be the fastest correct reference. Nothing else in the protocol changed. No n=83 result exists yet, and this directory makes no performance claim until the run lands. The sections below describe the design as it was frozen, while the value was still open.
+**Status (2026-10-15): measured.** GitHub run `38689817618` completed with
+status `COMPLETE`:
+
+* commit `507c1ec4`, crypto `770f6a69`, rustc 1.99.0;
+* runner `ubuntu-24.04` image 20261004.327.1, an AMD EPYC 9V45, one pinned
+  CPU;
+* rho step implementation `rT770`.
+
+It was set before the push, from item 2's run 38617911080, which found the
+tuned Fold/64/DP6 rho the fastest correct reference.
+
+**The frozen reading is `bl_online_faster_than_ic`.** Every gate passed:
+
+* all 81 runs valid;
+* every scalar replayed in `oracle.py`;
+* the positive controls for rT770;
+* the three table checks;
+* step identity;
+* the IC work identity;
+* the A/A.
+
+The receipt is archived in [`run_github_38689817618/`](run_github_38689817618/).
+It omits `table.bin` (1.93 GB), which is the run's second artifact; its
+SHA-256 is `2eda368d…de10e`. Re-run on the archived receipt (with the pinned
+sources restored), `verify_receipt.py` reproduced `result.json` and
+`result_table.md` byte for byte. The sections after "Result" are the design
+as frozen before the run.
+
+## Result
+
+| quantity (16 fresh points; mean ratios, 95% bootstrap over targets) | value | frozen reading |
+| --- | --- | --- |
+| IC online / BL online | **235** [61, 645] | `bl_online_faster_than_ic` (16 of 16 rows BL faster) |
+| rho online / BL online | 232 [126, 468] | `bl_online_faster_than_rho` |
+| rho online / IC online | 0.988 [0.473, 3.29] | `not_separated` |
+| mean online ms: IC / BL / rho | 1,389.9 / 5.91 / 1,372.7 | |
+| median online ms: IC / BL / rho | 395.7 / 4.36 / 1,125.3 | |
+| Q0, median of 4 blocks: IC/BL, rho/BL, rho/IC | 577, 192, 0.374 | IC on Q0 is one deterministic scan, 3.0–3.1 s |
+| cold ms for one fresh target: IC / BL / rho | 551,237 / 558,407 / 1,529 | IC/BL 0.987; matched by construction |
+| P_IC: rank stage + setup on the execution CPU | 549,847 ms (520,825 rank + 29,022 setup) | |
+| BL precomputation | 549,848 ms (budget matched to 1.6e-6), 3.04e9 steps at 180.8 ns/step | |
+| table | T = 48,180,186 points (1.93 GB), α = 0.062, 90,368 duplicate walk ends | |
+| A/A, BL/BL' geometric mean | 1.001 [0.990, 1.012] | PASS (band [0.9, 1.1]) |
+| BL online steps, measured / model | 1.56 (mean 32,914 against 21,107) | secondary; see below |
+
+![Result](figures/result.png)
+
+*Figure 3. Online interval of each arm on every point, one pinned process per
+point, from `run_github_38689817618/panel/runs.jsonl`
+([source](figures/result.tex) written by
+[`figures/make_figures.py`](figures/make_figures.py),
+[data](figures/result.dat), [vector](figures/result.pdf)).*
+
+**What it says.** At n=83 the ledger's §23 model column is now a
+measurement. Given the same precomputation budget as the index calculus,
+in the same unit on the same CPU, a generic Bernstein–Lange walk solves a
+fresh point about 235× faster online than B's cached index calculus.
+
+The model, built from B's run, had put that gap at 33.5× (16 fresh points)
+and 74.8× (frozen point Q0). Against the tuned single-target rho, the index
+calculus shows no online advantage here: 0.99 [0.47, 3.29] on the fresh
+points, and 0.374 on Q0. That agrees with item 2's figures.
+
+Cold, the index calculus and Bernstein–Lange cost the same by
+construction, and both are about 360× the single-target rho. So the index
+calculus's online advantage over rho belongs to its precomputation, and a
+generic walk spends that precomputation far better.
+
+**Scope.** These are instance-scoped Tier 1 figures from one runner. They
+are not a speed of either method in general, and they do not transfer to
+ECC2K-130 or to E_0 over GF(2^83).
+
+**The 1.56 measured/model step ratio.** It is the opposite sign to the
+small-curve dry run, where BL steps read 0.80–0.94 of the model. It is a
+secondary model check, not a gate. Three things bear on it:
+
+* **The mean is poorly determined.** BL online step counts are close to
+  exponential: across the 20 distinct targets, the coefficient of variation
+  is 1.11. Three targets took 75k–145k steps. The mean's 95% bootstrap
+  interval is [19,347, 50,221], which is 0.92–2.38 of the model. The median,
+  25,573, is 1.21 of it. Twenty targets cannot separate a 1.2–1.5× model
+  error from sampling.
+* **The lane term is the least certain part of the model.** At n=83 it is
+  64·2^6 = 4,096 of the 21,107 predicted steps, against 2–23% of the
+  prediction at the control sizes. It assumes one walk length per lane to
+  detect a merge, with 64 lanes in lockstep. The small-curve controls never
+  tested 64 lanes at dp 6.
+* **The covered count c may overstate coverage at this scale.** c counts
+  every trail point of a walk that stored a new point (3.03e9). At n=83:
+  * 563,098 walks ended in fruitless cycles;
+  * 13,759 hit the length cap;
+  * the r-adding walk on signed-Frobenius classes may cover fewer distinct
+    classes than its step count.
+
+  This is a hypothesis; the run does not test it.
+
+The reading does not rest on the model. Even a model off by 2.4× would leave
+the measured IC/BL ratio's lower bound at 61.
+
+**Canonical graphs checked.** `experiments/koblitz-single-target-n83-tier1-20261014/figures/`
+is unchanged; its BL column is labelled a model, and this figure is new.
+The paper `papers/frobenius-orbits` (§7 "Online against cold", Limitations
+and the abstract) now cites this measurement. The crypto ledger §23 and
+scoreboard rows belong to a crypto change and are not made here.
 
 ## Question
 
@@ -416,8 +519,9 @@ python3 verify_receipt.py R
 
 ## Limits
 
-* **Not yet run at n=83.** The n=83 smoke was reduced: a 60 s budget and two
-  targets. It ran on a contended container.
+* **One run, one runner.** The n=83 figures come from run 38689817618 alone.
+  The local n=83 smoke was reduced (a 60 s budget and two targets) and
+  contended; it is not evidence.
 * **Tier 1 at best.** One runner and one pinned CPU on a shared cloud VM.
   Exclusivity is not certified.
 * **The model is a heuristic.** In the dry run it overstated step counts by
@@ -430,10 +534,4 @@ python3 verify_receipt.py R
   the same files, lock and toolchain, but in this crate, so binary identity
   with item 2's builds is not claimed. Work identity is checked instead,
   through the step and probe counts.
-* **Canonical graphs checked: no change.** These were checked and left
-  unchanged, because no n=83 BL measurement exists yet:
-  * this repository's `experiments/koblitz-single-target-n83-tier1-20261014/figures/`;
-  * the crypto ledger §23 and the scoreboard.
-
-  The ledger row, the scoreboard and any `benchmarks/` entry belong to the
-  PR that lands the run.
+* **Canonical graphs:** as listed under "Result".

@@ -12,7 +12,10 @@ Pollard rho. Every row that charges the index calculus's setup is slower than
 the matched signed-Frobenius rho. The isolated single-target rows where it is
 faster *online* (8.8–17.5× at r ≤ 2^47, 12.9–13.9× at n = 61) exclude that
 setup, and a Bernstein–Lange walk given the same precomputation is modelled to
-be 2–8× faster still (§7).
+be 2–8× faster still (§7). At n = 83 that gap is now measured on one Tier 1
+instance: given the same precomputation, a Bernstein–Lange walk is about 235×
+faster online than the index calculus, and the tuned single-target rho matches it
+online (§7; `experiments/koblitz-n83-bl-arm-20261014/`).
 
 **Status**: research draft, not peer-reviewed, not submitted, not posted.
 Anonymized for double-blind review; restore authors with `make deanonymize`
