@@ -118,9 +118,18 @@ without TeX can open the paper.
      IC/rho 95.4 (A) and 134 (B); IC online is 74.8x (A) and 33.5x (B) the
      Bernstein-Lange model.
    - The paper (abstract, section 7, limitations, conclusion) now states this.
-     It disagrees in direction with the 2026-10-12 crypto diagnostic (IC 1.38x
-     slower); that is not reconciled. Still open: a Tier 0 or independent-host
-     replay.
+     Still open: a Tier 0 or independent-host replay.
+   - **Correction (2026-10-15).** The disagreement with the 2026-10-12 crypto
+     diagnostic (IC 1.38x slower) is reconciled by the factorial run
+     `38617911080` in `experiments/koblitz-n83-reconcile-20261014/`. Its
+     frozen reading names the host or instance as responsible: on that
+     runner, A's own configuration reads IC 1.10x faster.
+   - The 1.78x and 2.77x are against strong rho rung 3. Rung 3 is 1.26x
+     slower per step than the library's StrongRhoG, and Q0's seed gave it a
+     long walk.
+   - Against A's tuned rho (Fold/64/DP6), IC shows no online advantage:
+     rho/IC is 0.78 [0.77, 0.79] on Q0, and 1.08 [0.56, 3.59] over the 16
+     points. Abstract, section 7 and limitations now say so.
 4. ~~A **rho arm at `n = 19`**~~ — measured, exploratory tier (GitHub run
    `38520305068`, `experiments/volcano-ic/rho-arm-20261014/`; 10/10 scalars,
    640/640 rho logs verified, validity gate passed).

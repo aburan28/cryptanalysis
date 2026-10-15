@@ -1,10 +1,13 @@
 # N83 Q0: reconciling A (rho faster) and B (IC faster)
 
-**Status (2026-10-14): source audit done; protocol frozen; the Tier 1 run
-starts on push of branch `claude/n83-reconcile`. No timing result exists
-yet.** This directory makes no performance claim. Results will land as
-`run_github_<id>/` with `result.json` and `result_table.md`, and this README
-will be updated with them. The workflow's path filter ignores those files.
+**Status (2026-10-15): measured.** GitHub run
+[`38617911080`](https://github.com/aburan28/cryptanalysis/actions/runs/38617911080)
+(commit `4ab2a678`, one `ubuntu-24.04` runner) completed the frozen
+protocol: all 284 rows ran and were valid. The receipt is archived in
+[`run_github_38617911080/`](run_github_38617911080/), and `verify_receipt.py`
+re-run on it reproduced `result.json` and `result_table.md` byte for byte.
+See [Result](#result). The design sections below are the protocol as frozen
+before the run.
 
 Two measurements of the same point disagree in direction:
 
@@ -22,6 +25,101 @@ Point Q0 = (2655898345537166180532960, 3881526307991673265292615) on
 `EC1N83Ce1h35c7ced6b497` (y^2 + xy = x^3 + x^2 + 1 over
 GF(2)[z]/(z^83+z^7+z^4+z^2+1), r = 8569786107849059), retained K600 base
 `d4a4da26...a9f7`.
+
+## Result
+
+**Frozen reading: `decided`. A cell `A_not_reproduced`, B cell
+`B_reproduces`. Responsible: `host_or_instance`** ("A's direction does not
+survive the move to this runner"). All 284 rows were valid. The A/A controls
+passed (rho +0.000 [-0.004, 0.004]; IC +0.009 [-0.006, 0.024]), as did the
+positive control (+0.007 [-0.002, 0.014] from the exact 0.978) and every
+identity check. One row (iA770f, block 1) carried a contention flag (major
+page faults). The decision recomputed without flagged blocks is the same.
+
+| Quantity on Q0 (ln rho/IC; 4 blocks) | mean | ratio | 95% | class |
+| --- | ---: | ---: | --- | --- |
+| L_A, A's exact configuration | +0.091 | 1.095 | [0.071, 0.107] | |
+| rev_rho (a8194d61 to 770f6a69) | -0.009 | 0.991 | [-0.012, -0.004] | negligible |
+| impl_rho (rung 3 vs StrongRhoG, Shapley) | +0.299 | 1.348 | [0.294, 0.303] | contributes |
+| seed (831000 vs A's five, Shapley) | +0.184 | 1.202 | [0.179, 0.190] | contributes |
+| boundary | -0.000 | 1.000 | [0.000, 0.000] | negligible |
+| rev_ic | -0.017 | 0.983 | [-0.043, -0.002] | negligible |
+| prod_ic | +0.016 | 1.016 | [-0.014, 0.055] | unresolved |
+| cache | +0.001 | 1.001 | [-0.007, 0.008] | negligible |
+| L_B, B's exact configuration | +0.564 | 1.757 | [0.550, 0.574] | |
+
+![Result of run 38617911080](figures/result.png)
+
+*Figure 3. The frozen chain and the secondary tuned-rho readings
+([source](figures/result.tex), [vector](figures/result.pdf)); numbers from
+`run_github_38617911080/panel/result.json`.*
+
+**What it means, plainly.**
+
+* On this runner, A's own configuration already reads IC 1.10x faster
+  online. So A's "rho faster" (1.38 in IC's disfavour) did not survive the
+  move to this runner. The responsible factor under the frozen rule is
+  therefore the host/instance, not any code factor. Here A's IC producer ran
+  at 505 ns per probe (715 on A's host), while A's StrongRhoG ran at
+  490 ns per step (461 on A's host). The residual between A as published
+  and A on the runner is -0.415 in ln R.
+* This runner was an **AMD EPYC 7763**, not the EPYC 9V74 that A's host and
+  B's runner reported. "Host or instance" therefore includes a CPU model
+  change. The run cannot say which property of A's host made its IC
+  relatively slow.
+* B's configuration reproduces (1.757, against B's published 1.779). Most of
+  B's larger lead on Q0 comes from the rho it was measured against:
+  * **A weaker rho.** Rung 3 costs 618 ns per step against StrongRhoG's 490
+    on the same CPU (+0.229 in ln time at A's seeds).
+  * **An unlucky seed.** Under seed 831000, rung 3's walk took 12,804,216
+    steps against a geometric mean of 8.41M over A's five seeds (+0.42 within
+    rung 3). StrongRhoG at the same seed took only 9,413,926.
+  * Together (Shapley) this is +0.299 for the implementation and +0.184 for
+    the seed. IC-side code differences (revision, producer, log cache) are
+    each under 0.02 in mean.
+* **Against A's tuned rho (rT770, Fold/64/DP6), IC shows no online
+  advantage.** This is a secondary reading, not part of the frozen decision.
+  On Q0 the tuned rho is 0.50x the default per seed. Rho/IC is 0.542
+  [0.531, 0.551] with A's IC (L_T -0.61) and 0.783 [0.772, 0.790] with B's
+  cached IC (L_T -0.24): rho faster in both. On B's 16 fresh points,
+  section 23 mean rho / mean IC gives:
+
+  | Rho arm | mean rho / mean IC [95%] |
+  | --- | --- |
+  | rT770 (tuned) | 1.08 [0.56, 3.59] (not separated from parity) |
+  | rA770 | 1.71 [0.88, 5.56] |
+  | rA819 | 1.72 [0.89, 5.60] |
+  | rB770 (B's rung 3) | 2.69 [1.37, 9.17] |
+
+* The B panel's online IC advantage (1.78x on Q0, 2.77x on 16 points) is
+  real against the rung-3 reference it used. It came from a rho that is
+  slower per step than the library's StrongRhoG, and on Q0 also from a seed
+  that gave rung 3 a long walk. Against the tuned rho it disappears on Q0 and
+  is not separated from parity over the fresh points.
+
+**Audit predictions (SOURCE_AUDIT section 7) against the outcome:**
+
+* Predictions 1 (rev_rho negligible, identical steps), 4 (boundary about
+  1e-4) and 6 (rung 3 slower per step, tuned rho fastest on fresh points)
+  held.
+* Prediction 2's size held (impl_rho 0.299), but "sufficient to flip" was
+  not evaluable, because A did not reproduce.
+* Prediction 3 (seed about +0.25) came out at +0.184 (Shapley).
+* Prediction 5's IC terms each have means under 0.02, but prod_ic's
+  interval reaches 0.055, so it is unresolved. Its L_A forecast (about -0.10)
+  was wrong: L_A was +0.091.
+* The fresh-point seed-family negative control is -0.24 [-0.47, 0.007]. Its
+  interval only just includes 0. Seed relabelling moves single walks by
+  large factors, and 16 points are few.
+
+**Limits.**
+
+* One runner, one instance; Tier 1 instance scope.
+* Q0 intervals cover repeat and timing variation only.
+* The IC factors were measured on Q0 only.
+* The host effect is not split further.
+* The schedule finished 3.3 h after job start (estimate 4.1-5.3 h); no
+  segment was skipped.
 
 ## Source audit (before any timing)
 
@@ -176,15 +274,17 @@ The identity checks that passed:
 * Tier 1 instance scope: one pinned exposed CPU on a shared VM. Exclusivity is
   not certified.
 * Canonical graphs checked: B's `figures/prior_ratios.*` and
-  `figures/tier1_result.*`, and `experiments/volcano-ic/figures/`. None
-  changes until a result exists. This directory's figures are new.
+  `figures/tier1_result.*`, and `experiments/volcano-ic/figures/`. They are
+  left unchanged because they plot B's frozen numbers, which reproduce here.
+  This directory's figures are new, and the correction is carried in
+  `papers/frobenius-orbits`.
 
 ## Files
 
 `protocol.json` (frozen design and digests), `schedule.json` (frozen order),
 `SOURCE_AUDIT.md`, `restore_sources.py`, `crates/{r770,r819}/`, `arm.py`,
 `make_schedule.py`, `run_schedule.py`, `verify_log_table.py`,
-`verify_receipt.py`, `figures/`, `smoke/`, and the workflow
+`verify_receipt.py`, `figures/`, `smoke/`, `run_github_38617911080/` (the run's artifact), and the workflow
 [`.github/workflows/n83-reconcile.yml`](../../.github/workflows/n83-reconcile.yml).
 The workflow reuses from B: `ic_log_cache.patch`, `inputs/targets.json` and
 the archived factor-log table of run 38523707244.
