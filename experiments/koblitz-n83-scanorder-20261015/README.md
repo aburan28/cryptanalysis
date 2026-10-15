@@ -6,8 +6,9 @@ date: 2026-10-15
 # Scan order of the n = 83 K600 one-target index calculus
 
 **Status (2026-10-15): source audit and receipt reconstruction done;
-protocol frozen and Tier 1 run started; no timing result yet.** The run is
-started by the push of this directory to branch `claude/n83-scan-order`
+protocol frozen and Tier 1 run started; no timing result yet.** The Tier 1
+run is GitHub Actions run [38786433493](https://github.com/aburan28/cryptanalysis/actions/runs/38786433493),
+started by the push of commit `ba49f0854` to branch `claude/n83-scan-order`
 (workflow `.github/workflows/n83-scan-order.yml`). Every number below is one
 of four things: an exact count, a reconstruction of an archived receipt, a
 labelled model estimate, or an earlier experiment's figure. None is a timing
@@ -229,7 +230,7 @@ receipt [`smoke/`](smoke/README.md) holds correctness only.
 
 ## Result
 
-**Pending.** The archive steps are:
+**Pending** run 38786433493. The archive steps are:
 
 1. Download artifact `n83-scan-order-<run_id>-<attempt>` into
    `run_github_<run_id>/`.
