@@ -1,0 +1,75 @@
+{
+  "record_type": "ecc2k130_rho_pinned_four_warp_geometry_v1",
+  "started_at_utc": "2026-10-15T01:30:51Z",
+  "driver_sha256": "40d20a2ffd7dc6a846b155f14153cdd855b8e176dc366fc9071816cdbc7aaa81",
+  "source_commit": "fb5ae4b9b9ef5c24780d5a82d04102ecffda2dd5",
+  "source_dirty": [],
+  "source_tar_sha256": "a4e1f5542420269af9771fa4e50c5ab6b76336afefc7633ff9fcda7a7cd4fb95",
+  "parameters": {
+    "curve": 131,
+    "walk": "signed_frobenius",
+    "dp_weight": 32,
+    "batch": 16,
+    "run_id": 11000,
+    "steps": 1024,
+    "launches": 64,
+    "populations": [
+      87040,
+      108800,
+      120320
+    ],
+    "pairs": 5,
+    "gpu": "NVIDIA GeForce RTX 5090",
+    "timeout_seconds": 2400,
+    "retries": 0
+  },
+  "checks": [
+    {
+      "command": [
+        "nvidia-smi",
+        "--query-gpu=name,uuid,driver_version,compute_cap",
+        "--format=csv,noheader"
+      ],
+      "returncode": 0,
+      "stdout": "NVIDIA GeForce RTX 5090, GPU-7a318255-1132-a0f8-1a95-391ea2bd830e, 580.173.02, 12.0\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "nvcc",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2026 NVIDIA Corporation\nBuilt on Tue_Jun_09_02:43:40_PM_PDT_2026\nCuda compilation tools, release 13.3, V13.3.73\nBuild cuda_13.3.r13.3/compiler.38244171_0\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/workspace/ecc2k130/runner/ecc2k130",
+        "--curve",
+        "131",
+        "--packed",
+        "--bench",
+        "--threads",
+        "640",
+        "--steps",
+        "1",
+        "--launches",
+        "1",
+        "--verify",
+        "0"
+      ],
+      "returncode": 2,
+      "stdout": "",
+      "stderr": "CUDA error at src/main.cu:1405: unknown error\n"
+    }
+  ],
+  "samples": [],
+  "valid": false,
+  "gpu": "NVIDIA GeForce RTX 5090, GPU-7a318255-1132-a0f8-1a95-391ea2bd830e, 580.173.02, 12.0",
+  "compiler": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2026 NVIDIA Corporation\nBuilt on Tue_Jun_09_02:43:40_PM_PDT_2026\nCuda compilation tools, release 13.3, V13.3.73\nBuild cuda_13.3.r13.3/compiler.38244171_0\n",
+  "makefile_sha256": "b2fc84467a79799c89547d18861e23bb25e3b2e07bfc88b4f460048676aa79a8",
+  "candidate_binary_sha256": "f5032b783bba304df133a349eda7ab2348d8af42b45b3eb8d3e18492f713a69f",
+  "error": "RuntimeError('command failed: {\"command\": [\"/workspace/ecc2k130/runner/ecc2k130\", \"--curve\", \"131\", \"--packed\", \"--bench\", \"--threads\", \"640\", \"--steps\", \"1\", \"--launches\", \"1\", \"--verify\", \"0\"], \"returncode\": 2, \"stdout\": \"\", \"stderr\": \"CUDA error at src/main.cu:1405: unknown error\\\\n\"}')",
+  "completed_at_utc": "2026-10-15T01:30:51Z"
+}
