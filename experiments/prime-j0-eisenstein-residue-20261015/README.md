@@ -22,8 +22,13 @@ Horner leads at four passes, while checkpointing leads at eight.
 The [sparse-radix family](SPARSE_RADIX_FAMILY.md) generalizes the short
 `[2ᵏ](1+τ)−1` point action. Pinned Lean proves its norm, quotient residue,
 norm scaling, and point-action identities. An exact 12,288-scalar integer
-screen identifies `k=6` as the next native candidate: 4,727 orbit-folded
-digit seeds and 17 radix steps on the frozen fixture.
+screen identifies `k=6` with 4,727 orbit-folded digit seeds and 17 radix
+steps on the frozen fixture. A native `k=6` path retained 0.923 MB against
+2.636 MB for `k=7`. In matched Tier 1 panels, `k=6` reduced one-scalar
+cold time from 255.34 to 93.58 ms (paired gain 2.737×), while `k=7` led
+the prepared 12,288-point stream, 602.05 versus 624.66 ms. The linked
+note includes raw receipts, independent audits, and the separate timing
+boundaries.
 
 The secp256k1 prime splits in the Eisenstein integers. An exact norm-
 `p` element
