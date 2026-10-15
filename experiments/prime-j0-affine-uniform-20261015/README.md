@@ -42,4 +42,31 @@ table construction and ends after 96 batches of 128 scalar multiplications
 and affine recovery. All 12,288 point checks follow the interval. The
 container reports affinity, cgroup, frequency, throttling, steal time,
 interrupts, and memory placement; physical-host exclusivity is unverified.
-The short screen is a sizing signal pending the full panel.
+
+The completed [RunPod panel](ef8bb2bbba6e405a9565859ce83ae7a4/summary.json)
+contains 96 valid arms and all 48 planned pairs. Every adjacent A/A ratio
+passed its frozen `[0.90, 1.11]` gate; the runner reported stable artifacts.
+The [independent audit](tier1-affine-uniform-cpu40-audit.json) regenerated
+the complete fixture, matched the source and binary hashes in the
+[provenance archive](prime-j0-affine-uniform-native-provenance.tar.gz),
+checked every recorded output and pair, and reproduced the predeclared
+comparison gate. The raw [result archive](ef8bb2bbba6e405a9565859ce83ae7a4.tar.gz)
+has SHA-256 `5be227fb97831edd32e6cc820253a04791048a8f8addca3aab3836dc517b7016`;
+the provenance archive has SHA-256
+`1902de487be00533ef34e1362e114863c529af2d34bb5c86a7ccbb93d4a00384`.
+
+| Tier 1 same-input batch result | Ordinary affine | Full two-x |
+| --- | ---: | ---: |
+| Mean online time, 12,288 outputs | 70.737837 ms | 62.137246 ms |
+| Mean online time per scalar | 5.756660 µs | 5.056742 µs |
+| Retained table bytes | 26,035,988 | 37,192,948 |
+| Mean table preparation | 3,950.829 ms | 3,967.026 ms |
+
+The median paired ordinary/full-two-x online ratio is **1.155612×** across
+16 comparison pairs; the predeclared bootstrap 95% interval is
+`[1.101903, 1.178301]`. This measures batch throughput for one stream of
+12,288 distinct SHAKE256-derived scalars on the observed RunPod Tier 1
+instance. Table preparation and output verification are recorded separately
+from the online interval. The extra retained table footprint is 11,156,960
+bytes. The short sequential A/B/A screen above remains an exploratory
+receipt, separate from this qualified panel.
