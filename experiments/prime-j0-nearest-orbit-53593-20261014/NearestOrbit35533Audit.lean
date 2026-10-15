@@ -3,6 +3,7 @@ import NearestOrbit35533Complete
 import NearestOrbit35533Action
 import NearestOrbit35533Lattice
 import NearestOrbit35533Secp
+import NearestOrbit35533Generator
 
 #print axioms NearestOrbit35533Digits.all_residues_have_small_candidate
 #print axioms NearestOrbit35533Digits.selected_digit_valid
@@ -19,3 +20,5 @@ import NearestOrbit35533Secp
 #print axioms NearestOrbit35533Secp.generator_on_curve
 #print axioms NearestOrbit35533Secp.beta_preserves_curve
 #print axioms NearestOrbit35533Secp.selected_scalar_point_replay
+#print axioms NearestOrbit35533Generator.tau_scalar_from_generator
+#print axioms NearestOrbit35533Generator.selected_scalar_replay_from_generator
