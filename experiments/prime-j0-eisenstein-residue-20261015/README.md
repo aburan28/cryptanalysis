@@ -29,6 +29,12 @@ cold time from 255.34 to 93.58 ms (paired gain 2.737×), while `k=7` led
 the prepared 12,288-point stream, 602.05 versus 624.66 ms. The linked
 note includes raw receipts, independent audits, and the separate timing
 boundaries.
+The native `k=5` path retains 0.496 MB and reduced one-scalar cold time
+further, from 93.50 ms for `k=6` to 52.67 ms (qualified paired gain
+1.775×). On the separate prepared 12,288-point stream, `k=6` led at
+625.23 versus 645.93 ms. Both panels passed the Tier 1 artifact, pairing,
+and A/A gates. Lean also checks a conditional 20-step terminal norm bound
+for `k=5`.
 
 The secp256k1 prime splits in the Eisenstein integers. An exact norm-
 `p` element
