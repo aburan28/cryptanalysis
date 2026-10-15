@@ -216,6 +216,40 @@ theorem digit_candidate_norm_identity (r b : Int) :
   simp only [← Int.mul_assoc]
   omega
 
+/-- Nearest integer to the optimal `b` coordinate for the nonnegative signed residue. -/
+def nearestDigitB (r : Int) : Int := (665*r+110557) / 221114
+
+theorem nearest_digit_rounding_error (r : Int) :
+    -110557 ≤ 221114*nearestDigitB r-665*r ∧
+      221114*nearestDigitB r-665*r ≤ 110557 := by
+  dsimp [nearestDigitB]
+  omega
+
+/-- The single rounded candidate suffices for the loose prime-norm digit bound. -/
+theorem rounded_digit_norm_below_prime (r : Int)
+    (hr : 0 ≤ r ∧ r ≤ 55278) :
+    pairNorm (r-334*nearestDigitB r) (nearestDigitB r) < 110557 := by
+  let b := nearestDigitB r
+  let e := 221114*b-665*r
+  have herr : -110557 ≤ e ∧ e ≤ 110557 := by
+    simpa [e,b] using nearest_digit_rounding_error r
+  have he2 := signed_square_bound e 110557 (by decide) herr
+  have hr2 := nonnegative_square_bound r 55278 hr.1 (by decide) hr.2
+  have hident := digit_candidate_norm_identity r b
+  dsimp [e,b] at he2 hident
+  simp only [Int.mul_assoc] at hident
+  omega
+
+/-- Any selector that considers the rounded candidate and keeps a no-larger norm
+inherits the bound for every signed residue. -/
+theorem selected_digit_norm_below_prime (r da db : Int)
+    (hr : 0 ≤ r ∧ r ≤ 55278)
+    (hselect : pairNorm da db ≤
+      pairNorm (r-334*nearestDigitB r) (nearestDigitB r)) :
+    pairNorm da db < 110557 := by
+  have hc := rounded_digit_norm_below_prime r hr
+  omega
+
 /-- A digit norm at most the prime norm suffices for one quotient step. -/
 theorem quotient_norm_step (a b da db nextA nextB : Int)
     (hquot : multiplyPrime 334 nextA nextB = (a-da,b-db))
@@ -227,6 +261,18 @@ theorem quotient_norm_step (a b da db nextA nextB : Int)
   have hweight := pair_norm_weighted a b da db
   rw [hscale] at hweight
   omega
+
+/-- One exact quotient with such a selected digit satisfies the terminal recurrence. -/
+theorem quotient_norm_step_from_selected_digit
+    (r a b da db nextA nextB : Int)
+    (hr : 0 ≤ r ∧ r ≤ 55278)
+    (hselect : pairNorm da db ≤
+      pairNorm (r-334*nearestDigitB r) (nearestDigitB r))
+    (hquot : multiplyPrime 334 nextA nextB = (a-da,b-db)) :
+    100*110557*pairNorm nextA nextB ≤
+      101*pairNorm a b + 10100*110557 := by
+  have hdigit := selected_digit_norm_below_prime r da db hr hselect
+  exact quotient_norm_step a b da db nextA nextB hquot (Int.le_of_lt hdigit)
 
 theorem norm_334_no_small_divisor :
     ∀ d : Fin 331, 110557 % (d.val + 2) ≠ 0 := by decide
@@ -434,6 +480,38 @@ theorem terminal_for_selector_corner (rw rv dw dv a b : Int) (q : Nat → Nat)
   have hzero : q 0 ≤ 7*2^260 := by omega
   exact terminal_from_prime_norm_digits q hzero hstep
 
+/-- Fifteen mathematically exact minimum-norm quotient steps end in the table domain.
+The sequences expose the pointwise obligations for a fixed-limb implementation. -/
+theorem terminal_from_verified_digit_steps
+    (rw rv dw dv : Int)
+    (a b da db r : Nat → Int) (q : Nat → Nat)
+    (hrw : 0 ≤ rw ∧ rw < scalarOrder)
+    (hrv : 0 ≤ rv ∧ rv < scalarOrder)
+    (hdw : 0 ≤ dw ∧ dw ≤ 1) (hdv : 0 ≤ dv ∧ dv ≤ 1)
+    (ha : scalarOrder*(a 0) =
+      (rw-scalarOrder*dw)*cornerW0 - (rv-scalarOrder*dv)*cornerV0Abs)
+    (hb : scalarOrder*(b 0) =
+      (rv-scalarOrder*dv)*cornerV1 - (rw-scalarOrder*dw)*cornerW1Abs)
+    (hq : ∀ i : Nat, i ≤ 15 → (q i : Int) = pairNorm (a i) (b i))
+    (hresidue : ∀ i : Nat, i < 15 → 0 ≤ r i ∧ r i ≤ 55278)
+    (hselect : ∀ i : Nat, i < 15 → pairNorm (da i) (db i) ≤
+      pairNorm (r i-334*nearestDigitB (r i)) (nearestDigitB (r i)))
+    (hquot : ∀ i : Nat, i < 15 →
+      multiplyPrime 334 (a (i+1)) (b (i+1)) =
+        (a i-da i,b i-db i)) :
+    q 15 < 5000 := by
+  have hstep : ∀ i : Nat, i < 15 →
+      100*110557*q (i+1) ≤ 101*q i + 10100*110557 := by
+    intro i hi
+    have hbound := quotient_norm_step_from_selected_digit
+      (r i) (a i) (b i) (da i) (db i) (a (i+1)) (b (i+1))
+      (hresidue i hi) (hselect i hi) (hquot i hi)
+    have hcurrent := hq i (by omega)
+    have hnext := hq (i+1) (by omega)
+    omega
+  exact terminal_for_selector_corner rw rv dw dv (a 0) (b 0) q
+    hrw hrv hdw hdv ha hb (hq 0 (by decide)) hstep
+
 #print axioms quotient_step
 #print axioms pair_norm_nonnegative
 #print axioms pair_norm_weighted
@@ -442,7 +520,11 @@ theorem terminal_for_selector_corner (rw rv dw dv a b : Int) (q : Nat → Nat)
 #print axioms selector_corner_coordinate_bound
 #print axioms selector_initial_norm_bound
 #print axioms digit_candidate_norm_identity
+#print axioms nearest_digit_rounding_error
+#print axioms rounded_digit_norm_below_prime
+#print axioms selected_digit_norm_below_prime
 #print axioms quotient_norm_step
+#print axioms quotient_norm_step_from_selected_digit
 #print axioms norm_334_no_small_divisor
 #print axioms norm_334_prime_factors
 #print axioms fifteen_step_numeric_bound
@@ -450,5 +532,6 @@ theorem terminal_for_selector_corner (rw rv dw dv a b : Int) (q : Nat → Nat)
 #print axioms terminal_from_recurrence
 #print axioms terminal_from_prime_norm_digits
 #print axioms terminal_for_selector_corner
+#print axioms terminal_from_verified_digit_steps
 
 end AlternateRadix
