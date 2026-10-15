@@ -90,6 +90,19 @@ The [replication plan](tier1-alt-prefetch-rep2-plan.json) and [launch receipt](t
 
 Every adjacent A/A ratio passed `[0.90,1.11]`. The paired median baseline/prefetch ratio is **`1.123359`**, with predeclared paired bootstrap 95% interval **`[1.083259,1.169518]`**. The [audit receipt](tier1-alt-prefetch-rep2-cpu40-audit.json) records `tier_gate_passed: true`, `aggregate_status: qualified`, and the preserved earlier failed-gate result remains separate. This is a qualified Tier 1 batch-throughput improvement for the exact ten-pass stream on the observed RunPod instance, with table preparation and fixture loading outside the timed interval.
 
+## Compact affine table with lazy rotation
+
+The [compact overlay](native_alt_lazy_rotation_overlay.py) stores only each affine `(x,y)` pair, then computes the cube-root x rotation when a selected unit requires it. This lowers each table entry from 96 to 64 bytes without changing the digit radix, factor table, scalar recoding, or affine reduction. The [smoke receipt](lazy-rotation-smoke.stdout) verified all 122,880 frozen outputs and retained 18,487,788 bytes. The [rules](tier1-alt-lazy-rotation-cpu40-rules.json), [manifest](tier1-alt-lazy-rotation-cpu40-manifest.json), [launch receipt](tier1-alt-lazy-rotation-launch.json), and [auditor](analyze_tier1_alt_lazy_rotation.py) were committed before panel results.
+
+Job `de77e82993f64a88ac9a5c3bb517d98a` completed 96 valid arms and 48 valid pairs with stable artifacts. The [independent audit](tier1-alt-lazy-rotation-cpu40-audit.json) checked every output, the exact retained-byte count per arm, the sealed [raw records](alt-lazy-rotation-tier1-raw.tar.gz), and both exact binaries in the [native provenance archive](alt-lazy-rotation-native-provenance.tar.gz). Their SHA-256 digests are `5aa04527d0688038999f80a756da74a98e96431f92823b6a8fbcf92edc20ea8d` and `18a77b25cb40b1b6eefe95efd973da3e51373d721dd2b3a83dce06482db19778`.
+
+| Tier 1 ten-pass stream; 122,880 checked outputs per arm | Precomputed two-x | Compact lazy rotation |
+| --- | ---: | ---: |
+| Retained table bytes | 27,429,548 | 18,487,788 |
+| Mean timed interval | 569.505652 ms | 594.192198 ms |
+
+Every adjacent A/A ratio passed the frozen `[0.90,1.11]` range. The qualified paired median precomputed/compact ratio is `0.958086`, with paired bootstrap 95% interval `[0.954503,0.959973]`. The compact table saves **8,941,760 bytes (32.6%)** and pays a measured **4.4%** time increase on this Tier 1 batch workload. This result supports a mixed representation that stores the second x coordinate only where its saved multiplication outweighs its cache cost.
+
 ## Eight-lane wavefront gather
 
 The [wavefront overlay](native_alt_wavefront_overlay.py) separates recoding, prefetch, and affine gather across chunks of eight scalar inputs. It uses the same 15 digit rows, terminal table, two-x entries, and affine reduction as the per-scalar prefetch path. The [exact-replay smoke receipt](wavefront8-smoke.stdout) verified 122,880 outputs on the frozen fixture with 27,429,548 retained bytes. The [predeclared rules](tier1-alt-wavefront8-cpu40-rules.json), [manifest](tier1-alt-wavefront8-cpu40-manifest.json), [launch receipt](tier1-alt-wavefront8-launch.json), and [auditor](analyze_tier1_alt_wavefront8.py) were committed before panel results existed.
