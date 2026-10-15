@@ -47,8 +47,39 @@ theorem negate_residue (z : Coeff) :
   simp [residue, negate]
   omega
 
+theorem omega_add (x y : Coeff) :
+    omegaMul (add x y) = add (omegaMul x) (omegaMul y) := by
+  cases x
+  cases y
+  simp [omegaMul, add]
+  constructor <;> omega
+
+-- Processing classes 2, 1, 0 with two aggregate rotations produces
+-- the same sum as rotating each class's terms individually.
+theorem rolling_three_classes (plain first second : Coeff) :
+    add plain (omegaMul (add first (omegaMul second))) =
+      add (add plain (omegaMul first)) (omegaMul (omegaMul second)) := by
+  rw [omega_add]
+  cases plain
+  cases first
+  cases second
+  simp [add]
+  constructor <;> omega
+
+def rotationCount (class0 class1 class2 : Bool) : Nat :=
+  (if class2 && (class1 || class0) then 1 else 0) +
+  (if class1 && class0 then 1 else 0) +
+  (if !class0 && (class1 || class2) then 1 else 0)
+
+theorem rotation_count_le_two (class0 class1 class2 : Bool) :
+    rotationCount class0 class1 class2 ≤ 2 := by
+  cases class0 <;> cases class1 <;> cases class2 <;> decide
+
 #print axioms omega_cube
 #print axioms orbit_preserves_norm
 #print axioms omega_residue
 #print axioms negate_residue
+#print axioms omega_add
+#print axioms rolling_three_classes
+#print axioms rotation_count_le_two
 end NearestOrbit12211

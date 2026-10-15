@@ -1,4 +1,12 @@
-# Unit-orbit table for 18-position minimum-norm scalar multiplication
+# Rolling unit-orbit table for 18-position scalar multiplication
+
+A descending unit-class accumulator evaluates all selected digits from
+their unrotated table seeds, then rotates the accumulated point at most
+twice. On the frozen case-0 public point it replaces **10 affine `x`
+constant multiplications with two aggregate rotations**, while retaining
+the same 18 nontrivial mixed additions, no projective join, and the same
+2,448,196-byte table. The six release correctness test families pass for
+both the direct orbit evaluator and this rolling evaluator.
 
 The minimum-norm digits for `π = 112−τ` on secp256k1 are closed under the
 six unit actions `±1`, `±ω`, and `±ω²`, with `ω = τ−2` up to the choice of
@@ -42,15 +50,22 @@ replays against independent binary multiplication. The first native
 compilation failed on test expression types; that raw failure log is
 preserved separately from both green runs.
 
-The frozen case-0 executable replay reproduced the parent public point
-with 18 nontrivial mixed additions, no projective join, 10 affine
-`x` constant multiplications, 18 digit reads, and one terminal read.
-The local wall-time field in [native-case0.log](native-case0.log) is an
-ordinary-host diagnostic. It cannot rank latency against the parent.
+The direct orbit evaluator's frozen case-0 replay reproduced the parent
+public point with 18 nontrivial mixed additions, no projective join, 10
+affine `x` constant multiplications, 18 digit reads, and one terminal
+read. The [rolling overlay](rolling_overlay.py) recodes all 18 digits and
+the terminal pair, then visits unit classes 2, 1, 0. Its one accumulator
+computes `S₀ + ω(S₁ + ω(S₂))`, where each `Sⱼ` sums only unrotated seed
+points with their selected signs. Skipped classes are handled by rotating
+directly to the next occupied class. Its [native test log](rolling-native-test.log)
+records all six passing families; the [case-0 log](rolling-native-case0.log)
+records two aggregate rotations and the same public point. Both local
+wall-time fields are ordinary-host diagnostics and do not rank latency.
 
 The [Lean module](NearestOrbit12211.lean) checks `ω³=1`, norm
-preservation across all six images, the residue multiplier, and sign
-action. It imports the checked nearest-digit global-minimum module.
+preservation across all six images, the residue multiplier, sign action,
+the rolling three-class identity, and the two-rotation upper bound. It
+imports the checked nearest-digit global-minimum module.
 Its `#print axioms` output in [lean-check.log](lean-check.log) contains
 only `propext`, `Classical.choice`, and `Quot.sound`. The exact 2,036/699
 counts and covariance of the selected finite digit map are independently
@@ -64,6 +79,8 @@ is independently exercised by the affine point replay.
 | Norm-preserving orbit | `orbit_preserves_norm` | Every member of the six-image orbit. |
 | Residue rotation | `omega_residue` | Every integer coefficient pair modulo 12,211. |
 | Sign action | `negate_residue` | Every integer coefficient pair. |
+| Rolling accumulator identity | `rolling_three_classes` | Arbitrary sums in the three unit classes. |
+| Aggregate rotation bound | `rotation_count_le_two` | Every class-occupancy pattern. |
 
 Reproduce the screen and proof from this checkout with the pinned Lean
 4.34.1 toolchain and built parent modules:
@@ -83,11 +100,12 @@ hash before editing. Build and test with:
 ```sh
 python3 experiments/prime-j0-nearest-orbit-12211-20261014/native_overlay.py /absolute/path/to/source-crate
 CARGO_TARGET_DIR=/private/tmp/nearest-orbit-target cargo test --manifest-path /absolute/path/to/source-crate/Cargo.toml --offline --locked --release --bin eisenstein_fixed split_prime_ -- --test-threads=1 --nocapture
+python3 experiments/prime-j0-nearest-orbit-12211-20261014/rolling_overlay.py /absolute/path/to/source-crate
+CARGO_TARGET_DIR=/private/tmp/nearest-orbit-target cargo test --manifest-path /absolute/path/to/source-crate/Cargo.toml --offline --locked --release --bin eisenstein_fixed split_prime_ -- --test-threads=1 --nocapture
 ```
 
-The next design gate is an oriented one- or two-accumulator schedule that
-defers some of the 10 case-0 affine `x` multiplications. It must retain
-the 18-position and 2,448,196-byte cost boundaries or account explicitly
-for any change, then pass the same native image and scalar tests. A Tier 1
-or Tier 0 isolated, alternating same-scalar panel is required to rank
-latency against the sign-only nearest-digit and norm-4,831 orbit paths.
+The next gate is a Tier 1 or Tier 0 isolated, alternating same-scalar
+panel with A/A noise controls to rank the direct and rolling orbit
+evaluators against the sign-only nearest-digit and norm-4,831 paths.
+The finite-map covariance theorem remains open in Lean; the exhaustive
+screen and native point-image tests are retained as separate evidence.
