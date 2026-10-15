@@ -1,0 +1,162 @@
+{
+ "id": "canon-n131-loop-20261014",
+ "version": 2,
+ "frozen": "v1 2026-10-14 (commit babef1ad4), before any loop timing, instruction count or smoke run. v2 2026-10-14, after one local dry run and before any Tier 1 timing; see amendments. Any later change is a new, labelled version and every version is reported.",
+ "question": "Inside a decomposition-style loop at n = 131 (serial field chain per key, conversion to the normal basis, canonicalization, hashed-table probe), what does each of the five exact canonicalizers of canon-n131-20261014 cost per key, and is the isolated instruction-count ranking (lift_scan 514 < gap_scan 1435 < exhaustive 1850 < exhaustive_bf 3664 < refine_bf 4510 Ir/word) the in-loop ranking?",
+ "source_context": {
+  "canonicalizers": "cryptanalysis:experiments/canon-n131-20261014/src/lib.rs (G<131,64>::{exhaustive, gap_scan, refine_bf, exhaustive_bf, lift_scan}), used through a Cargo path dependency, not copied",
+  "isolated_counts": "cryptanalysis:experiments/canon-n131-20261014/results/instructions.json",
+  "field": "cryptanalysis:ecc2k130/src/f131.h (mul, sqr, fromPolynomial): the ECC2K-130 walk's host arithmetic, ported to Rust and held to the header by known-answer vectors generated from the header itself (kat/)",
+  "loop_shape": "cryptanalysis:experiments/koblitz-n83-index-design-20260929/packed_index_e1_canonical_20261009 (E-1 target stage: query, conversion, canonicalization, exact lookup in a hashed bucket directory)",
+  "n53_precedent": "papers/frobenius-orbits sec. 4/7 and crypto:src/cryptanalysis/koblitz_fast.rs canon_many: at n = 53 the branch-free exhaustive vector scan beat variants A and B inside the loop although they were cheaper in isolation"
+ },
+ "normal_basis": {
+  "field_basis": "ecc2k130's polynomial basis (reduction of f131.h) for the chain; fromPolynomial gives the permuted type-II normal basis (bit i-1 = coefficient of beta_i = gamma^i + gamma^-i, gamma of order 263)",
+  "cyclic_order": "normal-basis coordinate j = coefficient of alpha^(2^j), alpha = beta_1, held at permuted bit fold(2^j mod 263) - 1, fold(t) = t if t <= 131 else 263 - t; applied by 33 nibble tables (12.7 KB). Required check: to_cyclic(fromPolynomial(a^2)) = rotl(to_cyclic(fromPolynomial(a)), 1) for every tested a",
+  "status": "the field elements are genuine elements of F_2^131 in the walk's normal basis; they are NOT x-coordinates of curve points. The recurrence is a labelled proxy for a point operation."
+ },
+ "per_key_work": {
+  "W1": "s' = s*g0 + s^2: one multiply and one squaring on the serial chain",
+  "W5": "t1 = s*g0; t2 = t1*g1 + s; t3 = t2^2; t4 = t3*g2 + t1; t5 = t4*t2; s' = t5*g3 + t3: five multiplies and one squaring, about an affine point addition with its share of a batched inversion (proxy)",
+  "constants": "g0..g3 = four SplitMix64(131) words (Rng::word131)",
+  "then": "x = to_cyclic(fromPolynomial(s')); (k, shift) = canon(x); hit = probe(k); accumulate hits, a key/shift fold and the shift sum. The next state never depends on k or hit."
+ },
+ "table": {
+  "layout": "bucket directory u32[2^dir_bits + 1] over exact [u64;3] records grouped by bucket (counting sort); probe hashes all three limbs, scans the bucket, compares all limbs; mean bucket load 4",
+  "planted_keys": "for i < plant_span with plant_mix(seed ^ 0x706c616e74, i) % plant_period == 0, the canon-n131 exhaustive canonical form of stream word i",
+  "filler_keys": "lift_scan canonical forms of uniform words from SplitMix64(seed ^ 0x66696c6c6572) until the table has 2^records_log2 records",
+  "expected_hits": "exactly the planted positions below the pass length (coincidental hits have probability below 2^-90)"
+ },
+ "workloads": [
+  {
+   "workload": "w1-small",
+   "work_muls": 1,
+   "records_log2": 14,
+   "dir_bits": 12,
+   "plant_span": 524288,
+   "plant_period": 64,
+   "seed": 1312026101410
+  },
+  {
+   "workload": "w1-large",
+   "work_muls": 1,
+   "records_log2": 22,
+   "dir_bits": 20,
+   "plant_span": 524288,
+   "plant_period": 64,
+   "seed": 1312026101410
+  },
+  {
+   "workload": "w5-small",
+   "work_muls": 5,
+   "records_log2": 14,
+   "dir_bits": 12,
+   "plant_span": 524288,
+   "plant_period": 64,
+   "seed": 1312026101450
+  },
+  {
+   "workload": "w5-large",
+   "work_muls": 5,
+   "records_log2": 22,
+   "dir_bits": 20,
+   "plant_span": 524288,
+   "plant_period": 64,
+   "seed": 1312026101450
+  }
+ ],
+ "workload_notes": "small = 2^14 records + 2^12 buckets (0.41 MB, cache resident on the runner's L2/L3); large = 2^22 records + 2^20 buckets (104.9 MB, DRAM, like the 88.8 MB E-1 root table). w1-* share one stream and w5-* another, so small vs large differ only in the table.",
+ "arms": {
+  "exhaustive": "canon-n131 (a), reference",
+  "gap_scan": "canon-n131 (b), variant-B zero-gap set-bit scan",
+  "refine_bf": "canon-n131 (c), branch-free bit-parallel refinement",
+  "exhaustive_bf": "canon-n131 supplementary branch-free exhaustive chain",
+  "lift_scan": "canon-n131 supplementary variant-A analogue (binary lifting + candidate loop); the isolated winner and the reference arm of every contrast",
+  "lift_scan_aa": "negative control (A/A): lift_scan compiled into its own loop symbol at its own address",
+  "null": "loop floor, descriptive only: no canonicalization, probes the raw word; its hits and keys differ by design and are excluded from the identity check; no verdict depends on it (v2)",
+  "lift_scan_2pass": "positive control (v2): the lift_scan loop symbol run twice back to back from the same start inside one timed interval, rows carry the nominal key count, so its ns/key is 2x lift_scan's in expectation"
+ },
+ "build": "cargo build --release --locked --offline; opt-level 3, codegen-units 1, fat LTO, panic=abort, -C target-feature=+pclmulqdq (.cargo/config.toml); one #[inline(never)] #[no_mangle] loop symbol per arm and work level (loop_<arm>_w1, loop_<arm>_w5), canonicalizer, field and probe inlined into it",
+ "exactness": {
+  "field_kat": "the Rust port equals ecc2k130/src/f131.h on every committed vector (mul, sqr, fromPolynomial; 131 unit vectors then random), regenerated from the header in CI with both ECC_HOST_CLMUL=1 and =0",
+  "frobenius": "rotation property above on every word of every verified stream",
+  "loop_identity": "for each workload, record mode over all plant_span keys: (key, shift, hit) identical at every index across exhaustive, gap_scan, refine_bf, exhaustive_bf, lift_scan, lift_scan_aa; equal to canon-n131 exhaustive applied to the independently generated stream; equal to canon-n131 oracle (Vec<bool>, no limb code) on the first 20000 keys; hit positions equal the planted positions; record-mode summary equals the timed entry point's summary",
+  "timed_rows": "every timed row's (hits, key_hash, shift_sum, last_state) must equal the workload's verified reference summary; a mismatching row is kept and makes that arm's verdicts invalid"
+ },
+ "deterministic_counts": {
+  "instrument": "valgrind --tool=cachegrind --cache-sim=no --branch-sim=yes on the local cloud-agent VM (perf is not installed); per-symbol Ir, Bc (conditional branches), Bcm (modelled conditional mispredicts), Bi, Bim, divided by the keys of the pass",
+  "keys_per_symbol": 65536,
+  "label": "Ir and Bc are exact for the binary; Bcm is cachegrind's branch-predictor MODEL (a simple simulated predictor), not hardware mispredicts"
+ },
+ "timing": {
+  "tier": "Tier 1 (cloud instance) per AGENTS.md: one GitHub-hosted ubuntu-24.04 runner, instance scoped; the provider allocation receipt available to a hosted job (runner name, image version, lscpu, kernel, Azure IMDS if reachable) is recorded, along with cgroup cpu.stat throttling, /proc/stat steal, context switches and the CPU of every row",
+  "pinning": "taskset -c 1 for the whole run; the CPU id of each pass is recorded",
+  "keys_per_pass": 524288,
+  "warmup": "one untimed pass of every arm on every workload before round 0",
+  "rounds": 41,
+  "order": "round r, for each workload in protocol order: the eight arms (null, exhaustive, gap_scan, refine_bf, exhaustive_bf, lift_scan, lift_scan_aa, lift_scan_2pass) rotated left by (r mod 8), reversed when floor(r/8) is odd",
+  "clocks": "std::time::Instant (CLOCK_MONOTONIC ns), rdtsc (reference TSC ticks, not core cycles) and CLOCK_THREAD_CPUTIME_ID per pass; getrusage(RUSAGE_THREAD) voluntary and involuntary switches per pass",
+  "metric": "ns per key = pass wall ns / keys_per_pass"
+ },
+ "analysis": {
+  "contrast": "for workload w, arm a and round r: rho = t(a,r) / t(lift_scan,r); report geometric mean of rho over rounds with a percentile bootstrap over rounds (20000 resamples, Python random.Random(20261014))",
+  "primary_family": "exhaustive, gap_scan, refine_bf, exhaustive_bf vs lift_scan on each of the four workloads: m = 16",
+  "decision_rule": "Bonferroni over the family: two-sided CI level 1 - 0.05/16 = 0.996875. 'lift_scan faster in the loop' if the CI lower bound of rho exceeds 1; '<arm> faster than lift_scan in the loop' if the upper bound is below 1; otherwise 'not resolved'. The unadjusted 95% CI is reported beside it. The ratio is a Tier 1 instance-scoped ratio on the named runner only.",
+  "negative_control": "lift_scan_aa vs lift_scan per workload. If its adjusted CI excludes 1, code placement moves the loop by that much: every primary contrast on that workload whose |ln rho| is at most twice the A/A |ln rho| is downgraded to 'not resolved (within placement effect)'.",
+  "positive_control": "lift_scan_2pass vs lift_scan per workload: a known 2x effect; the detector must give an adjusted CI lower bound above 1.5. If it does not, that workload's verdicts are 'inconclusive (positive control failed)'. (v2)",
+  "secondary_descriptive": [
+   "in-loop rank order of the five arms by median ns/key per workload, beside the isolated Ir order (Kendall tau, descriptive only, no test)",
+   "marginal in-loop cost per key, median(t_arm - t_null) paired by round, beside the isolated unisolated wall time of canon-n131 results/wallclock.json",
+   "Ir/key, Bc/key and modelled Bcm/key per arm and work level from cachegrind"
+  ],
+  "power": "with 41 paired rounds the adjusted bootstrap CI half-width is about 3.0 sd/sqrt(41) = 0.47 sd of the per-round ln rho; at an expected per-pair sd of 0.02-0.05 on a hosted runner it resolves ratios of 1.01-1.03. The isolated gaps are 1.3x-8.8x, so an unresolved contrast means the loop has closed most of the gap.",
+  "runtime_estimate": "v1 estimate (about 6.7 s per round) plus two lift_scan passes per workload per round for the positive control: about 7.5 s per round, 41 rounds about 5.1 min, plus table builds and warmup under 1 min; the workflow timeout is 45 min"
+ },
+ "predictions_frozen": {
+  "P1": "every exactness check passes",
+  "P2": "lift_scan has the lowest median ns/key of the five arms on all four workloads",
+  "P3": "the in-loop ratio of each arm to lift_scan is smaller than its isolated Ir ratio (overlap with the field chain and the probe hides part of the canonicalizer), on every workload",
+  "P4": "exhaustive_bf and refine_bf do not reverse the n = 53 picture at n = 131: they stay slower than lift_scan in the loop, because their 130-step chains are 7x-9x longer than lift_scan's instruction count",
+  "P5": "the A/A control's adjusted CI contains 1 on at least three of the four workloads"
+ },
+ "does_not_count": "changing rounds, keys, workloads, arms, metric, reference arm or the decision rule after seeing timing data; using the local smoke run (which exists only to test the scripts) for any timing statement",
+ "claims_not_made": [
+  "no speedup outside the named runner and tier",
+  "no ECDLP or curve result: the per-key field work is a proxy, the keys are not curve points",
+  "no constant-time claim",
+  "cachegrind mispredicts are a model, not hardware counts"
+ ],
+ "amendments": [
+  {
+   "version": 2,
+   "date": "2026-10-14",
+   "before": "any Tier 1 timing; after one local dry run (results/smoke_protocol_v1/: 3 rounds x 16384 keys on the unisolated cloud-agent VM, a script test)",
+   "v1_sha256": "741910dc49316ab955440e03c0c20282371aef425da9f0c934adfd765dc16b40",
+   "v1_commit": "babef1ad4",
+   "changed": {
+    "analysis.positive_control": {
+     "v1": "null vs lift_scan per workload: the detector must find null faster (adjusted upper bound below 1). If it does not, that workload's verdicts are 'inconclusive (positive control failed)'.",
+     "v2": "lift_scan_2pass vs lift_scan per workload: a known 2x effect; the detector must give an adjusted CI lower bound above 1.5. If it does not, that workload's verdicts are 'inconclusive (positive control failed)'. (v2)"
+    },
+    "arms.null": {
+     "v1": "positive control and loop floor: no canonicalization, probes the raw word; its hits and keys differ by design and are excluded from the identity check",
+     "v2": "loop floor, descriptive only: no canonicalization, probes the raw word; its hits and keys differ by design and are excluded from the identity check; no verdict depends on it (v2)"
+    },
+    "arms.lift_scan_2pass": {
+     "v1": null,
+     "v2": "positive control (v2): the lift_scan loop symbol run twice back to back from the same start inside one timed interval, rows carry the nominal key count, so its ns/key is 2x lift_scan's in expectation"
+    },
+    "timing.order": {
+     "v1": "round r, for each workload in protocol order: the seven arms rotated left by (r mod 7), reversed when floor(r/7) is odd",
+     "v2": "round r, for each workload in protocol order: the eight arms (null, exhaustive, gap_scan, refine_bf, exhaustive_bf, lift_scan, lift_scan_aa, lift_scan_2pass) rotated left by (r mod 8), reversed when floor(r/8) is odd"
+    },
+    "analysis.runtime_estimate": {
+     "v1": "from canon-n131 results/wallclock.json (unisolated) plus about 50 ns (W1) or 150 ns (W5) of field work and 20 ns (small) or 150 ns (large) per probe: about 6.7 s per round, 41 rounds about 4.6 min, plus table builds and warmup under 1 min; the workflow timeout is 45 min",
+     "v2": "v1 estimate (about 6.7 s per round) plus two lift_scan passes per workload per round for the positive control: about 7.5 s per round, 41 rounds about 5.1 min, plus table builds and warmup under 1 min; the workflow timeout is 45 min"
+    }
+   },
+   "reason": "v1's positive control (null faster than lift_scan) is not a known effect: the dry run showed null not separating from lift_scan on both large-table workloads, which is exactly what full overlap of lift_scan with DRAM probe misses would produce. A positive control must be an effect known to be present, so v2 plants one (two passes = 2x) on the same code path and keeps null as a descriptive floor. Disclosure: the dry run also showed every primary arm slower than lift_scan on all four workloads, by smaller ratios on the large tables; these smoke numbers are not data and are not reported as results.",
+   "unchanged": "workloads, rounds, keys, primary family, reference arm, Bonferroni level, decision rule, A/A rule, metric"
+  }
+ ]
+}
