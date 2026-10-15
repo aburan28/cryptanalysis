@@ -54,7 +54,8 @@ def audit(folder):
     artifacts = summary['artifact_sha256']
     panel = '/workspace/isolated-bench/panels/'
     assert artifacts[panel+'tier1-checkpoint5-online-cpu40-rules.json'] == launch['rules_sha256']
-    assert artifacts[panel+'native_checkpointed_sparse_overlay.py'] == rules['hashes']['overlay']
+    assert artifacts[panel+'native_checkpointed_sparse_overlay.py'] == rules['hashes']['base_overlay'] == digest(HERE/'native_checkpointed_sparse_overlay.py')
+    assert artifacts[panel+'native_checkpointed_sparse_width5_overlay.py'] == rules['hashes']['overlay'] == digest(HERE/'native_checkpointed_sparse_width5_overlay.py')
     for label,stem in STEMS.items():
         for name,rel in (('front','src/bin/eisenstein_fixed.rs'),
                          ('windows','src/bin/eisenstein_fixed/unit_orbit_windows.rs'),
