@@ -1,0 +1,89 @@
+{
+  "allocation": {
+    "instance_id": "thyvmdqmzsz5ik",
+    "provider": "runpod",
+    "receipt": "/workspace/isolated-bench/panels/allocation.json"
+  },
+  "artifacts": [
+    "/workspace/bench-sources/eisenstein-residue-native/Cargo.toml",
+    "/workspace/bench-sources/eisenstein-residue-native/Cargo.lock",
+    "/workspace/bench-sources/eisenstein-residue-native/src/bin/eisenstein_pair_native.rs",
+    "/workspace/bench-sources/eisenstein-residue-native/src/bin/eisenstein_pair_fixed.rs",
+    "/workspace/bench-sources/eisenstein-residue-native/src/bin/eisenstein_pair_fixed_int.rs",
+    "/workspace/bench-sources/eisenstein-residue-native/eisenstein_pair_native",
+    "/workspace/bench-sources/eisenstein-residue-native/eisenstein_pair_fixed",
+    "/workspace/bench-sources/eisenstein-residue-native/fixed-limb-test.stdout",
+    "/workspace/bench-sources/eisenstein-residue-native/fixed-limb-test.stderr",
+    "/workspace/bench-sources/eisenstein-residue-native/fixed-lazy-build.stderr",
+    "/workspace/bench-sources/eisenstein-residue-native/fixed-full-replay.stdout",
+    "/workspace/bench-sources/eisenstein-residue-native/fixed-full-replay.stderr",
+    "/workspace/bench-sources/eisenstein-residue-native/native-solinas-full-replay.stdout",
+    "/workspace/bench-sources/prime-j0-affine-uniform-native/src/bin/mixed640_uniform_fixture.json",
+    "/workspace/cryptanalysis/scripts/isolated_bench.py",
+    "/workspace/isolated-bench/panels/allocation.json",
+    "/workspace/isolated-bench/panels/host-probe.json",
+    "/workspace/isolated-bench/panels/tier1-eisenstein-fixed-cpu40-rules.json"
+  ],
+  "cases": [
+    {
+      "candidate": [
+        "/workspace/bench-sources/eisenstein-residue-native/eisenstein_pair_native",
+        "/workspace/bench-sources/prime-j0-affine-uniform-native/src/bin/mixed640_uniform_fixture.json",
+        "128",
+        "solinas"
+      ],
+      "id": "cal_before",
+      "reference": [
+        "/workspace/bench-sources/eisenstein-residue-native/eisenstein_pair_native",
+        "/workspace/bench-sources/prime-j0-affine-uniform-native/src/bin/mixed640_uniform_fixture.json",
+        "128",
+        "solinas"
+      ]
+    },
+    {
+      "candidate": [
+        "/workspace/bench-sources/eisenstein-residue-native/eisenstein_pair_fixed",
+        "/workspace/bench-sources/prime-j0-affine-uniform-native/src/bin/mixed640_uniform_fixture.json",
+        "128"
+      ],
+      "id": "compare",
+      "reference": [
+        "/workspace/bench-sources/eisenstein-residue-native/eisenstein_pair_native",
+        "/workspace/bench-sources/prime-j0-affine-uniform-native/src/bin/mixed640_uniform_fixture.json",
+        "128",
+        "solinas"
+      ]
+    },
+    {
+      "candidate": [
+        "/workspace/bench-sources/eisenstein-residue-native/eisenstein_pair_native",
+        "/workspace/bench-sources/prime-j0-affine-uniform-native/src/bin/mixed640_uniform_fixture.json",
+        "128",
+        "solinas"
+      ],
+      "id": "cal_after",
+      "reference": [
+        "/workspace/bench-sources/eisenstein-residue-native/eisenstein_pair_native",
+        "/workspace/bench-sources/prime-j0-affine-uniform-native/src/bin/mixed640_uniform_fixture.json",
+        "128",
+        "solinas"
+      ]
+    }
+  ],
+  "isolation": {
+    "cpus": "40",
+    "execution_cpu": 40
+  },
+  "measurement_boundary": "Rust Instant times 128 independent binary scalar multiplications on the same frozen SHAKE256-derived points, including scalar parsing and projective curve arithmetic, after JSON fixture loading and generator conversion. Independent expected-point, rotation, and pack/unpack checks follow the interval. The comparison changes the pair-field implementation from arbitrary-precision integers with per-operation reduction to bounded stack limbs with lazy linear operations and exact Solinas reduction at general multiplication.",
+  "measurement_tier": "tier1_instance",
+  "pair_fields": [
+    "reducer",
+    "count",
+    "verified",
+    "packed_x_bytes"
+  ],
+  "repetitions": 16,
+  "schema": 1,
+  "timeout_s": 15,
+  "workdir": "/workspace/bench-sources/eisenstein-residue-native"
+}

@@ -30,6 +30,43 @@ theorem basis_x_width :
 theorem basis_y_width :
     Int.natAbs piB + Int.natAbs (piA-piB) < 2^129 := by decide
 
+def evalPair (z : Int × Int) : Int := z.1 + beta*z.2
+
+def mulPair (z w : Int × Int) : Int × Int :=
+  let a := z.1*w.1
+  let b := z.2*w.2
+  let c := (z.1+z.2)*(w.1+w.2)
+  (a-b,c-a-b-b)
+
+theorem eval_rotate_mod (z : Int × Int) :
+    evalPair (rotate z) % prime = (beta*evalPair z) % prime := by
+  apply (Int.emod_eq_emod_iff_emod_sub_eq_zero).2
+  have hdiff : evalPair (rotate z) - beta*evalPair z =
+      -z.2*(beta*beta+beta+1) := by
+    rcases z with ⟨u,v⟩
+    simp only [evalPair,rotate]
+    simp only [Int.mul_add,Int.mul_sub,Int.mul_neg,Int.neg_mul,
+               Int.add_mul,Int.sub_mul,Int.mul_assoc,Int.mul_comm,
+               Int.mul_left_comm,Int.mul_one]
+    omega
+  rw [hdiff, Int.mul_emod, beta_cubic]
+  simp
+
+theorem eval_mul_mod (z w : Int × Int) :
+    evalPair (mulPair z w) % prime = (evalPair z*evalPair w) % prime := by
+  apply (Int.emod_eq_emod_iff_emod_sub_eq_zero).2
+  have hdiff : evalPair (mulPair z w) - evalPair z*evalPair w =
+      -(z.2*w.2)*(beta*beta+beta+1) := by
+    rcases z with ⟨u,v⟩
+    rcases w with ⟨s,t⟩
+    simp only [evalPair,mulPair]
+    simp only [Int.mul_add,Int.mul_sub,Int.mul_neg,Int.neg_mul,
+               Int.add_mul,Int.sub_mul,Int.mul_assoc,Int.mul_comm,
+               Int.mul_left_comm,Int.mul_one]
+    omega
+  rw [hdiff, Int.mul_emod, beta_cubic]
+  simp
+
 -- A general quotient correction for a pseudo-Mersenne modulus. The native
 -- reducer uses k=2^256 and c=2^32+977; its asserted bound is the hypothesis
 -- that makes exactly one correction sufficient.
@@ -80,5 +117,7 @@ theorem solinas_one_correction
 #print axioms pi_in_kernel
 #print axioms basis_x_width
 #print axioms basis_y_width
+#print axioms eval_rotate_mod
+#print axioms eval_mul_mod
 #print axioms solinas_one_correction
 end EisensteinResidue

@@ -99,6 +99,41 @@ prototype's hundreds of milliseconds per 128 scalars identify
 arbitrary-precision allocation and reduction as the next cost center to
 remove before integrating the pair format.
 
+The [bounded-limb native kernel](eisenstein_pair_fixed.rs) stores pair-field
+intermediates in signed stack-allocated 512-bit words, uses the exact
+shift-and-correction reducer above, and delays lattice reduction across
+linear field operations. Its [limb arithmetic](eisenstein_pair_fixed_int.rs)
+passed 20,000 deterministic differential cases against BigInt for signed
+addition, subtraction, multiplication, shifts, and arithmetic right shift.
+The kernel reproduced all 12,288 fixture points and checked packed-coordinate
+round trips and rotation on each expected point; its full-stream diagnostic
+was `16,588.936079 ms`. Source SHA-256 values are
+`3ea92f86325393a82a22f904c989cadb47b17d1a56662c68d75c9d320e79ab74`
+for the scalar front and
+`25537aabf5910413d147c0ced07b5e693226d4e239586ab51571bb3dc6a6a7aa`
+for limb arithmetic; the release executable SHA-256 is
+`39c8c126562ff2e388c7ab2c86b8d19cbb8bbe761d02509ec02a2cd4d0a6e704`.
+
+The next frozen [Tier 1 panel](tier1-eisenstein-fixed-cpu40-manifest.json)
+paired this kernel with the BigInt Solinas path on the same first 128
+scalars, with 16 alternating repetitions and adjacent A/A controls. Its
+[independent audit](tier1-eisenstein-fixed-cpu40-audit.json) checked all
+96 valid arms, 48 valid pairs, stable hashes, raw outputs, differential
+test, and full-stream replay. One A/A ratio in repetition 8 was
+`1.1139876338286885`, above the frozen `[0.90,1.11]` acceptance range.
+The aggregate status is therefore **unknown after the Tier 1 gate**.
+
+| Same-input 128-scalar BigInt/fixed panel | BigInt Solinas | Bounded limbs |
+| --- | ---: | ---: |
+| Descriptive mean timed stream | 563.768475 ms | 174.937160 ms |
+
+The descriptive median paired ratio was `3.238713×`, with bootstrap 95%
+interval `[3.220723,3.245879]`; these values retain the failed A/A pair
+and are diagnostics. The [raw panel archive](c325c7ff36a74f0c8cd85db3024432f8.tar.gz)
+has SHA-256 `93271f906b9c43ed5bf7f6588ca70a7132e22078b4c5be5e05bdeaed0245d8b5`;
+the [provenance archive](eisenstein-pair-fixed-provenance.tar.gz) has SHA-256
+`9565e05ca05170a79e0d6fdcae7651348059f91288a8b64e2c41776b10688d3e`.
+
 ## Proof map
 
 The pinned Lean 4.34.1 module
@@ -113,11 +148,14 @@ The pinned Lean 4.34.1 module
 | `β²+β+1=0 mod p` | `beta_cubic` | Checked; no axioms |
 | `π(β)=0 mod p` | `pi_in_kernel` | Checked; no axioms |
 | Both ideal-basis widths are below `2^129` | `basis_x_width`, `basis_y_width` | Checked; no axioms |
+| Pair-coordinate rotation preserves the field map modulo `p` | `eval_rotate_mod` | Checked; Lean foundations `propext`, `Quot.sound` |
+| Three-product pair multiplication preserves the field map modulo `p` | `eval_mul_mod` | Checked; Lean foundations `propext`, `Quot.sound` |
 | One exact quotient correction for a pseudo-Mersenne prime under the asserted correction bound | `solinas_one_correction` | Checked; Lean foundations `propext`, `Classical.choice`, `Quot.sound` |
 | Full quotient-ring isomorphism, multiplication preservation, and rounding bounds | — | Formalization partial; a concrete `Z[ω]` quotient-ring definition and the map's kernel/index bridge remain open |
 
-The next implementation step is a fixed-width pair-field reducer and
-packed affine table integrated into the same radix-14, four-layer scalar
-pipeline as the ordinary and two-x variants. That comparison must charge
-packing/unpacking and all online field operations while preserving the
-same-point fixture and Tier 1 gates.
+The next implementation step is a narrower specialized pair-field kernel
+and packed affine table integrated into the same radix-14, four-layer
+scalar pipeline as the ordinary and two-x variants. The current fixed-limb
+binary path establishes correctness and exposes the remaining field cost;
+the integrated comparison must charge packing/unpacking and all online
+field operations while preserving the same-point fixture and Tier 1 gates.
