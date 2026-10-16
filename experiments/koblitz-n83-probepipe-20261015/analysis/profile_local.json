@@ -1,0 +1,75 @@
+{
+ "callgrind_instructions_per_probe_cumulative": {
+  "inline_lookup": 675.5280722891566,
+  "pipelined_lookup": 713.0674096385542,
+  "roots": 131.92335843373493,
+  "roots_conv": 318.92109939759035,
+  "roots_conv_canon": 653.0926807228916
+ },
+ "components": [
+  {
+   "component": "root_solve",
+   "instructions_per_probe": 131.92335843373493,
+   "ns_per_probe": 129.90890813253012,
+   "share_of_real": 0.2753137558538851,
+   "what": "2n candidate inputs (to_poly of rotated stored roots) and the batched S3 root solve (Montgomery batch inversion)"
+  },
+  {
+   "component": "conversion",
+   "instructions_per_probe": 186.99774096385542,
+   "ns_per_probe": 15.539962349397598,
+   "share_of_real": 0.032933579857941125,
+   "what": "to_normal byte-table conversion of each partner root"
+  },
+  {
+   "component": "canonicalization",
+   "instructions_per_probe": 334.17158132530125,
+   "ns_per_probe": 52.25076054216868,
+   "share_of_real": 0.11073415470793452,
+   "what": "lift_scan canonical rotation"
+  },
+  {
+   "component": "lookup",
+   "instructions_per_probe": 22.435391566265025,
+   "ns_per_probe": 276.37774096385544,
+   "share_of_real": 0.5857226805535561,
+   "what": "root-table probe into the 4 GiB table, in the combined loop's interleaved order"
+  },
+  {
+   "component": "rest",
+   "instructions_per_probe": null,
+   "ns_per_probe": -2.2196991680164047,
+   "share_of_real": -0.004704170973316903,
+   "what": "everything else in the real producer's online interval (hits, lift, relation check, laps, Feistel order)"
+  }
+ ],
+ "cross_state_pipelined_lookup_ns_per_probe": 144.29539156626504,
+ "dominant": "lookup",
+ "lookup_only_dependent_ns": 72.8604141566265,
+ "lookup_only_independent_ns": 66.4214984939759,
+ "pipelined_lookup_instructions_per_probe": 59.97472891566258,
+ "pipelined_lookup_ns_per_probe": 145.17496987951807,
+ "probes": 132800,
+ "real_producer_ns_per_probe": 471.85767281993543,
+ "real_producer_points": [
+  "w11",
+  "w08",
+  "w14"
+ ],
+ "rounds": 7,
+ "states": 400,
+ "status": "diagnostic (cloud-agent VM, shared 4 vCPU guest); chose the fix; not a speedup claim",
+ "summary": "diagnostic, VM: lookup 276 ns/probe (59% of 472) but 22 instructions; root solve 130 ns (28%); canonicalization 52 ns (11%); conversion 16 ns (3%); rest -2 ns. The lookup is latency-bound: few instructions, most of the time. Prefetch-pipelining the state's probes cut the in-situ lookup to 145 ns/probe in the profiler.",
+ "table_policy": "THP via GLIBC_TUNABLES=glibc.malloc.hugetlb=1 (runner: THP always)",
+ "target": "w11",
+ "variant_ns_per_probe_min": {
+  "cross_state_pipelined": 341.99502259036143,
+  "inline_lookup": 474.07737198795184,
+  "lookup_dependent": 72.8604141566265,
+  "lookup_independent": 66.4214984939759,
+  "pipelined_lookup": 342.87460090361446,
+  "roots": 129.90890813253012,
+  "roots_conv": 145.4488704819277,
+  "roots_conv_canon": 197.6996310240964
+ }
+}

@@ -377,12 +377,14 @@
       "evidence_tier": "Tier 1 (one GitHub-hosted ubuntu-24.04 runner, one pinned CPU; host exclusivity not certified)",
       "verified": "64/64 rows, 0 flagged; section 23 claims 408/408 and external-rho claims 1152/1152 pass; verify_receipt.py reproduces result.json byte for byte",
       "sources": ["cryptanalysis:experiments/koblitz-s23-tuned-rho-20261015/README.md", "cryptanalysis:experiments/koblitz-s23-tuned-rho-20261015/run_github_38777903922/panel/result.json"]
-    }
+    },
+    {"n": 83, "a": 1, "role": "promoted improvement over the combined producer: software-pipelined, prefetched root-table probes (one experiment; not combined with another row)", "experiment": "cryptanalysis:experiments/koblitz-n83-probepipe-20261015 (branch claude/n83-probe-pipeline)", "run": "GitHub Actions 38822490448", "pipeline": "B's koblitz_orbit_dlp_fast_online + ic_log_cache.patch, K600 (crypto 770f6a69), lift_scan + Feistel order + KIC_PROBE_PIPELINE=prefetch; baseline arm pC is the combined producer's loop (the lift_scan x Feistel combination whose own frozen primary was not_separated, cryptanalysis#929)", "targets": "384 new public points, 6 slices of 64, 1 process per arm per slice", "promoted": true, "unit": "online interval only; S_rho in this run's rT770 steps (275.5 ns); no cold S measured", "measured": {"R_m_combined_over_pipeline": {"value": 1.4001, "ci95": [1.3971, 1.4032]}, "R_g": {"value": 1.4002, "ci95": [1.3974, 1.403]}, "slice_bootstrap_R_m": {"value": 1.4001, "ci95": [1.385, 1.417]}, "probe_ratio": 1.0, "ns_per_probe": {"pC": 302.1, "pP": 215.8}, "S_rho_online": {"combined": 0.02062, "pipeline": 0.01473, "delta": -0.00589}}, "gap_online_ic_over_tuned_rho": {"value": 0.1462, "ci95": [0.1307, 0.1626], "note": "inverse of tuned rho / pipeline 6.8396 [6.1494, 7.6526] on means; the combined producer is 0.2047 (inverse of 4.8852 [4.3824, 5.4682]); online only"}, "evidence_tier": "Tier 1 (one GitHub-hosted ubuntu-24.04 runner, one pinned CPU)", "sources": ["cryptanalysis:experiments/koblitz-n83-probepipe-20261015/README.md", "cryptanalysis:experiments/koblitz-n83-probepipe-20261015/run_github_38822490448/panel/result.json"]}
   ],
   "ratchet_history": [
     {"n": 41, "from": "section 23 (v0, crypto 0bf67f16)", "to": "rule v3 (crypto 995ea207)", "cold_gap": [8.044, 7.657], "online_gap": [0.1066, 0.0915], "class": "engineering (the IC programme's rounds R03, R05, R07); measured as the rule's comparison, class accounting in that comparison itself", "note": "paired cold-time ratios between baselines are in IC_TOOL_PROGRAM.md section 7; S is not compared across the two units"},
     {"n": 53, "from": "section 23 (v0)", "to": "rule v3", "cold_gap": [14.70, 13.24], "online_gap": [0.0572, 0.0466], "class": "engineering"},
-    {"n": 61, "from": "section 23 (v0)", "to": "rule v3", "cold_gap": [31.60, 20.97], "online_gap": [0.1131, 0.0675], "class": "engineering"}
+    {"n": 61, "from": "section 23 (v0)", "to": "rule v3", "cold_gap": [31.60, 20.97], "online_gap": [0.1131, 0.0675], "class": "engineering"},
+    {"n": 83, "from": "lift_scan x Feistel combined producer", "to": "software-pipelined, prefetched probes (run 38822490448)", "cold_gap": null, "online_gap": [0.2047, 0.1462], "online_speedup": "1.4001 [1.3971, 1.4032] (384 points)", "class": "engineering; promoted by its own frozen rule (probes identical); baseline row not replaced here (cold S not measured)"}
   ],
   "stage_results": [
     {
@@ -408,6 +410,7 @@
     "n=41, 53, 61: the gap to the tuned rho is measured by koblitz-s23-tuned-rho-20261015 (run 38777903922, PR #923; also n=47, 57, 59) on the one-word Gf2 kernel, because Gf2_128 does not exist for n<=64; a rho tuned on that kernel is not measured. Accounting only: no IC change, so no baseline row moves",
     "n=19 and n=41-61: no Bernstein-Lange walk has run; their BL figures are models or absent",
     "n=83: the baseline row's experiment is on PR #918, not yet merged",
-    "n=19: no IC1 candidate manifest; online S not separable"
+    "n=19: no IC1 candidate manifest; online S not separable",
+    "n=83: the probe pipeline is promoted over the combined producer (1.4001 [1.3971, 1.4032]); the combination itself was not_separated against its better single arm in cryptanalysis#929, and the baseline row and its cold S are not decided here"
   ]
 }
