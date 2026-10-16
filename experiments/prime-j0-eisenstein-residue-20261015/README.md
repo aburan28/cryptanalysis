@@ -49,7 +49,10 @@ At 4,096 outputs, the corresponding cold comparison favored plain
 radix-64, **304.02 ms** versus **319.94 ms**. The direct panels bracket
 the cold crossover between those two batch sizes.
 Lean checks the block-evaluation identity for every member of the radix
-family under explicit point-map hypotheses.
+family under explicit point-map hypotheses. A further pinned Lean module
+checks the concrete secp256k1 subgroup eigenvalue and every family radix
+action modulo the subgroup order; an independent affine replay matches the
+executed `τ` formula on the generator.
 
 The secp256k1 prime splits in the Eisenstein integers. An exact norm-
 `p` element
