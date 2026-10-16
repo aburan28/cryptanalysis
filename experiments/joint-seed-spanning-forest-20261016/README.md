@@ -2,8 +2,7 @@
 
 A unit-root graph constructs the 21 requested Q seeds in the frozen
 one-restart stream with 19 full projective additions, three mixed additions,
-16 nontrivial unit
-rotations, and one normalization inversion. It uses the already prepared Q
+16 nontrivial unit rotations, and one normalization inversion. It uses the already prepared Q
 point to seed `(-2,1)` by one unit rotation, then links the remaining seeds
 through two auxiliary vertices. Under the pinned source-formula model it
 requires 394 field multiplications and 106 squares, compared with 422 and
@@ -93,6 +92,20 @@ has 9,467 multiplications and 2,698 squares under the same dispatch rule.
 The [mixed-addition replay](mixed-graph-local-replay.json) checks 524 exact
 outputs from both planned evaluators on frozen Q and four alternate Q points.
 
+The [cost-aware planner](cost_aware_plan.py) keeps the frozen 128-restart
+vertex order and scalar choices, then enumerates every reachable one-power
+and two-parent witness for each vertex. It minimizes the source-formula edge
+cost, charging eight multiplications and three squares when the prepared
+affine Q can be used, plus one multiplication for each unit rotation.
+Its [plan](mixed-cost-plan-128.json) rewires 50 edges, with 49 previously full
+additions becoming mixed additions. All 658 graph edges now use the mixed
+formula; the Q-seed model falls from 9,427 to **9,280 multiplications** and
+from 2,686 to **2,637 squares**, with the same shared inversion. The
+[search receipt](mixed-cost-128-receipt.json) pins the fixed-order domain, and
+the [native replay](mixed-cost-local-replay.json) checks all 128 frozen
+outputs in both planned evaluators. This is a source-formula comparison; the
+Tier 1 panel measures its effect on online wall time.
+
 The [auxiliary planner](steiner_plan.py) examines the remaining direct roots
 after two-parent linking. It finds two shared vertices, `(-3,0)` and `(0,-5)`,
 reachable from already constructed points by unit-power edges. Their unit-power
@@ -177,6 +190,9 @@ python3 weighted_plan.py \
 python3 weighted_plan.py \
   --source root-first-plan-128.json \
   --output weighted-plan-128.json --receipt weighted-128-receipt.json
+python3 cost_aware_plan.py \
+  --source weighted-plan-128.json \
+  --output mixed-cost-plan-128.json --receipt mixed-cost-128-receipt.json
 python3 profile_seed_field_ops.py
 ```
 

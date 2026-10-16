@@ -24,6 +24,9 @@ ORDER_ONE = ORDER_COMMON[:ORDER_COMMON.index('cal_mid')] + (
     'compare_one_aux', 'compare_one_aux_vs_refined',
     'compare_unit_root', 'compare_unit_root_vs_one_aux') + \
     ORDER_COMMON[ORDER_COMMON.index('cal_mid'):]
+ORDER_128 = ORDER_COMMON[:ORDER_COMMON.index('cal_mid')] + (
+    'compare_mixed_cost', 'compare_mixed_cost_vs_weighted') + \
+    ORDER_COMMON[ORDER_COMMON.index('cal_mid'):]
 AA = ('cal_before', 'cal_mid', 'cal_after')
 
 
@@ -88,7 +91,7 @@ def interval(ratios):
 
 def audit(count, manifest_path, rules_path, raw_path):
     assert count in (1, 128)
-    ORDER = ORDER_ONE if count == 1 else ORDER_COMMON
+    ORDER = ORDER_ONE if count == 1 else ORDER_128
     COMPARE = tuple(case for case in ORDER if case not in AA)
     manifest = json.loads(manifest_path.read_bytes())
     rules = json.loads(rules_path.read_bytes())
@@ -115,6 +118,8 @@ def audit(count, manifest_path, rules_path, raw_path):
     if count == 1:
         plans['one_aux'] = forest / 'one-aux-plan-1.json'
         plans['unit_root'] = forest / 'unit-root-plan-1.json'
+    else:
+        plans['mixed_cost'] = forest / 'mixed-cost-plan-128.json'
     plan_identity = None
     for stem, plan_path in plans.items():
         plan_bytes = plan_path.read_bytes()
@@ -161,6 +166,10 @@ def audit(count, manifest_path, rules_path, raw_path):
         candidates['compare_unit_root'] = [binary, '--pilot-rho-restart-joint-graph-planned',
                                            fixture_remote, '1', rules['paths']['unit_root_1']]
         candidates['compare_unit_root_vs_one_aux'] = candidates['compare_unit_root']
+    else:
+        candidates['compare_mixed_cost'] = [binary, '--pilot-rho-restart-joint-graph-planned',
+                                            fixture_remote, '128', rules['paths']['mixed_cost_128']]
+        candidates['compare_mixed_cost_vs_weighted'] = candidates['compare_mixed_cost']
     for case in manifest['cases']:
         expected_reference = (candidates['compare_root_first']
                               if case['id'] in ('compare_two_parent_vs_root_first',
@@ -173,6 +182,8 @@ def audit(count, manifest_path, rules_path, raw_path):
                               if case['id'] == 'compare_one_aux_vs_refined'
                               else candidates['compare_one_aux']
                               if case['id'] == 'compare_unit_root_vs_one_aux'
+                              else candidates['compare_weighted']
+                              if case['id'] == 'compare_mixed_cost_vs_weighted'
                               else reference)
         assert case['reference'] == expected_reference
         assert case['candidate'] == candidates.get(case['id'], reference)
@@ -267,6 +278,8 @@ def audit(count, manifest_path, rules_path, raw_path):
                     'compare_one_aux_vs_refined': 'joint_graph_planned',
                     'compare_unit_root': 'joint_graph_planned',
                     'compare_unit_root_vs_one_aux': 'joint_graph_planned',
+                    'compare_mixed_cost': 'joint_graph_planned',
+                    'compare_mixed_cost_vs_weighted': 'joint_graph_planned',
                     'compare_fused': 'joint_fused',
                     'compare_fused_graph': 'joint_fused_graph',
                     'compare_fused_graph_planned': 'joint_fused_graph_planned',
@@ -278,7 +291,8 @@ def audit(count, manifest_path, rules_path, raw_path):
                          'compare_steiner_vs_two_parent',
                          'compare_refined_vs_prior',
                          'compare_one_aux_vs_refined',
-                         'compare_unit_root_vs_one_aux') else 'openssl_nowarm')
+                         'compare_unit_root_vs_one_aux',
+                         'compare_mixed_cost_vs_weighted') else 'openssl_nowarm')
             key = (repeat, case_id, variant)
             assert key not in lookup
             lookup[key] = run

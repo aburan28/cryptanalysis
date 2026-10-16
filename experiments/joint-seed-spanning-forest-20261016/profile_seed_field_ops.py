@@ -96,6 +96,7 @@ def main():
             plans['unit_root'] = HERE / 'unit-root-plan-1.json'
         else:
             plans['refined_weighted'] = HERE / 'refined-weighted-plan-128.json'
+            plans['mixed_cost'] = HERE / 'mixed-cost-plan-128.json'
         rows[str(count)] = {name: profile(path, requested) for name, path in plans.items()}
         assert len({row['shared_field_inversions'] for row in rows[str(count)].values()}) == 1
     receipt = {

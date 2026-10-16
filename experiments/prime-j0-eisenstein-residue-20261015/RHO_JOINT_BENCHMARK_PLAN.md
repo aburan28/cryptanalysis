@@ -12,7 +12,7 @@ benchmark queue.
 The [fixture](rho-restart-first128-fixture.json) has SHA-256
 `fc6a0283c51e3fd9c2eb0b82961092d3060c242d8122c9648c37fdaf614d094a`.
 The one-restart panel uses its first case; the batch panel uses its first 128
-cases. The one-restart panel runs 22 cases and the 128-restart panel runs 18;
+cases. The one-restart panel runs 22 cases and the 128-restart panel runs 20;
 each case has 16 alternating repetitions:
 
 | Case | Reference | Candidate |
@@ -34,6 +34,8 @@ each case has 16 alternating repetitions:
 | `compare_one_aux_vs_refined` (one restart) | Refined two-auxiliary graph | One-auxiliary graph, same scalar stream and Q |
 | `compare_unit_root` (one restart) | OpenSSL no-warmup | Unit-root graph and shared Horner |
 | `compare_unit_root_vs_one_aux` (one restart) | One-auxiliary graph | Unit-root graph, same scalar stream and Q |
+| `compare_mixed_cost` (128 restarts) | OpenSSL no-warmup | Cost-aware mixed-addition graph and shared Horner |
+| `compare_mixed_cost_vs_weighted` (128 restarts) | Low-rotation graph | Cost-aware mixed-addition graph, same scalar stream and Q |
 | `cal_mid` | OpenSSL no-warmup | OpenSSL no-warmup |
 | `compare_fused` | OpenSSL no-warmup | Sparse Q table, batched affine pair sums, shared Horner, batched output normalization |
 | `compare_fused_graph` | OpenSSL no-warmup | Shared Q-seed graph followed by batched affine pair sums and output normalization |
@@ -55,7 +57,7 @@ and loading are separate setup costs; reuse requires the declared scalar
 stream to remain fixed across target points. The low-rotation versus root-first,
 root-first versus two-parent, two-parent versus auxiliary, refined versus
 its immediate predecessor, one-auxiliary versus refined, and unit-root versus
-one-auxiliary pairs apply the same planned-command
+one-auxiliary, and cost-aware versus low-rotation pairs apply the same planned-command
 timing boundary to both arms, so each ratio isolates graph construction on
 the same Q.
 The joint boundary is therefore
@@ -65,7 +67,7 @@ every timed interval. The joint commands report target preparation and
 evaluation as exclusive phase costs whose sum is `online_ms`.
 
 The one-restart panel has 352 planned pairs and 704 arms; the 128-restart
-panel has 288 pairs and 576 arms. Each includes 48 OpenSSL A/A control pairs.
+panel has 320 pairs and 640 arms. Each includes 48 OpenSSL A/A control pairs.
 The queue runs one subprocess at a time on CPU 40. The Tier 1
 receipt must retain exposed topology, affinity, cgroup limits, throttling,
 steal time, memory and calibration noise. A comparison advances only when
@@ -87,7 +89,7 @@ ledger and leaves the corresponding aggregate unknown.
    `joint_graph`, `joint_graph_planned`, `joint_fused`,
    `joint_fused_graph`, and `joint_fused_graph_planned` modes before timing.
    Supply the distinct frozen lexicographic, root-first, low-rotation,
-   two-parent, auxiliary, refined, one-auxiliary, and unit-root plan
+   two-parent, auxiliary, refined, one-auxiliary, unit-root, and cost-aware plan
    files to the planned graph mode. The
    [graph-order and auxiliary replays](../joint-seed-spanning-forest-20261016/README.md)
    check both graph evaluators with alternate Q points.
