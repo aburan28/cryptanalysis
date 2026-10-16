@@ -3,9 +3,9 @@
 **Status (2026-10-15).** This is the first edition of the ledger, with the tuned-rho
 rows added from run 38777903922. It takes no new measurement: every number is
 copied from a committed experiment, and each row cites that experiment. Figure 1
-was checked and stays current: no baseline row's numbers changed. The n=83 row for the state fold was added on 2026-10-16; Figure 1 was
-checked and stays current, because no baseline row's numbers changed. The
-machine-readable twin is
+was checked and stays current: no baseline row's numbers changed. The n=83 row for the probe pipeline was added on 2026-10-16; Figure 1 was
+checked and stays current, because no baseline row's numbers changed. The n=83 row for the two-level root table was added on 2026-10-16, and Figure 1 was
+checked again with the same result. The n=83 row for the state fold was added on 2026-10-16, with the same Figure 1 check. The machine-readable twin is
 [`baselines.json`](baselines.json); update both files in the same change.
 
 ## The rule this file serves
@@ -110,6 +110,8 @@ None is combined with another row.
 | 61 | gap to the tuned rho (this experiment only; cf. the baseline row) | `koblitz-s23-tuned-rho-20261015`, run 38777903922 (PR #923) | tuned = rT770 configuration on the one-word kernel; same run: ParallelRho cold 19.4, strong 13.7, rA770 4.42 | **18.9** [16.7, 21.5] | **0.0687** [0.051, 0.0903] | model 0.759 | Tier 1 |
 | 83 | same pipeline as the baseline (merged) | `koblitz-n83-reconcile-20261014`, run 38617911080 | rT770, two seeds per point | 313 (fresh-rank setup) | 0.92 [0.28, 1.78], not separated | none | Tier 1 |
 | 83 | same pipeline, first Tier 1 run | `koblitz-single-target-n83-tier1-20261014`, run 38523707244 | rung 3, slower per step than StrongRhoG, so not the matched tuned rho | 134 | 0.36 [0.11, 0.66] | model 33.5 (measured later: 235) | Tier 1 |
+| 83 | promoted improvement over the combined producer: software-pipelined, prefetched root-table probes (this experiment only) | `koblitz-n83-probepipe-20261015`, run 38822490448 | rT770, 384 new points | cold not measured | IC/rho 0.1462 [0.1307, 0.1626] (inverse of 6.8396 [6.1494, 7.6526]); combined producer 0.2047; online combined / pipeline 1.4001 [1.3971, 1.4032], probes identical | none | Tier 1 |
+| 83 | promoted improvement over the probe-pipeline producer: two-level root table, 32 MiB filter + 16-byte slots (this experiment only) | `koblitz-n83-tablefilter-20261015`, run 38829449594 | rT770, 384 new points | cold not measured against rho; cold pP / pT 1.0101 [1.0090, 1.0113] | IC/rho 0.1523 [0.1358, 0.1709] (inverse of 6.5642 [5.8533, 7.3649]); pipeline 0.1620; online pP / pT 1.0633 [1.0589, 1.0679], probes identical, mostly from the 16-byte slot | none | Tier 1 |
 | 83 | promoted improvement over the combined producer: folded S3 root index, cold (this experiment only) | `koblitz-n83-state-fold-20261015`, run 38819494806 | rT770, 16 new points | 6.95 [5.53, 9.01] (cB 12.77; setup + online, rank stage excluded; with the rank stage 109.6, was 243.3) | IC/rho 0.163 [0.090, 0.241]; online 5% slower; cold cB / cF 1.8372 [1.8216, 1.8528], setup 1.86×, peak RSS 1.97× | none | Tier 1 |
 
 ## Ratchet history
@@ -119,6 +121,8 @@ None is combined with another row.
 | 41 | §23 (v0, `0bf67f16`) | rule v3 (`995ea207`) | 8.04 → 7.66 | 0.107 → 0.092 | engineering (IC programme rounds R03, R05, R07) |
 | 53 | §23 (v0) | rule v3 | 14.7 → 13.2 | 0.057 → 0.047 | engineering |
 | 61 | §23 (v0) | rule v3 | 31.6 → 21.0 | 0.113 → 0.067 | engineering |
+| 83 | lift_scan x Feistel combined producer | software-pipelined, prefetched probes (run 38822490448) | not measured | 0.2047 → 0.1462 (online, tuned rho; 1.4001 faster) | engineering; promoted by its own frozen rule; baseline row not replaced (no cold `S`) |
+| 83 | probe-pipeline producer | two-level root table (run 38829449594) | not measured | 0.1620 → 0.1523 (online, tuned rho; 1.0633 faster) | engineering; promoted by its own frozen rule; baseline row not replaced (no cold `S` against rho) |
 | 83 | lift_scan x Feistel combined producer | folded S3 root index (run 38819494806) | 12.77 → 6.95 (rank stage excluded) | not improved (online 5% slower) | engineering; promoted by its own frozen rule; baseline row not replaced (rank stage still dominates cold cost) |
 
 The paired cold-time ratios between baselines, each in its own runs, are in
@@ -149,6 +153,12 @@ only once it moves an end-to-end `S` above.
 - **n=19 and n=41–61:** no Bernstein–Lange walk has run, so the BL figures
   are models or absent.
 - **n=83:** the baseline's experiment is on PR #918, which is not merged yet.
+  The probe pipeline is promoted over the combined producer
+  (`koblitz-n83-probepipe-20261015`); which pipeline the baseline row names,
+  and its cold `S`, are not decided here. The two-level root table is promoted
+  over the probe-pipeline producer (`koblitz-n83-tablefilter-20261015`, 1.0633,
+  mostly the 16-byte slot); which pipeline the baseline row names is likewise
+  not decided here.
   The folded index is promoted over the combined producer on cold cost
   (`koblitz-n83-state-fold-20261015`); the rank stage still dominates, and
   which pipeline the baseline row names is not decided here.

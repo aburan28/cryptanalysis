@@ -1,0 +1,289 @@
+{
+ "arms": {
+  "oP": {
+   "binary": "ic_online_tablefilter_r770",
+   "canon": "lift",
+   "filter_log2_bits": null,
+   "kind": "ic_multi",
+   "order": "feistel",
+   "panel_file": "old17",
+   "pipeline": "prefetch",
+   "role": "secondary/exactness: Q0 + B's 16 fresh points, baseline",
+   "table": "base"
+  },
+  "oT": {
+   "binary": "ic_online_tablefilter_r770",
+   "canon": "lift",
+   "filter_log2_bits": 28,
+   "kind": "ic_multi",
+   "order": "feistel",
+   "panel_file": "old17",
+   "pipeline": "prefetch",
+   "role": "secondary/exactness: Q0 + 16 fresh, candidate",
+   "table": "filter"
+  },
+  "pK": {
+   "binary": "ic_online_tablefilter_r770",
+   "canon": "lift",
+   "filter_log2_bits": null,
+   "kind": "ic_multi",
+   "order": "feistel",
+   "panel_file": "primary",
+   "pipeline": "prefetch",
+   "role": "secondary/attribution: the 16-byte compact table without the filter (slot size alone)",
+   "table": "compact"
+  },
+  "pP": {
+   "binary": "ic_online_tablefilter_r770",
+   "canon": "lift",
+   "filter_log2_bits": null,
+   "kind": "ic_multi",
+   "order": "feistel",
+   "panel_file": "primary",
+   "pipeline": "prefetch",
+   "role": "baseline: the probe-pipeline producer (claude/n83-probe-pipeline: lift_scan + Feistel order + prefetched root-table probes) on the 32-byte-slot 4 GiB root table",
+   "table": "base"
+  },
+  "pT": {
+   "binary": "ic_online_tablefilter_r770",
+   "canon": "lift",
+   "filter_log2_bits": 28,
+   "kind": "ic_multi",
+   "order": "feistel",
+   "panel_file": "primary",
+   "pipeline": "prefetch",
+   "role": "candidate: pP's scan with the two-level root table: a 32 MiB register-blocked Bloom filter (5 bits in one 64-bit word per key) in front of 16-byte exact slots (2 GiB)",
+   "table": "filter"
+  },
+  "pT29": {
+   "binary": "ic_online_tablefilter_r770",
+   "canon": "lift",
+   "filter_log2_bits": 29,
+   "kind": "ic_multi",
+   "order": "feistel",
+   "panel_file": "primary",
+   "pipeline": "prefetch",
+   "role": "secondary/size: the candidate with a 64 MiB filter (2^29 bits)",
+   "table": "filter"
+  },
+  "pTaa": {
+   "binary": "ic_online_tablefilter_r770",
+   "canon": "lift",
+   "filter_log2_bits": 28,
+   "kind": "ic_multi",
+   "order": "feistel",
+   "panel_file": "primary",
+   "pipeline": "prefetch",
+   "role": "A/A control: a second candidate arm",
+   "table": "filter"
+  },
+  "pX": {
+   "binary": "ic_online_tablefilter_r770",
+   "canon": "lift",
+   "filter_log2_bits": 28,
+   "kind": "ic_multi",
+   "order": "feistel",
+   "panel_file": "primary",
+   "pipeline": "prefetch",
+   "planted": true,
+   "role": "planted positive control: the candidate plus, for every probe the filter rejects, a prefetched and discarded lookup of the same key in the compact table (the big-table access the filter removes); probes and relation are pT's, every such lookup must find nothing",
+   "table": "filter_plant"
+  },
+  "rT": {
+   "binary": "rho_tuned_r770",
+   "kind": "rho_tuned",
+   "role": "A's tuned rho (Fold/64/DP6, crypto 770f6a69; reconcile rT770), the strongest one-target rho measured at n=83; one process per primary point; gap reference and scalar cross-check"
+  }
+ },
+ "controls_pass_rule": {
+  "aa": "95% interval inside [0.97, 1.03]",
+  "planted": "95% lower bound > 1"
+ },
+ "current_baseline": "the probe-pipeline producer, claude/n83-probe-pipeline @ ddbb86a9c (protocol frozen, run 38822490448 in flight when this protocol froze; its result is not used here). The baseline arm pP is that producer's prefetch loop on its 32-byte-slot table (make_online_source.py checks the probe-pipeline derivation against its frozen digest and leaves scan_state128_pipelined and RootTable128 unchanged); it runs in the same binary and job as the candidate. claude/n83-state-fold (run 38819494806, in flight) is not included: the filter takes the big table off ~97.6% of probes, so the fold's halved capacity no longer bears on the lookup; combining them is a later step.",
+ "decision_rule": {
+  "invalid": "any gate, identity check or control fails, or any primary point lacks a valid row in any of the four decision IC arms (pP, pT, pTaa, pX) or the tuned rho: no verdict; every row is preserved. A failed secondary arm (pK, pT29) is reported and does not invalidate",
+  "primary": "improvement iff the 95% lower bound of R_m exceeds 1; regression iff its upper bound is below 1; otherwise not_separated",
+  "ratchet": "a primary improvement makes probe pipeline + two-level root table the new n=83 one-target baseline, recorded with R_m, R_g, the S_rho delta, the cold and setup change and the tuned-rho gap",
+  "scope": "Tier 1 instance scope, one runner. Not a claim to beat rho: the tuned-rho gap is distance remaining.",
+  "secondaries": "R_g, the slice bootstrap, the attribution and size arms, setup/cold and the Q0 + 16 fresh block are reported; they never change the primary verdict or the ratchet"
+ },
+ "design": {
+  "deadline_min": 300,
+  "host": "one fresh GitHub Actions ubuntu-24.04 runner (Tier 1 instance scope); every run one process pinned to one execution CPU (minimum of the affinity mask), clean environment, RAYON/KIC threads 1; all arms interleaved in one job; THP as the runner sets it (recorded)",
+  "old17_arms": [
+   "oP",
+   "oT"
+  ],
+  "old17_blocks": 1,
+  "primary_decision_arms": [
+   "pP",
+   "pT",
+   "pTaa",
+   "pX"
+  ],
+  "primary_ic_arms": [
+   "pP",
+   "pT",
+   "pTaa",
+   "pX",
+   "pK",
+   "pT29"
+  ],
+  "primary_points": 384,
+  "primary_segments": 6,
+  "process_model": "each IC arm is one process per 64-point slice (17 for O): setup (index build with the arm's table layout and filter, table load and verification, bijection self-test) once, then each target with its own one-target online interval and no target-dependent work shared between targets",
+  "rho_seed_base": 860000,
+  "rho_seed_rule": "860000 + primary seed",
+  "runtime_estimate": "build+tests 20-30 min; log-table check ~2 min; P: 6 x (30-45 s setup + 64 x 0.15-0.6 s) + 64 rho x 1-3 s = 8-12 min per slice, 6 slices 50-75 min; O: 2 x 1-2 min; diagnostic profiler ~4 min; total about 1.3-2.0 h",
+  "segment_order": [
+   "P1",
+   "P2",
+   "P3",
+   "O1",
+   "P4",
+   "P5",
+   "P6"
+  ],
+  "segment_upper_estimate_s": {
+   "O": 400,
+   "P": 1500
+  },
+  "slice": 64,
+  "timeout_s": {
+   "ic_multi": 2400,
+   "rho_tuned": 300
+  },
+  "within_segment_order": "make_schedule.py's seeded shuffles (P: 2026104100 + s over the six IC processes and the 64 rho runs; O: 2026104300 + b)"
+ },
+ "frozen_at_utc": "2026-10-16T00:08:19+00:00",
+ "frozen_before_any_timing": true,
+ "gates": [
+  "isolated_bench Tier 1 counters per run: exit 0, no timeout, verified=1, binary digest unchanged, no memory events; contention flags recorded and reported, never used to drop rows",
+  "every IC process: verified cached table on the frozen base, 29,880,000 states, the requested canonicalizer, order, probe pipeline, root-table layout and filter size reported in summary and every record, 29,878,182 root keys in 2^27 slots, KIC_ROOT_BLOOM off, no start override, Feistel bijection self-test passed, full-scan index build, five phases sum to each online interval, setup ends before the first online interval",
+  "every filter target record: relation checks <= filter passes <= probes; every record: no key the filter rejected is found in the table (planted_rejected_found = 0; pX looks every rejected key up)",
+  "primary exactness on every point: all six IC arms have identical probes and relation",
+  "one scalar per primary point across all IC arms and the tuned rho; every scalar replays as [d]G = Q in the pinned oracle",
+  "Q0 + 16 fresh: oP and oT reproduce the archived Feistel probes and relation (run 38786433493's), scalars equal the archived ones and replay; Q0 equals the validation sidecar"
+ ],
+ "kind": "n83_root_table_filter_one_target_online_tier1_v1",
+ "multiplicity": "one primary statistic; controls are pass/fail gates; secondaries are reported, never decide",
+ "online": {
+  "archived_identities_file": "inputs/archived_identities.json (claude/n83-combined, verbatim)",
+  "base": "snapshots/r770/experiments/koblitz-single-target-n83-20261006/base_n83_K600.jsonl",
+  "base_hash": "d4a4da26d6e7cb09367de922d9806631fe49989f70d378cae76f347f8d76a9f7",
+  "curve_id": "EC1N83Ce1h35c7ced6b497",
+  "factor_log_table": "../koblitz-single-target-n83-tier1-20261014/tier1_github_38523707244/precompute/factor_logs_n83_K600.json",
+  "factor_log_table_policy": "B's archived table; re-verified before any timing by ../koblitz-n83-reconcile-20261014/verify_log_table.py in the pinned pure-Python oracle; every IC process additionally verifies all [L_j]G = R_j before target work",
+  "factor_log_table_sha256": "a771716f284bb826e7407e1e7b5ef882409c9e7e1df8b8a3ed5b60b421d9f17e",
+  "law_definition": "r / (A * #states), A = 2n = 166, #states = 29,880,000",
+  "law_probes": 1727751.5902664994,
+  "online_interval": "producer's own clock: target_query_begin .. recovery_check_end, five exclusive phases; the Feistel order, the canonicalizer, the probe pipeline and the filter tests run inside the interval; index build (including the compact table and the filter build), log-table load and verification, the order's bijection self-test and process launch are outside",
+  "orbit_columns": 600,
+  "primary_targets_file": "inputs/primary_targets.json (make_targets.py; role tablefilter-primary-v1, seeds 0..383; new role, no scalar known, disjoint from Q0, B's fresh points, the 384 scan-order held-out points, the 576 combined primary points, the 384 probe-pipeline primary points and the 16 state-fold cold points)",
+  "q0": [
+   "2655898345537166180532960",
+   "3881526307991673265292615"
+  ],
+  "q0_validation_scalar_source": "snapshots/r770/experiments/koblitz-single-target-n83-20261006/frozen/fixture.json (fixture_scalar_validation_only), opened only by verify_receipt.py",
+  "regular_states": 29880000,
+  "root_table_entries": 29878182,
+  "root_table_slots": 134217728,
+  "sqrt_r": 92573139.235,
+  "subgroup_order": "8569786107849059",
+  "targets_file": "../koblitz-single-target-n83-tier1-20261014/inputs/targets.json",
+  "targets_file_sha256": "146bfd70b3f3c39368743ff611107a259de52c88fcf115ccc37b52c62d252d50",
+  "tuned_rho_config": "snapshots/r770/research/n83_evaluation_20261012/optimization/selected_config.json"
+ },
+ "power": {
+  "chosen_panel_size": 384,
+  "computed_by": "power_check.py (simulation before freezing; analysis/power.json)",
+  "population": "the 384 old held-out targets' measured Feistel full-scan online times (run 38786433493) over the mean measured full / lift_scan ratio (run 38776966036), inputs/power_prior.json; per-point effect spread from the 16 lift_scan ratios; noise sigma 0.02 per target and 0.01 per process",
+  "power_by_size": {
+   "effect_1.10": {
+    "effect": 1.1,
+    "power": {
+     "128": 1.0,
+     "192": 1.0,
+     "256": 1.0,
+     "320": 1.0,
+     "384": 1.0,
+     "64": 1.0
+    }
+   },
+   "mei_1.03": {
+    "effect": 1.03,
+    "power": {
+     "128": 0.915,
+     "192": 0.9775,
+     "256": 0.9925,
+     "320": 0.9975,
+     "384": 1.0,
+     "64": 0.7725
+    }
+   }
+  },
+  "rule": "power - 2 * sqrt(power * (1 - power) / trials) >= 0.80 in the 1.03 scenario; then at least the design floor of 384 points",
+  "smallest_powered_size": 128
+ },
+ "profile": {
+  "file": "analysis/profile_local.json",
+  "status": "diagnostic, cloud-agent VM; chose the design, is not evidence of a speedup",
+  "summary": {
+   "4k_over_thp_base_pipelined": 1.9729200786116352,
+   "4k_over_thp_filter_prefetched": 1.0002085513182657,
+   "base_pipelined_lookup_ns": 142.34610692771085,
+   "compact_pipelined_lookup_ns": 138.48885542168674,
+   "filter_pipelined_lookup_ns": 13.356716867469885,
+   "prefetch_gain_base_lookup_only": 0.8275402524089874,
+   "prefetch_gain_filter_lookup_only": 2.107274655658204,
+   "reading": "Prefetch does not overlap lookups into the 2-4 GiB tables (lookup-only: prefetched about as slow as unprefetched; in situ ~140 ns per probe remain), halving the slot to 16 bytes changes almost nothing, and 4 KiB pages make the big tables much slower while the 32 MiB filter is unchanged and its prefetches do overlap. The limit is address translation for a working set far beyond TLB reach (page walks whose own entries miss the caches, few walks in flight), not bytes per slot; a small filter whose translations stay resident removes it for the ~97.6% of probes it rejects."
+  }
+ },
+ "question": "On the probe-pipeline n=83 a=1 K600 one-target IC (lift_scan + Feistel order + prefetched root-table probes), does a two-level root table (a 32 MiB blocked filter that rejects most misses before 16-byte exact slots are touched) lower the one-target online time on new public points, with probes, relation and scalar unchanged?",
+ "schema": 1,
+ "sources": {
+  "crypto_770f6a69": "770f6a6925a0d29b768bd79074f54a173e967fe7 (snapshots/r770 via ../koblitz-n83-reconcile-20261014/restore_sources.py, checked against that protocol's r770 digests)",
+  "local_sha256": {
+   "archived_identities": "7ed7e056e8d883378e4d4033ad9bf93acc84cb5441e6410fee70ac67cae258db",
+   "arm_wrapper": "4b7bc2413432b8a7c2b35b8cbf82af7c3d123fb52fe65e8f6272f3af3e6ef39a",
+   "combined_derivation": "1a62eabf4a86417c5777fdc69ab2812eaea872b92031eb9ed60af2364ce15356",
+   "lift2_lib": "606b8a58d225e93d73d8b26ffaf4080250b0c12a37f8bbf782254fbcf5145463",
+   "lift2_lock": "739272e490c3b4956ce8320c55b3350fddff7ae7d2b619976a1f0eb96110746e",
+   "lift2_manifest": "77b04fcaa11a3f9f015619612b3e36c1f31a1b20d76116c929e5429e46dc271c",
+   "lift2_tests": "69561fbf09e2137ad1490d5795df54f6f9a5646aeebf3ecf12f1af55a495c566",
+   "log_table_check": "78d9297d9c17367ba15f30ea6507fa8f6edfe7b2cfafe0433bd83777c4dc2496",
+   "online_derivation": "3b2aa83df4d1bf70a107464a0b7fdd1f8ac133683b23cf19dd22bfecf12095ab",
+   "online_lock": "d215fedfd49b9734d5bcdcc5d98788c2665774335f37b1d364b8a31326fb45de",
+   "online_manifest": "640879d26658dbb7afe6bffd70f5330061fdca69b464a8b2bb6bc3c9ac01773a",
+   "panels": "3ae2d7bb884864d4a412bf510559825a4088cfc4506d27a81b7f3992c18a5d37",
+   "power_check": "b640665beb1c3002a4e4a3bb3806f1e6675a778bbf236cb807d2d32c8b86147a",
+   "power_prior": "8cca9587af766dff64d07fd1633c706d0c1386c95968fe241529836e20959892",
+   "power_result": "4a8ff138e2d909c08fb1959e0ce4bb586e3b73a32d5d7eb36e9472fefe90d055",
+   "primary_targets": "03958ea8f0d8b91238f9741be91c771a5dc7bc654377c772d9ae82061ad448be",
+   "probepipe_derivation": "ce72f3e906d85c58ccc02b0e5d455e97c69c370e357162fbda166423ab8ce7f2",
+   "profile_derivation": "c129ae5ea67e5ea8ec06de8aa0d0607bbce34a1f644daa6992df64767da9a5b7",
+   "profile_local": "df03124c5d7fe87d3284cdbb31142cd789a7d9b5e0b15606399dbf9bdb1e7a3e",
+   "profile_table_builder": "effc4d040fc8bad02de8135118d9753468cb1912988d5f678ad5494c572c7f3b",
+   "receipt_verifier": "d1a264567ef3ab754fa7263e560ec99cb09bdb3777dcc093bdc6c3401ffb1da1",
+   "schedule_builder": "350e0a559efb0326b97a65fdba41b78d63b202132fc2476be8f0ab0d94e6a19b",
+   "schedule_runner": "fed4b59e4c5dc53b08d98f03161c741e401cfb2bce476f4efe7439377eaf7d96",
+   "targets_builder": "0e9f02a50f7331e347456e5957278cf438e1ce9dda23f36125da43443a836de9"
+  },
+  "online_source_sha256": "70233510e07a9e1858793502ed85080711cd3d8a1b0fa3357861fe20a32dba0c",
+  "parent": "cryptanalysis claude/n83-probe-pipeline @ ddbb86a9c (make_probepipe_source.py is its make_online_source.py, verbatim, and make_combined_source.py is claude/n83-combined's; probe-pipeline producer sha256 840b1648...)",
+  "profile_source_sha256": "cf2de8aa62a2f534a682049aab80b14360351e5eee2e9ef837ca25191d622243"
+ },
+ "statistics": {
+  "S": "S_rho = (mean IC online ms / tuned-rho ms per walk step) / sqrt(r), ms per step = median over all rT runs of online_ms / walk_steps; S_probe = mean probes / sqrt(r); for pP and pT, with the delta pT - pP; the cold S_rho (mean cold ms instead of online) is reported too",
+  "aa": "pT / pTaa, ratio of means, seed 2026104530",
+  "also_reported": "R_g = gm pP / gm pT (paired geometric mean, seed 2026104501); probe ratio; per-arm summaries, ns/probe, mean probes / law and filter false-positive rate; R_m bootstrapped over the 64-point slices and per slice (sensitivity, seed 2026104550)",
+  "bootstrap": "random.Random(seed); 10,000 resamples with replacement of the primary points; sorted; 95% interval = indices 250 and 9749",
+  "planted": "pX / pT, ratio of means, seed 2026104532",
+  "primary": "R_m = mean pP / mean pT, online_ms over all 384 primary points, seed 2026104500",
+  "rho_gap": "tuned rho / IC for pP and pT on the same primary points, means and geometric means (seeds 2026104560-2026104563)",
+  "secondaries": "Q0 + 16 fresh: oP / oT on the 16 fresh points (seed 2026104610) and Q0's two times",
+  "secondary_arms": "pP / pK (slot size alone, seed 2026104534), pK / pT (the filter over the compact table, seed 2026104536), pT / pT29 (filter size, seed 2026104538)",
+  "setup_and_cold": "per process: setup_ms (process start to setup complete), index build, filter build, peak RSS; per primary point: cold = its slice process's setup + its online time; ratios pP / pT of mean setup over the 6 slice processes (reported, no interval) and of mean cold over the points (seed 2026104540)"
+ },
+ "success_criterion": "AGENTS.md 'Success criterion: iterative improvement of the index-calculus baseline': a verified, measured improvement over the current IC baseline under a protocol frozen before timing; each landed improvement becomes the new baseline with its delta."
+}
