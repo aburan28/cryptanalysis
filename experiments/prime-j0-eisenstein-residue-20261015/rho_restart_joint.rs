@@ -44,11 +44,11 @@ pub(super) fn run(fixture_path: &str, count: usize) {
 }
 
 pub(super) fn run_demand(fixture_path: &str, count: usize) {
-    run_demand_variant(fixture_path,count,false,None);
+    run_demand_variant(fixture_path,count,false,None,false);
 }
 
 pub(super) fn run_graph(fixture_path: &str, count: usize) {
-    run_demand_variant(fixture_path,count,true,None);
+    run_demand_variant(fixture_path,count,true,None,false);
 }
 
 pub(super) fn write_graph_plan(fixture_path: &str, count: usize, plan_path: &str) {
@@ -105,11 +105,33 @@ fn load_graph_plan(plan_path: &str, rows: &[Value], count: usize)
 }
 
 pub(super) fn run_graph_from_plan(fixture_path: &str, count: usize, plan_path: &str) {
-    run_demand_variant(fixture_path,count,true,Some(plan_path));
+    run_demand_variant(fixture_path,count,true,Some(plan_path),false);
+}
+
+pub(super) fn run_projective_graph_from_plan(
+    fixture_path: &str, count: usize, plan_path: &str) {
+    run_demand_variant(fixture_path,count,true,Some(plan_path),true);
+}
+
+enum SparseQRepresentation {
+    Affine(unit_orbit_windows::SparseJointQTables),
+    Projective(unit_orbit_windows::SparseJointQProjectiveTables),
+}
+
+impl SparseQRepresentation {
+    fn retained_bytes(&self) -> usize {
+        match self { Self::Affine(q) => q.retained_bytes,
+                     Self::Projective(q) => q.retained_bytes }
+    }
+    fn constructed_points(&self) -> usize {
+        match self { Self::Affine(q) => q.constructed_points,
+                     Self::Projective(q) => q.constructed_points }
+    }
 }
 
 fn run_demand_variant(fixture_path: &str, count: usize,
-                      graph: bool, plan_path: Option<&str>) {
+                      graph: bool, plan_path: Option<&str>, projective: bool) {
+    assert!(!projective || plan_path.is_some(), "projective table needs a frozen graph plan");
     let fixture: Value = serde_json::from_str(
         &std::fs::read_to_string(fixture_path).expect("read frozen fixture"))
         .expect("parse frozen fixture");
@@ -140,20 +162,31 @@ fn run_demand_variant(fixture_path: &str, count: usize,
     let b_choices = if let Some((choices,_)) = precomputed.as_ref() { choices }
         else { online_choices.as_ref().expect("online choices") };
     let (q_table,graph_edges,direct_seeds) = if let Some((_,plan)) = precomputed.as_ref() {
-        (unit_orbit_windows::instantiate_joint_q_graph(
-            fixture["q_hex"].as_str().expect("Q"),plan),
-         plan.graph_edges,plan.direct_seeds)
+        let q_hex = fixture["q_hex"].as_str().expect("Q");
+        let table = if projective {
+            SparseQRepresentation::Projective(
+                unit_orbit_windows::instantiate_joint_q_graph_projective(q_hex,plan))
+        } else {
+            SparseQRepresentation::Affine(
+                unit_orbit_windows::instantiate_joint_q_graph(q_hex,plan))
+        };
+        (table,plan.graph_edges,plan.direct_seeds)
     } else if graph {
-        unit_orbit_windows::prepare_joint_q_sparse_graph(
-            fixture["q_hex"].as_str().expect("Q"), b_choices)
+        let (table,edges,direct) = unit_orbit_windows::prepare_joint_q_sparse_graph(
+            fixture["q_hex"].as_str().expect("Q"), b_choices);
+        (SparseQRepresentation::Affine(table),edges,direct)
     } else {
-        (unit_orbit_windows::prepare_joint_q_sparse(
-            fixture["q_hex"].as_str().expect("Q"), b_choices),0,0)
+        (SparseQRepresentation::Affine(unit_orbit_windows::prepare_joint_q_sparse(
+            fixture["q_hex"].as_str().expect("Q"), b_choices)),0,0)
     };
     let target_preparation_ms = target_start.elapsed().as_secs_f64()*1000.0;
     let eval_start = Instant::now();
-    let answers = inputs.iter().zip(b_choices.iter()).map(|((a,_,_),b)|
-        unit_orbit_windows::multiply_u256_tau_joint_sparse(*a,*b,&q_table))
+    let answers = inputs.iter().zip(b_choices.iter()).map(|((a,_,_),b)| match &q_table {
+        SparseQRepresentation::Affine(q) =>
+            unit_orbit_windows::multiply_u256_tau_joint_sparse(*a,*b,q),
+        SparseQRepresentation::Projective(q) =>
+            unit_orbit_windows::multiply_u256_tau_joint_sparse_projective(*a,*b,q),
+    })
         .collect::<Vec<_>>();
     let restart_eval_ms = eval_start.elapsed().as_secs_f64()*1000.0;
     let online_ms = target_preparation_ms + restart_eval_ms;
@@ -163,8 +196,9 @@ fn run_demand_variant(fixture_path: &str, count: usize,
     let plan_bytes = precomputed.as_ref().map(|(choices,plan)|
         plan.retained_bytes + choices.capacity()*std::mem::size_of_val(&choices[0]))
         .unwrap_or(0);
-    let retained_bytes = generator_bytes + q_table.retained_bytes + plan_bytes;
-    let mode = if plan_path.is_some() { "joint_graph_planned" }
+    let retained_bytes = generator_bytes + q_table.retained_bytes() + plan_bytes;
+    let mode = if projective { "joint_graph_projective_planned" }
+        else if plan_path.is_some() { "joint_graph_planned" }
         else if graph { "joint_graph" } else { "joint_demand" };
     println!("verified=1 count={count} online_ms={online_ms:.6} \
               target_preparation_ms={target_preparation_ms:.6} \
@@ -175,7 +209,7 @@ fn run_demand_variant(fixture_path: &str, count: usize,
               retained_bytes={retained_bytes} constructed_q_points={} \
               graph_edges={graph_edges} direct_seeds={direct_seeds} \
               mode={mode} point={}",
-              q_table.constructed_points,answers.last().expect("nonempty"));
+              q_table.constructed_points(),answers.last().expect("nonempty"));
 }
 
 pub(super) fn run_profile(fixture_path: &str, count: usize) {

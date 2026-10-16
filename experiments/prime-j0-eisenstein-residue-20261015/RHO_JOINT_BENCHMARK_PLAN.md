@@ -130,6 +130,30 @@ comparison on all three A/A controls. A partial pair remains in the ledger;
 the aggregate stays unknown. The command is for a completed archived Linux
 panel; the local manifest dry run has a macOS binary hash and is not a panel.
 
+## Projective Q table for one restart
+
+The opt-in `--pilot-rho-restart-joint-projective-graph-planned` mode retains
+the requested Q seeds as Jacobian points after graph construction. It skips
+the batch affine conversion and the per-digit two-X orbit precomputation.
+The evaluator rotates a Q point at use time and adds it projectively; G
+digits, scalar recoding, the 22 Horner steps, and final output conversion use
+the same path as the planned affine Q-table mode. Both modes load the same
+frozen graph before their online interval. The source-formula calculation for
+the first restart has 21 distinct requested Q seeds, 22 Q additions, and 16
+nontrivial Q rotations. On generic nonidentity branches, the projective mode
+saves 43 field multiplications and one batch inversion, with one additional
+field square. The two tables retain the same byte count for this fixture
+because a two-X affine entry and a Jacobian entry each contain three field
+elements. Exceptional point branches can change the exact operation count.
+
+The [projective replay receipt](projective-q-local-replay.json) pins the source,
+binary, plan, and fixture hashes and records ten exact outputs: both table
+representations on the frozen Q and four alternate Q points. The isolated
+Tier 1 wall comparison will pair these two modes on the same one-restart
+fixture and charged preparation plus evaluation interval. The local replay
+establishes correctness and the source-level tradeoff; its elapsed times are
+not admitted as wall-performance evidence.
+
 The [seed graph method](JOINT_SEED_GRAPH.md) is an additional candidate in
 this panel. Its local exact-output receipt has 1,268 outputs. The archived
 OpenSSL hybrid panel's one-restart A/A gate previously failed;
