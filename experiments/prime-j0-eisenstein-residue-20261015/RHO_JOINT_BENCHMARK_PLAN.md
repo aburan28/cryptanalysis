@@ -12,7 +12,7 @@ benchmark queue.
 The [fixture](rho-restart-first128-fixture.json) has SHA-256
 `fc6a0283c51e3fd9c2eb0b82961092d3060c242d8122c9648c37fdaf614d094a`.
 The one-restart panel uses its first case; the batch panel uses its first 128
-cases. The one-restart panel runs 22 cases and the 128-restart panel runs 20;
+cases. The one-restart panel runs 26 cases and the 128-restart panel runs 20;
 each case has 16 alternating repetitions:
 
 | Case | Reference | Candidate |
@@ -34,6 +34,10 @@ each case has 16 alternating repetitions:
 | `compare_one_aux_vs_refined` (one restart) | Refined two-auxiliary graph | One-auxiliary graph, same scalar stream and Q |
 | `compare_unit_root` (one restart) | OpenSSL no-warmup | Unit-root graph and shared Horner |
 | `compare_unit_root_vs_one_aux` (one restart) | One-auxiliary graph | Unit-root graph, same scalar stream and Q |
+| `compare_cost_aware` (one restart) | OpenSSL no-warmup | Cost-aware Q graph and shared Horner |
+| `compare_cost_aware_vs_unit_root` (one restart) | Unit-root graph | Cost-aware graph, same scalar stream and Q |
+| `compare_projective` (one restart) | OpenSSL no-warmup | Projective Q table from the cost-aware graph |
+| `compare_projective_vs_affine` (one restart) | Affine Q table from the cost-aware graph | Projective Q table from the same graph |
 | `compare_mixed_cost` (128 restarts) | OpenSSL no-warmup | Cost-aware mixed-addition graph and shared Horner |
 | `compare_mixed_cost_vs_weighted` (128 restarts) | Low-rotation graph | Cost-aware mixed-addition graph, same scalar stream and Q |
 | `cal_mid` | OpenSSL no-warmup | OpenSSL no-warmup |
@@ -66,7 +70,7 @@ decoding, process launch, and independent expected-point checks are outside
 every timed interval. The joint commands report target preparation and
 evaluation as exclusive phase costs whose sum is `online_ms`.
 
-The one-restart panel has 352 planned pairs and 704 arms; the 128-restart
+The one-restart panel has 416 planned pairs and 832 arms; the 128-restart
 panel has 320 pairs and 640 arms. Each includes 48 OpenSSL A/A control pairs.
 The queue runs one subprocess at a time on CPU 40. The Tier 1
 receipt must retain exposed topology, affinity, cgroup limits, throttling,
@@ -101,7 +105,7 @@ ledger and leaves the corresponding aggregate unknown.
    to write both manifest/rules pairs. The generator rebuilds the expected
    source tree from the archived base and current overlay; compare its hashes
    with every deployed artifact before submission. The generator's local
-   [static dry run](tier1-rho-joint-unit-root-dryrun.json) validated both
+   [static dry run](tier1-rho-joint-projective-dryrun.json) validated both
    manifests and the auditor's frozen-input checks. Its binary
    hash comes from the local macOS correctness build and must be replaced
    with the Linux binary hash before dispatch.
@@ -149,8 +153,10 @@ elements. Exceptional point branches can change the exact operation count.
 The [projective replay receipt](projective-q-local-replay.json) pins the source,
 binary, plan, and fixture hashes and records ten exact outputs: both table
 representations on the frozen Q and four alternate Q points. The isolated
-Tier 1 wall comparison will pair these two modes on the same one-restart
-fixture and charged preparation plus evaluation interval. The local replay
+Tier 1 panel pairs these two modes on the same one-restart fixture and charged
+preparation plus evaluation interval. The [panel dry run](tier1-rho-joint-projective-dryrun.json)
+validates the frozen command order and independent auditor through the raw
+archive boundary. The local replay
 establishes correctness and the source-level tradeoff; its elapsed times are
 not admitted as wall-performance evidence.
 

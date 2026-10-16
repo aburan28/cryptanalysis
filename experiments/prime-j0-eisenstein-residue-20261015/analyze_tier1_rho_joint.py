@@ -22,7 +22,9 @@ ORDER_COMMON = ('cal_before', 'compare_demand', 'compare_graph',
          'compare_fused_graph', 'compare_fused_graph_planned', 'cal_after')
 ORDER_ONE = ORDER_COMMON[:ORDER_COMMON.index('cal_mid')] + (
     'compare_one_aux', 'compare_one_aux_vs_refined',
-    'compare_unit_root', 'compare_unit_root_vs_one_aux') + \
+    'compare_unit_root', 'compare_unit_root_vs_one_aux',
+    'compare_cost_aware', 'compare_cost_aware_vs_unit_root',
+    'compare_projective', 'compare_projective_vs_affine') + \
     ORDER_COMMON[ORDER_COMMON.index('cal_mid'):]
 ORDER_128 = ORDER_COMMON[:ORDER_COMMON.index('cal_mid')] + (
     'compare_mixed_cost', 'compare_mixed_cost_vs_weighted') + \
@@ -118,6 +120,7 @@ def audit(count, manifest_path, rules_path, raw_path):
     if count == 1:
         plans['one_aux'] = forest / 'one-aux-plan-1.json'
         plans['unit_root'] = forest / 'unit-root-plan-1.json'
+        plans['cost_aware'] = forest / 'cost-aware-one-plan-1.json'
     else:
         plans['mixed_cost'] = forest / 'mixed-cost-plan-128.json'
     plan_identity = None
@@ -135,7 +138,8 @@ def audit(count, manifest_path, rules_path, raw_path):
                     graph['terminal_ids'], validate_plan_graph(graph))
         if plan_identity is None:
             plan_identity = identity
-        elif stem in ('steiner', 'refined', 'one_aux', 'unit_root') and count == 1:
+        elif stem in ('steiner', 'refined', 'one_aux', 'unit_root',
+                      'cost_aware') and count == 1:
             assert identity[:3] == plan_identity[:3]
             assert plan_identity[3] <= identity[3]
             assert len(identity[3] - plan_identity[3]) <= 16
@@ -166,6 +170,13 @@ def audit(count, manifest_path, rules_path, raw_path):
         candidates['compare_unit_root'] = [binary, '--pilot-rho-restart-joint-graph-planned',
                                            fixture_remote, '1', rules['paths']['unit_root_1']]
         candidates['compare_unit_root_vs_one_aux'] = candidates['compare_unit_root']
+        candidates['compare_cost_aware'] = [binary, '--pilot-rho-restart-joint-graph-planned',
+                                            fixture_remote, '1', rules['paths']['cost_aware_1']]
+        candidates['compare_cost_aware_vs_unit_root'] = candidates['compare_cost_aware']
+        candidates['compare_projective'] = [binary,
+            '--pilot-rho-restart-joint-projective-graph-planned',
+            fixture_remote, '1', rules['paths']['cost_aware_1']]
+        candidates['compare_projective_vs_affine'] = candidates['compare_projective']
     else:
         candidates['compare_mixed_cost'] = [binary, '--pilot-rho-restart-joint-graph-planned',
                                             fixture_remote, '128', rules['paths']['mixed_cost_128']]
@@ -182,6 +193,10 @@ def audit(count, manifest_path, rules_path, raw_path):
                               if case['id'] == 'compare_one_aux_vs_refined'
                               else candidates['compare_one_aux']
                               if case['id'] == 'compare_unit_root_vs_one_aux'
+                              else candidates['compare_unit_root']
+                              if case['id'] == 'compare_cost_aware_vs_unit_root'
+                              else candidates['compare_cost_aware']
+                              if case['id'] == 'compare_projective_vs_affine'
                               else candidates['compare_weighted']
                               if case['id'] == 'compare_mixed_cost_vs_weighted'
                               else reference)
@@ -278,6 +293,10 @@ def audit(count, manifest_path, rules_path, raw_path):
                     'compare_one_aux_vs_refined': 'joint_graph_planned',
                     'compare_unit_root': 'joint_graph_planned',
                     'compare_unit_root_vs_one_aux': 'joint_graph_planned',
+                    'compare_cost_aware': 'joint_graph_planned',
+                    'compare_cost_aware_vs_unit_root': 'joint_graph_planned',
+                    'compare_projective': 'joint_graph_projective_planned',
+                    'compare_projective_vs_affine': 'joint_graph_projective_planned',
                     'compare_mixed_cost': 'joint_graph_planned',
                     'compare_mixed_cost_vs_weighted': 'joint_graph_planned',
                     'compare_fused': 'joint_fused',
@@ -292,6 +311,8 @@ def audit(count, manifest_path, rules_path, raw_path):
                          'compare_refined_vs_prior',
                          'compare_one_aux_vs_refined',
                          'compare_unit_root_vs_one_aux',
+                         'compare_cost_aware_vs_unit_root',
+                         'compare_projective_vs_affine',
                          'compare_mixed_cost_vs_weighted') else 'openssl_nowarm')
             key = (repeat, case_id, variant)
             assert key not in lookup
@@ -323,10 +344,12 @@ def audit(count, manifest_path, rules_path, raw_path):
                                 'joint_fused_graph_planned'):
                         assert int(fields['fused_pair_sums']) >= 0
                     if mode in ('joint_graph', 'joint_fused_graph',
-                                'joint_graph_planned', 'joint_fused_graph_planned'):
+                                'joint_graph_planned', 'joint_fused_graph_planned',
+                                'joint_graph_projective_planned'):
                         assert (int(fields['graph_edges']) + int(fields['direct_seeds']) ==
                                 int(fields['constructed_q_points']))
-                    if mode in ('joint_graph_planned', 'joint_fused_graph_planned'):
+                    if mode in ('joint_graph_planned', 'joint_fused_graph_planned',
+                                'joint_graph_projective_planned'):
                         assert number(fields, 'graph_plan_ms') == 0
                         assert number(fields, 'plan_load_ms') >= 0
                         assert int(fields['plan_bytes']) > 0
