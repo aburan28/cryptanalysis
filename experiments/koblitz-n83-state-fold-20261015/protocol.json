@@ -1,0 +1,258 @@
+{
+ "arms": {
+  "cB": {
+   "binary": "ic_online_statefold_r770",
+   "canon": "lift",
+   "fold": false,
+   "kind": "ic_cold",
+   "order": "feistel",
+   "role": "baseline: the combined producer (lift_scan x Feistel, claude/n83-combined), unfolded index"
+  },
+  "cBF": {
+   "binary": "ic_online_statefold_r770",
+   "canon": "full",
+   "fold": false,
+   "kind": "ic_cold",
+   "order": "feistel",
+   "role": "secondary: Feistel-only single arm, unfolded"
+  },
+  "cBL": {
+   "binary": "ic_online_statefold_r770",
+   "canon": "lift",
+   "fold": false,
+   "kind": "ic_cold",
+   "order": "left_major",
+   "role": "secondary: lift_scan-only single arm, unfolded"
+  },
+  "cF": {
+   "binary": "ic_online_statefold_r770",
+   "canon": "lift",
+   "fold": true,
+   "kind": "ic_cold",
+   "order": "feistel",
+   "role": "candidate: the same producer on the folded index"
+  },
+  "cFF": {
+   "binary": "ic_online_statefold_r770",
+   "canon": "full",
+   "fold": true,
+   "kind": "ic_cold",
+   "order": "feistel",
+   "role": "secondary: Feistel-only single arm, folded"
+  },
+  "cFI": {
+   "binary": "ic_online_statefold_r770",
+   "canon": "lift",
+   "fold": true,
+   "index_canon": "lift",
+   "kind": "ic_cold",
+   "order": "feistel",
+   "role": "secondary (next improvement): cF with lift_scan canonicalizing the index build"
+  },
+  "cFL": {
+   "binary": "ic_online_statefold_r770",
+   "canon": "lift",
+   "fold": true,
+   "kind": "ic_cold",
+   "order": "left_major",
+   "role": "secondary: lift_scan-only single arm, folded"
+  },
+  "cFaa": {
+   "binary": "ic_online_statefold_r770",
+   "canon": "lift",
+   "fold": true,
+   "kind": "ic_cold",
+   "order": "feistel",
+   "role": "A/A control: a second process of cF"
+  },
+  "cX": {
+   "binary": "ic_online_statefold_r770",
+   "canon": "lift",
+   "fold": true,
+   "kind": "ic_cold",
+   "order": "feistel",
+   "plant": true,
+   "role": "planted positive control: cF plus the work the fold removes, redone and discarded (every mate's S3 solve and two canonicalizations in the build; every skipped state rescanned online into fold_audit_probes)"
+  },
+  "kB": {
+   "binary": "ic_online_statefold_r770",
+   "canon": "lift",
+   "fold": false,
+   "kind": "ic_rank",
+   "order": "feistel",
+   "rank_canon": "full",
+   "rank_order": "left_major",
+   "role": "rank stage as B runs it (unfolded, full scan, left-major), then one target"
+  },
+  "kN": {
+   "binary": "ic_online_statefold_r770",
+   "canon": "lift",
+   "fold": true,
+   "kind": "ic_rank",
+   "order": "feistel",
+   "rank_canon": "lift",
+   "rank_order": "feistel",
+   "role": "rank stage on the folded index with lift_scan and the Feistel order, then one target"
+  },
+  "rT": {
+   "binary": "rho_tuned_r770",
+   "kind": "rho_tuned",
+   "role": "A's tuned rho rT770 (Fold/64/DP6), the strongest one-target rho at n=83, same points"
+  }
+ },
+ "controls_pass_rule": {
+  "aa": "cF / cFaa ratio of mean cold totals inside [0.97, 1.03]",
+  "otherwise": "verdict invalid",
+  "planted": "cX / cF ratio of mean cold totals, 95% bootstrap lower bound above 1"
+ },
+ "current_baseline": "the combined producer (claude/n83-combined @ 88e1929fb, lift_scan x Feistel; its run 38803625711 had no result when this froze). If that run does not promote the combination, the better single arm is the baseline: cBL/cFL and cBF/cFF answer it.",
+ "decision_rule": {
+  "improvement": "R lower bound > 1 (the fold becomes the new n=83 cold baseline)",
+  "invalid": "any gate or control fails",
+  "not_separated": "otherwise",
+  "regression": "R upper bound < 1"
+ },
+ "design": {
+  "cold_arms": [
+   "cB",
+   "cF",
+   "cFaa",
+   "cX",
+   "cBL",
+   "cFL",
+   "cBF",
+   "cFF",
+   "cFI",
+   "rT"
+  ],
+  "cold_points": 16,
+  "power_chosen_size": 8,
+  "process_model": "one point per process, fresh process per run, one pinned CPU, one runner",
+  "rank_blocks": [
+   {
+    "id": "K1",
+    "rank_seed": 101,
+    "unit": "s000"
+   },
+   {
+    "id": "K2",
+    "rank_seed": 102,
+    "unit": "s001"
+   }
+  ],
+  "rho_seed_base": 850000,
+  "segment_order": [
+   "C1",
+   "C2",
+   "C3",
+   "C4",
+   "K1",
+   "C5",
+   "C6",
+   "C7",
+   "C8",
+   "C9",
+   "C10",
+   "K2",
+   "C11",
+   "C12",
+   "C13",
+   "C14",
+   "C15",
+   "C16"
+  ],
+  "segment_upper_estimate_s": {
+   "C": 600,
+   "K": 2400
+  },
+  "time_guard": "skip a segment (rows skipped_time_guard) if elapsed + its estimate exceeds 325 min",
+  "timeout_s": {
+   "ic_cold": 600,
+   "ic_rank": 2700,
+   "rho_tuned": 600
+  },
+  "within_segment_order": "random.Random(2026101600 + block).shuffle (C), random.Random(2026101700 + block) (K)"
+ },
+ "frozen_at_utc": "2026-10-15T22:37:56+00:00",
+ "frozen_before_any_timing": true,
+ "gates": [
+  "every scheduled row valid (exit 0, verified, schedule match, no memory event)",
+  "every IC process: logical state count 29,880,000; stored 14,940,300 iff folded; root table entries, logical-state blake3 and table-map digests equal B's (online.index_digest)",
+  "per point: one scalar across every IC arm and rT, replayed as [d]G = Q in the pinned oracle",
+  "per point: one relation (point indices) across cB, cF, cFaa, cX, cBF, cFF, cFI (Feistel order), and one across cBL, cFL (left-major)",
+  "per point: probes cB = cBF; probes cF = cFaa = cX = cFF = cFI <= cB; probes cX + fold_audit_probes(cX) = cB; probes cFL <= cBL",
+  "rank arms: full rank and the written factor-log table equal to B's archived table, log for log"
+ ],
+ "kind": "n83-state-fold-cold-tier1",
+ "multiplicity": "one primary statistic; every secondary is descriptive and never changes the verdict",
+ "online": {
+  "base": "snapshots/r770/experiments/koblitz-single-target-n83-20261006/base_n83_K600.jsonl",
+  "base_hash": "d4a4da26d6e7cb09367de922d9806631fe49989f70d378cae76f347f8d76a9f7",
+  "cold_interval": "producer's own clock: process start (main) .. recovery_check_end of the one target = setup_complete + the five online phases (cold_in_process_ms); the rank stage is skipped (verified cached table) and measured separately by kB/kN; the index digest runs after the target, outside every interval",
+  "cold_targets_file": "inputs/cold_targets.json (role statefold-cold-v1; disjoint from Q0, panel B, scanorder-heldout and combined-primary-v1)",
+  "curve_id": "EC1N83Ce1h35c7ced6b497",
+  "factor_log_table": "../koblitz-single-target-n83-tier1-20261014/tier1_github_38523707244/precompute/factor_logs_n83_K600.json",
+  "factor_log_table_sha256": "a771716f284bb826e7407e1e7b5ef882409c9e7e1df8b8a3ed5b60b421d9f17e",
+  "index_digest": {
+   "logical_states": 29880000,
+   "logical_states_blake3": "baf46d5a34732aa2aeba1fc0ca4f57036e3c324ade0bf8791431c838fe15d7ec",
+   "source": "B's unfolded index (cB configuration), local smoke on the cloud-agent VM; deterministic",
+   "table_entries": 29878182,
+   "table_map_sum64": "be14a80705232396",
+   "table_map_xor64": "8132bdcfd619010f"
+  },
+  "online_interval": "target_query_begin .. recovery_check_end, five exclusive phases (unchanged)",
+  "orbit_columns": 600,
+  "regular_states": 29880000,
+  "root_table_entries": 29878182,
+  "sqrt_r": 92573139.235,
+  "stored_states_folded": 14940300,
+  "subgroup_order": "8569786107849059",
+  "tuned_rho_config": "snapshots/r770/research/n83_evaluation_20261012/optimization/selected_config.json"
+ },
+ "power": {
+  "chosen": 8,
+  "file": "analysis/power.json",
+  "frozen_size": 16,
+  "min_delta": 1.05
+ },
+ "question": "Does folding the duplicate ordered states (l, r, rel) ~ (r, l, -rel) of the n=83 K600 S3 root index lower the cold cost (setup + one-target online) of the combined one-target IC, with the same relation, scalar and table, on new targets?",
+ "schema": 1,
+ "sources": {
+  "combined_producer": "claude/n83-combined @ 88e1929fb make_online_source.py (combined_derivation.py here), output sha256 f65e518a1644962f7b20dcc718d47a0620b43871cd083523e6f827a6d9f56a7e",
+  "crypto_770f6a69": "770f6a6925a0d29b768bd79074f54a173e967fe7 (snapshots/r770 via ../koblitz-n83-reconcile-20261014/restore_sources.py)",
+  "local_sha256": {
+   "arm_wrapper": "72fa5fb38635702a35161b14cf753518cfc568fbd913de304ec31669d1922e7a",
+   "cold_targets": "c1b6413780847401ab9cedf273485f959b1797c6469d0372f0ee1c0f8e0569ef",
+   "combined_derivation": "1a62eabf4a86417c5777fdc69ab2812eaea872b92031eb9ed60af2364ce15356",
+   "lift2_lib": "606b8a58d225e93d73d8b26ffaf4080250b0c12a37f8bbf782254fbcf5145463",
+   "lift2_lock": "739272e490c3b4956ce8320c55b3350fddff7ae7d2b619976a1f0eb96110746e",
+   "lift2_manifest": "77b04fcaa11a3f9f015619612b3e36c1f31a1b20d76116c929e5429e46dc271c",
+   "lift2_tests": "69561fbf09e2137ad1490d5795df54f6f9a5646aeebf3ecf12f1af55a495c566",
+   "log_table_check": "78d9297d9c17367ba15f30ea6507fa8f6edfe7b2cfafe0433bd83777c4dc2496",
+   "online_derivation": "adadabf31de34dfb0365e619052c810027efa6eb23ba6b9ccb09caaccfb07f4d",
+   "online_lock": "953f0c53ca8cd6b78b6ac4baa179c504258536f86a55ce821e57f132b9fb5428",
+   "online_manifest": "1fbd5c66dfd95ec1ac99dad3ed67682c61f2ea326b0b5b929f7da7fe9b6b0a6e",
+   "power_check": "3da91fabc1394f2ffabf9c610083d264b70f9c23955c4a1aea4cb78ec1397d1f",
+   "power_prior": "a6db1555582452a95f7165f42323756ade16d64c31399cfe10486bfc9b0bdc03",
+   "power_result": "a1b63f3a9960001350f4e4069d06e82c7c6f94fdb2e1d3956526b3995941993a",
+   "protocol_builder": "9753dc0e3e44970cbf8974cfa6816bc459d7c805d761ff9808f687383909c383",
+   "receipt_verifier": "b592a39434c5b60637dd02f9a934d54b6ca6c205bf880c80394add030a726e63",
+   "schedule_builder": "09dfb3fc8471ea75eae2f596c78f6cc16f6237854456c3f085760160c17045e0",
+   "schedule_runner": "7bd78415e213586679c2b4d095357f88d2d50cd08baeac08e35e2bff22f42cde",
+   "targets_builder": "91ac6a1d934645d167833e94ecfbba3f7a051a11d8730c16d193ea6ca0f79717"
+  },
+  "online_source_sha256": "b91241c467ac364d7d04f4f48aef0b5492f9db04e4fc6685e11abfdfafd39535"
+ },
+ "statistics": {
+  "primary": "R = mean cold(cB) / mean cold(cF) over the cold points, bootstrap over points (10,000 resamples, seed 20261015)",
+  "secondary": [
+   "setup, online, index-build and peak-RSS ratios cB/cF (ratio of means; online also geometric means)",
+   "single arms: cBL/cFL and cBF/cFF cold ratios; better unfolded single arm / cF",
+   "cF/cFI (lift_scan in the index build)",
+   "rank stage: kB/kN total ms per block and the per-attempt mean cost ratio (bootstrap over attempts)",
+   "rho ms/step from rT; cold S (setup + online) and ledger cold S (rank + setup + online) for old and new, with deltas; cold and online gaps to rT"
+  ]
+ },
+ "success_criterion": "AGENTS.md 'Success criterion: iterative improvement of the index-calculus baseline'"
+}
