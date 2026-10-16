@@ -45,6 +45,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--plan-stem', choices=('root-first', 'two-parent'),
+                        default='root-first')
     args = parser.parse_args()
     frozen_path = BASE / 'rho-restart-first128-fixture.json'
     frozen = json.loads(frozen_path.read_bytes())
@@ -52,11 +54,11 @@ def main():
     with TemporaryDirectory(prefix='root-first-replay-') as temp:
         root = Path(temp)
         for count in (1, 128):
-            plan = HERE / f'root-first-plan-{count}.json'
+            plan = HERE / f'{args.plan_stem}-plan-{count}.json'
             for mode in ('graph-planned', 'fused-graph-planned'):
                 results.append(run(args.binary, frozen, count, plan, mode,
                                    root / f'frozen-{count}.json'))
-        one_plan = HERE / 'root-first-plan-1.json'
+        one_plan = HERE / f'{args.plan_stem}-plan-1.json'
         row = frozen['cases'][0]
         a, b = int(row['a_hex'], 16), int(row['b_hex'], 16)
         for q_scalar in (1, 2, 3, 7):
@@ -71,9 +73,12 @@ def main():
                 result['q_scalar'] = q_scalar
                 results.append(result)
     receipt = {'schema': 1, 'purpose': 'correctness_and_operation_count_only',
+               'plan_stem': args.plan_stem,
                'binary_sha256': digest(args.binary),
                'frozen_fixture_sha256': digest(frozen_path),
-               'planner_sha256': digest(HERE / 'root_first_plan.py'),
+               'planner_sha256': digest(HERE / ('root_first_plan.py'
+                   if args.plan_stem == 'root-first' else 'two_parent_plan.py')),
+               'root_first_planner_sha256': digest(HERE / 'root_first_plan.py'),
                'results': results}
     args.output.write_text(json.dumps(receipt, sort_keys=True, indent=2) + '\n')
     print(json.dumps({'ok': True, 'commands': len(results),
