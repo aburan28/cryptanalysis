@@ -1,0 +1,85 @@
+{
+ "compute_ns_per_probe_roots_conv_canon": 203.21119728915662,
+ "filter_false_positive_rate_profiled": 0.024036144578313254,
+ "in_situ_lookup": [
+  {
+   "lookup_ns_per_probe_4k": 423.3265210843374,
+   "lookup_ns_per_probe_thp": 276.24292168674697,
+   "variant": "inline_lookup",
+   "what": "base 4 GiB table, the combined loop (key, lookup, next key)"
+  },
+  {
+   "lookup_ns_per_probe_4k": 280.8374924698795,
+   "lookup_ns_per_probe_thp": 142.34610692771085,
+   "variant": "pipelined_lookup",
+   "what": "base 4 GiB table, the probe pipeline (all keys + prefetch, then lookups)"
+  },
+  {
+   "lookup_ns_per_probe_4k": 264.49,
+   "lookup_ns_per_probe_thp": 138.48885542168674,
+   "variant": "compact_pipelined",
+   "what": "16-byte compact 2 GiB table, the same pipeline"
+  },
+  {
+   "lookup_ns_per_probe_4k": 26.2905798192771,
+   "lookup_ns_per_probe_thp": 13.356716867469885,
+   "variant": "filter_pipelined",
+   "what": "32 MiB blocked filter in front of the compact table (filter prefetch, filter test, survivors' slot prefetch, survivors' lookups)"
+  }
+ ],
+ "lookup_only_ns_per_probe": {
+  "lookup_dependent": {
+   "4k": 116.27684487951807,
+   "thp": 69.99000753012048
+  },
+  "lookup_independent": {
+   "4k": 112.5998719879518,
+   "thp": 65.17735692771085
+  },
+  "lookup_independent_compact": {
+   "4k": 105.78117469879518,
+   "thp": 58.197786144578316
+  },
+  "lookup_independent_filter": {
+   "4k": 40.063094879518076,
+   "thp": 44.43477409638554
+  },
+  "lookup_prefetched_base": {
+   "4k": 132.36305722891566,
+   "thp": 78.76034638554216
+  },
+  "lookup_prefetched_compact": {
+   "4k": 105.24721385542169,
+   "thp": 66.52090361445784
+  },
+  "lookup_prefetched_filter": {
+   "4k": 21.09076807228916,
+   "thp": 21.086370481927712
+  }
+ },
+ "probes": 132800,
+ "root_tables": {
+  "base_bytes": 4294967296,
+  "compact_and_filter_build_ms": 15565.583461999999,
+  "compact_bytes": 2147483648,
+  "entries": 29878182,
+  "filter_bytes": 33554432,
+  "filter_hashes": 5,
+  "filter_log2_bits": 28,
+  "filter_ones_fraction": 0.41688574850559235,
+  "filter_survivors_per_round": 3192
+ },
+ "rounds": 7,
+ "states": 400,
+ "status": "diagnostic, cloud-agent VM (Intel Xeon guest); chose the design, is not evidence of a speedup",
+ "summary": {
+  "4k_over_thp_base_pipelined": 1.9729200786116352,
+  "4k_over_thp_filter_prefetched": 1.0002085513182657,
+  "base_pipelined_lookup_ns": 142.34610692771085,
+  "compact_pipelined_lookup_ns": 138.48885542168674,
+  "filter_pipelined_lookup_ns": 13.356716867469885,
+  "prefetch_gain_base_lookup_only": 0.8275402524089874,
+  "prefetch_gain_filter_lookup_only": 2.107274655658204,
+  "reading": "Prefetch does not overlap lookups into the 2-4 GiB tables (lookup-only: prefetched about as slow as unprefetched; in situ ~140 ns per probe remain), halving the slot to 16 bytes changes almost nothing, and 4 KiB pages make the big tables much slower while the 32 MiB filter is unchanged and its prefetches do overlap. The limit is address translation for a working set far beyond TLB reach (page walks whose own entries miss the caches, few walks in flight), not bytes per slot; a small filter whose translations stay resident removes it for the ~97.6% of probes it rejects."
+ }
+}
