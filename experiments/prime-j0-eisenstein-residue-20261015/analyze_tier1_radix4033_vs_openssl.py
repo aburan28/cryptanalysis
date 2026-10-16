@@ -32,13 +32,14 @@ def interval(ratios):
     return [draws[250], draws[9749]]
 
 
-def audit(count):
+def audit(count, fixed_table=False):
     assert count in (1, 128)
-    stem = f'tier1-radix4033-vs-openssl-{count}-cpu40'
+    variant = '-fixed-table' if fixed_table else ''
+    stem = f'tier1-radix4033-vs-openssl{variant}-{count}-cpu40'
     launch = load(HERE / f'{stem}-launch.json')
     manifest = load(HERE / f'{stem}-manifest.json')
     rules = load(HERE / f'{stem}-rules.json')
-    raw = HERE / f'radix4033-vs-openssl-{count}-raw.tar.gz'
+    raw = HERE / f'radix4033-vs-openssl{variant}-{count}-raw.tar.gz'
     openssl_archive = HERE / 'openssl-secp256k1-native-provenance.tar.gz'
     candidate_archive = HERE / 'radix4033-native-provenance.tar.gz'
     assert digest(raw) == launch['raw_archive_sha256']
@@ -104,7 +105,7 @@ def audit(count):
                               ('candidate_overlay', old['hashes']['candidate_overlay'])]:
             assert artifact_hashes[paths[key]] == expected
         cases_by_id = {case['id']: case for case in manifest['cases']}
-        run_lookup, invalid, preparation = {}, [], []
+        run_lookup, invalid, preparation, candidate_preparation = {}, [], [], []
         for serial, run in enumerate(runs, 1):
             assert run['serial'] == serial
             case = cases_by_id[run['case']]
@@ -119,6 +120,9 @@ def audit(count):
             assert isfinite(float(fields['preparation_ms'])) and float(fields['preparation_ms']) >= 0
             if run['command'][0] == paths['openssl_binary']:
                 preparation.append(float(fields['preparation_ms']))
+            elif fixed_table:
+                assert int(fields['retained_bytes']) == rules['expected_candidate_retained_bytes']
+                candidate_preparation.append(float(fields['preparation_ms']))
             run_lookup[(run['repeat'], run['case'], run['variant'])] = run
             if (run['status'] != 'valid' or run['issues'] or run['returncode'] != 0
                     or run['timed_out'] or not run['postflight']['ok']):
@@ -159,6 +163,9 @@ def audit(count):
                'runs_sha256': sha256(runs_bytes).hexdigest(),
                'pairs_sha256': sha256(pairs_bytes).hexdigest(),
                'openssl_warmup_ms_mean': statistics.mean(preparation),
+               'candidate_table_preparation_ms_mean': (
+                   statistics.mean(candidate_preparation) if candidate_preparation else None),
+               'candidate_retained_bytes': rules.get('expected_candidate_retained_bytes'),
                'comparison': {'valid_pairs': len(ratios),
                               'reference_ms_mean': statistics.mean(reference) if reference else None,
                               'candidate_ms_mean': statistics.mean(candidate) if candidate else None,
@@ -171,5 +178,6 @@ def audit(count):
 
 
 if __name__ == '__main__':
-    counts = tuple(int(arg) for arg in sys.argv[1:]) or (1, 128)
-    print(json.dumps([audit(count) for count in counts], indent=2, sort_keys=True))
+    fixed_table = '--fixed-table' in sys.argv[1:]
+    counts = tuple(int(arg) for arg in sys.argv[1:] if arg != '--fixed-table') or (1, 128)
+    print(json.dumps([audit(count, fixed_table) for count in counts], indent=2, sort_keys=True))
