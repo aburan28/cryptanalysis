@@ -71,6 +71,14 @@ separate full-fixture replay checked all **12,288** outputs. Pinned Lean
 checks the pair-lattice endomorphism identity and its conditional transfer
 to a point map.
 
+The [norm-4033 radix](RADIX4033.md) uses `π=64+ω=65−τ` and evaluates each
+Horner step with six doublings, one x rotation, and one projective addition.
+Its frozen Tier 1 same-point comparison against the norm-7009 rotated path
+measured a qualified paired **1.140×** one-scalar ratio and **1.017×**
+128-point ratio, with all A/A controls passing. Both serial full-fixture arms
+verified all **12,288** outputs. Pinned Lean checks the norm, quotient
+adjugate, exact division under the selector congruence, and radix action.
+
 The [four-checkpoint radix-32 path](CHECKPOINTED_RADIX32.md) stores four
 five-digit windows at selected radix powers, retaining **832,396 bytes**.
 Its matched Tier 1 prepared-table panel evaluated 12,288 verified points
