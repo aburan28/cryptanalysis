@@ -247,6 +247,36 @@ theorem four_neighbor_steps (a b : Int) :
   simp [pairAdd]
   omega
 
+/-- Generic multiplication counts for one repeated Q digit. The affine
+table charges six normalization multiplications and one two-X setup
+multiplication; each mixed addition charges eight multiplications. -/
+def affineDigitM (uses : Nat) : Nat := 7 + 8*uses
+
+/-- A projective Q digit skips table conversion, then charges twelve
+multiplications per addition and one per nontrivial unit rotation. -/
+def projectiveDigitM (uses rotations : Nat) : Nat := 12*uses + rotations
+
+def affineDigitS (uses : Nat) : Nat := 1 + 3*uses
+def projectiveDigitS (uses : Nat) : Nat := 4*uses
+
+/-- When a Q digit is used at least twice, normalizing it wins in the
+generic source-formula model, provided the shared inversion is already paid. -/
+theorem repeated_digit_affine_dominates (uses rotations : Nat)
+    (huses : 2 ≤ uses) :
+    affineDigitM uses ≤ projectiveDigitM uses rotations ∧
+    affineDigitS uses ≤ projectiveDigitS uses := by
+  dsimp [affineDigitM, projectiveDigitM, affineDigitS, projectiveDigitS]
+  omega
+
+/-- A singleton Q digit has at most one nontrivial rotation. Keeping it
+projective saves multiplications and ties the generic square count. -/
+theorem singleton_digit_projective_dominates (rotations : Nat)
+    (hrotations : rotations ≤ 1) :
+    projectiveDigitM 1 rotations < affineDigitM 1 ∧
+    projectiveDigitS 1 = affineDigitS 1 := by
+  dsimp [affineDigitM, projectiveDigitM, affineDigitS, projectiveDigitS]
+  omega
+
 #print axioms extend_edge
 #print axioms omega_square_q_coefficient
 #print axioms unit_root_value
@@ -258,5 +288,7 @@ theorem four_neighbor_steps (a b : Int) :
 #print axioms requested_seed_values
 #print axioms requested_projection
 #print axioms four_neighbor_steps
+#print axioms repeated_digit_affine_dominates
+#print axioms singleton_digit_projective_dominates
 
 end JointSeedGraph

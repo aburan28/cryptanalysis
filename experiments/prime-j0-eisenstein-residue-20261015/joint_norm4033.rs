@@ -23,6 +23,52 @@ pub(super) struct SparseJointQProjectiveTables {
     pub(super) constructed_points: usize,
 }
 
+#[derive(Clone, Copy)]
+enum JointHybridStored {
+    DigitAffine(U256TwoXAffine),
+    TerminalAffine(U256Affine),
+    Projective(U256Jacobian),
+}
+
+enum JointHybridUse {
+    Affine(U256Affine),
+    Projective(U256Jacobian),
+}
+
+impl JointHybridStored {
+    fn unit(self, code: usize) -> JointHybridUse {
+        match self {
+            Self::DigitAffine(point) => JointHybridUse::Affine(point.unit(code)),
+            Self::TerminalAffine(point) => JointHybridUse::Affine(point.unit(code)),
+            Self::Projective(point) =>
+                JointHybridUse::Projective(joint_projective_unit(point,code)),
+        }
+    }
+}
+
+pub(super) struct SparseJointQHybridTables {
+    digit_window: Box<[(usize, JointHybridStored)]>,
+    terminal_pairs: Box<[(usize, JointHybridStored)]>,
+    pub(super) retained_bytes: usize,
+    pub(super) constructed_points: usize,
+    pub(super) affine_points: usize,
+    pub(super) projective_points: usize,
+}
+
+impl SparseJointQHybridTables {
+    fn digit(&self, index: usize, unit: usize) -> JointHybridUse {
+        let position = self.digit_window.binary_search_by_key(&index, |&(id,_)| id)
+            .expect("Q digit was prepared");
+        self.digit_window[position].1.unit(unit)
+    }
+
+    fn terminal(&self, index: usize, unit: usize) -> JointHybridUse {
+        let position = self.terminal_pairs.binary_search_by_key(&index, |&(id,_)| id)
+            .expect("Q terminal was prepared");
+        self.terminal_pairs[position].1.unit(unit)
+    }
+}
+
 impl SparseJointQProjectiveTables {
     fn digit(&self, index: usize, unit: usize) -> U256Jacobian {
         let position = self.digit_window.binary_search_by_key(&index, |&(id,_)| id)
@@ -618,6 +664,56 @@ pub(super) fn instantiate_joint_q_graph_projective(
                                    constructed_points: plan.nodes.len() }
 }
 
+pub(super) fn instantiate_joint_q_graph_hybrid(
+    q_hex: &str, plan: &JointQGraphPlan,
+    b_choices: &[[(usize,usize); ALT_SPLIT_PRIME_STEPS+1]],
+) -> SparseJointQHybridTables {
+    let (digit_seeds,terminal_seeds) = &*JOINT_SEED_SETS;
+    let mut use_counts = std::collections::BTreeMap::<(i16,i16),usize>::new();
+    for choices in b_choices {
+        for &(id,_) in &choices[..ALT_SPLIT_PRIME_STEPS] {
+            if id != 0 { *use_counts.entry(digit_seeds[id]).or_default() += 1; }
+        }
+        let id = choices[ALT_SPLIT_PRIME_STEPS].0;
+        if id != 0 { *use_counts.entry(terminal_seeds[id]).or_default() += 1; }
+    }
+    let affine_seeds = use_counts.iter().filter_map(|(&seed,&count)|
+        (count >= 2).then_some(seed)).collect::<std::collections::BTreeSet<_>>();
+    let graph = joint_graph_points(q_hex,plan);
+    let affine_nodes = plan.nodes.iter().filter(|node| affine_seeds.contains(&node.seed))
+        .collect::<Vec<_>>();
+    let projective = affine_nodes.iter().map(|node| graph[&node.seed])
+        .collect::<Vec<_>>();
+    let affine = joint_batch_into_affine(&projective);
+    let lookup = affine_nodes.iter().map(|node| node.seed).zip(affine.into_iter())
+        .collect::<std::collections::BTreeMap<_,_>>();
+    let digit_window = plan.digit_ids.iter().map(|&id| {
+        let seed = digit_seeds[id];
+        let point = if affine_seeds.contains(&seed) {
+            JointHybridStored::DigitAffine(U256TwoXAffine::from_affine(lookup[&seed]))
+        } else { JointHybridStored::Projective(graph[&seed]) };
+        (id,point)
+    }).collect::<Vec<_>>().into_boxed_slice();
+    let terminal_pairs = plan.terminal_ids.iter().map(|&id| {
+        let seed = terminal_seeds[id];
+        let point = if affine_seeds.contains(&seed) {
+            JointHybridStored::TerminalAffine(lookup[&seed])
+        } else { JointHybridStored::Projective(graph[&seed]) };
+        (id,point)
+    }).collect::<Vec<_>>().into_boxed_slice();
+    let requested = plan.digit_ids.iter().map(|&id| digit_seeds[id])
+        .chain(plan.terminal_ids.iter().map(|&id| terminal_seeds[id]))
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(requested,use_counts.keys().copied().collect());
+    let retained_bytes = digit_window.len()*size_of::<(usize,JointHybridStored)>()
+        + terminal_pairs.len()*size_of::<(usize,JointHybridStored)>()
+        + size_of::<SparseJointQHybridTables>();
+    SparseJointQHybridTables { digit_window,terminal_pairs,retained_bytes,
+                               constructed_points: plan.nodes.len(),
+                               affine_points: affine_seeds.len(),
+                               projective_points: requested.len()-affine_seeds.len() }
+}
+
 fn joint_choices(words: [u64; 4], tables: &AltHornerTables)
     -> [(usize,usize); ALT_SPLIT_PRIME_STEPS+1] {
     let scalar = super::Uint(words);
@@ -718,6 +814,35 @@ fn joint_evaluate_choices_projective(
     point.affine_hex_binary_inverse()
 }
 
+fn joint_hybrid_add(point: U256Jacobian, q: JointHybridUse) -> U256Jacobian {
+    match q {
+        JointHybridUse::Affine(q) => point.add_mixed(q),
+        JointHybridUse::Projective(q) => point.add_projective(q),
+    }
+}
+
+fn joint_evaluate_choices_hybrid(
+    a: [(usize,usize); ALT_SPLIT_PRIME_STEPS+1],
+    b: [(usize,usize); ALT_SPLIT_PRIME_STEPS+1],
+    q_tables: &SparseJointQHybridTables,
+) -> String {
+    let g_tables = &*ALT_HORNER_TABLES;
+    let (ga,gu) = a[ALT_SPLIT_PRIME_STEPS];
+    let (qb,qu) = b[ALT_SPLIT_PRIME_STEPS];
+    let mut point = if ga == 0 { U256Jacobian::identity() } else {
+        U256Jacobian::from_affine(g_tables.terminal_pairs[ga].unit(gu))
+    };
+    if qb != 0 { point = joint_hybrid_add(point,q_tables.terminal(qb,qu)); }
+    for index in (0..ALT_SPLIT_PRIME_STEPS).rev() {
+        point = alt_horner_mul_pi(point);
+        let (ga,gu) = a[index];
+        let (qb,qu) = b[index];
+        if ga != 0 { point = point.add_mixed(g_tables.digit_window[ga].unit(gu)); }
+        if qb != 0 { point = joint_hybrid_add(point,q_tables.digit(qb,qu)); }
+    }
+    point.affine_hex_binary_inverse()
+}
+
 pub(super) fn multiply_u256_tau_joint(a_words: [u64; 4], b_words: [u64; 4],
                                       q_tables: &JointQTables) -> String {
     let g_tables = &*ALT_HORNER_TABLES;
@@ -746,6 +871,15 @@ pub(super) fn multiply_u256_tau_joint_sparse_projective(
 ) -> String {
     let a = joint_choices_for_words(a_words);
     joint_evaluate_choices_projective(a,b,q_tables)
+}
+
+pub(super) fn multiply_u256_tau_joint_sparse_hybrid(
+    a_words: [u64; 4],
+    b: [(usize,usize); ALT_SPLIT_PRIME_STEPS+1],
+    q_tables: &SparseJointQHybridTables,
+) -> String {
+    let a = joint_choices_for_words(a_words);
+    joint_evaluate_choices_hybrid(a,b,q_tables)
 }
 
 struct JointPairPending {

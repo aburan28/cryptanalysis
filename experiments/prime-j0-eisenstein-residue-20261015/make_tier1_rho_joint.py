@@ -156,6 +156,8 @@ def main():
                        paths['fixture'], '1', paths['cost_aware_1']] if count == 1 else None)
         mixed_cost = ([str(BINARY), '--pilot-rho-restart-joint-graph-planned',
                        paths['fixture'], '128', paths['mixed_cost_128']] if count == 128 else None)
+        hybrid = ([str(BINARY), '--pilot-rho-restart-joint-hybrid-graph-planned',
+                   paths['fixture'], '128', paths['mixed_cost_128']] if count == 128 else None)
         prior = steiner if count == 1 else weighted
         fused = [str(BINARY), '--pilot-rho-restart-joint-fused', paths['fixture'], str(count)]
         fused_graph = [str(BINARY), '--pilot-rho-restart-joint-fused-graph',
@@ -183,7 +185,9 @@ def main():
                ('compare_projective', projective),
                ('compare_projective_vs_affine', projective)] if count == 1 else []),
             *([('compare_mixed_cost', mixed_cost),
-               ('compare_mixed_cost_vs_weighted', mixed_cost)] if count == 128 else []),
+               ('compare_mixed_cost_vs_weighted', mixed_cost),
+               ('compare_hybrid', hybrid),
+               ('compare_hybrid_vs_affine', hybrid)] if count == 128 else []),
             ('cal_mid', ref),
             ('compare_fused', fused), ('compare_fused_graph', fused_graph),
             ('compare_fused_graph_planned', fused_graph_planned),
@@ -199,6 +203,7 @@ def main():
                           else unit_root if name == 'compare_cost_aware_vs_unit_root'
                           else cost_aware if name == 'compare_projective_vs_affine'
                           else weighted if name == 'compare_mixed_cost_vs_weighted'
+                          else mixed_cost if name == 'compare_hybrid_vs_affine'
                           else ref)
             cases.append({'id': name, 'reference': paired_ref, 'candidate': candidate,
                           'expected_fields': {'count': str(count)},

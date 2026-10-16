@@ -12,7 +12,7 @@ benchmark queue.
 The [fixture](rho-restart-first128-fixture.json) has SHA-256
 `fc6a0283c51e3fd9c2eb0b82961092d3060c242d8122c9648c37fdaf614d094a`.
 The one-restart panel uses its first case; the batch panel uses its first 128
-cases. The one-restart panel runs 26 cases and the 128-restart panel runs 20;
+cases. The one-restart panel runs 26 cases and the 128-restart panel runs 22;
 each case has 16 alternating repetitions:
 
 | Case | Reference | Candidate |
@@ -40,6 +40,8 @@ each case has 16 alternating repetitions:
 | `compare_projective_vs_affine` (one restart) | Affine Q table from the cost-aware graph | Projective Q table from the same graph |
 | `compare_mixed_cost` (128 restarts) | OpenSSL no-warmup | Cost-aware mixed-addition graph and shared Horner |
 | `compare_mixed_cost_vs_weighted` (128 restarts) | Low-rotation graph | Cost-aware mixed-addition graph, same scalar stream and Q |
+| `compare_hybrid` (128 restarts) | OpenSSL no-warmup | Reuse-selective Q table from the cost-aware graph |
+| `compare_hybrid_vs_affine` (128 restarts) | Affine Q table from the cost-aware graph | Reuse-selective Q table from the same graph |
 | `cal_mid` | OpenSSL no-warmup | OpenSSL no-warmup |
 | `compare_fused` | OpenSSL no-warmup | Sparse Q table, batched affine pair sums, shared Horner, batched output normalization |
 | `compare_fused_graph` | OpenSSL no-warmup | Shared Q-seed graph followed by batched affine pair sums and output normalization |
@@ -71,7 +73,7 @@ every timed interval. The joint commands report target preparation and
 evaluation as exclusive phase costs whose sum is `online_ms`.
 
 The one-restart panel has 416 planned pairs and 832 arms; the 128-restart
-panel has 320 pairs and 640 arms. Each includes 48 OpenSSL A/A control pairs.
+panel has 352 pairs and 704 arms. Each includes 48 OpenSSL A/A control pairs.
 The queue runs one subprocess at a time on CPU 40. The Tier 1
 receipt must retain exposed topology, affinity, cgroup limits, throttling,
 steal time, memory and calibration noise. A comparison advances only when
@@ -159,6 +161,33 @@ validates the frozen command order and independent auditor through the raw
 archive boundary. The local replay
 establishes correctness and the source-level tradeoff; its elapsed times are
 not admitted as wall-performance evidence.
+
+## Reuse-selective Q table for 128 restarts
+
+The opt-in `--pilot-rho-restart-joint-hybrid-graph-planned` mode counts how
+often each frozen Q seed is used. It batch-normalizes seeds used at least
+twice and retains single-use seeds projectively. For a digit used `u` times
+with `r` nontrivial unit rotations, affine storage pays `7M + 1S` in table
+preparation and saves `4uM + uS + rM` at use sites on generic branches.
+Thus a repeated digit dominates projective storage in both multiplications
+and squares, while a single-use digit is cheaper projectively. The batch
+inversion remains shared by the repeated digits. This is a source-formula
+selection rule; it does not predict cache or branch costs. The pinned Lean
+theorems `JointSeedGraph.repeated_digit_affine_dominates` and
+`JointSeedGraph.singleton_digit_projective_dominates` prove these generic
+cost inequalities under their stated use and rotation hypotheses; the
+[proof check](joint-seed-graph-lean-check.json) records the build and axioms.
+
+The frozen 128-restart stream uses 659 distinct Q digits: 614 repeated and
+45 singletons. The singleton choices contain 30 nontrivial rotations. The
+hybrid table saves 105 modeled multiplications over the all-affine table,
+with the same modeled square count and one shared inversion. Its tagged
+entries retain more memory than the uniform affine table, so the Tier 1
+wall comparison must measure the complete preparation and evaluation path.
+The [hybrid replay receipt](hybrid-q-local-replay.json) records 266 exact
+outputs: both table modes across the 128 frozen restarts, the frozen first
+restart, and four alternate Q points. The 128-restart comparison is a batch
+question separate from the primary one-restart panel.
 
 The [seed graph method](JOINT_SEED_GRAPH.md) is an additional candidate in
 this panel. Its local exact-output receipt has 1,268 outputs. The archived

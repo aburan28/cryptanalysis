@@ -27,7 +27,8 @@ ORDER_ONE = ORDER_COMMON[:ORDER_COMMON.index('cal_mid')] + (
     'compare_projective', 'compare_projective_vs_affine') + \
     ORDER_COMMON[ORDER_COMMON.index('cal_mid'):]
 ORDER_128 = ORDER_COMMON[:ORDER_COMMON.index('cal_mid')] + (
-    'compare_mixed_cost', 'compare_mixed_cost_vs_weighted') + \
+    'compare_mixed_cost', 'compare_mixed_cost_vs_weighted',
+    'compare_hybrid', 'compare_hybrid_vs_affine') + \
     ORDER_COMMON[ORDER_COMMON.index('cal_mid'):]
 AA = ('cal_before', 'cal_mid', 'cal_after')
 
@@ -181,6 +182,10 @@ def audit(count, manifest_path, rules_path, raw_path):
         candidates['compare_mixed_cost'] = [binary, '--pilot-rho-restart-joint-graph-planned',
                                             fixture_remote, '128', rules['paths']['mixed_cost_128']]
         candidates['compare_mixed_cost_vs_weighted'] = candidates['compare_mixed_cost']
+        candidates['compare_hybrid'] = [binary,
+            '--pilot-rho-restart-joint-hybrid-graph-planned',
+            fixture_remote, '128', rules['paths']['mixed_cost_128']]
+        candidates['compare_hybrid_vs_affine'] = candidates['compare_hybrid']
     for case in manifest['cases']:
         expected_reference = (candidates['compare_root_first']
                               if case['id'] in ('compare_two_parent_vs_root_first',
@@ -199,6 +204,8 @@ def audit(count, manifest_path, rules_path, raw_path):
                               if case['id'] == 'compare_projective_vs_affine'
                               else candidates['compare_weighted']
                               if case['id'] == 'compare_mixed_cost_vs_weighted'
+                              else candidates['compare_mixed_cost']
+                              if case['id'] == 'compare_hybrid_vs_affine'
                               else reference)
         assert case['reference'] == expected_reference
         assert case['candidate'] == candidates.get(case['id'], reference)
@@ -299,6 +306,8 @@ def audit(count, manifest_path, rules_path, raw_path):
                     'compare_projective_vs_affine': 'joint_graph_projective_planned',
                     'compare_mixed_cost': 'joint_graph_planned',
                     'compare_mixed_cost_vs_weighted': 'joint_graph_planned',
+                    'compare_hybrid': 'joint_graph_hybrid_planned',
+                    'compare_hybrid_vs_affine': 'joint_graph_hybrid_planned',
                     'compare_fused': 'joint_fused',
                     'compare_fused_graph': 'joint_fused_graph',
                     'compare_fused_graph_planned': 'joint_fused_graph_planned',
@@ -313,7 +322,8 @@ def audit(count, manifest_path, rules_path, raw_path):
                          'compare_unit_root_vs_one_aux',
                          'compare_cost_aware_vs_unit_root',
                          'compare_projective_vs_affine',
-                         'compare_mixed_cost_vs_weighted') else 'openssl_nowarm')
+                         'compare_mixed_cost_vs_weighted',
+                         'compare_hybrid_vs_affine') else 'openssl_nowarm')
             key = (repeat, case_id, variant)
             assert key not in lookup
             lookup[key] = run
@@ -343,13 +353,18 @@ def audit(count, manifest_path, rules_path, raw_path):
                     if mode in ('joint_fused', 'joint_fused_graph',
                                 'joint_fused_graph_planned'):
                         assert int(fields['fused_pair_sums']) >= 0
+                    if mode == 'joint_graph_hybrid_planned':
+                        assert int(fields['hybrid_affine_points']) == 614
+                        assert int(fields['hybrid_projective_points']) == 45
                     if mode in ('joint_graph', 'joint_fused_graph',
                                 'joint_graph_planned', 'joint_fused_graph_planned',
-                                'joint_graph_projective_planned'):
+                                'joint_graph_projective_planned',
+                                'joint_graph_hybrid_planned'):
                         assert (int(fields['graph_edges']) + int(fields['direct_seeds']) ==
                                 int(fields['constructed_q_points']))
                     if mode in ('joint_graph_planned', 'joint_fused_graph_planned',
-                                'joint_graph_projective_planned'):
+                                'joint_graph_projective_planned',
+                                'joint_graph_hybrid_planned'):
                         assert number(fields, 'graph_plan_ms') == 0
                         assert number(fields, 'plan_load_ms') >= 0
                         assert int(fields['plan_bytes']) > 0
