@@ -14,6 +14,13 @@
 //! anomalous structure detectable by Kolmogorov-Smirnov goodness-of-fit
 //! tests.**
 //!
+//! *Update 2026-10-16:* the seed behind `b` is now explained: it is block
+//! 1842 of `drand48` byte output after `srand48(871696354)`, a 1997
+//! timestamp (Anthropic Frontier Red Team and F. Valsorda, 2026-10-16). The
+//! null result below stands, and the question it was built to probe
+//! (malicious selection of `b` through the seed) is closed beyond about 30
+//! bits of selection.
+//!
 //! # Methodology
 //!
 //! 1. Sieve primes `q ≤ Q` (we use `Q = 10⁶` for ~78,498 primes; a
