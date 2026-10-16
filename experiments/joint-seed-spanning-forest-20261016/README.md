@@ -87,6 +87,19 @@ proves the unit-edge and two-parent coefficient-to-point implications used by
 the emitted edges, under its stated additive and unit-action hypotheses. The native replay
 checks the concrete secp256k1 implementation.
 
+The [witness refinement](refine_witnesses.py) keeps each selected plan's
+vertex order and direct roots, then searches the already constructed unit
+orbits for cheaper one-power or two-parent witnesses for each edge. It lowers
+the one-restart auxiliary plan from 27 to 23 nontrivial projective rotations,
+and the 128-restart low-rotation plan from one to zero. The source-formula
+model consequently changes from 453 to 449 field multiplications for the
+one-restart Q-seed graph and from 11,863 to 11,862 for 128 restarts, with the
+same square and inversion counts. These are source-formula counts, not wall
+times. The [refined one-restart plan](refined-steiner-plan-1.json),
+[refined 128-restart plan](refined-weighted-plan-128.json), and
+[native replay](refined-local-replay.json) retain the exact coefficient and
+point checks: 266 expected outputs in 12 commands on the local ARM64 build.
+
 To regenerate the plans from the frozen source artifacts:
 
 ```sh
