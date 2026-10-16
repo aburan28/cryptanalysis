@@ -664,10 +664,21 @@ pub(super) fn instantiate_joint_q_graph_projective(
                                    constructed_points: plan.nodes.len() }
 }
 
-pub(super) fn instantiate_joint_q_graph_hybrid(
-    q_hex: &str, plan: &JointQGraphPlan,
+pub(super) struct JointHybridSelection {
+    affine_seeds: Vec<(i16,i16)>,
+    requested_count: usize,
+}
+
+impl JointHybridSelection {
+    pub(super) fn retained_bytes(&self) -> usize {
+        size_of::<Self>() + self.affine_seeds.capacity()*size_of::<(i16,i16)>()
+    }
+}
+
+pub(super) fn compile_joint_q_hybrid_selection(
+    plan: &JointQGraphPlan,
     b_choices: &[[(usize,usize); ALT_SPLIT_PRIME_STEPS+1]],
-) -> SparseJointQHybridTables {
+) -> JointHybridSelection {
     let (digit_seeds,terminal_seeds) = &*JOINT_SEED_SETS;
     let mut use_counts = std::collections::BTreeMap::<(i16,i16),usize>::new();
     for choices in b_choices {
@@ -678,9 +689,22 @@ pub(super) fn instantiate_joint_q_graph_hybrid(
         if id != 0 { *use_counts.entry(terminal_seeds[id]).or_default() += 1; }
     }
     let affine_seeds = use_counts.iter().filter_map(|(&seed,&count)|
-        (count >= 2).then_some(seed)).collect::<std::collections::BTreeSet<_>>();
+        (count >= 2).then_some(seed)).collect::<Vec<_>>();
+    let requested = plan.digit_ids.iter().map(|&id| digit_seeds[id])
+        .chain(plan.terminal_ids.iter().map(|&id| terminal_seeds[id]))
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(requested,use_counts.keys().copied().collect());
+    JointHybridSelection { affine_seeds, requested_count: requested.len() }
+}
+
+pub(super) fn instantiate_joint_q_graph_hybrid(
+    q_hex: &str, plan: &JointQGraphPlan, selection: &JointHybridSelection,
+) -> SparseJointQHybridTables {
+    let (digit_seeds,terminal_seeds) = &*JOINT_SEED_SETS;
+    let affine_seeds = &selection.affine_seeds;
     let graph = joint_graph_points(q_hex,plan);
-    let affine_nodes = plan.nodes.iter().filter(|node| affine_seeds.contains(&node.seed))
+    let affine_nodes = plan.nodes.iter().filter(|node|
+        affine_seeds.binary_search(&node.seed).is_ok())
         .collect::<Vec<_>>();
     let projective = affine_nodes.iter().map(|node| graph[&node.seed])
         .collect::<Vec<_>>();
@@ -689,29 +713,25 @@ pub(super) fn instantiate_joint_q_graph_hybrid(
         .collect::<std::collections::BTreeMap<_,_>>();
     let digit_window = plan.digit_ids.iter().map(|&id| {
         let seed = digit_seeds[id];
-        let point = if affine_seeds.contains(&seed) {
+        let point = if affine_seeds.binary_search(&seed).is_ok() {
             JointHybridStored::DigitAffine(U256TwoXAffine::from_affine(lookup[&seed]))
         } else { JointHybridStored::Projective(graph[&seed]) };
         (id,point)
     }).collect::<Vec<_>>().into_boxed_slice();
     let terminal_pairs = plan.terminal_ids.iter().map(|&id| {
         let seed = terminal_seeds[id];
-        let point = if affine_seeds.contains(&seed) {
+        let point = if affine_seeds.binary_search(&seed).is_ok() {
             JointHybridStored::TerminalAffine(lookup[&seed])
         } else { JointHybridStored::Projective(graph[&seed]) };
         (id,point)
     }).collect::<Vec<_>>().into_boxed_slice();
-    let requested = plan.digit_ids.iter().map(|&id| digit_seeds[id])
-        .chain(plan.terminal_ids.iter().map(|&id| terminal_seeds[id]))
-        .collect::<std::collections::BTreeSet<_>>();
-    assert_eq!(requested,use_counts.keys().copied().collect());
     let retained_bytes = digit_window.len()*size_of::<(usize,JointHybridStored)>()
         + terminal_pairs.len()*size_of::<(usize,JointHybridStored)>()
         + size_of::<SparseJointQHybridTables>();
     SparseJointQHybridTables { digit_window,terminal_pairs,retained_bytes,
                                constructed_points: plan.nodes.len(),
                                affine_points: affine_seeds.len(),
-                               projective_points: requested.len()-affine_seeds.len() }
+                               projective_points: selection.requested_count-affine_seeds.len() }
 }
 
 fn joint_choices(words: [u64; 4], tables: &AltHornerTables)

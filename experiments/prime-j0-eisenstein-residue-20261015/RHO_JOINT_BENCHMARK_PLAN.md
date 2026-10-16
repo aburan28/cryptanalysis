@@ -57,7 +57,10 @@ restart evaluation, and affine output. Direct and online graph arms also
 charge b-scalar recoding. The planned graph arms load separately frozen
 artifact of b-scalar choices and graph topology. The artifact contains no Q
 and is hashed in the panel manifest. They report `plan_load_ms` and
-`plan_bytes`, and charge graph instantiation on Q online. The auditor preserves
+`plan_bytes`, and charge graph instantiation on Q online. The hybrid mode
+also compiles its repeated-seed selector from those frozen choices during
+plan load, before the target timer, and includes the selector in `plan_bytes`.
+The auditor preserves
 plan-load, target-preparation, and evaluation times by mode. Plan generation
 and loading are separate setup costs; reuse requires the declared scalar
 stream to remain fixed across target points. The low-rotation versus root-first,
@@ -107,10 +110,11 @@ ledger and leaves the corresponding aggregate unknown.
    to write both manifest/rules pairs. The generator rebuilds the expected
    source tree from the archived base and current overlay; compare its hashes
    with every deployed artifact before submission. The generator's local
-   [static dry run](tier1-rho-joint-projective-dryrun.json) validated both
-   manifests and the auditor's frozen-input checks. Its binary
-   hash comes from the local macOS correctness build and must be replaced
-   with the Linux binary hash before dispatch.
+   [prior static dry run](tier1-rho-joint-hybrid-dryrun.json) validated both
+   manifests and the auditor's frozen-input checks before selector compilation
+   moved into plan load. Regenerate the manifests and repeat that check for
+   the current source. Replace the local macOS binary hash with the Linux
+   binary hash before dispatch.
 4. Submit only the **one-restart** manifest to the live serial queue. Wait
    for a terminal queue result, archive raw stdout/stderr, run/pair ledgers,
    host counters, preflight and postflight, then audit all source hashes,
@@ -164,8 +168,9 @@ not admitted as wall-performance evidence.
 
 ## Reuse-selective Q table for 128 restarts
 
-The opt-in `--pilot-rho-restart-joint-hybrid-graph-planned` mode counts how
-often each frozen Q seed is used. It batch-normalizes seeds used at least
+The opt-in `--pilot-rho-restart-joint-hybrid-graph-planned` mode compiles the
+use count of each Q seed from the frozen scalar plan before target timing.
+It batch-normalizes seeds used at least
 twice and retains single-use seeds projectively. For a digit used `u` times
 with `r` nontrivial unit rotations, affine storage pays `7M + 1S` in table
 preparation and saves `4uM + uS + rM` at use sites on generic branches.
@@ -188,6 +193,15 @@ The [hybrid replay receipt](hybrid-q-local-replay.json) records 266 exact
 outputs: both table modes across the 128 frozen restarts, the frozen first
 restart, and four alternate Q points. The 128-restart comparison is a batch
 question separate from the primary one-restart panel.
+
+After moving selector compilation into plan load, a macOS ARM64 release build
+with SHA-256 `e36ead44e3ba6cc5102a304bef29372ed0944d1c2f17acb56514cdec42c372da`
+replayed the frozen 1- and 128-restart plans in both affine and hybrid modes.
+All four commands reported `verified=1` and the same expected final point for
+each count. The hybrid selector retained 48 and 4,128 additional plan bytes,
+respectively; the 128-restart table still selected 614 affine and 45
+projective Q seeds. These commands check the changed accounting path and
+exact output. Their local elapsed times are outside the Tier 1 wall gate.
 
 The [seed graph method](JOINT_SEED_GRAPH.md) is an additional candidate in
 this panel. Its local exact-output receipt has 1,268 outputs. The archived

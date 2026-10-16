@@ -164,6 +164,10 @@ fn run_demand_variant(fixture_path: &str, count: usize,
     let generator_preparation_ms = generator_start.elapsed().as_secs_f64()*1000.0;
     let plan_load_start = Instant::now();
     let precomputed = plan_path.map(|path| load_graph_plan(path,rows,count));
+    let hybrid_selection = if matches!(storage,QStorage::Hybrid) {
+        let (choices,plan) = precomputed.as_ref().expect("hybrid frozen plan");
+        Some(unit_orbit_windows::compile_joint_q_hybrid_selection(plan,choices))
+    } else { None };
     let plan_load_ms = if plan_path.is_some() {
         plan_load_start.elapsed().as_secs_f64()*1000.0
     } else { 0.0 };
@@ -179,7 +183,8 @@ fn run_demand_variant(fixture_path: &str, count: usize,
             QStorage::Projective => SparseQRepresentation::Projective(
                 unit_orbit_windows::instantiate_joint_q_graph_projective(q_hex,plan)),
             QStorage::Hybrid => SparseQRepresentation::Hybrid(
-                unit_orbit_windows::instantiate_joint_q_graph_hybrid(q_hex,plan,b_choices)),
+                unit_orbit_windows::instantiate_joint_q_graph_hybrid(
+                    q_hex,plan,hybrid_selection.as_ref().expect("hybrid selector"))),
             QStorage::Affine => SparseQRepresentation::Affine(
                 unit_orbit_windows::instantiate_joint_q_graph(q_hex,plan)),
         };
@@ -210,7 +215,7 @@ fn run_demand_variant(fixture_path: &str, count: usize,
     }
     let plan_bytes = precomputed.as_ref().map(|(choices,plan)|
         plan.retained_bytes + choices.capacity()*std::mem::size_of_val(&choices[0]))
-        .unwrap_or(0);
+        .unwrap_or(0) + hybrid_selection.as_ref().map_or(0,|s| s.retained_bytes());
     let retained_bytes = generator_bytes + q_table.retained_bytes() + plan_bytes;
     let mode = if matches!(storage,QStorage::Projective) { "joint_graph_projective_planned" }
         else if matches!(storage,QStorage::Hybrid) { "joint_graph_hybrid_planned" }

@@ -126,7 +126,10 @@ def main():
                 'construction, a recoding, pair fusion where selected, Horner evaluation, '
                 'and affine output. Direct and online graph arms include b recoding. '
                 'Planned graph arms load a frozen Q-independent graph artifact '
-                'before Q-dependent timing; plan_load_ms and plan_bytes are reported separately. '
+                'before Q-dependent timing. The hybrid arm also compiles its Q-seed '
+                'representation selector from frozen choices during plan load; its retained '
+                'bytes are included in plan_bytes. plan_load_ms and plan_bytes are reported '
+                'separately from online_ms. '
                 'Fixture parsing and process launch are outside.')
     for count in (1, 128):
         stem = f'tier1-rho-joint-{count}-cpu40'
