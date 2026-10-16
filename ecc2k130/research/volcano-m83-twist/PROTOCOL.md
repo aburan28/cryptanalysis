@@ -28,3 +28,24 @@ defined over F_2 (Frobenius maps E_b to E_{b^2}), so they lose the 83-fold signe
 column folding of the N83 pipeline; that cost is reported structurally, not re-measured.
 Only a candidate that clearly beats the crater goes on to an end-to-end N83 run against
 the 28.688 ms K3425/root4 baseline (crypto: research/n83_final_tournament_results_20261015).
+
+## Addendum, 2026-10-16: rho over the 53-bit floor (frozen before any output of it was read)
+
+Question.  Does Pollard rho on any conductor-6473 floor curve of the a2 = 1 twist behave differently
+from the crater's {±P} rho (S = 0.855 ± 0.146, 6 solves, outputs/rho-a1.jsonl)?
+
+Coverage.  The 6474 floor curves form 78 orbits of 83 under b -> b^2.  (x, y) -> (x^2, y^2) is a group
+isomorphism E_b -> E_{b^2} (a2 is in F_2), so the discrete-log problem, the subgroup and every walk
+statistic are the same on all 83 curves of an orbit.  One representative per orbit (shift 0:
+O00-00 ... O77-00) therefore covers the whole floor up to that isomorphism.  All 6474 curves at one
+solve each would take ~45 h on this 4-core VM and is not run.
+
+Runs.  scripts/rho_floor.py: f83x rho MODE 1 ({±P}; floor curves have no tau over F_2), DP bits 14,
+seeds 1000 and 1001 on each of the 78 representatives (156 solves), 4 processes; every solve must
+recover its fixture scalar.
+
+Analysis.  Pooled S mean ± se against sqrt(pi/4) = 0.886 and the crater's {±P} solves; homogeneity
+across orbits by one-way ANOVA on S (78 groups of 2; F against F(77, 78)), reported as a p-value with
+no promotion of any single orbit (2 solves per orbit cannot rank orbits).  A floor orbit would "beat"
+crater rho only if the pooled floor S were below the crater {±τ^i P} S = 0.107, which the derived
+absence of tau on floor curves rules out unless the data contradict the theory.
