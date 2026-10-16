@@ -31,6 +31,13 @@ make clean
 Output: `ecdlp.pdf`. A built copy is committed so a reader without TeX
 can open the paper.
 
+**Rebuild owed:** the sources now state rho's constant exactly
+(`S = √(π/2) ≈ 1.2533` group operations for `A = 1`, `√(π/(2A))` in
+general; `sec-method.tex`, `sec-indexcalc.tex`) where they said `S ≈ 1.3`.
+The committed `ecdlp.pdf` predates that wording and was not rebuilt (no TeX
+on the editing host); rebuild with `make && make check` before the PDF is
+next cited. No measured number changed.
+
 ## Contents
 
 - Abstract.

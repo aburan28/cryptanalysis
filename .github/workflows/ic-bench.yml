@@ -23,6 +23,11 @@ on:
       - "ecc2k130/runner/codegen/curves.py"
       - "ecc2k130/runner/codegen/field.py"
       - "ecc2k130/runner/codegen/indexcalc.py"
+      - "tools/bitops.py"
+      - "tools/rho_reference.py"
+      - "docs/units/**"
+      - "tests/test_bitops.py"
+      - "tests/test_rho_reference.py"
       - ".github/workflows/ic-bench.yml"
   push:
     branches: ["claude/cryptanalysis-repo-setup-p59kek"]
@@ -42,6 +47,11 @@ on:
       - "ecc2k130/runner/codegen/curves.py"
       - "ecc2k130/runner/codegen/field.py"
       - "ecc2k130/runner/codegen/indexcalc.py"
+      - "tools/bitops.py"
+      - "tools/rho_reference.py"
+      - "docs/units/**"
+      - "tests/test_bitops.py"
+      - "tests/test_rho_reference.py"
       - ".github/workflows/ic-bench.yml"
   workflow_dispatch:
 
@@ -75,6 +85,7 @@ jobs:
         run: |
           python -m pytest -q experiments/pdp-degree-heuristics
           python -m pytest -q experiments/ic-bench
+          python -m pytest -q tests/test_bitops.py tests/test_rho_reference.py
           python -m pytest -q experiments/fb-archive
           python -m pytest -q experiments/fb-search
           python -m pytest -q experiments/frobenius-quotient-m4/test_fqm4_factor_bases.py

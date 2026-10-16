@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Bridge ca-ic prime/orbit JSON into the common IC receipt contract."""
 from __future__ import annotations
-import argparse, hashlib, json, math, platform, subprocess
+import argparse, hashlib, json, platform, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+import rho_reference  # noqa: E402
 BINARY = ROOT / "suite" / "target" / "release" / "ca-ic"
 PHASES = ("setup","isogeny","factor_base","precompute","queries","pdp",
           "relation_check","matrix_build","relation_la","target_descent","recovery_check")
@@ -28,12 +30,12 @@ def frozen(x):
     if isinstance(x,dict): return {k:frozen(v) for k,v in x.items()}
     return x
 
+# The prime receipts' batch-rho columns use the `with_setup` variant of tools/rho_reference.py
+# (ca-ic's batch_rho_expected_ops: seeding and a 32-entry jump table charged, smul = ceil(3 bits(r)/2)).
+RHO_VARIANT="with_setup"
+
 def batch_rho(r,w,t,folded):
-    n=r/w if folded else r; term=1.; series=0.
-    for k in range(t):
-        series+=term; term*= (2*k+1)/(2*k+2)
-    scalar=(3*r.bit_length()+1)//2
-    return round(math.sqrt(math.pi*n/2)*series+t*(2*scalar+1)+32*scalar)
+    return round(rho_reference.batch_group_operations(r,t,w if folded else 1,RHO_VARIANT))
 
 def prefixes(k):
     out=[]; n=1
@@ -158,7 +160,9 @@ def normalize(r,host=None,run_number=1):
       "rho_batch":{"independent_operations":len(ds)*rho,
         "shared_dp_expected_operations":batch_rho(order,w,len(ds),False),
         "folded_shared_dp_expected_operations":batch_rho(order,w,len(ds),True),
-        "model":"Kuhn-Struik shared-DP expectation with ca-ic seeding and jump-table charges"},
+        "model":"Kuhn-Struik shared-DP expectation with ca-ic seeding and jump-table charges",
+        "variant":RHO_VARIANT},
+      "rho_reference":rho_reference.references(order,len(ds),w,1),
       "ratio_to_rho":total/rho if total else None,"ratio_to_floor":total/floor if total else None,
       "ratio_to_independent_rho_batch":total/(len(ds)*rho) if total else None,
       "ratio_to_batch_rho":total/batch_rho(order,w,len(ds),False) if total else None,
@@ -172,7 +176,7 @@ def normalize(r,host=None,run_number=1):
         "ic_over_independent_rho":total/(len(ds)*rho) if total else None,
         "ic_over_batch_rho":total/batch_rho(order,w,len(ds),False) if total else None,
         "ic_over_folded_batch_rho":total/batch_rho(order,w,len(ds),True) if total else None,
-        "prefixes":ps,"shared":"prime logarithm database precomputation"},
+        "prefixes":ps,"shared":"prime logarithm database precomputation","batch_rho_variant":RHO_VARIANT},
       "verified_scalar":status=="complete","scalar_certificate_ref":f"{run_id}#prime-descents" if status=="complete" else None,
       "descents":[{"expected":d["expected"],"recovered":d["recovered"],"verified":d["verified"],
                    "target":d["target"],"attempts":d["trials"]} for d in ds],
