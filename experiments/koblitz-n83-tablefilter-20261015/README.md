@@ -10,7 +10,7 @@ checked for exactness, protocol frozen, Tier 1 run started; no result yet.**
 The frozen [protocol](protocol.json) and [schedule](schedule.json) were
 committed before any Tier 1 timing. The run is the push-triggered workflow
 `.github/workflows/n83-table-filter.yml` on branch `claude/n83-table-filter`
-(RUN_ID_PLACEHOLDER). Its receipt, result, result figure and the refreshed
+(run [38829449594](https://github.com/aburan28/cryptanalysis/actions/runs/38829449594), commit 1bf514cb3). Its receipt, result, result figure and the refreshed
 PDF are owed after the run. Nothing on this page is a Tier 1 measurement yet.
 
 ## Question
@@ -39,7 +39,7 @@ Raw files: [`smoke/profile/`](smoke/profile/); table:
 
 **Layout (from the source).** `RootTable128` is open addressing with linear
 probing over `(u128, u64)` slots, which pad to 32 bytes; its capacity is
-`(2 · 2 · #states).next_power_of_two()` = 2^27 slots, 4 GiB, for 29,878,182
+`(2 * 2 * #states).next_power_of_two()` = 2^27 slots, 4 GiB, for 29,878,182
 keys (load 0.22). A probe hashes the 83-bit canonical key multiplicatively
 to its home slot and reads one or two slots. Each index state makes about
 332 probes; all but about one in 1.7 million miss.
