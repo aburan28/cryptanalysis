@@ -60,6 +60,8 @@ The fixed-table path also passed a [two-arm full-fixture plan](tier1-radix4033-f
 
 The next timing gate is a fresh, predeclared comparison on an allocation with stable calibration, or an auditable physically isolated host. Then the fixed-table method needs a matched rho restart or walk-step benchmark on the actual curve and public-scalar distribution before integration.
 
+The [matched rho restart-kernel study](RHO_RESTART.md) now measures `aG+bQ` with the norm-4033 fixed-base `aG` path and an OpenSSL arbitrary-point `bQ` path. Its qualified 128-restart panel favors OpenSSL for the complete kernel; the study records the cost of crossing point representations and the proposed joint norm-4033 Horner design.
+
 ## Full-fixture replay
 
 The separately [frozen manifest](tier1-radix4033-full-replay-cpu40-manifest.json) and [rules](tier1-radix4033-full-replay-cpu40-rules.json) sent two identical candidate arms through the serial queue. Job `1d3cf18c0fc94bf3b4c9646d783156f2` verified all **12,288** frozen outputs in each arm with stable artifacts. The [auditor](analyze_tier1_radix4033_full_replay.py), [launch](tier1-radix4033-full-replay-cpu40-launch.json), [audit](tier1-radix4033-full-replay-cpu40-audit.json), and [raw archive](radix4033-full-replay-raw.tar.gz) preserve the exact run. The two intervals were **3.652 s** and **3.670 s**. This A/A correctness run has a null speedup field.
