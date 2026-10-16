@@ -9,6 +9,9 @@ GATE = {0: 0.001, 1: 0.05}   # PROTOCOL.md "clearly beats" margins
 
 def load(name):
     p = twist.OUT / name
+    if not p.exists() and (twist.OUT / (name + '.gz')).exists():   # committed archives are gzipped
+        import gzip
+        return [json.loads(l) for l in gzip.open(twist.OUT / (name + '.gz'), 'rt').read().splitlines() if l]
     return [json.loads(l) for l in p.read_text().splitlines() if l] if p.exists() else []
 
 

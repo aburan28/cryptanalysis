@@ -100,9 +100,11 @@ a2 = 1 (h = 1128547018):
 
 Crater rank from top among the floor: a2 = 0 {a0['crater_rank_from_top']} of 6475, a2 = 1 {a1['crater_rank_from_top']} of 6475.
 Natural factor-base sizes on the floor: a2 = 0 {a0['floor_x_count']['min']}–{a0['floor_x_count']['max']}, a2 = 1
-{a1['floor_x_count']['min']}–{a1['floor_x_count']['max']} points. For a2 = 1 the floor spread (sd {a1['floor_Y']['sd']:.3f}) is the
-Poisson spread of counts near {round(1 / a1['poisson_sd_Y'] ** 2)}; the best floor curve is a draw from that distribution, not a structural lead
-(no replication was preregistered, so it is not promoted).
+{a1['floor_x_count']['min']}–{a1['floor_x_count']['max']} points. For a2 = 1 the observed floor sd of Y is {a1['floor_Y']['sd']:.4f},
+{a1['floor_Y']['sd'] / a1['poisson_sd_Y']:.2f}× the Poisson sd ({a1['poisson_sd_Y']:.4f}) of a count near {round(1 / a1['poisson_sd_Y'] ** 2)}; the excess is
+observed, not explained here (overlapping 4-subsets make eligible counts dependent, which is one candidate). The best floor curve,
+{a1['top5'][0][1]}, is {pct(a1['top5'][0][0] / a1['crater']['Y_matched'] - 1)} above the crater, inside the gate; no replication was
+preregistered, so it is not promoted and no curve is named a lead.
 
 ## Pollard rho on the a2 = 1 twist (measured)
 

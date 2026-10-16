@@ -9,7 +9,18 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from PIL import Image as PILImage
 
 HERE = Path(__file__).resolve().parent
+# Unicode TrueType fonts (ℓ, ψ, τ, sub/superscripts): matplotlib's bundled DejaVu, a dependency already
+import matplotlib
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.fonts import addMapping
+_TTF = Path(matplotlib.__file__).parent / 'mpl-data' / 'fonts' / 'ttf'
+for name, fn in (('DV', 'DejaVuSans.ttf'), ('DVB', 'DejaVuSans-Bold.ttf'), ('DVM', 'DejaVuSansMono.ttf')):
+    pdfmetrics.registerFont(TTFont(name, str(_TTF / fn)))
+addMapping('DV', 0, 0, 'DV'); addMapping('DV', 1, 0, 'DVB'); addMapping('DV', 0, 1, 'DV'); addMapping('DV', 1, 1, 'DVB')
 ss = getSampleStyleSheet()
+for _st in ss.byName.values():
+    _st.fontName = 'DVB' if 'Bold' in getattr(_st, 'fontName', '') or _st.name.startswith(('Heading', 'Title')) else 'DV'
 body = ParagraphStyle('b', parent=ss['BodyText'], fontSize=9.2, leading=12.2)
 cell = ParagraphStyle('c', parent=body, fontSize=7.6, leading=9.4)
 H = {1: ss['Title'], 2: ParagraphStyle('h2', parent=ss['Heading2'], fontSize=12.5), 3: ss['Heading3']}
@@ -18,7 +29,7 @@ H = {1: ss['Title'], 2: ParagraphStyle('h2', parent=ss['Heading2'], fontSize=12.
 def inline(t):
     t = t.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
     t = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', t)
-    t = re.sub(r'`([^`]+)`', r'<font face="Courier">\1</font>', t)
+    t = re.sub(r'`([^`]+)`', r'<font face="DVM">\1</font>', t)
     t = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<u>\1</u> (\2)', t)
     return t
 
@@ -31,7 +42,7 @@ def build(md=HERE / 'REPORT.md', pdf=HERE / 'REPORT.pdf'):
         if l.startswith('```'):
             j = i + 1; code = []
             while j < len(lines) and not lines[j].startswith('```'): code.append(lines[j]); j += 1
-            out += [Preformatted('\n'.join(code), ParagraphStyle('pre', fontName='Courier', fontSize=7.5, leading=9)), Spacer(1, 6)]
+            out += [Preformatted('\n'.join(code), ParagraphStyle('pre', fontName='DVM', fontSize=7.5, leading=9)), Spacer(1, 6)]
             i = j + 1; continue
         m = re.match(r'(#+) (.*)', l)
         if m: out.append(Paragraph(inline(m.group(2)), H[min(len(m.group(1)), 3)])); i += 1; continue
