@@ -45,6 +45,9 @@ cold panel measured **128.35 ms** versus **93.30 ms** for plain radix-64.
 In a direct cold 12,288-point batch panel, preparation plus evaluation
 measured **699.32 ms** versus **722.34 ms** for plain radix-64, a qualified
 **1.0323×** paired gain.
+At 4,096 outputs, the corresponding cold comparison favored plain
+radix-64, **304.02 ms** versus **319.94 ms**. The direct panels bracket
+the cold crossover between those two batch sizes.
 Lean checks the block-evaluation identity for every member of the radix
 family under explicit point-map hypotheses.
 
