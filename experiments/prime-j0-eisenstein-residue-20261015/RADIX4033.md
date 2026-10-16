@@ -23,9 +23,12 @@ The committed [one-scalar](tier1-radix4033-1-cpu40-manifest.json) and [128-point
 | Workload | Norm-7009 mean | Norm-4033 mean | Qualified paired reference/candidate median | Paired bootstrap 95% interval |
 | --- | ---: | ---: | ---: | ---: |
 | One scalar | 0.542 ms | 0.471 ms | 1.140× | [1.130, 1.144] |
+| One scalar, fresh serial replication on the same allocation | 0.542 ms | 0.490 ms | 1.132× | [1.117, 1.146] |
 | 128 points | 39.500 ms | 38.959 ms | 1.017× | [1.010, 1.019] |
 
 The [independent auditor](analyze_tier1_radix4033.py) checked source and binary hashes, every command/stdout/stderr and pair record, independent scalar replay of measured points, stable artifacts, and all A/A controls. Each panel completed **96 valid arms and 48 valid pairs**. The [one-scalar launch](tier1-radix4033-1-cpu40-launch.json), [audit](tier1-radix4033-1-cpu40-audit.json), and [raw archive](radix4033-1-raw.tar.gz) identify job `5198a67ca1fb418884feeb1585ad7d67`; the [128-point launch](tier1-radix4033-128-cpu40-launch.json), [audit](tier1-radix4033-128-cpu40-audit.json), and [raw archive](radix4033-128-raw.tar.gz) identify job `8fd7116208d94dee871413c6e33b4859`. The [native provenance](radix4033-native-provenance.tar.gz) carries both exact source trees, binaries, overlays, fixture, and build output. The initial [128-point correctness pilot](tier1-radix4033-128-pilot-cpu40-launch.json) and [raw record](radix4033-128-pilot-raw.tar.gz) are retained separately.
+
+The serial worker ran a fresh one-scalar replication as job `85e158fb07c14ef78a803932b89da785` with the identical committed manifest, rules, binaries, fixture, and CPU allocation. Its [launch record](tier1-radix4033-1-cpu40-replication-launch.json), [independent audit](tier1-radix4033-1-cpu40-replication-audit.json), and [raw archive](radix4033-1-replication-85e158fb-raw.tar.gz) preserve all 96 arms and 48 pairs. All arms and both adjacent A/A controls passed; the 16 comparison pairs passed the Tier 1 gate. This is same-allocation replication, so a second allocation remains a separate experiment.
 
 ## Full-fixture replay
 

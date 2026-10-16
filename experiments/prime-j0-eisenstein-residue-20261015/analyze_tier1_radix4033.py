@@ -19,12 +19,16 @@ def interval(ratios):
                    for _ in range(10000))
     return [draws[250], draws[9749]]
 
-def audit(count):
+def audit(count, replication=False):
     assert count in (1, 128)
     stem = f'tier1-radix4033-{count}-cpu40'
-    raw = HERE / f'radix4033-{count}-raw.tar.gz'
-    launch, rules, planned = (load(HERE / f'{stem}-{suffix}.json')
-                              for suffix in ('launch', 'rules', 'manifest'))
+    raw = (HERE / 'radix4033-1-replication-85e158fb-raw.tar.gz' if replication
+           else HERE / f'radix4033-{count}-raw.tar.gz')
+    launch_name = ('tier1-radix4033-1-cpu40-replication-launch.json' if replication
+                   else f'{stem}-launch.json')
+    launch = load(HERE / launch_name)
+    rules, planned = (load(HERE / f'{stem}-{suffix}.json')
+                      for suffix in ('rules', 'manifest'))
     assert digest(raw) == launch['raw_archive_sha256']
     assert digest(PROVENANCE) == launch['provenance_sha256']
     assert digest(HERE / f'{stem}-rules.json') == launch['rules_sha256']
@@ -122,9 +126,12 @@ def audit(count):
                               'aggregate_status': 'qualified' if qualified else 'unknown_after_tier_gate',
                               'qualified_ratio': statistics.median(ratios) if qualified else None,
                               'max_selected_entries': max(selected)}}
-    (HERE / f'{stem}-audit.json').write_text(json.dumps(receipt, indent=2, sort_keys=True) + '\n')
+    audit_name = (f'{stem}-replication-audit.json' if replication else f'{stem}-audit.json')
+    (HERE / audit_name).write_text(json.dumps(receipt, indent=2, sort_keys=True) + '\n')
     return receipt
 
 if __name__ == '__main__':
-    counts = tuple(int(value) for value in sys.argv[1:]) or (1, 128)
-    print(json.dumps([audit(count) for count in counts], indent=2, sort_keys=True))
+    replication = '--replication' in sys.argv[1:]
+    counts = tuple(int(value) for value in sys.argv[1:] if value != '--replication') or ((1,) if replication else (1, 128))
+    assert not replication or counts == (1,)
+    print(json.dumps([audit(count, replication) for count in counts], indent=2, sort_keys=True))
