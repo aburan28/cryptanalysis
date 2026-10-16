@@ -1,8 +1,9 @@
-# Root-first Eisenstein seed graph
+# Eisenstein Q-seed graph scheduling
 
 Two auxiliary coefficient vertices lower the source-level Q-seed
 `add_projective` count from 62 to **25** for the frozen one-restart stream.
-Root-first ordering lowers the 128-restart count from 667 to **660**. All use the same scalar
+Low-rotation ordering lowers the 128-restart count from 667 to **660** with
+only one nontrivial unit rotation. All use the same scalar
 recoding, requested seeds, Q input, and native evaluator as the [joint graph
 experiment](../prime-j0-eisenstein-residue-20261015/JOINT_SEED_GRAPH.md).
 
@@ -29,10 +30,23 @@ emits each explicit two-parent witness before walking that component's
 unit-power edges. The native loader checks these coefficient equations and
 topological dependencies.
 
-| Restarts | Requested seeds | Original calls | Root-first calls | Two-parent calls | Auxiliary calls |
-| ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 21 | 62 | 55 | 38 | **25** |
-| 128 | 659 | 667 | 660 | 660 | **660** |
+| Restarts | Requested seeds | Original calls | Root-first calls | Low-rotation calls | Two-parent calls | Auxiliary calls |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 21 | 62 | 55 | 55 | 38 | **25** |
+| 128 | 659 | 667 | 660 | **660** | 660 | 660 |
+
+The [low-rotation planner](weighted_plan.py) chooses a cheap direct root and
+grows each component through frontier edges with the fewest projective unit
+rotations. Its [128-restart plan](weighted-plan-128.json) uses one such
+rotation, compared with 518 in the earlier root-first order. The
+[source-formula profile](seed-field-op-model.json) counts the initial
+identity-return calls separately and includes graph rotations and batch
+normalization. Under its stated generic-addition model, the selected
+one-restart auxiliary plan uses 330 fewer field multiplications and 118 fewer
+field squares than the original graph; the selected 128-restart low-rotation
+plan uses 104 fewer multiplications and 28 fewer squares. The earlier
+128-restart root-first plan instead has 413 more modeled multiplications;
+its lower `add_projective` count alone was an incomplete cost signal.
 
 The [auxiliary planner](steiner_plan.py) examines the remaining direct roots
 after two-parent linking. It finds two shared vertices, `(-3,0)` and `(0,-5)`,
@@ -62,9 +76,10 @@ The two-parent receipts and plans are
 
 The [root-first replay](root-first-local-replay.json) and
 [two-parent replay](two-parent-local-replay.json), and
-[auxiliary replay](steiner-local-replay.json) each invoke both native planned
+[auxiliary replay](steiner-local-replay.json), and
+[low-rotation replay](weighted-local-replay.json) each invoke both native planned
 evaluators on the original Q and four independently constructed Q values. They
-checks every frozen point in the one- and 128-restart streams plus the
+check every frozen point in the one- and 128-restart streams plus the
 alternate one-restart points. These local invocations provide correctness and
 operation-count evidence; wall-time comparison remains in the Tier 1 paired
 panel. The [existing Lean graph proof](../prime-j0-eisenstein-residue-20261015/JointSeedGraph.lean)
@@ -93,10 +108,17 @@ python3 steiner_plan.py \
 python3 steiner_plan.py \
   --source two-parent-plan-128.json \
   --output steiner-plan-128.json --receipt steiner-128-receipt.json
+python3 weighted_plan.py \
+  --source root-first-plan-1.json \
+  --output weighted-plan-1.json --receipt weighted-1-receipt.json
+python3 weighted_plan.py \
+  --source root-first-plan-128.json \
+  --output weighted-plan-128.json --receipt weighted-128-receipt.json
+python3 profile_seed_field_ops.py
 ```
 
 The plans are compatible with the existing
 `--pilot-rho-restart-joint-graph-planned` and
 `--pilot-rho-restart-joint-fused-graph-planned` commands. A future Tier 1
-panel should add the root-first plans as distinct frozen arms, with a same-Q,
-same-scalar paired comparison and the usual calibration and noise gates.
+panel pairs the frozen graph orders on the same Q and scalar stream, with
+calibration and noise gates for every claimed wall-time comparison.
