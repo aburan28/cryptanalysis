@@ -13,6 +13,7 @@
 //       a relation exactly through its tag: a signed sum lies in the prime
 //       subgroup iff its tags sum to 0 mod h.  Header line "points C".
 //       Self-checks: [N]R = O, exact order h of the generator, tag homomorphism.
+//   f83x rho ...  (Pollard rho on the prime subgroup; see cmd_rho)
 //   f83x count H   < tags (one per line)
 //       Exact number of (4-subset, sign vector) pairs with signed tag sum 0 mod h,
 //       the quantity run06_four_summand.py's eligible4() computes for h = 4.
@@ -316,11 +317,138 @@ static int cmd_count(int argc, char **argv)
     return 0;
 }
 
+
+// ---- Pollard rho on the prime subgroup (same arithmetic as the yield census) ----
+//
+//   f83x rho A2 B N H MODE LAMBDA SEED DPBITS
+//       MODE 0: plain r-adding walk; 1: classes {+-P}; 2: classes {+-tau^i P} (crater only:
+//       LAMBDA is the eigenvalue of tau on <G>, checked as [LAMBDA]G = (x^2, y^2)).
+//       r = 32 adding walk, distinguished points (bits 1..DPBITS of the canonical x; bit 0 is
+//       pinned by Tr(x) = Tr(a2) in this basis, Tr = bits {0, 79, 81}),
+//       next-index rule against 2-cycles, cycle detection over the last 32 states with a
+//       deterministic doubling escape, and a walk-length cap.  The target Q = [k]G is a
+//       fixture from SEED; the recovered k is checked against it and by [k]G = Q.
+//       Prints one "rho ..." line of counters.
+#define RR 32
+typedef struct { pt P; u64 a, b; } st;
+static u64 NN, LAMP[M];
+static int MODE;
+static u64 SQR;
+static u64 addm(u64 x, u64 y) { u64 s = x + y; return s >= NN ? s - NN : s; }
+static u64 negm(u64 x) { return x ? NN - x : 0; }
+static void canon(st *s)
+{
+    if (MODE == 2 && !s->P.inf) {
+        u128 x = s->P.x, best = x; int bi = 0;
+        for (int i = 1; i < M; i++) {
+            x = fsqr(x); SQR++;
+            if (x < best) { best = x; bi = i; }
+        }
+        s->P.x = best; s->P.y = fsqrn(s->P.y, bi); SQR += bi;
+        s->a = mulmod(s->a, LAMP[bi], NN); s->b = mulmod(s->b, LAMP[bi], NN);
+    }
+    if (MODE >= 1 && !s->P.inf && (s->P.y ^ s->P.x) < s->P.y) {
+        s->P.y ^= s->P.x; s->a = negm(s->a); s->b = negm(s->b);
+    }
+}
+static inline int pidx(pt P) { return P.inf ? 0 : (int)((((u64)(P.x >> 20)) * 0x9E3779B97F4A7C15ULL) >> 59); }
+typedef struct { u64 key; u128 x; u64 a, b; } dpe;
+static dpe *dpt; static u64 dpsz, dpn;
+static int cmd_rho(int argc, char **argv)
+{
+    if (argc < 10) return 2;
+    A2 = parse_u128(argv[2], 10); B = parse_u128(argv[3], 16);
+    u128 N = parse_u128(argv[4], 10); u128 H = parse_u128(argv[5], 10);
+    MODE = atoi(argv[6]); u64 lam = strtoull(argv[7], NULL, 10);
+    u64 seed = strtoull(argv[8], NULL, 10); int d = atoi(argv[9]);
+    NPRIME = N / H; NN = (u64)NPRIME;
+    if (NPRIME * H != N || NPRIME >> 63) { fprintf(stderr, "bad N/H\n"); return 2; }
+    rs ^= seed * 0x2545F4914F6CDD1DULL ^ (u64)B; for (int i = 0; i < 20; i++) rnd();
+    pt G;
+    for (;;) { pt R; if (!lift(rfield(), &R)) continue; G = pmulk(H, R); if (!G.inf) break; }
+    if (!pmulk(NPRIME, G).inf) { fprintf(stderr, "G not in the prime subgroup\n"); return 4; }
+    u64 k = rnd() % NN; pt Q = pmulk(k, G);            // fixture, outside every counter below
+    if (MODE == 2) {
+        pt tG = {fsqr(G.x), fsqr(G.y), 0};
+        if (!peq(pmulk(lam, G), tG)) { fprintf(stderr, "lambda is not tau on <G>\n"); return 7; }
+        LAMP[0] = 1; for (int i = 1; i < M; i++) LAMP[i] = mulmod(LAMP[i - 1], lam, NN);
+    }
+    u64 setup0 = OPS;
+    st Rm[RR];
+    for (int j = 0; j < RR; j++) {
+        Rm[j].a = rnd() % NN; Rm[j].b = rnd() % NN;
+        Rm[j].P = padd(pmulk(Rm[j].a, G), pmulk(Rm[j].b, Q));
+    }
+    u64 ops_mult = OPS - setup0;
+    dpsz = 1 << 20; dpt = calloc(dpsz, sizeof(dpe)); dpn = 0;
+    u64 steps = 0, walks = 0, restarts = 0, escapes = 0, start_ops = 0, wasted = 0, useless = 0;
+    u64 cap = (u64)40 << d, dmask = ((u64)1 << d) - 1;
+    st ring[32]; int rn;
+    u64 found = 0;
+    while (!found) {
+        u64 o0 = OPS;
+        st s; s.a = rnd() % NN; s.b = rnd() % NN; s.P = padd(pmulk(s.a, G), pmulk(s.b, Q)); canon(&s);
+        start_ops += OPS - o0; walks++; rn = 0;
+        u64 len = 0, dps_on_walk = 0;
+        for (;;) {
+            if (s.P.inf) { restarts++; wasted += len; break; }
+            if ((((u64)s.P.x >> 1) & dmask) == 0) {   // bit 0 skipped: Tr(x) = Tr(a2) on the odd-order subgroup pins it for minimal conjugates
+                u64 key = (u64)s.P.x ^ (u64)(s.P.x >> 64) * 0x9E3779B97F4A7C15ULL;
+                u64 i = key & (dpsz - 1);
+                while (dpt[i].key && !(dpt[i].key == key + 1 && dpt[i].x == s.P.x)) i = (i + 1) & (dpsz - 1);
+                if (dpt[i].key) {
+                    u64 db = (dpt[i].b + NN - s.b) % NN;
+                    if (db) {
+                        u64 kk = mulmod((s.a + NN - dpt[i].a) % NN, powm(db, NN - 2, NN), NN);
+                        if (kk == k && peq(pmulk(kk, G), Q)) { found = 1; break; }
+                        // sign/Frobenius ambiguity cannot occur: equal canonical points are equal points
+                        fprintf(stderr, "collision gave a wrong scalar\n"); return 8;
+                    }
+                    useless++; wasted += len; (void)dps_on_walk; break;
+                }
+                dpt[i].key = key + 1; dpt[i].x = s.P.x; dpt[i].a = s.a; dpt[i].b = s.b;
+                if (++dpn * 2 > dpsz) { fprintf(stderr, "DP table full\n"); return 9; }
+                dps_on_walk++; len = 0;   // keep walking (van Oorschot-Wiener, one processor)
+            }
+            if (len > cap) { restarts++; wasted += len; break; }
+            // fruitless-cycle check over the last 32 states
+            if (MODE >= 1) {
+                int hit = -1;
+                for (int t = 0; t < rn && t < 32; t++) if (ring[t].P.x == s.P.x && !ring[t].P.inf) { hit = t; break; }
+                if (hit >= 0) {
+                    st m = s;
+                    for (int t = 0; t < rn && t < 32; t++) if (ring[t].P.x < m.P.x) m = ring[t];
+                    s.P = pdbl(m.P); s.a = addm(m.a, m.a); s.b = addm(m.b, m.b); canon(&s);
+                    escapes++; steps++; len++; rn = 0;
+                    continue;
+                }
+                ring[rn % 32] = s; rn++;
+            }
+            int j = pidx(s.P);
+            st t = s; t.P = padd(s.P, Rm[j].P); t.a = addm(s.a, Rm[j].a); t.b = addm(s.b, Rm[j].b); canon(&t);
+            if (MODE >= 1 && pidx(t.P) == j) {
+                int j2 = (j + 1) % RR;
+                t = s; t.P = padd(s.P, Rm[j2].P); t.a = addm(s.a, Rm[j2].a); t.b = addm(s.b, Rm[j2].b); canon(&t);
+                steps++;
+            }
+            s = t; steps++; len++;
+        }
+    }
+    printf("rho mode %d n %llu k_ok 1 steps %llu walks %llu start_ops %llu multiplier_ops %llu canon_squarings %llu "
+           "dp_stored %llu restarts %llu escapes %llu useless_collisions %llu wasted_steps %llu total_group_ops %llu\n",
+           MODE, (unsigned long long)NN, (unsigned long long)steps, (unsigned long long)walks,
+           (unsigned long long)start_ops, (unsigned long long)ops_mult, (unsigned long long)SQR,
+           (unsigned long long)dpn, (unsigned long long)restarts, (unsigned long long)escapes,
+           (unsigned long long)useless, (unsigned long long)wasted, (unsigned long long)(OPS - setup0));
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     init_trace();
     if (argc >= 2 && !strcmp(argv[1], "tags")) return cmd_tags(argc, argv);
     if (argc >= 2 && !strcmp(argv[1], "count")) return cmd_count(argc, argv);
+    if (argc >= 2 && !strcmp(argv[1], "rho")) return cmd_rho(argc, argv);
     fprintf(stderr, "usage: f83x tags A2 B_HEX N H FACTORS K BASIS_HEX... | f83x count H < tags\n");
     return 2;
 }
