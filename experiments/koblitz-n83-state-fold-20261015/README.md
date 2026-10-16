@@ -5,12 +5,15 @@ date: 2026-10-15
 
 # State fold: the n = 83 K600 root index stores each unordered pair once
 
-**Status (2026-10-15): protocol frozen, Tier 1 run started; no result yet.**
-The frozen [protocol](protocol.json) and [schedule](schedule.json) were
-committed before any timing. The run is the push-triggered workflow
-`.github/workflows/n83-state-fold.yml` on branch `claude/n83-state-fold`. Its
-receipt, result, figures and PDF are owed after the run. Nothing on this page
-is a timing measurement yet.
+**Status (2026-10-15): measured; frozen primary rule applied; verdict
+`improvement`.** GitHub Actions run
+[38819494806](https://github.com/aburan28/cryptanalysis/actions/runs/38819494806)
+(attempt 1, one `ubuntu-24.04` runner, Tier 1 instance scope) ran the frozen
+[protocol](protocol.json) and [schedule](schedule.json). Its artifact
+`n83-state-fold-38819494806-1` is archived in
+[`run_github_38819494806/`](run_github_38819494806/). On 16 new points the
+folded index lowers the mean cold cost (setup + one-target online) by
+**1.8372 [1.8216, 1.8528]** (cold cB / cF). See [Result](#result).
 
 ## Question
 
@@ -146,3 +149,85 @@ the 384 scan-order held-out points and the 576 combined primary points.
   skipped state), cX audit 332 (sum 1,988,184); identical state and table
   digests; peak RSS 5,543 → 2,812 MiB.
 - `smoke/`: the runner, wrapper, gates and verifier on segment C1.
+
+## Result
+
+All gates pass: every scheduled row is present and valid, 16/16 points
+complete, probe identities, one relation per order group, one scalar per
+point across every arm and the tuned rho (replayed in the pinned oracle),
+rank tables equal to B's archived table. The A/A and the planted control
+pass. `verify_receipt.py` re-run on the archive reproduces `result.json`
+byte for byte. The verifier flags one contention note: serial 3 (`cF`)
+recorded major page faults; the row is valid and stays in.
+
+![Frozen ratios with 95% bootstrap intervals, all from `result.json`
+([source](figures/result.tex), [vector](figures/result.pdf), rendered by
+[`make_figures.py`](make_figures.py)).](figures/result.png)
+
+### Primary (frozen rule)
+
+Improvement iff the 95% lower bound of mean cold(cB) / mean cold(cF)
+exceeds 1.
+
+| Statistic (n = 16 new points) | Estimate [95%] | Reading |
+| --- | --- | --- |
+| mean cold cB / mean cold cF | 1.8372 [1.8216, 1.8528] | **improvement** |
+| A/A cF / cFaa | 1.0012 [0.9996, 1.0029] | pass (inside [0.97, 1.03]) |
+| planted cX / cF | 1.7175 [1.7081, 1.7256] | pass (lower bound above 1) |
+
+Mean cold times (ms): cB 41,953.4; cF 22,835.6; cFaa 22,808.8; cX 39,220.3.
+
+### Secondaries (none changes the verdict)
+
+| Quantity | cB | cF | Ratio cB / cF [95%] |
+| --- | ---: | ---: | :--- |
+| setup (ms) | 41,485.8 | 22,342.9 | 1.8568 [1.8486, 1.8669] |
+| index build (ms) | 39,183.0 | 20,038.5 | 1.9554 [1.9463, 1.9666] |
+| online (ms) | 467.6 | 492.7 | 0.9490 [0.9405, 0.9548] (geomeans 0.9539 [0.9455, 0.9630]) |
+| peak RSS (MiB) | 5,544.3 | 2,812.1 | 1.9715 [1.9714, 1.9717] |
+
+- **Online is not faster; it is about 5% slower** with the fold (the mate is
+  rebuilt by two rotations on the scan). The gain is in setup and memory. The
+  cold gain is nearly all index build, as the analysis predicted.
+- **Single-arm pairs.** Cold cBL / cFL (lift_scan, left-major) 1.8324
+  [1.8038, 1.8542]; cold cBF / cFF (full scan, Feistel) 1.8277 [1.8093,
+  1.8447]. Better unfolded single arm (cBL) over cF: 1.8420 [1.8073,
+  1.8759]. So the fold's effect does not depend on which parent is the base.
+- **Next improvement.** Canonicalizing the index build with lift_scan
+  (cFI): cF / cFI = 1.3307 [1.3250, 1.3357]; cFI mean cold 17,160.5 ms
+  (secondary; not a frozen arm of the primary).
+- **Cold S** (setup + online, tuned-rho steps over √r, this run's measured
+  rT770 step of 279.8 ns): cB 1.6196, cF 0.8816, cFI 0.6625. Delta S cold
+  cB to cF = −0.7380.
+- **Gap to tuned rho** (IC / rho, 16 points). Cold, without the rank stage:
+  cB 12.7687 [10.1256, 16.5895], cF 6.9501 [5.5342, 9.0140]. Online:
+  tuned rho / cF 6.1232 [4.1522, 11.0853] (cB: 6.4521 [4.3774, 11.7019]).
+  Distance remaining, not a gate.
+- **Rank stage (secondary; two blocks of 600 attempts per arm).** Per-attempt
+  cost kB / kN 2.2451 [2.0517, 2.4650] (mean attempt 1,262.0 ms against 562.1
+  ms; probes per attempt 2,480,245 against 1,678,903); whole stage kB / kN
+  2.2447. Cold S with the rank stage added: old (kB + cB) 30.855; fold
+  only (kB + cF) 30.117; fold and rank (kN + cF) 13.906. The cold gap to
+  tuned rho including the rank stage: 243.3 (old), 237.4 (fold only), 109.6
+  (fold and rank). The rank stage still dominates cold cost with the fold
+  alone; it is the next stage to cut.
+
+### Limits of this result
+
+- Tier 1, instance scope: one runner, one pinned CPU, 16 points, one fresh
+  process per arm per point. The intervals are over those 16 points.
+- The baseline cB is the combined producer (lift_scan x Feistel). That
+  combination's own frozen primary was `not_separated` against its better
+  single arm (PR #929); the single-arm pairs above show the fold gives the
+  same cold gain on each parent.
+- The cold figure here excludes the rank stage (it is measured separately and
+  reported above), and its cold gap to rT is much smaller than a cold gap
+  that includes the rank stage.
+
+## Files (results)
+
+| File | Role |
+| --- | --- |
+| `run_github_38819494806/` | the archived artifact: allocation, builds, raw runs, `panel/result.json` |
+| `make_figures.py`, `figures/` | result figure (TikZ source, PDF, PNG) |
+| `README.pdf` | this report: `pandoc README.md -o README.pdf --pdf-engine=pdflatex -H report_header.tex --lua-filter report_filter.lua -V geometry:margin=2cm -V fontsize=10pt -V colorlinks=true` |
