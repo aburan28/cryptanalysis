@@ -214,16 +214,39 @@ fn triple243_q_powers(q_hex: &str) -> ([U256Jacobian;9],[U256Jacobian;9]) {
     (a_powers,b_powers)
 }
 
+fn triple243_direct_orbit(seed: (i16,i16),
+    a_powers: &[U256Jacobian;9], b_powers: &[U256Jacobian;9]) -> U256Jacobian {
+    let mut representative = seed;
+    let mut best_code = 0usize;
+    let mut best_weight = u32::MAX;
+    let mut rotated = seed;
+    for power in 0..3usize {
+        for sign in 0..2usize {
+            let candidate = if sign == 0 { rotated }
+                else { (-rotated.0,-rotated.1) };
+            let weight = candidate.0.unsigned_abs().count_ones()
+                + candidate.1.unsigned_abs().count_ones();
+            if weight < best_weight {
+                representative = candidate;
+                best_code = 2*power+sign;
+                best_weight = weight;
+            }
+        }
+        rotated = alt_orbit_omega_pair(rotated);
+    }
+    let point = triple243_seed_point(representative,a_powers,b_powers);
+    let inverse_code = 2*((3-best_code/2)%3)+best_code%2;
+    joint_projective_unit(point,inverse_code)
+}
+
 fn triple243_graph_points(q_hex: &str,plan: &JointQGraphPlan)
     -> std::collections::BTreeMap<(i16,i16),U256Jacobian> {
     let (a_powers,b_powers)=triple243_q_powers(q_hex);
     let mut graph=std::collections::BTreeMap::new();
     for node in plan.nodes.iter() {
         let point=match node.op {
-            JointGraphOp::Direct if node.seed == (-2,1) =>
-                joint_projective_unit(a_powers[0],4),
             JointGraphOp::Direct =>
-                triple243_seed_point(node.seed,&a_powers,&b_powers),
+                triple243_direct_orbit(node.seed,&a_powers,&b_powers),
             JointGraphOp::Step {parent,parent_unit,base,bit,step_unit} => {
                 let parent=joint_projective_unit(graph[&parent],parent_unit);
                 let power=if base==0 {a_powers[bit]} else {b_powers[bit]};

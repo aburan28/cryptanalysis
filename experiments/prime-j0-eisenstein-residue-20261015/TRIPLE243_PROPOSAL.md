@@ -67,7 +67,7 @@ The opt-in [native module](joint_norm58807.rs) and
 exact radix-81 source snapshot without changing the frozen radix-81 panel or
 its transfer bundle. It uses a ninth doubling power for wider radix-243
 digits. The macOS ARM64 release binary with SHA-256
-`c92dde7e459f72c89f9adc59d2b7976c69fc8283a281a41c52593d6674154979`
+`c963fca09e5e0a2a96adca5f44d0e1f69ffa7eb1c4e3b7f5936acb1a7f1c4ada`
 passed [393 independent point-output checks](triple243-local-replay.json):
 the frozen one- and 128-restart fixtures, alternate `Q` points, 128 fresh
 seeded pairs, and five edge pairs. The same binary retained the frozen
@@ -78,7 +78,17 @@ The frozen one-restart radix-243 Q graph constructs 17 points through one
 graph edge and 16 direct seeds. The radix-81 graph constructs 21 points
 through 13 edges and eight direct seeds. In the 128-restart stream the
 radix-243 graph constructs 1,821 points. These counts identify Q-table
-construction as the next optimization target; neither operation counts nor
+construction as the next optimization target. The radix-243 direct builder
+now chooses the cheapest signed unit-orbit representative by coordinate
+popcount, constructs that representative, and rotates it back to the
+canonical seed. For the independently reconstructed first-restart digit set,
+the 16 direct seeds require 64 modeled group additions under this rule,
+versus 112 for constructing the canonical coordinates directly; the one
+separate graph edge is unchanged. The
+[independent graph audit](triple243-direct-graph-audit.json) freezes the
+reconstructed digits, seed list, source hashes, and exact count boundary.
+The added rotations and their field costs
+belong in the charged Q-preparation interval. Neither operation counts nor
 local elapsed times decide the wall comparison. The next gate is a matched
 Tier 1 one-restart panel against the frozen radix-81 arm and OpenSSL on the
 same public point, with Q preparation charged and A/A controls. The batch
