@@ -64,18 +64,33 @@ def unit_root(source):
             first_trials.append((len(trial[1] & requested), candidate, trial))
     assert first_trials
     maximum = max(item[0] for item in first_trials)
-    first_coverage, first, state = min(
-        (item for item in first_trials if item[0] == maximum),
-        key=lambda item: item[1])
-    assert first_coverage < len(requested), 'second link unnecessary'
-    second_candidates = candidate_vertices(requested, state[1], state[2])
-    feasible = []
-    for candidate in second_candidates:
-        result = trial_add(requested, state, candidate)
-        if result is not None and requested <= result[1]:
-            feasible.append((rotations(result[0]), candidate, result[0]))
-    assert feasible, 'no second auxiliary link in bounded search domain'
-    total_rotations, second, nodes = min(feasible)
+    # Search high-coverage first links in increasing rotation cost.  A second
+    # link can only add rotations, so the first-stage cost is a lower bound.
+    minimum_coverage = len(requested) - 3
+    first_trials = sorted(
+        (item for item in first_trials if item[0] >= minimum_coverage),
+        key=lambda item: (rotations(item[2][0]), -item[0], item[1]))
+    best = None
+    first_examined = 0
+    for first_coverage, first, state in first_trials:
+        if best is not None and rotations(state[0]) >= best[0]:
+            break
+        first_examined += 1
+        second_candidates = candidate_vertices(requested, state[1], state[2])
+        feasible = []
+        for candidate in second_candidates:
+            result = trial_add(requested, state, candidate)
+            if result is not None and requested <= result[1]:
+                feasible.append((rotations(result[0]), candidate, result[0]))
+        if feasible:
+            total, second, nodes = min(feasible)
+            choice = (total, first, second, first_coverage,
+                      len(second_candidates), len(feasible), nodes)
+            if best is None or choice[:3] < best[:3]:
+                best = choice
+    assert best is not None, 'no two-link completion in bounded search domain'
+    (total_rotations, first, second, first_coverage,
+     second_count, feasible_count, nodes) = best
     assert len(nodes) == len(requested) + 2
     result = dict(source)
     result['graph'] = dict(source['graph'], nodes=nodes)
@@ -85,14 +100,17 @@ def unit_root(source):
                'baseline_closed_seeds': baseline_closed,
                'first_candidates': len(first_candidates),
                'first_maximum_coverage': maximum,
+               'first_minimum_coverage': minimum_coverage,
+               'first_examined': first_examined,
+               'first_selected_coverage': first_coverage,
                'first_auxiliary': list(first),
-               'second_candidates': len(second_candidates),
-               'second_feasible': len(feasible),
+               'second_candidates': second_count,
+               'second_feasible': feasible_count,
                'second_auxiliary': list(second),
                'constructed_vertices': len(nodes),
                'generic_full_adds': len(nodes) - 1,
                'nontrivial_unit_rotations': total_rotations,
-               'search_domain': 'fixed free unit root; at each stage one bounded nonrequested vertex reachable by a unit-power edge and touching a missing seed; greedy maximum first-stage coverage then minimum second-stage rotations'}
+               'search_domain': 'fixed free unit root; two bounded nonrequested links reachable by unit-power edges and touching missing seeds; first-stage coverage at least requested minus three; first-stage rotation lower-bound pruning; minimum rotations among examined completions'}
     return result, receipt
 
 
