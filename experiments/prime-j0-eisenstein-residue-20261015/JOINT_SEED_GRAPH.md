@@ -62,6 +62,10 @@ the intended point, including auxiliary vertices. `requested_seed_values`
 adds the explicit requested-seed coverage premise checked by the plan loader.
 `requested_projection` proves that filtering the graph for the normalization
 batch preserves every requested value and excludes auxiliary vertices.
+`omega_square_q_coefficient` identifies `(-2,1)` as the second unit rotation
+of the Q basis coefficient, and `unit_root_value` transfers that identity to
+the point map under the explicit unit-action hypothesis. The planned native
+graph uses this point as a direct root without a group addition.
 The hypotheses are the additive coefficient-to-point map and the unit-action
 maps; they do not assume the trace conclusion. The module also proves the four
 axis-neighbor coefficient relations. The pinned

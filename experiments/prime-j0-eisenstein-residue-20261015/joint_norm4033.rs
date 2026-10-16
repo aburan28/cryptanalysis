@@ -516,6 +516,10 @@ pub(super) fn instantiate_joint_q_graph(q_hex: &str, plan: &JointQGraphPlan)
     let mut graph = std::collections::BTreeMap::<(i16,i16),U256Jacobian>::new();
     for node in plan.nodes.iter() {
         let point = match node.op {
+            // (-2,1) is omega^2 times Q in the coefficient lattice. Q is
+            // already present as a_powers[0], so this root needs no addition.
+            JointGraphOp::Direct if node.seed == (-2,1) =>
+                joint_projective_unit(a_powers[0],4),
             JointGraphOp::Direct => joint_seed_point(node.seed,&a_powers,&b_powers),
             JointGraphOp::Step { parent,parent_unit,base,bit,step_unit } => {
                 let parent = joint_projective_unit(graph[&parent],parent_unit);

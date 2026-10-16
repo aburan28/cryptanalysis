@@ -21,7 +21,8 @@ ORDER_COMMON = ('cal_before', 'compare_demand', 'compare_graph',
          'compare_refined_vs_prior', 'cal_mid', 'compare_fused',
          'compare_fused_graph', 'compare_fused_graph_planned', 'cal_after')
 ORDER_ONE = ORDER_COMMON[:ORDER_COMMON.index('cal_mid')] + (
-    'compare_one_aux', 'compare_one_aux_vs_refined') + \
+    'compare_one_aux', 'compare_one_aux_vs_refined',
+    'compare_unit_root', 'compare_unit_root_vs_one_aux') + \
     ORDER_COMMON[ORDER_COMMON.index('cal_mid'):]
 AA = ('cal_before', 'cal_mid', 'cal_after')
 
@@ -113,6 +114,7 @@ def audit(count, manifest_path, rules_path, raw_path):
                                   else 'refined-weighted-plan-128.json')}
     if count == 1:
         plans['one_aux'] = forest / 'one-aux-plan-1.json'
+        plans['unit_root'] = forest / 'unit-root-plan-1.json'
     plan_identity = None
     for stem, plan_path in plans.items():
         plan_bytes = plan_path.read_bytes()
@@ -128,7 +130,7 @@ def audit(count, manifest_path, rules_path, raw_path):
                     graph['terminal_ids'], validate_plan_graph(graph))
         if plan_identity is None:
             plan_identity = identity
-        elif stem in ('steiner', 'refined', 'one_aux') and count == 1:
+        elif stem in ('steiner', 'refined', 'one_aux', 'unit_root') and count == 1:
             assert identity[:3] == plan_identity[:3]
             assert plan_identity[3] <= identity[3]
             assert len(identity[3] - plan_identity[3]) <= 16
@@ -156,6 +158,9 @@ def audit(count, manifest_path, rules_path, raw_path):
         candidates['compare_one_aux'] = [binary, '--pilot-rho-restart-joint-graph-planned',
                                          fixture_remote, '1', rules['paths']['one_aux_1']]
         candidates['compare_one_aux_vs_refined'] = candidates['compare_one_aux']
+        candidates['compare_unit_root'] = [binary, '--pilot-rho-restart-joint-graph-planned',
+                                           fixture_remote, '1', rules['paths']['unit_root_1']]
+        candidates['compare_unit_root_vs_one_aux'] = candidates['compare_unit_root']
     for case in manifest['cases']:
         expected_reference = (candidates['compare_root_first']
                               if case['id'] in ('compare_two_parent_vs_root_first',
@@ -166,6 +171,8 @@ def audit(count, manifest_path, rules_path, raw_path):
                               if case['id'] == 'compare_refined_vs_prior'
                               else candidates['compare_refined']
                               if case['id'] == 'compare_one_aux_vs_refined'
+                              else candidates['compare_one_aux']
+                              if case['id'] == 'compare_unit_root_vs_one_aux'
                               else reference)
         assert case['reference'] == expected_reference
         assert case['candidate'] == candidates.get(case['id'], reference)
@@ -258,6 +265,8 @@ def audit(count, manifest_path, rules_path, raw_path):
                     'compare_refined_vs_prior': 'joint_graph_planned',
                     'compare_one_aux': 'joint_graph_planned',
                     'compare_one_aux_vs_refined': 'joint_graph_planned',
+                    'compare_unit_root': 'joint_graph_planned',
+                    'compare_unit_root_vs_one_aux': 'joint_graph_planned',
                     'compare_fused': 'joint_fused',
                     'compare_fused_graph': 'joint_fused_graph',
                     'compare_fused_graph_planned': 'joint_fused_graph_planned',
@@ -268,7 +277,8 @@ def audit(count, manifest_path, rules_path, raw_path):
                          'compare_weighted_vs_root_first',
                          'compare_steiner_vs_two_parent',
                          'compare_refined_vs_prior',
-                         'compare_one_aux_vs_refined') else 'openssl_nowarm')
+                         'compare_one_aux_vs_refined',
+                         'compare_unit_root_vs_one_aux') else 'openssl_nowarm')
             key = (repeat, case_id, variant)
             assert key not in lookup
             lookup[key] = run

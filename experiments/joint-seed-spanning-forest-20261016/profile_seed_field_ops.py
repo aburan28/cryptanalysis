@@ -17,10 +17,15 @@ def profile(path, requested=None):
     nodes = json.loads(path.read_bytes())['graph']['nodes']
     normalized = len(nodes) if requested is None else sum(
         (a, b) in requested for a, b, _ in nodes)
-    direct_calls = full_adds = rotations = direct_roots = 0
+    direct_calls = full_adds = rotations = direct_roots = special_unit_roots = 0
     for a, b, op in nodes:
         if op[0] == 'direct':
             direct_roots += 1
+            if (a, b) == (-2, 1):
+                # The planned native graph uses omega^2 of prepared Q.
+                special_unit_roots += 1
+                rotations += 1
+                continue
             calls = abs(a).bit_count() + abs(b).bit_count()
             assert calls > 0
             direct_calls += calls
@@ -38,9 +43,10 @@ def profile(path, requested=None):
         'plan_sha256': digest(path), 'constructed_vertices': len(nodes),
         'normalized_vertices': normalized,
         'direct_roots': direct_roots, 'direct_add_projective_calls': direct_calls,
+        'special_unit_roots': special_unit_roots,
         'graph_edge_calls': graph_edges,
         'total_add_projective_calls': direct_calls + graph_edges,
-        'identity_return_calls': direct_roots,
+        'identity_return_calls': direct_roots - special_unit_roots,
         'generic_full_adds': full_adds,
         'nontrivial_unit_rotations': rotations,
         'modeled_field_muls': 12*full_adds + rotations + 6*normalized,
@@ -74,6 +80,7 @@ def main():
         if count == 1:
             plans['refined_auxiliary'] = HERE / 'refined-steiner-plan-1.json'
             plans['one_auxiliary'] = HERE / 'one-aux-plan-1.json'
+            plans['unit_root'] = HERE / 'unit-root-plan-1.json'
         else:
             plans['refined_weighted'] = HERE / 'refined-weighted-plan-128.json'
         rows[str(count)] = {name: profile(path, requested) for name, path in plans.items()}

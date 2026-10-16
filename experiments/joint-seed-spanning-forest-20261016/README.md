@@ -1,12 +1,14 @@
 # Eisenstein Q-seed graph scheduling
 
-A one-auxiliary coefficient graph constructs the 21 requested Q seeds in the
-frozen one-restart stream with 23 generic full additions, 20 nontrivial unit
-rotations, and one normalization inversion. The previous refined graph uses
-24 full additions and 23 rotations. Under the pinned source-formula model,
-the one-auxiliary graph requires 422 field multiplications and 113 squares,
-versus 437 and 117 for the previous refined graph. The scalar recoding and
-requested seeds are identical; this is an arithmetic-operation result, with
+A unit-root graph constructs the 21 requested Q seeds in the frozen
+one-restart stream with 22 generic full additions, 18 nontrivial unit
+rotations, and one normalization inversion. It uses the already prepared Q
+point to seed `(-2,1)` by one unit rotation, then links the remaining seeds
+through two auxiliary vertices. Under the pinned source-formula model it
+requires 408 field multiplications and 109 squares, compared with 422 and
+113 for the one-auxiliary graph and 437 and 117 for the earlier refined graph.
+The scalar recoding and requested seeds are identical; this is an
+arithmetic-operation result, with
 wall-time comparison assigned to the isolated Tier 1 panel.
 
 Two auxiliary coefficient vertices lower the source-level Q-seed
@@ -57,6 +59,20 @@ fixed-root greedy closure; it does not establish a global addition-chain
 optimum. The
 [native replay](one-aux-local-replay.json) verifies ten exact outputs from
 both planned evaluators on the frozen Q and four alternate Q points.
+
+The [unit-root planner](unit_root_plan.py) starts at `(-2,1)`, which equals
+`ω²(1,0)` in the coefficient lattice. The native graph instantiator obtains
+its point by one projective unit rotation of the Q power already in memory.
+From that root, the planner first chooses `(-25,11)` because its bounded
+one-step link opens 20 requested seeds, then chooses `(-59,25)` among 786
+feasible second links by unit-rotation count. Its
+[plan](unit-root-plan-1.json) has 23 vertices, including two auxiliaries, and
+22 graph edges. The [search receipt](unit-root-1-receipt.json) records the
+bounded greedy domain. The [native replay](unit-root-local-replay.json)
+checks 20 exact outputs from both evaluators across this plan and the
+one-auxiliary predecessor on the frozen Q and four alternate Q points. The
+Lean `omega_square_q_coefficient` and `unit_root_value` declarations prove
+the coefficient identity and its abstract point-map consequence.
 
 The [low-rotation planner](weighted_plan.py) chooses a cheap direct root and
 grows each component through frontier edges with the fewest projective unit

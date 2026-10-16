@@ -4,6 +4,22 @@ namespace JointSeedGraph
 
 open HornerRadix
 
+/-- One application of the order-three Eisenstein unit on coefficients. -/
+def omegaPair (coefficient : Pair) : Pair :=
+  (coefficient.1 + 3*coefficient.2,
+   -coefficient.1 - 2*coefficient.2)
+
+/-- The inexpensive direct graph root is the second unit image of Q. -/
+theorem omega_square_q_coefficient :
+    omegaPair (omegaPair (1, 0)) = (-2, 1) := by decide
+
+theorem unit_root_value {Point : Type} (evaluate : Pair → Point)
+    (omegaPoint : Point → Point)
+    (map_omega : ∀ coefficient,
+      evaluate (omegaPair coefficient) = omegaPoint (evaluate coefficient)) :
+    evaluate (-2, 1) = omegaPoint (omegaPoint (evaluate (1, 0))) := by
+  rw [← omega_square_q_coefficient, map_omega, map_omega]
+
 /-- Each graph vertex stores the point represented by its Eisenstein
 coefficient pair. The concrete curve bridge is the homomorphism premise. -/
 def ValidGraph {Point : Type} (evaluate : Pair → Point)
@@ -232,6 +248,8 @@ theorem four_neighbor_steps (a b : Int) :
   omega
 
 #print axioms extend_edge
+#print axioms omega_square_q_coefficient
+#print axioms unit_root_value
 #print axioms extend_direct
 #print axioms extend_unit_edge
 #print axioms extend_unit_sum

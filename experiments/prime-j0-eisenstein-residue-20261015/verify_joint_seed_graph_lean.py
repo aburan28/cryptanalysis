@@ -12,7 +12,8 @@ HERE = Path(__file__).resolve().parent
 MODULES = ('AlternateRadix.lean', 'HornerRadix.lean', 'JointSeedGraph.lean',
            'JointHorner.lean')
 THEOREMS = {
-    'JointSeedGraph': ('certifiedStep_valid', 'certifiedTrace_valid',
+    'JointSeedGraph': ('omega_square_q_coefficient', 'unit_root_value',
+                       'certifiedStep_valid', 'certifiedTrace_valid',
                        'requested_seed_values', 'requested_projection'),
     'JointHorner': ('combine_horner', 'two_scalar_horner',
                     'two_scalar_horner_from_graph'),
