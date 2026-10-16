@@ -23,14 +23,32 @@ fn joint_parse_point(q_hex: &str) -> U256Jacobian {
     U256Jacobian::from_affine(U256Affine { x, y })
 }
 
-fn joint_into_affine(point: U256Jacobian) -> U256Affine {
-    assert!(!point.is_identity());
+// Montgomery's trick converts both Q tables using one field inversion.
+// Every input is a finite nonidentity point; seed zero is inserted afterward.
+fn joint_batch_into_affine(points: &[U256Jacobian]) -> Vec<U256Affine> {
     let ctx = &super::HYBRID_FIELD.0;
-    let inverse = super::hybrid_binary_invert(point.z, ctx);
-    let square = ctx.mont_sqr(&inverse);
-    let cube = ctx.mont_mul(&square, &inverse);
-    U256Affine { x: ctx.mont_mul(&point.x, &square),
-                 y: ctx.mont_mul(&point.y, &cube) }
+    let mut prefix = Vec::with_capacity(points.len());
+    let mut product = ctx.r_mod_n;
+    for point in points {
+        assert!(!point.is_identity());
+        prefix.push(product);
+        product = ctx.mont_mul(&product, &point.z);
+    }
+    let mut inverse = super::hybrid_binary_invert(product, ctx);
+    let mut affine = vec![U256Affine { x: super::U256::ZERO,
+                                       y: super::U256::ZERO }; points.len()];
+    for index in (0..points.len()).rev() {
+        let z_inverse = ctx.mont_mul(&inverse, &prefix[index]);
+        inverse = ctx.mont_mul(&inverse, &points[index].z);
+        let square = ctx.mont_sqr(&z_inverse);
+        let cube = ctx.mont_mul(&square, &z_inverse);
+        affine[index] = U256Affine {
+            x: ctx.mont_mul(&points[index].x, &square),
+            y: ctx.mont_mul(&points[index].y, &cube),
+        };
+    }
+    assert_eq!(inverse.0, ctx.r_mod_n.0, "batch inverse product check");
+    affine
 }
 
 fn joint_seed_point(seed: (i16, i16),
@@ -70,15 +88,6 @@ pub(super) fn prepare_joint_q(q_hex: &str) -> JointQTables {
     digit_seeds.retain(|&pair| pair != (0,0));
     digit_seeds.insert(0, (0,0));
     assert_eq!(digit_seeds.len(), g_tables.digit_window.len());
-    let digit_window = digit_seeds.iter().copied().map(|seed| {
-        if seed == (0,0) {
-            U256TwoXAffine::from_affine(U256Affine {
-                x: super::U256::ZERO, y: super::U256::ZERO })
-        } else {
-            U256TwoXAffine::from_affine(joint_into_affine(
-                joint_seed_point(seed, &a_powers, &b_powers)))
-        }
-    }).collect::<Vec<_>>().into_boxed_slice();
     let mut terminal_seeds = (-100..=100i32).flat_map(|a| {
         (-100..=100i32).filter_map(move |b| {
             let norm = a*a+3*a*b+3*b*b;
@@ -90,13 +99,20 @@ pub(super) fn prepare_joint_q(q_hex: &str) -> JointQTables {
     terminal_seeds.retain(|&pair| pair != (0,0));
     terminal_seeds.insert(0, (0,0));
     assert_eq!(terminal_seeds.len(), g_tables.terminal_pairs.len());
-    let terminal_pairs = terminal_seeds.iter().copied().map(|seed| {
-        if seed == (0,0) {
-            U256Affine { x: super::U256::ZERO, y: super::U256::ZERO }
-        } else {
-            joint_into_affine(joint_seed_point(seed, &a_powers, &b_powers))
-        }
-    }).collect::<Vec<_>>().into_boxed_slice();
+    let digit_count = digit_seeds.len()-1;
+    let projective = digit_seeds.iter().chain(terminal_seeds.iter())
+        .copied().filter(|&seed| seed != (0,0))
+        .map(|seed| joint_seed_point(seed, &a_powers, &b_powers))
+        .collect::<Vec<_>>();
+    let affine = joint_batch_into_affine(&projective);
+    assert_eq!(affine.len(), digit_count + terminal_seeds.len()-1);
+    let zero = U256Affine { x: super::U256::ZERO, y: super::U256::ZERO };
+    let digit_window = std::iter::once(U256TwoXAffine::from_affine(zero))
+        .chain(affine[..digit_count].iter().copied().map(U256TwoXAffine::from_affine))
+        .collect::<Vec<_>>().into_boxed_slice();
+    let terminal_pairs = std::iter::once(zero)
+        .chain(affine[digit_count..].iter().copied())
+        .collect::<Vec<_>>().into_boxed_slice();
     let retained_bytes = digit_window.len()*size_of::<U256TwoXAffine>()
         + terminal_pairs.len()*size_of::<U256Affine>()
         + size_of::<JointQTables>();
