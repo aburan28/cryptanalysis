@@ -104,6 +104,32 @@ The k = 12 subspace base is not competitive with rho: collecting 2248 rows needs
 That is the expected scale gap for a 2^12-point domain; the N83 pipeline uses ≈ 5.7·10⁵ projected points and a root index.
 The a2 = 0 twist needs ≈ 2^37 τ-class rho steps (prediction, not run).
 
+## Pollard rho over the whole 53-bit floor (measured; protocol addendum)
+
+![](../outputs/rho-floor-a1.png)
+
+The 6474 floor curves form 78 orbits of 83 under b → b², and (x, y) → (x², y²) is a group isomorphism
+E_b → E_{b²}, so one representative per orbit (O00-00 … O77-00) covers the floor up to that isomorphism.
+`scripts/rho_floor.py` ran 156 {±P} solves (2 per orbit, seeds 1000 and 1001), all verified
+(True), 0 restarts, 1.39e+10 walk steps in all.
+
+| arm | solves | S (± se) |
+|---|---|---|
+| floor, 78 orbit representatives, {±P} | 156 | 0.964 ± 0.040 |
+| crater E0, {±P} | 6 | 0.855 ± 0.146 |
+| crater E0, {±τ^i P} | 16 | 0.107 ± 0.017 |
+| theory {±P} | — | 0.886 |
+
+- Orbits are homogeneous: one-way ANOVA F(77, 78) = 0.85, p = 0.77;
+  a 20000-draw permutation test gives p = 0.77. Two solves per orbit cannot rank orbits,
+  so no orbit is named a lead (lowest orbit means O11-00 0.24, O00-00 0.31, O31-00 0.36 are draws).
+- The floor's {±P} rho costs 9.00× the crater's τ-class rho, against √83 = 9.11: the Frobenius factor the
+  floor loses, as derived.
+- The pooled floor mean sits 2.0 se above √(π/4). Observed and not explained here; an r = 32
+  adding walk with fruitless-cycle escapes is expected to sit slightly above the random-mapping constant, which this run does not test.
+- Not run: all 6474 curves individually (~45 h on this VM); the a2 = 0 floor (~2^37 steps per solve).
+
+
 ## What this does not show
 
 - No end-to-end IC row and no IC1 candidate: yields are stage diagnostics.
@@ -114,7 +140,7 @@ The a2 = 0 twist needs ≈ 2^37 τ-class rho steps (prediction, not run).
 
 ## Graphs checked
 
-New: `outputs/structure.svg`, `outputs/yield-census.svg`, `outputs/rho-a1.svg` (rendered PNG beside each).
+New: `outputs/structure.svg`, `outputs/yield-census.svg`, `outputs/rho-a1.svg`, `outputs/rho-floor-a1.svg` (rendered PNG beside each).
 ../volcano-m83 figures and `experiments/volcano-ic/figures/` were checked and remain current: no verified edge
 or curve was added and the a2 = 0 census agrees with ../volcano-m83 Run-06.
 

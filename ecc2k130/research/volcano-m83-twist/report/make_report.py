@@ -8,6 +8,8 @@ S = json.loads((OUT / 'summary.json').read_text())
 iso = json.loads((OUT / 's00-small-isogenies.json').read_text())
 ctl = json.loads((OUT / 'control-run06.json').read_text())
 a0, a1, rho, icr = S['0'], S['1'], S['rho_a1'], S['ic_k12_vs_rho_a1']
+_rf = OUT / 'rho-floor-summary.json'
+RF = json.loads(_rf.read_text()) if _rf.exists() else None
 
 
 def f(x, d=6): return ('%.' + str(d) + 'f') % x
@@ -129,6 +131,31 @@ The k = {a1['k']} subspace base is not competitive with rho: collecting {icr['ro
 That is the expected scale gap for a 2^12-point domain; the N83 pipeline uses ≈ 5.7·10⁵ projected points and a root index.
 The a2 = 0 twist needs ≈ 2^37 τ-class rho steps (prediction, not run).
 
+## Pollard rho over the whole 53-bit floor (measured; protocol addendum)
+
+{("" if RF is None else f"""![](../outputs/rho-floor-a1.png)
+
+The 6474 floor curves form 78 orbits of 83 under b → b², and (x, y) → (x², y²) is a group isomorphism
+E_b → E_{{b²}}, so one representative per orbit (O00-00 … O77-00) covers the floor up to that isomorphism.
+`scripts/rho_floor.py` ran {RF['solves']} {{±P}} solves (2 per orbit, seeds 1000 and 1001), all verified
+({RF['all_verified']}), {RF['restarts']} restarts, {RF['steps_total']:.3g} walk steps in all.
+
+{table(['arm', 'solves', 'S (± se)'], [
+    ('floor, 78 orbit representatives, {±P}', RF['solves'], '%.3f ± %.3f' % (RF['S_mean'], RF['S_se'])),
+    ('crater E0, {±P}', RF['crater_pm']['n'], '%.3f ± %.3f' % (RF['crater_pm']['mean'], RF['crater_pm']['se'])),
+    ('crater E0, {±τ^i P}', RF['crater_tau']['n'], '%.3f ± %.3f' % (RF['crater_tau']['mean'], RF['crater_tau']['se'])),
+    ('theory {±P}', '—', '%.3f' % RF['S_theory'])])}
+
+- Orbits are homogeneous: one-way ANOVA F({RF['anova']['df'][0]}, {RF['anova']['df'][1]}) = {RF['anova']['F']:.2f}, p = {RF['anova']['p']:.2f};
+  a {RF['anova']['permutations']}-draw permutation test gives p = {RF['anova']['permutation_p']:.2f}. Two solves per orbit cannot rank orbits,
+  so no orbit is named a lead (lowest orbit means {', '.join('%s %.2f' % (k, v) for v, k in RF['lowest_orbit_means'])} are draws).
+- The floor's {{±P}} rho costs {RF['floor_over_crater_tau']:.2f}× the crater's τ-class rho, against √83 = {math.sqrt(83):.2f}: the Frobenius factor the
+  floor loses, as derived.
+- The pooled floor mean sits {(RF['S_mean'] - RF['S_theory']) / RF['S_se']:.1f} se above √(π/4). Observed and not explained here; an r = 32
+  adding walk with fruitless-cycle escapes is expected to sit slightly above the random-mapping constant, which this run does not test.
+- Not run: all 6474 curves individually (~45 h on this VM); the a2 = 0 floor (~2^37 steps per solve).
+""")}
+
 ## What this does not show
 
 - No end-to-end IC row and no IC1 candidate: yields are stage diagnostics.
@@ -139,7 +166,7 @@ The a2 = 0 twist needs ≈ 2^37 τ-class rho steps (prediction, not run).
 
 ## Graphs checked
 
-New: `outputs/structure.svg`, `outputs/yield-census.svg`, `outputs/rho-a1.svg` (rendered PNG beside each).
+New: `outputs/structure.svg`, `outputs/yield-census.svg`, `outputs/rho-a1.svg`, `outputs/rho-floor-a1.svg` (rendered PNG beside each).
 ../volcano-m83 figures and `experiments/volcano-ic/figures/` were checked and remain current: no verified edge
 or curve was added and the a2 = 0 census agrees with ../volcano-m83 Run-06.
 
