@@ -70,6 +70,24 @@ ledger and leaves the corresponding aggregate unknown.
    panel only after the one-restart result is recorded. Preserve the panels
    separately; the 128 result answers batch amortization.
 
+Run the independent [joint receipt auditor](analyze_tier1_rho_joint.py) on
+each archived panel with its Linux-hash manifest and rules. For example:
+
+```sh
+python3 analyze_tier1_rho_joint.py 1 \
+  --manifest tier1-rho-joint-1-cpu40-manifest.json \
+  --rules tier1-rho-joint-1-cpu40-rules.json \
+  --raw rho-joint-1-raw.tar.gz \
+  --output tier1-rho-joint-1-cpu40-audit.json
+```
+
+The auditor reconstructs the generated source hashes, independently replays
+the fixture points, verifies all available arm records and exact pair order,
+checks the joint phase sums and OpenSSL zero-warmup field, and gates each
+comparison on all three A/A controls. A partial pair remains in the ledger;
+the aggregate stays unknown. The command is for a completed archived Linux
+panel; the local manifest dry run has a macOS binary hash and is not a panel.
+
 The archived OpenSSL hybrid panel's one-restart A/A gate previously failed;
 this plan retains the same strict gate and adds a middle A/A control around
 the second candidate. The queue service was observed live as PID 2098 on the
