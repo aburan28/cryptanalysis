@@ -17,6 +17,8 @@ The Tier 1 result figure is owed after the run.
 """
 
 import json
+import math
+import sys
 import subprocess
 from pathlib import Path
 
@@ -123,7 +125,54 @@ with the probe counter set to their position: probes, relation and scalar are th
 """
 
 
+def result_tex(path):
+    res = json.loads(path.read_text())
+    s = res["statistics"]
+
+    def pick(k, label, kind="", f=None):
+        v = s[k] if f is None else s[k][f]
+        if "estimate" in v:
+            return (label, v["estimate"], v["ci95"], s["primary_units"], kind)
+        return (label, v["means"]["estimate"], v["means"]["ci95"], s["primary_units"], kind)
+
+    R = [pick("primary_R_means", "PRIMARY R\\_m: pipeline / filter table (means)", "p"),
+         pick("primary_R_geomeans", "R\\_g (geomeans)"),
+         pick("primary_R_means_slice_bootstrap", "R\\_m, slice bootstrap"),
+         pick("primary_probes_P_over_T", "probes pipeline / filter (must be 1)"),
+         pick("primary_aa_T_over_Taa", "A/A filter / filter", "c"),
+         pick("primary_planted_X_over_T", "planted filter+table lookups / filter", "c"),
+         pick("cold_P_over_T", "cold (setup + online) pipeline / filter"),
+         pick("secondary_P_over_K", "pipeline / compact slots only"),
+         pick("secondary_K_over_T", "compact only / filter"),
+         pick("secondary_T_over_T29", "32 MiB filter / 64 MiB filter"),
+         pick("rho_gap_rT_over_pT", "tuned rho / filter table (means)"),
+         pick("rho_gap_rT_over_pP", "tuned rho / pipeline (means)"),
+         pick("old_fresh16_P_over_T", "16 fresh pipeline / filter (means)", "s")]
+    R[-1] = R[-1][:3] + (16,) + R[-1][4:]  # the old Q0 + fresh block: 16 fresh points
+    x = lambda v: math.log(max(v, 1e-9), 2)  # noqa: E731
+    lo_axis, hi_axis, n = 0.5, 16.0, len(R)
+    L = ["% Editable source for result.pdf, written by make_figures.py from the run's result.json",
+         "\\documentclass[tikz,border=6pt]{standalone}", "\\usepackage[T1]{fontenc}", "\\begin{document}",
+         "\\begin{tikzpicture}[font=\\sffamily\\footnotesize,x=18mm,y=-5.6mm]"]
+    for v in (0.5, 1, 2, 4, 8, 16):
+        L.append("\\draw[gray!35] (%.4f,-0.6) -- (%.4f,%d); \\node[gray] at (%.4f,%.1f) {%g};" % (x(v), x(v), n, x(v), n + 0.5, v))
+    L.append("\\draw[red!70!black,dashed] (0,-0.6) -- (0,%d);" % n)
+    L.append("\\node at (0,%.1f) {ratio (log scale); bars: estimate; whiskers: 95\\%% bootstrap};" % (n + 1.3))
+    L.append("\\node[anchor=west,font=\\sffamily\\bfseries] at (-9.5,-1.5) {Primary: %s};" % res["decision"]["primary"])
+    for i, (label, est, (lo, hi), units, kind) in enumerate(R):
+        col = {"p": "orange!60", "c": "gray!45", "s": "blue!20"}.get(kind, "blue!30")
+        L.append("\\node[anchor=east] at (%.4f,%d) {%s};" % (x(lo_axis) - 0.1, i, label))
+        L.append("\\fill[%s] (0,%f) rectangle (%.4f,%f);" % (col, i - 0.3, x(est), i + 0.3))
+        L.append("\\draw (%.4f,%d) -- (%.4f,%d); \\draw (%.4f,%f) -- (%.4f,%f); \\draw (%.4f,%f) -- (%.4f,%f);"
+                 % (x(lo), i, x(hi), i, x(lo), i - 0.15, x(lo), i + 0.15, x(hi), i - 0.15, x(hi), i + 0.15))
+        L.append("\\node[anchor=west,font=\\sffamily\\scriptsize] at (%.4f,%d) {%.4f [%.4f, %.4f], n=%d};" % (x(hi_axis) + 0.05, i, est, lo, hi, units))
+    L += ["\\end{tikzpicture}", "\\end{document}", ""]
+    return "\n".join(L)
+
+
 def main():
+    if len(sys.argv) > 1:
+        render("result", result_tex(Path(sys.argv[1]).resolve()))
     p = json.loads((HERE / "analysis" / "profile_local.json").read_text())
     render("lookup_diagnosis", diagnosis_tex(p))
     render("two_level_table", diagram_tex())

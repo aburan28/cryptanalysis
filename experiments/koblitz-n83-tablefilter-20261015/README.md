@@ -5,13 +5,17 @@ date: 2026-10-15
 
 # Two-level root table: a TLB-resident filter in front of 16-byte exact slots for the n = 83 K600 one-target index calculus
 
-**Status (2026-10-15): diagnosis done (diagnostic), fix implemented and
-checked for exactness, protocol frozen, Tier 1 run started; no result yet.**
-The frozen [protocol](protocol.json) and [schedule](schedule.json) were
-committed before any Tier 1 timing. The run is the push-triggered workflow
-`.github/workflows/n83-table-filter.yml` on branch `claude/n83-table-filter`
-(run [38829449594](https://github.com/aburan28/cryptanalysis/actions/runs/38829449594), commit 1bf514cb3). Its receipt, result, result figure and the refreshed
-PDF are owed after the run. Nothing on this page is a Tier 1 measurement yet.
+**Status (2026-10-15): measured; frozen primary rule applied; verdict
+`improvement`, a small one.** GitHub Actions run
+[38829449594](https://github.com/aburan28/cryptanalysis/actions/runs/38829449594)
+(attempt 1, one `ubuntu-24.04` runner, AMD EPYC 9V74, Tier 1 instance scope)
+ran the frozen [protocol](protocol.json) and [schedule](schedule.json). Its
+artifact `n83-tablefilter-38829449594-1` is archived in
+[`run_github_38829449594/`](run_github_38829449594/). On 384 new points the
+two-level table lowers the one-target online interval of the probe-pipeline
+producer by **1.0633 [1.0589, 1.0679]** (R_m = mean `pP` / mean `pT`), with
+probes, relation and scalar identical. See [Result](#result). The gain is
+far smaller than the VM diagnosis in section 1 suggested.
 
 ## Question
 
@@ -249,7 +253,117 @@ See [`smoke/README.md`](smoke/README.md).
 | `power_check.py`, `inputs/power_prior.json`, `analysis/power.json` | power simulation, its prior, its result |
 | `arm.py`, `panels.py`, `run_schedule.py` | one arm per pinned process; panels; the schedule runner |
 | `verify_receipt.py` | gates, statistics, decision rule; `result.json`, `result_table.md` |
-| `make_figures.py`, `figures/` | TikZ sources and renders of the diagnosis and the table diagram |
+| `make_figures.py`, `figures/` | TikZ sources and renders of the diagnosis, the table diagram and the Tier 1 result |
+| `run_github_38829449594/` | the archived artifact: allocation, builds, raw runs, `panel/result.json`, runner profiler step |
+
+## Result
+
+All gates pass: the six primary IC arms have identical probes and relation
+on every point, one scalar across them and the tuned rho, every scalar
+replays in the pinned oracle, Q0 equals the validation sidecar, both old-panel
+arms reproduce the archived Feistel identities, the decision arms' rows are
+valid, the A/A and the planted control pass, and the primary panel is
+complete (384/384). `verify_receipt.py` re-run on the archive reproduces
+`result.json` byte for byte. One tuned-rho row (serial 44) carries a
+major-page-fault flag; it is a rho row, not a decision arm.
+
+![Frozen ratios with 95% bootstrap intervals, all from `result.json`
+([source](figures/result.tex), [vector](figures/result.pdf), rendered by
+[`make_figures.py`](make_figures.py)).](figures/result.png)
+
+### Primary (frozen rule)
+
+The table is an improvement iff the 95% lower bound of R_m exceeds 1.
+
+| Statistic (n = 384 new points) | Estimate [95%] | Reading |
+| --- | --- | --- |
+| R_m = mean pP / mean pT | 1.0633 [1.0589, 1.0679] | **improvement** |
+
+The probe ratio pipeline / filter table is exactly 1.0000 [1.0000, 1.0000].
+Ratchet: the new n = 83 one-target pipeline is lift_scan + Feistel order +
+prefetched probes + the two-level root table (32 MiB blocked filter, 16-byte
+exact slots).
+
+### Secondaries and controls
+
+| Statistic | Estimate [95%] |
+| --- | --- |
+| R_g (paired geometric means) | 1.0611 [1.0579, 1.0644] |
+| R_m, slice bootstrap (6 slices) | 1.0633 [1.0428, 1.0882] |
+| R_m per slice | 1.1157, 1.0681, 1.0625, 1.0297, 1.0570, 1.0396 |
+| A/A pT / pTaa | 1.0011 [0.9999, 1.0022] (inside [0.97, 1.03]) |
+| Planted pX / pT | 1.0545 [1.0529, 1.0565] |
+| pK: pP / pK (compact 16-byte slots only) | 1.0581 [1.0536, 1.0627] |
+| pK / pT (filter on top of compact) | 1.0049 [1.0035, 1.0066] |
+| pT / pT29 (32 MiB against 64 MiB filter) | 1.0029 [1.0019, 1.0039] |
+| Cold (slice setup + online) pP / pT | 1.0101 [1.0090, 1.0113] |
+| Q0 + 16 fresh, pP / pT (16 fresh, means) | 1.0573 [1.0509, 1.0633] |
+| Tuned rho / pT (means) | 6.5642 [5.8533, 7.3649] |
+| Tuned rho / pT (geomeans) | 9.9310 [8.6688, 11.3811] |
+| Tuned rho / pP (means) | 6.1734 [5.5050, 6.9319] |
+
+- **Reading of pK and pT29.** The 16-byte slot alone (pK) gives 1.0581 of
+  the 1.0633; the filter on top adds only 1.0049. The larger filter (pT29, 64
+  MiB, false-positive share 0.0030 against 0.0244) is faster than pT by
+  0.29%, a small effect. So on this runner the gain is almost all the
+  compact slot, not the filter. The diagnosis in section 1 attributed the
+  gain to the filter; this run does not.
+- **Per-arm means** (online ms, ns/probe): pP 473.0, 253.8; pT 444.8, 238.7;
+  pTaa 444.4, 238.4; pX 469.1, 251.7; pK 447.0, 239.8; pT29 443.5, 238.0.
+  Probes per law 1.079 in every arm.
+- **Setup, index, filter build, peak RSS** (mean per process, 6 processes
+  each): pP setup 51,081 ms, index build 48,423 ms, peak RSS 5.41 GiB; pK
+  49,288 ms, 46,638 ms, 3.41 GiB; pT 50,593 ms, 47,948 ms, 3.45 GiB, filter
+  build 1,304 ms (32 MiB); pT29 50,705 ms, 48,061 ms, 3.48 GiB, filter build
+  1,439 ms. Setup pP / pT 1.0097; peak RSS pP / pT 1.5714. The filter build
+  is about 1.3 s of the 50.6 s setup.
+- **Cold ratio.** Cold pP / pT is 1.0101 [1.0090, 1.0113], because the
+  setup is about 99% of the cold cost and changed by under 1%.
+- **S_rho** (online cost over √r in tuned-rho steps; this run's rT770 step,
+  318.3 ns): pP 0.01605, pT 0.01510; delta (filter minus pipeline)
+  −0.00096. Cold S_rho: pP 1.74985, pT 1.73231; delta −0.01754.
+- **Gap to tuned rho** (same 384 points). Tuned rho / pT is 6.5642
+  [5.8533, 7.3649] on means (IC / rho online 0.1523) against 6.1734
+  [5.5050, 6.9319] for pP (0.1620). Distance remaining, online only, not a
+  gate.
+
+### Runner profiler step (diagnostic only; never part of the decision)
+
+The last workflow step ran `ic_table_profile_r770` on Q0 on this runner (2
+rounds; medians, ns/probe). It did not reproduce the VM diagnosis:
+
+| variant | round 1 | round 2 |
+| --- | ---: | ---: |
+| key computation (roots + conversion + lift_scan) | 225.5 | 225.9 |
+| inline lookup into the 4 GiB table (combined loop) | 356.4 | 365.5 |
+| pipelined lookup, 32-byte slots (pP loop) | 245.7 | 239.3 |
+| pipelined, compact 16-byte slots | 256.0 | 275.5 |
+| pipelined, filter + compact (pT loop) | 241.2 | 240.2 |
+| cross-state pipelined | 242.7 | 240.3 |
+
+On this runner the prefetched lookup into the big table costs about 14 to
+20 ns over the key computation (the VM measured about 140 ns), so the
+remaining lookup cost that the filter targets is small: round 1 shows the
+filter loop 4.5 ns/probe under the pipeline, round 2 shows it 0.9 above it.
+The compact-only variant is noisy (256.0 and 275.5), and the Tier 1 arms
+(pK 239.8 and pT 238.7 against pP 253.8 ns/probe) put the gain at about 14
+ns/probe. The profile is one instrument on Q0 and decides nothing; its
+spread is larger than the effect.
+
+### Limits of this result
+
+- One runner, one pinned CPU, Tier 1 instance scope; the profile and
+  diagnosis in section 1 came from an Intel VM, and the runner's AMD EPYC
+  has different translation behaviour. The runner's own profile shows the
+  big-table lookup is already mostly hidden by the pipeline, so there was
+  little for the filter to remove.
+- The gain is 6% of the online interval, which is about 1% of the cold
+  cost. A pipeline whose setup dominates cold cost gains nearly nothing from
+  it.
+- The baseline pP is the probe-pipeline producer's loop in the same binary;
+  this experiment does not re-run that experiment's binary.
+- Next steps: the batched root solve (about 157 ns of a probe here), and
+  combining with the state fold, as listed under Limits.
 
 ## Limits
 

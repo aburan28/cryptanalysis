@@ -377,12 +377,14 @@
       "evidence_tier": "Tier 1 (one GitHub-hosted ubuntu-24.04 runner, one pinned CPU; host exclusivity not certified)",
       "verified": "64/64 rows, 0 flagged; section 23 claims 408/408 and external-rho claims 1152/1152 pass; verify_receipt.py reproduces result.json byte for byte",
       "sources": ["cryptanalysis:experiments/koblitz-s23-tuned-rho-20261015/README.md", "cryptanalysis:experiments/koblitz-s23-tuned-rho-20261015/run_github_38777903922/panel/result.json"]
-    }
+    },
+    {"n": 83, "a": 1, "role": "promoted improvement over the probe-pipeline producer: two-level root table, 32 MiB filter + 16-byte slots (one experiment; not combined with another row)", "experiment": "cryptanalysis:experiments/koblitz-n83-tablefilter-20261015 (branch claude/n83-table-filter)", "run": "GitHub Actions 38829449594", "pipeline": "B's koblitz_orbit_dlp_fast_online + ic_log_cache.patch, K600 (crypto 770f6a69), lift_scan + Feistel order + prefetched probes (the probe-pipeline producer, pP) vs the same with KIC_ROOT_TABLE=filter (pT)", "targets": "384 new public points, 6 slices of 64, 1 process per arm per slice", "promoted": true, "unit": "online interval; S_rho in this run's rT770 steps (318.3 ns); cold = slice setup + online", "measured": {"R_m_pipeline_over_filter": {"value": 1.0633, "ci95": [1.0589, 1.0679]}, "R_g": {"value": 1.0611, "ci95": [1.0579, 1.0644]}, "slice_bootstrap_R_m": {"value": 1.0633, "ci95": [1.0428, 1.0882]}, "probe_ratio": 1.0, "ns_per_probe": {"pP": 253.8, "pT": 238.7, "pK": 239.8, "pT29": 238.0}, "pP_over_pK_compact_only": {"value": 1.0581, "ci95": [1.0536, 1.0627]}, "pK_over_pT": {"value": 1.0049, "ci95": [1.0035, 1.0066]}, "pT_over_pT29": {"value": 1.0029, "ci95": [1.0019, 1.0039]}, "setup_ms": {"pP": 51081, "pT": 50593, "pK": 49288, "pT29": 50705}, "filter_build_ms": {"pT": 1304, "pT29": 1439}, "peak_rss_gib": {"pP": 5.41, "pT": 3.45}, "cold_pP_over_pT": {"value": 1.0101, "ci95": [1.009, 1.0113]}, "S_rho_online": {"pP": 0.01605, "pT": 0.0151, "delta": -0.00096}, "S_rho_cold": {"pP": 1.74985, "pT": 1.73231, "delta": -0.01754}}, "gap_online_ic_over_tuned_rho": {"value": 0.1523, "ci95": [0.1358, 0.1709], "note": "inverse of tuned rho / pT 6.5642 [5.8533, 7.3649]; the pipeline is 0.1620 (inverse of 6.1734); online only"}, "evidence_tier": "Tier 1 (one GitHub-hosted ubuntu-24.04 runner, one pinned CPU)", "sources": ["cryptanalysis:experiments/koblitz-n83-tablefilter-20261015/README.md", "cryptanalysis:experiments/koblitz-n83-tablefilter-20261015/run_github_38829449594/panel/result.json"]}
   ],
   "ratchet_history": [
     {"n": 41, "from": "section 23 (v0, crypto 0bf67f16)", "to": "rule v3 (crypto 995ea207)", "cold_gap": [8.044, 7.657], "online_gap": [0.1066, 0.0915], "class": "engineering (the IC programme's rounds R03, R05, R07); measured as the rule's comparison, class accounting in that comparison itself", "note": "paired cold-time ratios between baselines are in IC_TOOL_PROGRAM.md section 7; S is not compared across the two units"},
     {"n": 53, "from": "section 23 (v0)", "to": "rule v3", "cold_gap": [14.70, 13.24], "online_gap": [0.0572, 0.0466], "class": "engineering"},
-    {"n": 61, "from": "section 23 (v0)", "to": "rule v3", "cold_gap": [31.60, 20.97], "online_gap": [0.1131, 0.0675], "class": "engineering"}
+    {"n": 61, "from": "section 23 (v0)", "to": "rule v3", "cold_gap": [31.60, 20.97], "online_gap": [0.1131, 0.0675], "class": "engineering"},
+    {"n": 83, "from": "probe-pipeline producer", "to": "two-level root table (run 38829449594)", "cold_gap": null, "online_gap": [0.162, 0.1523], "online_speedup": "1.0633 [1.0589, 1.0679] (384 points); most of it from the 16-byte slot (pK 1.0581)", "class": "engineering; promoted by its own frozen rule (probes identical); baseline row not replaced here (cold S not measured; cold ratio 1.0101)"}
   ],
   "stage_results": [
     {
@@ -408,6 +410,7 @@
     "n=41, 53, 61: the gap to the tuned rho is measured by koblitz-s23-tuned-rho-20261015 (run 38777903922, PR #923; also n=47, 57, 59) on the one-word Gf2 kernel, because Gf2_128 does not exist for n<=64; a rho tuned on that kernel is not measured. Accounting only: no IC change, so no baseline row moves",
     "n=19 and n=41-61: no Bernstein-Lange walk has run; their BL figures are models or absent",
     "n=83: the baseline row's experiment is on PR #918, not yet merged",
-    "n=19: no IC1 candidate manifest; online S not separable"
+    "n=19: no IC1 candidate manifest; online S not separable",
+    "n=83: the two-level root table is promoted over the probe-pipeline producer by 1.0633 [1.0589, 1.0679], almost all of it from the 16-byte slot; cold cost is unchanged to 1% (setup dominates); which pipeline the baseline row names is not decided here"
   ]
 }
