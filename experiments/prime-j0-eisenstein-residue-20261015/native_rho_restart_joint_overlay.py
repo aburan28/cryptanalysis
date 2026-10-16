@@ -28,6 +28,11 @@ def main(root):
     front_source = replace_once(front_source,
         '    let args: Vec<String> = std::env::args().skip(1).collect();\n',
         '    let args: Vec<String> = std::env::args().skip(1).collect();\n'
+        '    if args.len() == 3 && args[0] == "--pilot-rho-restart-joint-triple81" {\n'
+        '        let count: usize = args[2].parse().expect("rho restart count");\n'
+        '        rho_restart_joint::run_triple81(&args[1], count);\n'
+        '        return;\n'
+        '    }\n'
         '    if args.len() == 4 && args[0] == "--pilot-rho-restart-joint-write-plan" {\n'
         '        let count: usize = args[2].parse().expect("rho restart count");\n'
         '        rho_restart_joint::write_graph_plan(&args[1], count, &args[3]);\n'

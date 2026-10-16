@@ -24,11 +24,13 @@ ORDER_ONE = ORDER_COMMON[:ORDER_COMMON.index('cal_mid')] + (
     'compare_one_aux', 'compare_one_aux_vs_refined',
     'compare_unit_root', 'compare_unit_root_vs_one_aux',
     'compare_cost_aware', 'compare_cost_aware_vs_unit_root',
-    'compare_projective', 'compare_projective_vs_affine') + \
+    'compare_projective', 'compare_projective_vs_affine',
+    'compare_triple81', 'compare_triple81_vs_cost_aware') + \
     ORDER_COMMON[ORDER_COMMON.index('cal_mid'):]
 ORDER_128 = ORDER_COMMON[:ORDER_COMMON.index('cal_mid')] + (
     'compare_mixed_cost', 'compare_mixed_cost_vs_weighted',
-    'compare_hybrid', 'compare_hybrid_vs_affine') + \
+    'compare_hybrid', 'compare_hybrid_vs_affine',
+    'compare_triple81', 'compare_triple81_vs_mixed_cost') + \
     ORDER_COMMON[ORDER_COMMON.index('cal_mid'):]
 AA = ('cal_before', 'cal_mid', 'cal_after')
 
@@ -163,7 +165,10 @@ def audit(count, manifest_path, rules_path, raw_path):
         'compare_fused': [binary, '--pilot-rho-restart-joint-fused', fixture_remote, str(count)],
         'compare_fused_graph': [binary, '--pilot-rho-restart-joint-fused-graph', fixture_remote, str(count)],
         'compare_fused_graph_planned': [binary, '--pilot-rho-restart-joint-fused-graph-planned', fixture_remote, str(count), rules['paths'][f'plan_{count}']],
+        'compare_triple81': [binary, '--pilot-rho-restart-joint-triple81', fixture_remote, str(count)],
     }
+    candidates['compare_triple81_vs_cost_aware' if count == 1
+               else 'compare_triple81_vs_mixed_cost'] = candidates['compare_triple81']
     if count == 1:
         candidates['compare_one_aux'] = [binary, '--pilot-rho-restart-joint-graph-planned',
                                          fixture_remote, '1', rules['paths']['one_aux_1']]
@@ -202,10 +207,14 @@ def audit(count, manifest_path, rules_path, raw_path):
                               if case['id'] == 'compare_cost_aware_vs_unit_root'
                               else candidates['compare_cost_aware']
                               if case['id'] == 'compare_projective_vs_affine'
+                              else candidates['compare_cost_aware']
+                              if case['id'] == 'compare_triple81_vs_cost_aware'
                               else candidates['compare_weighted']
                               if case['id'] == 'compare_mixed_cost_vs_weighted'
                               else candidates['compare_mixed_cost']
                               if case['id'] == 'compare_hybrid_vs_affine'
+                              else candidates['compare_mixed_cost']
+                              if case['id'] == 'compare_triple81_vs_mixed_cost'
                               else reference)
         assert case['reference'] == expected_reference
         assert case['candidate'] == candidates.get(case['id'], reference)
@@ -308,6 +317,9 @@ def audit(count, manifest_path, rules_path, raw_path):
                     'compare_mixed_cost_vs_weighted': 'joint_graph_planned',
                     'compare_hybrid': 'joint_graph_hybrid_planned',
                     'compare_hybrid_vs_affine': 'joint_graph_hybrid_planned',
+                    'compare_triple81': 'joint_triple81',
+                    'compare_triple81_vs_cost_aware': 'joint_triple81',
+                    'compare_triple81_vs_mixed_cost': 'joint_triple81',
                     'compare_fused': 'joint_fused',
                     'compare_fused_graph': 'joint_fused_graph',
                     'compare_fused_graph_planned': 'joint_fused_graph_planned',
@@ -322,8 +334,10 @@ def audit(count, manifest_path, rules_path, raw_path):
                          'compare_unit_root_vs_one_aux',
                          'compare_cost_aware_vs_unit_root',
                          'compare_projective_vs_affine',
+                         'compare_triple81_vs_cost_aware',
                          'compare_mixed_cost_vs_weighted',
-                         'compare_hybrid_vs_affine') else 'openssl_nowarm')
+                         'compare_hybrid_vs_affine',
+                         'compare_triple81_vs_mixed_cost') else 'openssl_nowarm')
             key = (repeat, case_id, variant)
             assert key not in lookup
             lookup[key] = run
@@ -359,12 +373,12 @@ def audit(count, manifest_path, rules_path, raw_path):
                     if mode in ('joint_graph', 'joint_fused_graph',
                                 'joint_graph_planned', 'joint_fused_graph_planned',
                                 'joint_graph_projective_planned',
-                                'joint_graph_hybrid_planned'):
+                                'joint_graph_hybrid_planned', 'joint_triple81'):
                         assert (int(fields['graph_edges']) + int(fields['direct_seeds']) ==
                                 int(fields['constructed_q_points']))
                     if mode in ('joint_graph_planned', 'joint_fused_graph_planned',
                                 'joint_graph_projective_planned',
-                                'joint_graph_hybrid_planned'):
+                                'joint_graph_hybrid_planned', 'joint_triple81'):
                         assert number(fields, 'graph_plan_ms') == 0
                         assert number(fields, 'plan_load_ms') >= 0
                         assert int(fields['plan_bytes']) > 0

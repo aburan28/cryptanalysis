@@ -123,13 +123,16 @@ def main():
     boundary = ('OpenSSL nowarm times its first EC_POINT_mul(aG+bQ) and affine output; '
                 'its Q parsing and group setup are outside. Joint arms exclude globally '
                 'reusable G and canonical-seed preparation, include Q parsing/table '
-                'construction, a recoding, pair fusion where selected, Horner evaluation, '
-                'and affine output. Direct and online graph arms include b recoding. '
+                'construction, Horner evaluation, and affine output. Legacy joint '
+                'arms include a recoding and direct or online graph arms include b '
+                'recoding. '
                 'Planned graph arms load a frozen Q-independent graph artifact '
                 'before Q-dependent timing. The hybrid arm also compiles its Q-seed '
                 'representation selector from frozen choices during plan load; its retained '
                 'bytes are included in plan_bytes. plan_load_ms and plan_bytes are reported '
-                'separately from online_ms. '
+                'separately from online_ms. The triple81 arm compiles its radix-6481 '
+                'digit graph and prepares G before target timing; its online interval '
+                'includes Q graph instantiation and every restart evaluation. '
                 'Fixture parsing and process launch are outside.')
     for count in (1, 128):
         stem = f'tier1-rho-joint-{count}-cpu40'
@@ -161,6 +164,8 @@ def main():
                        paths['fixture'], '128', paths['mixed_cost_128']] if count == 128 else None)
         hybrid = ([str(BINARY), '--pilot-rho-restart-joint-hybrid-graph-planned',
                    paths['fixture'], '128', paths['mixed_cost_128']] if count == 128 else None)
+        triple81 = [str(BINARY), '--pilot-rho-restart-joint-triple81',
+                    paths['fixture'], str(count)]
         prior = steiner if count == 1 else weighted
         fused = [str(BINARY), '--pilot-rho-restart-joint-fused', paths['fixture'], str(count)]
         fused_graph = [str(BINARY), '--pilot-rho-restart-joint-fused-graph',
@@ -186,11 +191,15 @@ def main():
                ('compare_cost_aware', cost_aware),
                ('compare_cost_aware_vs_unit_root', cost_aware),
                ('compare_projective', projective),
-               ('compare_projective_vs_affine', projective)] if count == 1 else []),
+               ('compare_projective_vs_affine', projective),
+               ('compare_triple81', triple81),
+               ('compare_triple81_vs_cost_aware', triple81)] if count == 1 else []),
             *([('compare_mixed_cost', mixed_cost),
                ('compare_mixed_cost_vs_weighted', mixed_cost),
                ('compare_hybrid', hybrid),
-               ('compare_hybrid_vs_affine', hybrid)] if count == 128 else []),
+               ('compare_hybrid_vs_affine', hybrid),
+               ('compare_triple81', triple81),
+               ('compare_triple81_vs_mixed_cost', triple81)] if count == 128 else []),
             ('cal_mid', ref),
             ('compare_fused', fused), ('compare_fused_graph', fused_graph),
             ('compare_fused_graph_planned', fused_graph_planned),
@@ -205,8 +214,10 @@ def main():
                           else one_aux if name == 'compare_unit_root_vs_one_aux'
                           else unit_root if name == 'compare_cost_aware_vs_unit_root'
                           else cost_aware if name == 'compare_projective_vs_affine'
+                          else cost_aware if name == 'compare_triple81_vs_cost_aware'
                           else weighted if name == 'compare_mixed_cost_vs_weighted'
                           else mixed_cost if name == 'compare_hybrid_vs_affine'
+                          else mixed_cost if name == 'compare_triple81_vs_mixed_cost'
                           else ref)
             cases.append({'id': name, 'reference': paired_ref, 'candidate': candidate,
                           'expected_fields': {'count': str(count)},

@@ -12,7 +12,7 @@ benchmark queue.
 The [fixture](rho-restart-first128-fixture.json) has SHA-256
 `fc6a0283c51e3fd9c2eb0b82961092d3060c242d8122c9648c37fdaf614d094a`.
 The one-restart panel uses its first case; the batch panel uses its first 128
-cases. The one-restart panel runs 26 cases and the 128-restart panel runs 22;
+cases. The one-restart panel runs 28 cases and the 128-restart panel runs 24;
 each case has 16 alternating repetitions:
 
 | Case | Reference | Candidate |
@@ -42,6 +42,9 @@ each case has 16 alternating repetitions:
 | `compare_mixed_cost_vs_weighted` (128 restarts) | Low-rotation graph | Cost-aware mixed-addition graph, same scalar stream and Q |
 | `compare_hybrid` (128 restarts) | OpenSSL no-warmup | Reuse-selective Q table from the cost-aware graph |
 | `compare_hybrid_vs_affine` (128 restarts) | Affine Q table from the cost-aware graph | Reuse-selective Q table from the same graph |
+| `compare_triple81` | OpenSSL no-warmup | Norm-6481 tripling Horner with its frozen-scalar seed graph |
+| `compare_triple81_vs_cost_aware` (one restart) | Affine Q table from the cost-aware graph | Norm-6481 tripling Horner on the same Q and scalar pair |
+| `compare_triple81_vs_mixed_cost` (128 restarts) | Affine Q table from the mixed-cost graph | Norm-6481 tripling Horner on the same Q and scalar stream |
 | `cal_mid` | OpenSSL no-warmup | OpenSSL no-warmup |
 | `compare_fused` | OpenSSL no-warmup | Sparse Q table, batched affine pair sums, shared Horner, batched output normalization |
 | `compare_fused_graph` | OpenSSL no-warmup | Shared Q-seed graph followed by batched affine pair sums and output normalization |
@@ -52,14 +55,19 @@ All candidate commands time affine serialization. OpenSSL's interval starts at
 its first `EC_POINT_mul` for the public `a,b,Q` and includes every requested
 restart. Its Q parsing and curve construction precede the timer. The joint
 commands exclude globally reusable G and canonical-seed preparation; their
-`online_ms` includes Q parsing and table construction, a-scalar recoding,
-restart evaluation, and affine output. Direct and online graph arms also
-charge b-scalar recoding. The planned graph arms load separately frozen
+`online_ms` includes Q parsing, table construction, restart evaluation, and
+affine output. The older joint arms also charge a-scalar recoding, and their
+direct and online graph modes charge b-scalar recoding. The triple81 arm
+compiles both frozen scalar streams before its target timer and reports that
+preparation separately. The planned graph arms load separately frozen
 artifact of b-scalar choices and graph topology. The artifact contains no Q
 and is hashed in the panel manifest. They report `plan_load_ms` and
 `plan_bytes`, and charge graph instantiation on Q online. The hybrid mode
 also compiles its repeated-seed selector from those frozen choices during
 plan load, before the target timer, and includes the selector in `plan_bytes`.
+The triple81 arm compiles its own Q-independent radix choices and seed graph
+and prepares G before target timing; it reports the graph's retained bytes
+and preparation interval separately.
 The auditor preserves
 plan-load, target-preparation, and evaluation times by mode. Plan generation
 and loading are separate setup costs; reuse requires the declared scalar
@@ -75,8 +83,8 @@ decoding, process launch, and independent expected-point checks are outside
 every timed interval. The joint commands report target preparation and
 evaluation as exclusive phase costs whose sum is `online_ms`.
 
-The one-restart panel has 416 planned pairs and 832 arms; the 128-restart
-panel has 352 pairs and 704 arms. Each includes 48 OpenSSL A/A control pairs.
+The one-restart panel has 448 planned pairs and 896 arms; the 128-restart
+panel has 384 pairs and 768 arms. Each includes 48 OpenSSL A/A control pairs.
 The queue runs one subprocess at a time on CPU 40. The Tier 1
 receipt must retain exposed topology, affinity, cgroup limits, throttling,
 steal time, memory and calibration noise. A comparison advances only when
@@ -213,3 +221,60 @@ still identifies `thyvmdqmzsz5ik` as RunPod, and its current `libcrypto.so.3`
 hash is `d6fc1bc9de29c55fc905f77edba1ccc7c7a50b32bd2bb9086b0d0b00104eafc4`.
 Pod-level CPU pinning defines this as Tier 1; no physical-host isolation
 certificate is inferred.
+
+## Norm-6481 tripling Horner candidate
+
+The opt-in `--pilot-rho-restart-joint-triple81` path evaluates `aG+bQ` in the
+Eisenstein radix `81+omega = 82-tau`. Its conjugate is `79+tau`, and their
+product is `6481`. A quotient step subtracts a shortest digit with the same
+residue modulo `6481`, then multiplies the coefficient pair by the conjugate
+and divides both coordinates exactly by `6481`. Twenty fixed steps leave a
+terminal pair of norm at most `3` across the frozen 128-restart fixture.
+The sixfold unit orbit folds requested digit coefficients into a graph of Q
+seeds. The scalar stream and graph are compiled before target timing; online
+work instantiates the graph on Q, batch-normalizes its requested points,
+applies the shared Horner recurrence, and serializes every output.
+
+The Horner step computes `81P+omega(P)` as four applications of the paper's
+Jacobian tripling formula, one unit rotation, and one projective addition.
+The tripling formula uses `4S+6M`; the current native backend implements a
+square through the same Montgomery routine as a multiplication. For the
+frozen one-restart stream, 20 steps therefore use 80 triplings, or
+`320S+480M`, in the repeated scalar operator. The norm-4033 step uses 22
+steps of six doublings, or 132 doublings. The native doubling source uses
+`5S+2M`, giving `660S+264M` for that operator. Digit additions, Q-table
+construction, rotations, exceptional branches, and output conversion remain
+separate costs; the complete candidate is subject to the same Tier 1 paired
+wall gate as the current arms.
+
+The macOS ARM64 release binary with SHA-256
+`bc22190deda4b79ea49934c014682de175e34ca4d201677952109edc15b99e02`
+verified 393 exact outputs: the frozen first and first 128 restart points;
+one restart each for independently constructed `Q=G`, `Q=2G`, and `Q=5G`;
+128 restarts for `Q=2G`; 128 fresh seeded `(a,b)` pairs with `Q=2G`; and five
+edge cases including the identity result. The alternate expected points were generated
+from each public `(a,b)` as `(a+bq)G` by the installed `cryptography` secp256k1
+backend. The fresh panel draws 128 independent nonzero `a,b` values with
+Python's `random.Random(0x648120261016)` and orders each from
+`[1, r-1]`, where `r` is the secp256k1 subgroup order. The edge pairs are
+`(0,0)`, `(1,0)`, `(0,1)`, `(r-2,1)`, and `(r-1,r-1)`.
+The seeded and edge fixture SHA-256 values are
+`22b74bf09006b3bfedf5ada7fe241e8d030a6be4c07bc6dc556dea9ffcfcec78`
+and `a23d0cc09c09b1de9d8a635af2e4326cbe4698024112879e92ec35e898e1a81e`.
+The frozen one-restart Q graph has 13 edges and eight direct seeds;
+the 128-restart graph has 973 edges and one direct seed. The respective
+retained graph plans are 2,820 and 136,390 bytes; the batch asks a distinct
+table-amortization question.
+
+The pinned [Lean module](Triple81Radix.lean) proves the conjugate product,
+exact quotient-step implication, recoder trace reconstruction, and shared
+two-scalar Horner theorem with explicit point-addition and radix-map premises.
+The [pinned proof receipt](joint-seed-graph-lean-check.json),
+[native replay receipt](triple81-local-replay.json), and
+[Tier 1 static audit](tier1-rho-joint-triple81-dryrun.json) retain the
+commands, hashes, and verification status.
+The concrete Jacobian tripling formula is checked here by native exact-point
+replay; its field-operation refinement into the abstract Lean point map is
+the remaining formalization bridge. Reproduce the native checks with the
+flag above and counts `1` and `128` on the frozen fixture. Local elapsed
+times from these correctness commands are not used as Tier 1 comparisons.

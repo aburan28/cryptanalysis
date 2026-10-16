@@ -10,13 +10,16 @@ import tempfile
 
 HERE = Path(__file__).resolve().parent
 MODULES = ('AlternateRadix.lean', 'HornerRadix.lean', 'JointSeedGraph.lean',
-           'JointHorner.lean')
+           'JointHorner.lean', 'Triple81Radix.lean')
 THEOREMS = {
     'JointSeedGraph': ('omega_square_q_coefficient', 'unit_root_value',
                        'certifiedStep_valid', 'certifiedTrace_valid',
                        'requested_seed_values', 'requested_projection'),
     'JointHorner': ('combine_horner', 'two_scalar_horner',
                     'two_scalar_horner_from_graph'),
+    'Triple81Radix': ('conjugate_primePair81', 'quotient_step',
+                      'valid_trace_evaluates', 'point_horner81',
+                      'two_scalar_horner81'),
 }
 
 
@@ -53,14 +56,14 @@ def main():
                         for axiom in line.split('[')[1].split(']')[0].split(', '))), line
         if checker:
             command = [checker, '--fresh',
-                       str(Path(temp) / 'JointHorner.olean')]
+                       str(Path(temp) / 'Triple81Radix.olean')]
             result = subprocess.run(command, cwd=HERE, env=env, text=True,
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             steps.append({'command': command, 'returncode': result.returncode,
                           'output': result.stdout})
             assert result.returncode == 0, result.stdout
     receipt = {
-        'schema': 3, 'toolchain': toolchain,
+        'schema': 4, 'toolchain': toolchain,
         'source_sha256': {name: sha256((HERE / name).read_bytes()).hexdigest()
                           for name in MODULES},
         'new_theorems': {module: list(theorems)

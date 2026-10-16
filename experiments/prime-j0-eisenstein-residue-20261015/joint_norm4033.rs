@@ -1011,3 +1011,215 @@ pub(super) fn multiply_u256_tau_joint_fused_batch(
     assert!(affine_iter.next().is_none());
     (answers,pending.len())
 }
+
+// The conjugate pair (82-tau)(79+tau)=6481 permits twenty fixed windows
+// for the certified secp256k1 representatives used by the frozen restart panel.
+const TRIPLE81_NORM: i32 = 6481;
+pub(super) const TRIPLE81_STEPS: usize = 20;
+pub(super) type Triple81Choices = [(i16,i16); TRIPLE81_STEPS+1];
+
+fn triple81_nearest_digit(residue: i32) -> (i16,i16) {
+    if residue == 0 { return (0,0); }
+    let mut best = (i32::MAX,i32::MAX,i32::MAX,i32::MAX,i32::MAX);
+    for lift_number in -2..=2i32 {
+        let lift = residue + lift_number*TRIPLE81_NORM;
+        let center = (161*lift).div_euclid(2*TRIPLE81_NORM);
+        for b in center-2..=center+2 {
+            let a = lift-82*b;
+            let norm = a*a+3*a*b+3*b*b;
+            let score = (norm,b.abs(),a.abs(),a,b);
+            if score < best { best = score; }
+        }
+    }
+    (i16::try_from(best.3).unwrap(),i16::try_from(best.4).unwrap())
+}
+
+pub(super) fn triple81_choices_for_words(words: [u64;4]) -> Triple81Choices {
+    let scalar = super::Uint(words);
+    let residue = if bool::from(scalar.ct_lt(&super::SCALAR_ORDER_WORDS)) {
+        scalar
+    } else { super::U256::sbb(&scalar,&super::SCALAR_ORDER_WORDS).0 };
+    let ((mut a,mut b),_,_) =
+        super::hexagonal_certified_fixed_choice_words(residue.0);
+    let mut digits = [(0i16,0i16);TRIPLE81_STEPS+1];
+    for slot in digits.iter_mut().take(TRIPLE81_STEPS) {
+        let residue_word = a.add(b.times_alt_split_prime_small(82));
+        let (_,_,r) = residue_word.div_rem_small_radix(TRIPLE81_NORM as u64);
+        let negative = r > (TRIPLE81_NORM/2) as usize;
+        let index = if negative { TRIPLE81_NORM as usize-r } else { r };
+        let (raw_a,raw_b) = triple81_nearest_digit(index as i32);
+        let (da,db) = if negative { (-raw_a,-raw_b) } else { (raw_a,raw_b) };
+        *slot = (da,db);
+        let shifted_a = a.sub(Signed192::from_i32(i32::from(da)));
+        let shifted_b = b.sub(Signed192::from_i32(i32::from(db)));
+        let numerator_a = shifted_a.times_alt_split_prime_small(79)
+            .add(shifted_b.times_alt_split_prime_small(-3));
+        let numerator_b = shifted_a.add(shifted_b.times_alt_split_prime_small(82));
+        let (next_a,rem_a,residue_a) =
+            numerator_a.div_rem_small_radix(TRIPLE81_NORM as u64);
+        let (next_b,rem_b,residue_b) =
+            numerator_b.div_rem_small_radix(TRIPLE81_NORM as u64);
+        assert_eq!((rem_a,residue_a,rem_b,residue_b),(0,0,0,0));
+        a=next_a; b=next_b;
+    }
+    let (ai,aneg) = a.alt_split_prime_table_index(100);
+    let (bi,bneg) = b.alt_split_prime_table_index(100);
+    let terminal = (if aneg { -(ai as i16) } else { ai as i16 },
+                    if bneg { -(bi as i16) } else { bi as i16 });
+    let (ta,tb) = (i32::from(terminal.0),i32::from(terminal.1));
+    assert!(ta*ta+3*ta*tb+3*tb*tb < 5000);
+    digits[TRIPLE81_STEPS] = terminal;
+    digits
+}
+
+impl U256Jacobian {
+    // Xu--Yu--Han--Lu's j=0 formula: 4 squares and 6 multiplications.
+    // The second tau coordinate uses the conjugate automorphism, so Z(3P)
+    // simplifies to 3*X_tau*(X*Z) without forming Z_tau.
+    fn triple_j0(self) -> Self {
+        if self.is_identity() { return self; }
+        let x_cubed = u256_mul(u256_square(self.x),self.x);
+        let y_squared = u256_square(self.y);
+        let three_x_cubed = u256_add(u256_add(x_cubed,x_cubed),x_cubed);
+        let twice_y_squared = u256_add(y_squared,y_squared);
+        let x_tau = u256_sub(u256_add(twice_y_squared,twice_y_squared),
+                             three_x_cubed);
+        let y_tau = u256_mul(self.y,u256_sub(three_x_cubed,
+                                           u256_add(x_tau,x_tau)));
+        let x_tau_cubed = u256_mul(u256_square(x_tau),x_tau);
+        let y_tau_squared = u256_square(y_tau);
+        let three_x_tau_cubed = u256_add(u256_add(x_tau_cubed,x_tau_cubed),x_tau_cubed);
+        let twice_y_tau_squared = u256_add(y_tau_squared,y_tau_squared);
+        let x3 = u256_sub(u256_add(twice_y_tau_squared,twice_y_tau_squared),
+                          three_x_tau_cubed);
+        let y3 = u256_mul(y_tau,u256_sub(three_x_tau_cubed,u256_add(x3,x3)));
+        let xz = u256_mul(self.x,self.z);
+        let z3 = u256_mul(x_tau,u256_add(u256_add(xz,xz),xz));
+        if bool::from(z3.ct_is_zero()) { Self::identity() }
+        else { Self { x:x3,y:y3,z:z3 } }
+    }
+}
+
+fn triple81_horner(point: U256Jacobian) -> U256Jacobian {
+    if point.is_identity() { return point; }
+    let omega_point = point.rotate_power(1);
+    let mut result = point;
+    for _ in 0..4 { result = result.triple_j0(); }
+    result.add_projective(omega_point)
+}
+
+pub(super) struct Triple81Table {
+    values: std::collections::BTreeMap<(i16,i16),U256Affine>,
+    pub(super) retained_bytes: usize,
+}
+
+pub(super) struct Triple81Plan {
+    graph: JointQGraphPlan,
+    requested: Vec<((i16,i16),(i16,i16),u8)>,
+    pub(super) retained_bytes: usize,
+    pub(super) graph_edges: usize,
+    pub(super) direct_seeds: usize,
+}
+
+pub(super) fn compile_triple81_plan(choices: &[Triple81Choices]) -> Triple81Plan {
+    let requested = choices.iter().flat_map(|row| row.iter().copied())
+        .filter(|&digit| digit!=(0,0))
+        .collect::<std::collections::BTreeSet<_>>();
+    let seeds = requested.iter().copied().map(alt_orbit_canonical)
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut orbit = std::collections::BTreeMap::<(i16,i16),((i16,i16),usize)>::new();
+    let mut nodes = Vec::with_capacity(seeds.len());
+    let (mut graph_edges,mut direct_seeds) = (0usize,0usize);
+    for &(a,b) in &seeds {
+        let mut op = None;
+        for ((da,db),base,step_unit) in [((1,0),0,0),((0,1),1,0),
+                                         ((-1,0),0,1),((0,-1),1,1)] {
+            if let Some(&(parent,parent_unit)) = orbit.get(&(a-da,b-db)) {
+                op = Some(JointGraphOp::Step { parent,parent_unit,base,bit:0,step_unit });
+                break;
+            }
+        }
+        if op.is_none() {
+            'power: for bit in 0..8 {
+                for (base,base_pair) in [(0,(1i16 << bit,0i16)),
+                                         (1,(0i16,1i16 << bit))] {
+                    let mut coefficient = base_pair;
+                    for rotation in 0..3 {
+                        for sign in 0..2 {
+                            let delta = if sign == 0 { coefficient }
+                                else { (-coefficient.0,-coefficient.1) };
+                            if let Some(&(parent,parent_unit)) =
+                                orbit.get(&(a-delta.0,b-delta.1)) {
+                                op = Some(JointGraphOp::Step { parent,parent_unit,
+                                    base,bit,step_unit:2*rotation+sign });
+                                break 'power;
+                            }
+                        }
+                        coefficient = alt_orbit_omega_pair(coefficient);
+                    }
+                }
+            }
+        }
+        if op.is_none() {
+            for (&coefficient,&(left,left_unit)) in &orbit {
+                if let Some(&(right,right_unit)) =
+                    orbit.get(&(a-coefficient.0,b-coefficient.1)) {
+                    op = Some(JointGraphOp::Sum { left,left_unit,right,right_unit });
+                    break;
+                }
+            }
+        }
+        let op = if let Some(op) = op { graph_edges += 1; op }
+            else { direct_seeds += 1; JointGraphOp::Direct };
+        nodes.push(JointGraphNode { seed:(a,b),op });
+        let mut coefficient = (a,b);
+        for rotation in 0..3 {
+            assert!(orbit.insert(coefficient,((a,b),2*rotation)).is_none());
+            assert!(orbit.insert((-coefficient.0,-coefficient.1),
+                                 ((a,b),2*rotation+1)).is_none());
+            coefficient = alt_orbit_omega_pair(coefficient);
+        }
+    }
+    let requested = requested.into_iter().map(|digit| {
+        let seed = alt_orbit_canonical(digit);
+        let code = alt_orbit_code(digit,seed);
+        (digit,seed,code)
+    }).collect::<Vec<_>>();
+    let nodes = nodes.into_boxed_slice();
+    let graph = JointQGraphPlan {
+        digit_ids: Box::new([]),terminal_ids: Box::new([]),
+        retained_bytes: nodes.len()*size_of::<JointGraphNode>()
+            + size_of::<JointQGraphPlan>(),
+        nodes,graph_edges,direct_seeds,
+    };
+    let retained_bytes = graph.retained_bytes
+        + requested.capacity()*size_of::<((i16,i16),(i16,i16),u8)>()
+        + size_of::<Triple81Plan>();
+    Triple81Plan { graph,requested,retained_bytes,graph_edges,direct_seeds }
+}
+
+pub(super) fn prepare_triple81_table(point_hex: &str,
+    plan: &Triple81Plan) -> Triple81Table {
+    let graph = joint_graph_points(point_hex,&plan.graph);
+    let projective = plan.requested.iter().map(|&(_,seed,code)|
+        joint_projective_unit(graph[&seed],usize::from(code))).collect::<Vec<_>>();
+    let affine = joint_batch_into_affine(&projective);
+    let values = plan.requested.iter().map(|&(digit,_,_)| digit)
+        .zip(affine.into_iter())
+        .collect::<std::collections::BTreeMap<_,_>>();
+    let retained_bytes = values.len()*size_of::<((i16,i16),U256Affine)>()
+        + size_of::<Triple81Table>();
+    Triple81Table { values,retained_bytes }
+}
+
+pub(super) fn triple81_joint_point(a: &Triple81Choices,b: &Triple81Choices,
+    g: &Triple81Table,q: &Triple81Table) -> String {
+    let mut point = U256Jacobian::identity();
+    for index in (0..=TRIPLE81_STEPS).rev() {
+        if index != TRIPLE81_STEPS { point = triple81_horner(point); }
+        for (digit,table) in [(a[index],g),(b[index],q)] {
+            if digit!=(0,0) { point=point.add_mixed(table.values[&digit]); }
+        }
+    }
+    point.affine_hex_binary_inverse()
+}
