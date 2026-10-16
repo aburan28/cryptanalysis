@@ -82,6 +82,8 @@ three declarations and records their `#print axioms` output. These theorems
 establish the complete abstract two-scalar schedule; native replay checks the
 specific secp256k1 arithmetic, while a Lean refinement of the machine field
 and Jacobian operations remains open.
+The [CI proof job](../../.github/workflows/prime-j0-joint-horner.yml) runs the
+same pinned build and axiom audit on Ubuntu when this experiment changes.
 
 The local ARM64 [replay](joint-q-graph-local-replay.json) checks 1,268 exact
 outputs in 56 serial commands, including the original, graph, and planned builders,

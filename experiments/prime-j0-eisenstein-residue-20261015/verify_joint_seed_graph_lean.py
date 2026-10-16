@@ -30,8 +30,7 @@ def main():
                   'output': version.stdout})
     assert version.returncode == 0 and 'version 4.34.1' in version.stdout
     checker = shutil.which('lean4checker')
-    with tempfile.TemporaryDirectory(prefix='joint-seed-graph-lean-',
-                                      dir='/private/tmp') as temp:
+    with tempfile.TemporaryDirectory(prefix='joint-seed-graph-lean-') as temp:
         env = dict(os.environ, LEAN_PATH=temp)
         outputs = {}
         for name in MODULES:
