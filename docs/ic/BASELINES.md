@@ -5,7 +5,7 @@ rows added from run 38777903922. It takes no new measurement: every number is
 copied from a committed experiment, and each row cites that experiment. Figure 1
 was checked and stays current: no baseline row's numbers changed. The n=83 rows for lift_scan, the Feistel order and their (not promoted)
 combination were added on 2026-10-15; Figure 1 was checked and stays
-current, because no baseline row's numbers changed. The n=83 row for the probe pipeline was added on 2026-10-16, the two-level root table and the state fold the same day, each with the same Figure 1 check. The machine-readable twin is
+current, because no baseline row's numbers changed. The n=83 row for the probe pipeline was added on 2026-10-16, the two-level root table and the state fold the same day, each with the same Figure 1 check. On 2026-10-16 the stacked producer (`koblitz-n83-stacked-20261016`, run 38862448935) replaced B's n=83 baseline row, and Figure 1 was re-rendered. The machine-readable twin is
 [`baselines.json`](baselines.json); update both files in the same change.
 
 ## The rule this file serves
@@ -52,13 +52,13 @@ baseline" (owner, 2026-10-15; cryptanalysis#919, crypto#1908):
 | 41 | K_0 / GF(2^41) | `ic price --single-target` at IC programme baseline v3: 6,560 points, 80 columns, aimed m=3 collection, m=2 pair-table descent; crypto `995ea207`; rule v3 | 64 public points, 1 process each, +4 A/A | 11.17 / 0.121 | 1.459 / 1.318 | **7.66** [6.90, 8.61] | 0.092 [0.071, 0.116] | **measured in a separate experiment, not combined**: see the 41 row of Other verified records (run 38777903922: online IC/tuned 0.09, cold 6.6); the matched rho in this row is ParallelRho (0.56× the strong walk's ns/step) | model only: 2.21 | crypto isolated_bench container | Setup is 98.9% of cold `S`: cut the reusable setup at fixed recipe, as a new IC programme round against v3 |
 | 53 | K_0 / GF(2^53) | same pipeline, 27,984 points, 264 columns; crypto `995ea207`; rule v3 | 64 + 4 A/A | 16.98 / 0.058 | 1.282 / 1.236 | **13.2** [11.8, 15.0] | 0.047 [0.036, 0.059] | **measured in a separate experiment, not combined**: see the 53 row below (online 0.0423, cold 10.6); ParallelRho here is 0.53× strong | model only: 1.77 | crypto isolated_bench container | Setup is 99.7% of cold `S`: cut it at fixed recipe; then price the n=53 representative-plus-Frobenius orbit domain as its replacement |
 | 61 | K_0 / GF(2^61) | same pipeline, 39,040 points, 320 columns; crypto `995ea207`; rule v3 | 64 + 4 A/A | 24.93 / 0.079 | 1.189 / 1.168 | **21.0** [18.6, 23.8] | 0.067 [0.051, 0.088] | **measured in a separate experiment, not combined**: see the 61 row below (online 0.0687, cold 18.9); ParallelRho here is 0.50× strong | model only: 3.52 | crypto isolated_bench container | Setup is 99.7% of cold `S`, and the cold gap grows as r^0.18: cut the setup; price the compact-orbit K=500 producer on these 64 points |
-| 83 | K_1 / GF(2^83) | B's `koblitz_orbit_dlp_fast_online` + `ic_log_cache.patch`, K600 (99,600 points, 600 orbit columns), S3 root index (candidate ID below); crypto `770f6a69`; `koblitz-n83-bl-arm-20261014/protocol.json` at cryptanalysis `507c1ec4`; run 38689817618 (**PR #918, not merged yet**) | B's 16 fresh public points + Q0 ×4 | 32.93 / 0.083 (rT770 steps) | 0.091 / 0.082 | **360** (no interval) | 1.01 [0.30, 2.12], not separated | **measured on this row**: online not separated from parity, cold 360× | **measured: 235** [61, 645], 16/16 points BL faster; cold IC/BL 0.987 by construction | Tier 1 (GitHub runner, one pinned CPU) | The rank stage is 520.8 s of the 549.8 s precomputation (95% of cold `S`): replace it with the guided minimum-rank policy on K600, then re-run this BL protocol |
+| 83 | K_1 / GF(2^83) | the stacked producer (arms cS / kS): B's `koblitz_orbit_dlp_fast_online` + `ic_log_cache.patch`, K600 (99,600 points, 600 orbit columns), lift_scan x Feistel + prefetched probes + 16-byte compact root slots + folded S3 root index (14,940,300 stored states), rank stage on the stack's own probe loop (candidate ID below); crypto `770f6a69`; `koblitz-n83-stacked-20261016/protocol.json` at cryptanalysis `24abca74`; run 38862448935 | 20 new public points, two rank blocks, Q0 | 9.680 / 0.01314 (rT770 steps, 316.66 ns) | 0.1025 / 0.0944 | **94.4** [73.5, 125.3] (end-to-end cold: rank stage + setup + online) | 0.139 [0.077, 0.237] | **measured on this row**: end-to-end cold 94.4, online 0.139 | not measured on this row (B's 235 [61, 645] is in Other verified records) | Tier 1 (GitHub runner, one pinned CPU) | The rank stage is 257.8 s of the 283.8 s end-to-end cold cost (91%): cut it (the guided minimum-rank policy, fewer attempts), then setup (lift_scan in the index build, 1.33x cold without rank); re-run the BL arm on the stack |
 
 ![Distance to the matched rho and to Bernstein–Lange, per baseline row.](figures/baselines_gap.png)
 
 *Figure 1. The baseline rows' gaps on a log scale: cold and online to the
-matched rho, and online to Bernstein–Lange (measured at n=83, a model
-elsewhere). Each row is one experiment. Bars are 95% intervals where the
+matched rho, and online to Bernstein–Lange (a model; the one measured n=83
+BL gap is in B's row, now under Other verified records). Each row is one experiment. Bars are 95% intervals where the
 source gives one ([source](figures/baselines_gap.tex),
 [vector](figures/baselines_gap.pdf)).*
 
@@ -108,6 +108,7 @@ None is combined with another row.
 | 41 | gap to the tuned rho (this experiment only; cf. the baseline row) | `koblitz-s23-tuned-rho-20261015`, run 38777903922 (PR #923) | tuned = rT770 configuration on the one-word kernel; same run: ParallelRho cold 7.83, strong 6.43, rA770 2.54 | **6.6** [5.91, 7.4] | **0.09** [0.0715, 0.111] | model 0.53 | Tier 1 |
 | 53 | gap to the tuned rho (this experiment only; cf. the baseline row) | `koblitz-s23-tuned-rho-20261015`, run 38777903922 (PR #923) | tuned = rT770 configuration on the one-word kernel; same run: ParallelRho cold 11.8, strong 9.2, rA770 3.01 | **10.6** [9.45, 12] | **0.0423** [0.0325, 0.0534] | model 0.322 | Tier 1 |
 | 61 | gap to the tuned rho (this experiment only; cf. the baseline row) | `koblitz-s23-tuned-rho-20261015`, run 38777903922 (PR #923) | tuned = rT770 configuration on the one-word kernel; same run: ParallelRho cold 19.4, strong 13.7, rA770 4.42 | **18.9** [16.7, 21.5] | **0.0687** [0.051, 0.0903] | model 0.759 | Tier 1 |
+| 83 | previous baseline (B, the BL-arm row), superseded by the stacked producer | `koblitz-n83-bl-arm-20261014`, run 38689817618 (PR #918, not merged yet) | rT770, B's 16 fresh points + Q0 x4 | 360 (no interval; S 32.93 / 0.083 in that run's rT770 steps) | 1.01 [0.30, 2.12], not separated | **measured: 235** [61, 645], 16/16 points BL faster; cold IC/BL 0.987 by construction | Tier 1 |
 | 83 | same pipeline as the baseline (merged) | `koblitz-n83-reconcile-20261014`, run 38617911080 | rT770, two seeds per point | 313 (fresh-rank setup) | 0.92 [0.28, 1.78], not separated | none | Tier 1 |
 | 83 | same pipeline, first Tier 1 run | `koblitz-single-target-n83-tier1-20261014`, run 38523707244 | rung 3, slower per step than StrongRhoG, so not the matched tuned rho | 134 | 0.36 [0.11, 0.66] | model 33.5 (measured later: 235) | Tier 1 |
 | 83 | promoted single improvement over B: two-limb `lift_scan` canonicalizer (this experiment only) | `koblitz-n83-liftscan-20261015`, run 38776966036 (PR #926) | rT770, B's 16 fresh points | cold not measured | IC/rho 0.67 [0.19, 1.38] (inverse of 1.4914 [0.7270, 5.1445]); online full / lift_scan 1.5152 [1.5061, 1.5247] | none | Tier 1 |
@@ -130,6 +131,7 @@ None is combined with another row.
 | 83 | lift_scan x Feistel combined producer | software-pipelined, prefetched probes (run 38822490448) | not measured | 0.2047 → 0.1462 (online, tuned rho; 1.4001 faster) | engineering; promoted by its own frozen rule; baseline row not replaced (no cold `S`) |
 | 83 | probe-pipeline producer | two-level root table (run 38829449594) | not measured | 0.1620 → 0.1523 (online, tuned rho; 1.0633 faster) | engineering; promoted by its own frozen rule; baseline row not replaced (no cold `S` against rho) |
 | 83 | lift_scan x Feistel combined producer | folded S3 root index (run 38819494806) | 12.77 → 6.95 (rank stage excluded) | not improved (online 5% slower) | engineering; promoted by its own frozen rule; baseline row not replaced (rank stage still dominates cold cost) |
+| 83 | B (BL-arm baseline row, run 38689817618) | stacked producer: probe pipeline + 16-byte slots + folded index + rank stage (run 38862448935) | 360 → 94.4 (end-to-end cold; different run and instances) | 1.01 → 0.139 | engineering; promoted by its own frozen primary (end-to-end cold cP / cS 3.2391 [2.9809, 3.5240], 20 points, two rank blocks, against the probe-pipeline producer); **baseline row replaced**: the first measured n=83 end-to-end cold `S` after B (9.68; was 32.93 in B's run, a different step time) |
 
 The paired cold-time ratios between baselines, each in its own runs, are in
 crypto `research/notes/index-calculus/IC_TOOL_PROGRAM.md` §7. The gaps above
@@ -158,21 +160,25 @@ only once it moves an end-to-end `S` above.
   row moves. A rho tuned on the one-word kernel is not measured.
 - **n=19 and n=41–61:** no Bernstein–Lange walk has run, so the BL figures
   are models or absent.
-- **n=83:** the baseline's experiment is on PR #918, which is not merged yet.
-
-  lift_scan and the Feistel order are each promoted over B (rows above), and
-  their combination is not promoted over the better single arm
-  (`koblitz-n83-combined-20261015`). Which pipeline the baseline row names,
-  and its cold `S`, are not decided here.
-  The probe pipeline is promoted over the combined producer
-  (`koblitz-n83-probepipe-20261015`); which pipeline the baseline row names,
-  and its cold `S`, are not decided here. The two-level root table is promoted
-  over the probe-pipeline producer (`koblitz-n83-tablefilter-20261015`, 1.0633,
-  mostly the 16-byte slot); which pipeline the baseline row names is likewise
-  not decided here.
-  The folded index is promoted over the combined producer on cold cost
-  (`koblitz-n83-state-fold-20261015`); the rank stage still dominates, and
-  which pipeline the baseline row names is not decided here.
+- **n=83:** the baseline row is the stacked producer
+  (`koblitz-n83-stacked-20261016`, run 38862448935): the probe pipeline,
+  16-byte slots, folded index and a rank stage on the stack's own probe loop,
+  promoted end to end over the probe-pipeline producer (3.2391 [2.9809,
+  3.5240], 20 points, two rank blocks). Its end-to-end cold `S` is 9.68
+  against the tuned rho's 0.103 (gap 94.4 [73.5, 125.3]); it is the first
+  n=83 row with a measured end-to-end cold `S` after B. B's earlier row
+  (experiment on PR #918, not merged yet) moved to Other verified records.
+  The parts were each promoted on their own parent: lift_scan and the Feistel
+  order over B (their combination is not promoted over the better single arm,
+  `koblitz-n83-combined-20261015`), the probe pipeline over the combined
+  producer (`koblitz-n83-probepipe-20261015`), the two-level root table over
+  the probe pipeline (`koblitz-n83-tablefilter-20261015`, 1.0633, mostly the
+  16-byte slot) and the folded index over the combined producer
+  (`koblitz-n83-state-fold-20261015`, cold 1.8372). End to end, neither the
+  fold nor the slots is separated from 1 inside the stack. The rank stage is
+  91% of the end-to-end cold cost, and the stack's online is about 4.6%
+  slower than the probe pipeline's. The BL gap was not re-measured on the
+  stack.
 - **n=19:** there is no IC1 candidate manifest, and online `S` is not
   separable.
 

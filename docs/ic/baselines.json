@@ -1,6 +1,6 @@
 {
   "schema": "ic-baselines/v1",
-  "as_of": "2026-10-15",
+  "as_of": "2026-10-16",
   "what_this_is": "The index-calculus baseline ledger (the ratchet). For each curve and size, the current best verified IC pipeline with its protocol, receipts and end-to-end S, and its distance to the matched rho and to Bernstein-Lange. One row, one experiment: no row combines numbers from two experiments. Human view: BASELINES.md.",
   "rule": "AGENTS.md, 'Success criterion: iterative improvement of the index-calculus baseline' (owner, 2026-10-15; cryptanalysis#919, crypto#1908). Every verified, measured improvement over a baseline row is a success; a landed improvement replaces the row and the old row moves to ratchet_history with its delta. The gap to rho is the distance remaining, not a gate.",
   "conventions": {
@@ -171,38 +171,38 @@
       "n": 83,
       "a": 1,
       "curve": {"curve_id": "EC1N83Ce1h35c7ced6b497", "icv1": "icv1-f2m83-t6151469093347-9eba6cd5", "r": 8569786107849059, "log2_r": 52.93},
-      "experiment": "cryptanalysis:experiments/koblitz-n83-bl-arm-20261014 (PR #918, branch claude/n83-bl-arm, not yet merged)",
+      "experiment": "cryptanalysis:experiments/koblitz-n83-stacked-20261016 (branch claude/n83-stacked)",
       "pipeline": {
-        "name": "koblitz_orbit_dlp_fast_online + ic_log_cache.patch: compact-orbit K600 base (99,600 points, 600 orbit columns), S3 root index, verified cached factor-log table",
+        "name": "the stacked producer: B's koblitz_orbit_dlp_fast_online + ic_log_cache.patch, K600 (99,600 points, 600 orbit columns), lift_scan x Feistel + prefetched probes + 16-byte compact root slots + folded S3 root index (14,940,300 stored states, 2^26 slots); rank stage on the stack's own probe loop (lift_scan, Feistel order, KIC_RANK_PROBE=target), verified cached factor-log table (arms cS / kS)",
         "candidate_id": "IC1N83Ckb1fb99600PDP4s3rootindexRCguidedLAdenseTDsingleISO0hc0ecc1fffbd7",
-        "candidate_id_status": "the ID of B's claims (experiments/koblitz-single-target-n83-tier1-20261014) for the same producer, base and recipe",
-        "commit": "crypto 770f6a6925a0d29b768bd79074f54a173e967fe7; cryptanalysis 507c1ec4eba542f6e4ca584370a53c6e6c05072c",
-        "protocol": "cryptanalysis:experiments/koblitz-n83-bl-arm-20261014/protocol.json (sha256 b8e28e7121d4404fc0f02adcbcf521f41d0c319ce8327e3d595dfb4e16f598c1)",
-        "run": "GitHub Actions 38689817618, one ubuntu-24.04 runner (AMD EPYC 9V45), one pinned CPU"
+        "candidate_id_status": "B's ID for the same base and recipe; no new IC1 manifest was written for the stack",
+        "commit": "crypto 770f6a6925a0d29b768bd79074f54a173e967fe7; cryptanalysis 24abca74f80965d7473b5c9cca6713ace4841e6b",
+        "protocol": "cryptanalysis:experiments/koblitz-n83-stacked-20261016/protocol.json",
+        "run": "GitHub Actions 38862448935, one ubuntu-24.04 runner, one pinned CPU"
       },
-      "targets": "B's 16 fresh public points (one pinned process each), plus Q0 in 4 blocks",
-      "unit": "one rT770 rho step as measured in this run (180.82 ns), per sqrt(r); derived from wall ms of this run only",
-      "s_ic_cold": 32.931,
-      "s_ic_online": 0.0830,
-      "s_ic_setup": 32.848,
-      "wall_ms": {"ic_online_mean": 1389.91, "ic_cold": 551237.0, "P_IC": 549847.1, "P_IC_rank_stage": 520825, "P_IC_per_process_setup": 29022, "rho_online_mean": 1372.72, "rho_cold": 1529.48, "bl_online_mean": 5.914, "bl_cold": 558407.5},
+      "targets": "20 new public points (stacked-cold-v1; one fresh pinned process per arm per point), two rank blocks (rank seeds 101, 102), Q0 in one block",
+      "unit": "one rT770 rho step as measured in this run (316.66 ns), per sqrt(r); end-to-end cold = mean rank stage over two processes + mean cold (setup + one-target online, cached table) over the points",
+      "s_ic_cold": 9.6805,
+      "s_ic_online": 0.013137,
+      "s_ic_setup": 0.8856,
+      "wall_ms": {"e2e_cold_mean": 283774.6, "rank_stage_mean": 257814.3, "cold_without_rank_mean": 25960.4, "setup_mean": 25575.2, "index_build_mean": 22991.2, "ic_online_mean": 385.1, "rho_online_mean": 2768.1, "rho_cold": 3005.6},
       "reference_rho": {
         "name": "rT770, A's tuned StrongRhoG<Gf2_128 fold>, 64 lanes, DP 6, escape off, same points, same runner",
         "is_tuned_rho_rT770": true,
-        "s_rho_cold": 0.0914,
-        "s_rho_online": 0.0820
+        "s_rho_cold": 0.10253,
+        "s_rho_online": 0.09443
       },
-      "gap_cold_ic_over_rho": {"value": 360.4, "ci95": null, "statistic": "(P_IC + mean IC online) / (median rho setup + mean rho online)"},
-      "gap_online_ic_over_rho": {"value": 1.0125, "ci95": [0.304, 2.116], "reading": "not_separated"},
-      "gap_tuned_rho": "measured on this row: online not separated from parity, cold 360x",
-      "gap_bernstein_lange": {"kind": "measured", "ic_online_over_bl": {"value": 235.0, "ci95": [61.4, 644.8], "reading": "bl_online_faster_than_ic", "rows_bl_faster": "16/16"}, "ic_cold_over_bl_cold": 0.987, "s_bl_online": 0.000353, "note": "BL precomputation matched to P_IC in wall ms on the same CPU (1.6e-6); T = 48,180,186 points (1.93 GB)"},
+      "gap_cold_ic_over_rho": {"value": 94.4168, "ci95": [73.5188, 125.2922], "statistic": "end-to-end cold: mean rank stage + mean cold over mean rho cold, bootstrap over points and rank attempts"},
+      "gap_online_ic_over_rho": {"value": 0.1391, "ci95": [0.0773, 0.2368], "note": "inverse of tuned rho / cS 7.1879 [4.1981, 12.9440]"},
+      "gap_tuned_rho": "measured on this row: end-to-end cold 94.4 [73.5, 125.3]; online 0.139",
+      "gap_bernstein_lange": {"kind": "not measured on this row", "note": "no BL walk ran in this experiment; the earlier measured figure (online 235 [61, 645]) is B's row, now in other_records, a different run and producer"},
       "evidence_tier": "Tier 1 (instance scoped; GitHub-hosted runner; one pinned exposed CPU)",
-      "verified": "81/81 runs valid; every scalar replayed in oracle.py; positive controls, three table checks, step identity, IC work identity and the A/A passed",
-      "source_figure": "IC online / BL online 235 [61, 645]; rho online / IC online 0.988 [0.473, 3.29]; cold IC / rho 360; cold IC / BL 0.987",
-      "next_improvement": "The rank stage is 520.8 s of the 549.8 s precomputation (95% of cold S). Replace the sequential rank stage with the guided minimum-rank policy (eta 1/10 reached rank = columns in exactly that many rows at n=53) on the K600 base, then re-run this BL protocol; online, cut S3-root probes per target.",
+      "verified": "192/192 rows valid, 0 skipped by the time guard; probe identities, one relation and one scalar per point (oracle replay), Q0 equal to the archived Feistel identity, rank tables equal to B's archived table, A/A and planted control passed; verify_receipt.py reproduces result.json byte for byte",
+      "source_figure": "end-to-end cold cP / cS 3.2391 [2.9809, 3.5240] (promoted over the probe-pipeline producer pP, whose rank stage is B's); cold without rank 1.9019; online 0.9562 (stack about 4.6% slower online); rank stage per attempt kP / kS 3.3749 [3.0914, 3.6806]",
+      "next_improvement": "The rank stage is 257.8 s of the 283.8 s end-to-end cold cost (91%): cut it (fewer or cheaper attempts; the guided minimum-rank policy), then setup (lift_scan in the index build, cSI, is 1.33x faster cold without rank). Gap to the tuned rho is still 94x; the BL arm has not been re-run on the stack.",
       "sources": [
-        "cryptanalysis:experiments/koblitz-n83-bl-arm-20261014/README.md (branch claude/n83-bl-arm)",
-        "cryptanalysis:experiments/koblitz-n83-bl-arm-20261014/run_github_38689817618/result.json (branch claude/n83-bl-arm)"
+        "cryptanalysis:experiments/koblitz-n83-stacked-20261016/README.md (branch claude/n83-stacked)",
+        "cryptanalysis:experiments/koblitz-n83-stacked-20261016/run_github_38862448935/panel/result.json (branch claude/n83-stacked)"
       ]
     }
   ],
@@ -378,6 +378,45 @@
       "verified": "64/64 rows, 0 flagged; section 23 claims 408/408 and external-rho claims 1152/1152 pass; verify_receipt.py reproduces result.json byte for byte",
       "sources": ["cryptanalysis:experiments/koblitz-s23-tuned-rho-20261015/README.md", "cryptanalysis:experiments/koblitz-s23-tuned-rho-20261015/run_github_38777903922/panel/result.json"]
     },
+    {
+      "n": 83,
+      "a": 1,
+      "role": "previous baseline (B, the BL-arm row); superseded by the stacked producer (one experiment; not combined with another row)",
+      "curve": {"curve_id": "EC1N83Ce1h35c7ced6b497", "icv1": "icv1-f2m83-t6151469093347-9eba6cd5", "r": 8569786107849059, "log2_r": 52.93},
+      "experiment": "cryptanalysis:experiments/koblitz-n83-bl-arm-20261014 (PR #918, branch claude/n83-bl-arm, not yet merged)",
+      "pipeline": {
+        "name": "koblitz_orbit_dlp_fast_online + ic_log_cache.patch: compact-orbit K600 base (99,600 points, 600 orbit columns), S3 root index, verified cached factor-log table",
+        "candidate_id": "IC1N83Ckb1fb99600PDP4s3rootindexRCguidedLAdenseTDsingleISO0hc0ecc1fffbd7",
+        "candidate_id_status": "the ID of B's claims (experiments/koblitz-single-target-n83-tier1-20261014) for the same producer, base and recipe",
+        "commit": "crypto 770f6a6925a0d29b768bd79074f54a173e967fe7; cryptanalysis 507c1ec4eba542f6e4ca584370a53c6e6c05072c",
+        "protocol": "cryptanalysis:experiments/koblitz-n83-bl-arm-20261014/protocol.json (sha256 b8e28e7121d4404fc0f02adcbcf521f41d0c319ce8327e3d595dfb4e16f598c1)",
+        "run": "GitHub Actions 38689817618, one ubuntu-24.04 runner (AMD EPYC 9V45), one pinned CPU"
+      },
+      "targets": "B's 16 fresh public points (one pinned process each), plus Q0 in 4 blocks",
+      "unit": "one rT770 rho step as measured in this run (180.82 ns), per sqrt(r); derived from wall ms of this run only",
+      "s_ic_cold": 32.931,
+      "s_ic_online": 0.0830,
+      "s_ic_setup": 32.848,
+      "wall_ms": {"ic_online_mean": 1389.91, "ic_cold": 551237.0, "P_IC": 549847.1, "P_IC_rank_stage": 520825, "P_IC_per_process_setup": 29022, "rho_online_mean": 1372.72, "rho_cold": 1529.48, "bl_online_mean": 5.914, "bl_cold": 558407.5},
+      "reference_rho": {
+        "name": "rT770, A's tuned StrongRhoG<Gf2_128 fold>, 64 lanes, DP 6, escape off, same points, same runner",
+        "is_tuned_rho_rT770": true,
+        "s_rho_cold": 0.0914,
+        "s_rho_online": 0.0820
+      },
+      "gap_cold_ic_over_rho": {"value": 360.4, "ci95": null, "statistic": "(P_IC + mean IC online) / (median rho setup + mean rho online)"},
+      "gap_online_ic_over_rho": {"value": 1.0125, "ci95": [0.304, 2.116], "reading": "not_separated"},
+      "gap_tuned_rho": "measured on this row: online not separated from parity, cold 360x",
+      "gap_bernstein_lange": {"kind": "measured", "ic_online_over_bl": {"value": 235.0, "ci95": [61.4, 644.8], "reading": "bl_online_faster_than_ic", "rows_bl_faster": "16/16"}, "ic_cold_over_bl_cold": 0.987, "s_bl_online": 0.000353, "note": "BL precomputation matched to P_IC in wall ms on the same CPU (1.6e-6); T = 48,180,186 points (1.93 GB)"},
+      "evidence_tier": "Tier 1 (instance scoped; GitHub-hosted runner; one pinned exposed CPU)",
+      "verified": "81/81 runs valid; every scalar replayed in oracle.py; positive controls, three table checks, step identity, IC work identity and the A/A passed",
+      "source_figure": "IC online / BL online 235 [61, 645]; rho online / IC online 0.988 [0.473, 3.29]; cold IC / rho 360; cold IC / BL 0.987",
+      "next_improvement": "The rank stage is 520.8 s of the 549.8 s precomputation (95% of cold S). Replace the sequential rank stage with the guided minimum-rank policy (eta 1/10 reached rank = columns in exactly that many rows at n=53) on the K600 base, then re-run this BL protocol; online, cut S3-root probes per target.",
+      "sources": [
+        "cryptanalysis:experiments/koblitz-n83-bl-arm-20261014/README.md (branch claude/n83-bl-arm)",
+        "cryptanalysis:experiments/koblitz-n83-bl-arm-20261014/run_github_38689817618/result.json (branch claude/n83-bl-arm)"
+      ]
+    },
     {"n": 83, "a": 1, "unit": "online interval only; no cold S measured in this experiment", "evidence_tier": "Tier 1 (one GitHub-hosted ubuntu-24.04 runner, one pinned CPU)", "role": "promoted single improvement over B: two-limb lift_scan canonicalizer (one experiment; not combined)", "experiment": "cryptanalysis:experiments/koblitz-n83-liftscan-20261015 (branch claude/n83-liftscan, PR #926)", "run": "GitHub Actions 38776966036", "promoted": true, "measured": {"online_full_over_lift_fresh16": {"value": 1.5152, "ci95": [1.5061, 1.5247]}, "online_full_over_lift_Q0": {"value": 1.5309, "ci95": [1.5093, 1.5336]}, "probes": "unchanged"}, "gap_online_ic_over_tuned_rho": {"value": 0.6705, "ci95": [0.1944, 1.3755], "note": "inverse of tuned rho / IC lift_scan 1.4914 [0.7270, 5.1445] on B's 16 fresh points; not separated from parity"}, "pipeline": "B's koblitz_orbit_dlp_fast_online + ic_log_cache.patch, K600 (crypto 770f6a69); the one change named in the role", "sources": ["cryptanalysis:experiments/koblitz-n83-liftscan-20261015/README.md", "cryptanalysis:experiments/koblitz-n83-liftscan-20261015/run_github_38776966036/panel/result.json"]},
     {"n": 83, "a": 1, "unit": "online interval only; no cold S measured in this experiment", "evidence_tier": "Tier 1 (one GitHub-hosted ubuntu-24.04 runner, one pinned CPU)", "role": "promoted single improvement over B: Feistel scan order (one experiment; not combined)", "experiment": "cryptanalysis:experiments/koblitz-n83-scanorder-20261015 (branch claude/n83-scan-order, PR #927)", "run": "GitHub Actions 38786433493", "promoted": true, "measured": {"online_left_major_over_feistel_fresh16": {"value": 3.4287, "ci95": [1.009, 7.4215]}, "online_left_major_over_feistel_heldout384": {"value": 1.4507, "ci95": [1.2023, 1.7424]}, "online_left_major_over_feistel_Q0": {"value": 4.3257, "ci95": [4.2837, 4.4547]}}, "gap_online_ic_over_tuned_rho": {"value": 0.2909, "ci95": [0.1628, 0.4814], "note": "inverse of tuned rho / IC feistel 3.4370 [2.0774, 6.1418] on B's 16 fresh points"}, "pipeline": "B's koblitz_orbit_dlp_fast_online + ic_log_cache.patch, K600 (crypto 770f6a69); the one change named in the role", "sources": ["cryptanalysis:experiments/koblitz-n83-scanorder-20261015/README.md", "cryptanalysis:experiments/koblitz-n83-scanorder-20261015/run_github_38786433493/panel/result.json"]},
     {"n": 83, "a": 1, "unit": "online interval only; no cold S measured in this experiment", "evidence_tier": "Tier 1 (one GitHub-hosted ubuntu-24.04 runner, one pinned CPU)", "role": "NOT promoted: lift_scan x Feistel order combined (one experiment; frozen primary not_separated)", "experiment": "cryptanalysis:experiments/koblitz-n83-combined-20261015 (branch claude/n83-combined)", "run": "GitHub Actions 38803625711", "promoted": false, "measured": {"primary_R_m_better_single_over_combined": {"value": 1.2363, "ci95": [1.0671, 1.4276]}, "primary_R_g_better_single_over_combined": {"value": 1.0611, "ci95": [0.9083, 1.243]}, "primary_verdict": "not_separated (R_g lower bound below 1)", "combined_vs_B_means": {"value": 1.9992, "ci95": [1.7285, 2.309]}, "combined_vs_B_geomeans": {"value": 1.7143, "ci95": [1.4646, 2.008]}, "n_points": 576, "S_rho_online": {"B": 0.04137, "lift_only": 0.02558, "feistel_only": 0.0331, "combined": 0.02069}}, "gap_online_ic_over_tuned_rho": {"value": 0.2145, "ci95": [0.1949, 0.2353], "note": "inverse of tuned rho / combined 4.6628 [4.2501, 5.1308] on means, 576 points; geometric means 7.2786 [6.5115, 8.1684]"}, "pipeline": "B's koblitz_orbit_dlp_fast_online + ic_log_cache.patch, K600 (crypto 770f6a69); the one change named in the role", "sources": ["cryptanalysis:experiments/koblitz-n83-combined-20261015/README.md", "cryptanalysis:experiments/koblitz-n83-combined-20261015/run_github_38803625711/panel/result.json"], "note": "Combined beats B and Feistel alone clearly, and beats lift_scan alone on means only. The baseline row is unchanged."},
@@ -394,7 +433,8 @@
     {"n": 83, "from": "better single arm (lift_scan)", "to": "lift_scan x Feistel (run 38803625711)", "cold_gap": null, "online_gap": null, "online_speedup": "R_m 1.2363 [1.0671, 1.4276]; R_g 1.0611 [0.9083, 1.2430]", "class": "NOT promoted: frozen primary not_separated"},
     {"n": 83, "from": "lift_scan x Feistel combined producer", "to": "software-pipelined, prefetched probes (run 38822490448)", "cold_gap": null, "online_gap": [0.2047, 0.1462], "online_speedup": "1.4001 [1.3971, 1.4032] (384 points)", "class": "engineering; promoted by its own frozen rule (probes identical); baseline row not replaced here (cold S not measured)"},
     {"n": 83, "from": "probe-pipeline producer", "to": "two-level root table (run 38829449594)", "cold_gap": null, "online_gap": [0.162, 0.1523], "online_speedup": "1.0633 [1.0589, 1.0679] (384 points); most of it from the 16-byte slot (pK 1.0581)", "class": "engineering; promoted by its own frozen rule (probes identical); baseline row not replaced here (cold S not measured; cold ratio 1.0101)"},
-    {"n": 83, "from": "lift_scan x Feistel combined producer", "to": "folded S3 root index (run 38819494806)", "cold_gap": [12.7687, 6.9501], "online_gap": null, "cold_speedup": "1.8372 [1.8216, 1.8528] (16 points, rank stage excluded)", "class": "engineering; promoted by its own frozen rule; baseline row not replaced here (rank stage still 95% of cold cost with the fold alone)"}
+    {"n": 83, "from": "lift_scan x Feistel combined producer", "to": "folded S3 root index (run 38819494806)", "cold_gap": [12.7687, 6.9501], "online_gap": null, "cold_speedup": "1.8372 [1.8216, 1.8528] (16 points, rank stage excluded)", "class": "engineering; promoted by its own frozen rule; baseline row not replaced here (rank stage still 95% of cold cost with the fold alone)"},
+    {"n": 83, "from": "B (BL-arm baseline row, run 38689817618)", "to": "stacked producer (run 38862448935)", "cold_gap": [360.4, 94.4168], "online_gap": [1.0125, 0.1391], "cold_speedup": "end-to-end cold cP / cS 3.2391 [2.9809, 3.5240] against the probe-pipeline producer pP (B's rank stage; 20 points, two rank blocks)", "class": "engineering; promoted by its own frozen primary; baseline row replaced (first n=83 end-to-end cold S measured after B). The before and after gaps are from different runs, instance sets and step times; the paired comparison is the cP / cS ratio."}
   ],
   "stage_results": [
     {
@@ -419,11 +459,12 @@
   "open": [
     "n=41, 53, 61: the gap to the tuned rho is measured by koblitz-s23-tuned-rho-20261015 (run 38777903922, PR #923; also n=47, 57, 59) on the one-word Gf2 kernel, because Gf2_128 does not exist for n<=64; a rho tuned on that kernel is not measured. Accounting only: no IC change, so no baseline row moves",
     "n=19 and n=41-61: no Bernstein-Lange walk has run; their BL figures are models or absent",
-    "n=83: the baseline row's experiment is on PR #918, not yet merged",
+    "n=83: B's earlier baseline row (experiment on PR #918, not yet merged) moved to other_records when the stacked producer replaced it",
     "n=19: no IC1 candidate manifest; online S not separable",
     "n=83: lift_scan and the Feistel order are each promoted over B, and the combination is not promoted over the better single arm (R_g 1.06 [0.91, 1.24]). Which pipeline is the baseline row, and its cold S, are not decided here",
     "n=83: the probe pipeline is promoted over the combined producer (1.4001 [1.3971, 1.4032]); the combination itself was not_separated against its better single arm in cryptanalysis#929, and the baseline row and its cold S are not decided here",
     "n=83: the two-level root table is promoted over the probe-pipeline producer by 1.0633 [1.0589, 1.0679], almost all of it from the 16-byte slot; cold cost is unchanged to 1% (setup dominates); which pipeline the baseline row names is not decided here",
-    "n=83: the folded index is promoted over the combined producer on cold setup + online (1.8372 [1.8216, 1.8528]); the rank stage is still the dominant cold cost, and which pipeline the baseline row names is not decided here"
+    "n=83: the folded index is promoted over the combined producer on cold setup + online (1.8372 [1.8216, 1.8528]); the rank stage is still the dominant cold cost, and which pipeline the baseline row names is not decided here",
+    "n=83: the stacked producer (probe pipeline + 16-byte slots + folded index + rank stage on its own probe loop) is promoted end to end over the probe-pipeline producer by 3.2391 [2.9809, 3.5240] (koblitz-n83-stacked-20261016, run 38862448935) and is the baseline row; its end-to-end cold S is 9.68 against the tuned rho 0.103 (gap 94.4 [73.5, 125.3]); the rank stage is still 91% of cold cost"
   ]
 }
