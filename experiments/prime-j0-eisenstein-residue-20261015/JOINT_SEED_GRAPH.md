@@ -60,6 +60,8 @@ direct, rotated-power, and two-parent instructions. `certifiedTrace_valid`
 proves by induction that every vertex in any such topological schedule has
 the intended point, including auxiliary vertices. `requested_seed_values`
 adds the explicit requested-seed coverage premise checked by the plan loader.
+`requested_projection` proves that filtering the graph for the normalization
+batch preserves every requested value and excludes auxiliary vertices.
 The hypotheses are the additive coefficient-to-point map and the unit-action
 maps; they do not assume the trace conclusion. The module also proves the four
 axis-neighbor coefficient relations. The pinned

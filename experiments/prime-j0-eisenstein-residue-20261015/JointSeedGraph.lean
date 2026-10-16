@@ -188,6 +188,39 @@ theorem requested_seed_values {Point : Type} (evaluate : Pair → Point)
   exact ⟨value, in_graph,
     certifiedTrace_valid evaluate add map_add trace seed value in_graph⟩
 
+/-- Selecting only requested vertices for affine normalization preserves
+their certified values and excludes auxiliary coefficients from that batch. -/
+theorem requested_projection {Point : Type} (evaluate : Pair → Point)
+    (add : Point → Point → Point)
+    (map_add : ∀ x y, evaluate (pairAdd x y) = add (evaluate x) (evaluate y))
+    {vertices : List (Pair × Point)}
+    (trace : CertifiedTrace evaluate add map_add vertices)
+    (requested : List Pair)
+    (covers : ∀ seed, seed ∈ requested →
+      ∃ value, (seed, value) ∈ vertices) :
+    let selected := vertices.filter (fun entry => decide (entry.1 ∈ requested))
+    ValidGraph evaluate selected ∧
+    (∀ seed, seed ∈ requested →
+      ∃ value, (seed, value) ∈ selected ∧ value = evaluate seed) ∧
+    (∀ coefficient value, (coefficient, value) ∈ selected →
+      coefficient ∈ requested) := by
+  dsimp
+  have valid := certifiedTrace_valid evaluate add map_add trace
+  constructor
+  · intro coefficient value member
+    exact valid coefficient value (List.mem_filter.mp member).1
+  constructor
+  · intro seed member
+    obtain ⟨value, in_graph⟩ := covers seed member
+    have in_selected : (seed, value) ∈
+        vertices.filter (fun entry => decide (entry.1 ∈ requested)) := by
+      apply List.mem_filter.mpr
+      exact ⟨in_graph, by simpa using member⟩
+    exact ⟨value, in_selected, valid seed value in_graph⟩
+  · intro coefficient value member
+    have chosen := (List.mem_filter.mp member).2
+    simpa using chosen
+
 /-- The four searched neighbors in the implementation are the two basis
 directions and their negatives. -/
 theorem four_neighbor_steps (a b : Int) :
@@ -205,6 +238,7 @@ theorem four_neighbor_steps (a b : Int) :
 #print axioms certifiedStep_valid
 #print axioms certifiedTrace_valid
 #print axioms requested_seed_values
+#print axioms requested_projection
 #print axioms four_neighbor_steps
 
 end JointSeedGraph
