@@ -82,6 +82,10 @@ A second checked module proves a uniform selected-digit norm bound and that
 22 exact quotient steps from the secp256k1 lattice envelope reach the native
 terminal table. A source-hash-bound independent sweep checks every residue
 class against a lattice minimum; native arithmetic refinement remains open.
+A third checked module models the complete five-by-five digit search and
+signed-residue branch, proving a bounded digit and exact quotient for every
+integer-pair state. The native tie order and signed-limb operations still
+need formal source refinement.
 
 The [four-checkpoint radix-32 path](CHECKPOINTED_RADIX32.md) stores four
 five-digit windows at selected radix powers, retaining **832,396 bytes**.
