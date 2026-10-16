@@ -9,6 +9,13 @@ pub(super) struct JointQTables {
     pub(super) retained_bytes: usize,
 }
 
+pub(super) struct SparseJointQTables {
+    digit_window: Box<[(usize, U256TwoXAffine)]>,
+    terminal_pairs: Box<[(usize, U256Affine)]>,
+    pub(super) retained_bytes: usize,
+    pub(super) constructed_points: usize,
+}
+
 fn joint_parse_point(q_hex: &str) -> U256Jacobian {
     let (xh, yh) = q_hex.split_once(':').expect("Q x:y");
     let x = num_bigint::BigUint::parse_bytes(xh.as_bytes(), 16).expect("Q x hex");
@@ -26,6 +33,7 @@ fn joint_parse_point(q_hex: &str) -> U256Jacobian {
 // Montgomery's trick converts both Q tables using one field inversion.
 // Every input is a finite nonidentity point; seed zero is inserted afterward.
 fn joint_batch_into_affine(points: &[U256Jacobian]) -> Vec<U256Affine> {
+    if points.is_empty() { return Vec::new(); }
     let ctx = &super::HYBRID_FIELD.0;
     let mut prefix = Vec::with_capacity(points.len());
     let mut product = ctx.r_mod_n;
@@ -69,7 +77,7 @@ fn joint_seed_point(seed: (i16, i16),
     result
 }
 
-pub(super) fn prepare_joint_q(q_hex: &str) -> JointQTables {
+fn joint_q_powers(q_hex: &str) -> ([U256Jacobian; 8], [U256Jacobian; 8]) {
     let q = joint_parse_point(q_hex);
     let tau_q = q.tau();
     let mut a_powers = [U256Jacobian::identity(); 8];
@@ -80,7 +88,10 @@ pub(super) fn prepare_joint_q(q_hex: &str) -> JointQTables {
         a_powers[bit] = a_powers[bit-1].double();
         b_powers[bit] = b_powers[bit-1].double();
     }
-    let g_tables = &*ALT_HORNER_TABLES;
+    (a_powers, b_powers)
+}
+
+fn joint_seed_sets(g_tables: &AltHornerTables) -> (Vec<(i16,i16)>, Vec<(i16,i16)>) {
     let mut digit_seeds = g_tables.digit_pairs.iter().copied()
         .map(alt_orbit_canonical)
         .collect::<std::collections::BTreeSet<_>>()
@@ -99,6 +110,21 @@ pub(super) fn prepare_joint_q(q_hex: &str) -> JointQTables {
     terminal_seeds.retain(|&pair| pair != (0,0));
     terminal_seeds.insert(0, (0,0));
     assert_eq!(terminal_seeds.len(), g_tables.terminal_pairs.len());
+    (digit_seeds, terminal_seeds)
+}
+
+static JOINT_SEED_SETS: LazyLock<(Vec<(i16,i16)>, Vec<(i16,i16)>)> =
+    LazyLock::new(|| joint_seed_sets(&ALT_HORNER_TABLES));
+
+pub(super) fn warm_joint_seed_sets() -> usize {
+    let (digit, terminal) = &*JOINT_SEED_SETS;
+    (digit.capacity() + terminal.capacity())*size_of::<(i16,i16)>()
+        + size_of::<(Vec<(i16,i16)>, Vec<(i16,i16)>)>()
+}
+
+pub(super) fn prepare_joint_q(q_hex: &str) -> JointQTables {
+    let (a_powers, b_powers) = joint_q_powers(q_hex);
+    let (digit_seeds, terminal_seeds) = &*JOINT_SEED_SETS;
     let digit_count = digit_seeds.len()-1;
     let projective = digit_seeds.iter().chain(terminal_seeds.iter())
         .copied().filter(|&seed| seed != (0,0))
@@ -117,6 +143,37 @@ pub(super) fn prepare_joint_q(q_hex: &str) -> JointQTables {
         + terminal_pairs.len()*size_of::<U256Affine>()
         + size_of::<JointQTables>();
     JointQTables { digit_window, terminal_pairs, retained_bytes }
+}
+
+pub(super) fn prepare_joint_q_sparse(
+    q_hex: &str,
+    b_choices: &[[(usize,usize); ALT_SPLIT_PRIME_STEPS+1]],
+) -> SparseJointQTables {
+    let (digit_seeds, terminal_seeds) = &*JOINT_SEED_SETS;
+    let digit_ids = b_choices.iter().flat_map(|choices| choices[..ALT_SPLIT_PRIME_STEPS]
+        .iter().map(|&(index,_)| index)).filter(|&index| index != 0)
+        .collect::<std::collections::BTreeSet<_>>();
+    let terminal_ids = b_choices.iter().map(|choices| choices[ALT_SPLIT_PRIME_STEPS].0)
+        .filter(|&index| index != 0)
+        .collect::<std::collections::BTreeSet<_>>();
+    let (a_powers, b_powers) = joint_q_powers(q_hex);
+    let projective = digit_ids.iter().map(|&index| {
+        joint_seed_point(digit_seeds[index], &a_powers, &b_powers)
+    }).chain(terminal_ids.iter().map(|&index| {
+        joint_seed_point(terminal_seeds[index], &a_powers, &b_powers)
+    })).collect::<Vec<_>>();
+    let affine = joint_batch_into_affine(&projective);
+    let digit_count = digit_ids.len();
+    let digit_window = digit_ids.into_iter().zip(affine[..digit_count].iter().copied())
+        .map(|(index, point)| (index, U256TwoXAffine::from_affine(point)))
+        .collect::<Vec<_>>().into_boxed_slice();
+    let terminal_pairs = terminal_ids.into_iter().zip(affine[digit_count..].iter().copied())
+        .collect::<Vec<_>>().into_boxed_slice();
+    let retained_bytes = digit_window.len()*size_of::<(usize,U256TwoXAffine)>()
+        + terminal_pairs.len()*size_of::<(usize,U256Affine)>()
+        + size_of::<SparseJointQTables>();
+    SparseJointQTables { digit_window, terminal_pairs, retained_bytes,
+                         constructed_points: projective.len() }
 }
 
 fn joint_choices(words: [u64; 4], tables: &AltHornerTables)
@@ -156,23 +213,59 @@ fn joint_choices(words: [u64; 4], tables: &AltHornerTables)
     choices
 }
 
-pub(super) fn multiply_u256_tau_joint(a_words: [u64; 4], b_words: [u64; 4],
-                                      q_tables: &JointQTables) -> String {
+pub(super) fn joint_choices_for_words(words: [u64; 4])
+    -> [(usize,usize); ALT_SPLIT_PRIME_STEPS+1] {
+    joint_choices(words, &ALT_HORNER_TABLES)
+}
+
+fn joint_evaluate_choices<Digit, Terminal>(
+    a: [(usize,usize); ALT_SPLIT_PRIME_STEPS+1],
+    b: [(usize,usize); ALT_SPLIT_PRIME_STEPS+1],
+    q_digit: Digit, q_terminal: Terminal,
+) -> String where Digit: Fn(usize,usize) -> U256Affine,
+                  Terminal: Fn(usize,usize) -> U256Affine {
     let g_tables = &*ALT_HORNER_TABLES;
-    let a = joint_choices(a_words, g_tables);
-    let b = joint_choices(b_words, g_tables);
     let (ga, gu) = a[ALT_SPLIT_PRIME_STEPS];
     let (qb, qu) = b[ALT_SPLIT_PRIME_STEPS];
     let mut point = if ga == 0 { U256Jacobian::identity() } else {
         U256Jacobian::from_affine(g_tables.terminal_pairs[ga].unit(gu))
     };
-    if qb != 0 { point = point.add_mixed(q_tables.terminal_pairs[qb].unit(qu)); }
+    if qb != 0 { point = point.add_mixed(q_terminal(qb,qu)); }
     for index in (0..ALT_SPLIT_PRIME_STEPS).rev() {
         point = alt_horner_mul_pi(point);
         let (ga,gu) = a[index];
         let (qb,qu) = b[index];
         if ga != 0 { point = point.add_mixed(g_tables.digit_window[ga].unit(gu)); }
-        if qb != 0 { point = point.add_mixed(q_tables.digit_window[qb].unit(qu)); }
+        if qb != 0 { point = point.add_mixed(q_digit(qb,qu)); }
     }
     point.affine_hex_binary_inverse()
+}
+
+pub(super) fn multiply_u256_tau_joint(a_words: [u64; 4], b_words: [u64; 4],
+                                      q_tables: &JointQTables) -> String {
+    let g_tables = &*ALT_HORNER_TABLES;
+    let a = joint_choices(a_words, g_tables);
+    let b = joint_choices(b_words, g_tables);
+    joint_evaluate_choices(a, b,
+        |index,unit| q_tables.digit_window[index].unit(unit),
+        |index,unit| q_tables.terminal_pairs[index].unit(unit))
+}
+
+pub(super) fn multiply_u256_tau_joint_sparse(
+    a_words: [u64; 4],
+    b: [(usize,usize); ALT_SPLIT_PRIME_STEPS+1],
+    q_tables: &SparseJointQTables,
+) -> String {
+    let a = joint_choices_for_words(a_words);
+    joint_evaluate_choices(a, b,
+        |index,unit| {
+            let position = q_tables.digit_window.binary_search_by_key(&index, |&(id,_)| id)
+                .expect("Q digit was prepared");
+            q_tables.digit_window[position].1.unit(unit)
+        },
+        |index,unit| {
+            let position = q_tables.terminal_pairs.binary_search_by_key(&index, |&(id,_)| id)
+                .expect("Q terminal was prepared");
+            q_tables.terminal_pairs[position].1.unit(unit)
+        })
 }

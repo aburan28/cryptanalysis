@@ -22,18 +22,26 @@ def scalar(row, name):
     return int(row[name + '_hex'], 16)
 
 
-def run(binary, fixture, count, path):
+def run(binary, fixture, count, path, mode):
     path.write_text(json.dumps(fixture, sort_keys=True, separators=(',', ':')) + '\n')
-    result = subprocess.run([str(binary), '--pilot-rho-restart-joint', str(path),
+    command = ('--pilot-rho-restart-joint' if mode == 'joint'
+               else '--pilot-rho-restart-joint-demand')
+    result = subprocess.run([str(binary), command, str(path),
                              str(count)], text=True, capture_output=True)
     assert result.returncode == 0, result.stderr
     fields = dict(word.split('=', 1) for word in result.stdout.split())
     assert fields['verified'] == '1'
-    assert fields['mode'] == 'joint'
+    assert fields['mode'] == mode
     assert int(fields['count']) == count
     assert fields['point'] == fixture['cases'][count-1]['point_hex']
     assert result.stderr == ''
-    return {'fixture_sha256': sha256(path.read_bytes()).hexdigest(),
+    assert float(fields['online_ms']) > 0
+    if mode == 'joint_demand':
+        assert int(fields['constructed_q_points']) > 0
+        assert abs(float(fields['online_ms'])
+                   - float(fields['target_preparation_ms'])
+                   - float(fields['restart_eval_ms'])) < 0.00001
+    return {'mode': mode, 'fixture_sha256': sha256(path.read_bytes()).hexdigest(),
             'count': count, 'point': fields['point'], 'stdout': result.stdout.strip()}
 
 
@@ -61,8 +69,10 @@ def main():
     }
     with TemporaryDirectory(prefix='joint-q-batch-replay-') as temporary:
         root = Path(temporary)
-        receipt['results'].append({'q_scalar': None,
-            **run(args.binary, frozen, 128, root / 'frozen.json')})
+        for count in (1, 128):
+            for mode in ('joint', 'joint_demand'):
+                receipt['results'].append({'q_scalar': None,
+                    **run(args.binary, frozen, count, root / 'frozen.json', mode)})
         for q_scalar in (1, 2, 3, 7):
             q = mul(q_scalar, G)
             rows = []
@@ -71,8 +81,9 @@ def main():
                 rows.append({'a_hex': row['a_hex'], 'b_hex': row['b_hex'],
                              'point_hex': point_hex(add(mul(a, G), mul(b, q)))})
             fixture = {'q_hex': point_hex(q), 'cases': rows}
-            receipt['results'].append({'q_scalar': q_scalar,
-                **run(args.binary, fixture, 8, root / f'q{q_scalar}.json')})
+            for mode in ('joint', 'joint_demand'):
+                receipt['results'].append({'q_scalar': q_scalar,
+                    **run(args.binary, fixture, 8, root / f'q{q_scalar}.json', mode)})
     args.output.write_text(json.dumps(receipt, sort_keys=True, indent=2) + '\n')
     print(json.dumps({'ok': True, 'runs': len(receipt['results']),
                       'outputs': sum(item['count'] for item in receipt['results'])},
