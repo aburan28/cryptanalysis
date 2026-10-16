@@ -17,7 +17,8 @@ def profile(path, requested=None):
     nodes = json.loads(path.read_bytes())['graph']['nodes']
     normalized = len(nodes) if requested is None else sum(
         (a, b) in requested for a, b, _ in nodes)
-    direct_calls = full_adds = rotations = direct_roots = special_unit_roots = 0
+    direct_calls = full_adds = mixed_adds = rotations = direct_roots = special_unit_roots = 0
+    known_affine = set()
     for a, b, op in nodes:
         if op[0] == 'direct':
             direct_roots += 1
@@ -25,16 +26,23 @@ def profile(path, requested=None):
                 # The planned native graph uses omega^2 of prepared Q.
                 special_unit_roots += 1
                 rotations += 1
+                known_affine.add((a, b))
                 continue
             calls = abs(a).bit_count() + abs(b).bit_count()
             assert calls > 0
             direct_calls += calls
             full_adds += calls - 1  # first add returns from identity
+            if (a, b) in ((1, 0), (-1, 0)):
+                known_affine.add((a, b))
         elif op[0] == 'step':
             full_adds += 1
+            mixed_adds += int((op[1], op[2]) in known_affine or
+                              (op[4] == 0 and op[5] == 0))
             rotations += int(op[3] >= 2) + int(op[6] >= 2)
         elif op[0] == 'sum':
             full_adds += 1
+            mixed_adds += int((op[1], op[2]) in known_affine or
+                              (op[4], op[5]) in known_affine)
             rotations += int(op[3] >= 2) + int(op[6] >= 2)
         else:
             raise AssertionError(op)
@@ -45,12 +53,17 @@ def profile(path, requested=None):
         'direct_roots': direct_roots, 'direct_add_projective_calls': direct_calls,
         'special_unit_roots': special_unit_roots,
         'graph_edge_calls': graph_edges,
-        'total_add_projective_calls': direct_calls + graph_edges,
+        'total_add_calls': direct_calls + graph_edges,
+        'total_add_projective_calls': direct_calls + graph_edges - mixed_adds,
         'identity_return_calls': direct_roots - special_unit_roots,
-        'generic_full_adds': full_adds,
+        'full_adds': full_adds,
+        'generic_full_adds': full_adds - mixed_adds,
+        'mixed_adds': mixed_adds,
         'nontrivial_unit_rotations': rotations,
-        'modeled_field_muls': 12*full_adds + rotations + 6*normalized,
-        'modeled_field_squares': 4*full_adds + normalized,
+        'modeled_field_muls': 12*(full_adds-mixed_adds) + 8*mixed_adds
+                              + rotations + 6*normalized,
+        'modeled_field_squares': 4*(full_adds-mixed_adds) + 3*mixed_adds
+                                 + normalized,
         'shared_field_inversions': 1,
     }
 
@@ -93,6 +106,7 @@ def main():
         'joint_windows_sha256': digest(BASE / 'joint_norm4033.rs'),
         'formula': {
             'generic_full_add': '12 field multiplications + 4 field squares',
+            'mixed_add': '8 field multiplications + 3 field squares when one nonidentity operand has Z=1',
             'nontrivial_projective_unit_rotation': '1 field multiplication',
             'batch_normalization_per_point': '6 field multiplications + 1 field square',
             'batch_normalization_shared': '1 field inversion',
@@ -109,7 +123,7 @@ def main():
     for count in (1,128):
         selected = 'auxiliary' if count == 1 else 'weighted'
         a, b = rows[str(count)]['lexicographic'], rows[str(count)][selected]
-        print(count, selected, a['generic_full_adds'], b['generic_full_adds'],
+        print(count, selected, a['full_adds'], b['full_adds'],
               a['modeled_field_muls'] - b['modeled_field_muls'],
               a['modeled_field_squares'] - b['modeled_field_squares'])
 

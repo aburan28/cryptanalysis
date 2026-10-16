@@ -1,11 +1,12 @@
 # Eisenstein Q-seed graph scheduling
 
 A unit-root graph constructs the 21 requested Q seeds in the frozen
-one-restart stream with 22 generic full additions, 16 nontrivial unit
+one-restart stream with 19 full projective additions, three mixed additions,
+16 nontrivial unit
 rotations, and one normalization inversion. It uses the already prepared Q
 point to seed `(-2,1)` by one unit rotation, then links the remaining seeds
 through two auxiliary vertices. Under the pinned source-formula model it
-requires 406 field multiplications and 109 squares, compared with 422 and
+requires 394 field multiplications and 106 squares, compared with 422 and
 113 for the one-auxiliary graph and 437 and 117 for the earlier refined graph.
 The scalar recoding and requested seeds are identical; this is an
 arithmetic-operation result, with
@@ -82,12 +83,15 @@ rotations. Its [128-restart plan](weighted-plan-128.json) uses one such
 rotation, compared with 518 in the earlier root-first order. The
 [source-formula profile](seed-field-op-model.json) counts the initial
 identity-return calls separately and includes graph rotations and batch
-normalization. Under its stated generic-addition model, the selected
-one-restart auxiliary plan uses 330 fewer field multiplications and 118 fewer
-field squares than the original graph; the selected 128-restart low-rotation
-plan uses 104 fewer multiplications and 28 fewer squares. The earlier
-128-restart root-first plan instead has 413 more modeled multiplications;
-its lower `add_projective` count alone was an incomplete cost signal.
+normalization. The native planned graph evaluator now selects `add_mixed`
+when one nonidentity operand has Jacobian `Z=1`. Under this source-formula
+model, the selected one-restart unit-root schedule has 19 full and three
+mixed additions, or 394 field multiplications and 106 squares. The
+128-restart low-rotation plan has 50 full and 609 mixed additions, or 9,427
+field multiplications and 2,686 squares. The original lexicographic plan
+has 9,467 multiplications and 2,698 squares under the same dispatch rule.
+The [mixed-addition replay](mixed-graph-local-replay.json) checks 524 exact
+outputs from both planned evaluators on frozen Q and four alternate Q points.
 
 The [auxiliary planner](steiner_plan.py) examines the remaining direct roots
 after two-parent linking. It finds two shared vertices, `(-3,0)` and `(0,-5)`,
@@ -132,14 +136,15 @@ The [witness refinement](refine_witnesses.py) keeps each selected plan's
 vertex order and direct roots, then searches the already constructed unit
 orbits for cheaper one-power or two-parent witnesses for each edge. It lowers
 the one-restart auxiliary plan from 27 to 23 nontrivial projective rotations,
-and the 128-restart low-rotation plan from one to zero. The source-formula
+and the 128-restart low-rotation plan from one to zero. Before mixed-addition
+dispatch, the source-formula
 model consequently changes from 453 to 449 field multiplications for the
 one-restart Q-seed graph and from 11,863 to 11,862 for 128 restarts, with the
 same square and inversion counts. The native graph instantiator now normalizes
 only requested Q seeds. Its two auxiliary one-restart vertices stay projective,
 saving another 12 modeled multiplications and two squares; the final refined
 one-restart model is 437 multiplications, 117 squares, and one shared inversion.
-These are source-formula counts, not wall times. The
+Those historical counts are source-formula counts, not wall times. The
 [refined one-restart plan](refined-steiner-plan-1.json),
 [refined 128-restart plan](refined-weighted-plan-128.json), and
 [native replay](refined-local-replay.json) retain the exact coefficient and

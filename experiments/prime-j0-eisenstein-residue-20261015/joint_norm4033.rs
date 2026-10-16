@@ -197,6 +197,22 @@ fn joint_projective_unit(mut point: U256Jacobian, code: usize) -> U256Jacobian {
     point
 }
 
+// A prepared Q or unit-rotated Q has Z=1.  Use the existing mixed formula
+// when either graph operand is affine in this Jacobian representation.
+fn joint_graph_add(left: U256Jacobian, right: U256Jacobian) -> U256Jacobian {
+    if left.is_identity() || right.is_identity() {
+        return left.add_projective(right);
+    }
+    let one = super::HYBRID_FIELD.0.r_mod_n;
+    if right.z.0 == one.0 {
+        left.add_mixed(U256Affine { x: right.x, y: right.y })
+    } else if left.z.0 == one.0 {
+        right.add_mixed(U256Affine { x: left.x, y: left.y })
+    } else {
+        left.add_projective(right)
+    }
+}
+
 // Build requested Q digits as a shared graph in the Eisenstein coefficient
 // lattice. Unit rotations of earlier vertices and shared binary powers of
 // Q and tau(Q) supply one-addition edges; two earlier rotated vertices can
@@ -524,12 +540,12 @@ pub(super) fn instantiate_joint_q_graph(q_hex: &str, plan: &JointQGraphPlan)
             JointGraphOp::Step { parent,parent_unit,base,bit,step_unit } => {
                 let parent = joint_projective_unit(graph[&parent],parent_unit);
                 let power = if base == 0 { a_powers[bit] } else { b_powers[bit] };
-                parent.add_projective(joint_projective_unit(power,step_unit))
+                joint_graph_add(parent,joint_projective_unit(power,step_unit))
             },
             JointGraphOp::Sum { left,left_unit,right,right_unit } => {
                 let left = joint_projective_unit(graph[&left],left_unit);
                 let right = joint_projective_unit(graph[&right],right_unit);
-                left.add_projective(right)
+                joint_graph_add(left,right)
             },
         };
         assert!(!point.is_identity());
