@@ -5,7 +5,7 @@ rows added from run 38777903922. It takes no new measurement: every number is
 copied from a committed experiment, and each row cites that experiment. Figure 1
 was checked and stays current: no baseline row's numbers changed. The n=83 rows for lift_scan, the Feistel order and their (not promoted)
 combination were added on 2026-10-15; Figure 1 was checked and stays
-current, because no baseline row's numbers changed. The machine-readable twin is
+current, because no baseline row's numbers changed. The n=83 row for the probe pipeline was added on 2026-10-16, the two-level root table and the state fold the same day, each with the same Figure 1 check. The machine-readable twin is
 [`baselines.json`](baselines.json); update both files in the same change.
 
 ## The rule this file serves
@@ -113,6 +113,9 @@ None is combined with another row.
 | 83 | promoted single improvement over B: two-limb `lift_scan` canonicalizer (this experiment only) | `koblitz-n83-liftscan-20261015`, run 38776966036 (PR #926) | rT770, B's 16 fresh points | cold not measured | IC/rho 0.67 [0.19, 1.38] (inverse of 1.4914 [0.7270, 5.1445]); online full / lift_scan 1.5152 [1.5061, 1.5247] | none | Tier 1 |
 | 83 | promoted single improvement over B: Feistel scan order (this experiment only) | `koblitz-n83-scanorder-20261015`, run 38786433493 (PR #927) | rT770, B's 16 fresh points | cold not measured | IC/rho 0.291 [0.163, 0.481] (inverse of 3.4370 [2.0774, 6.1418]); online left-major / Feistel 3.4287 [1.0090, 7.4215]; held-out 384: 1.4507 [1.2023, 1.7424] | none | Tier 1 |
 | 83 | **not promoted**: lift_scan x Feistel order combined (this experiment only) | `koblitz-n83-combined-20261015`, run 38803625711 | rT770, 576 new points | cold not measured | IC/rho 0.2145 [0.1949, 0.2353] (inverse of 4.6628 [4.2501, 5.1308], means); frozen primary R_m 1.2363 [1.0671, 1.4276], R_g 1.0611 [0.9083, 1.2430]: `not_separated`; combined vs B 1.9992 [1.7285, 2.3090] | none | Tier 1 |
+| 83 | promoted improvement over the combined producer: software-pipelined, prefetched root-table probes (this experiment only) | `koblitz-n83-probepipe-20261015`, run 38822490448 | rT770, 384 new points | cold not measured | IC/rho 0.1462 [0.1307, 0.1626] (inverse of 6.8396 [6.1494, 7.6526]); combined producer 0.2047; online combined / pipeline 1.4001 [1.3971, 1.4032], probes identical | none | Tier 1 |
+| 83 | promoted improvement over the probe-pipeline producer: two-level root table, 32 MiB filter + 16-byte slots (this experiment only) | `koblitz-n83-tablefilter-20261015`, run 38829449594 | rT770, 384 new points | cold not measured against rho; cold pP / pT 1.0101 [1.0090, 1.0113] | IC/rho 0.1523 [0.1358, 0.1709] (inverse of 6.5642 [5.8533, 7.3649]); pipeline 0.1620; online pP / pT 1.0633 [1.0589, 1.0679], probes identical, mostly from the 16-byte slot | none | Tier 1 |
+| 83 | promoted improvement over the combined producer: folded S3 root index, cold (this experiment only) | `koblitz-n83-state-fold-20261015`, run 38819494806 | rT770, 16 new points | 6.95 [5.53, 9.01] (cB 12.77; setup + online, rank stage excluded; with the rank stage 109.6, was 243.3) | IC/rho 0.163 [0.090, 0.241]; online 5% slower; cold cB / cF 1.8372 [1.8216, 1.8528], setup 1.86×, peak RSS 1.97× | none | Tier 1 |
 
 ## Ratchet history
 
@@ -124,6 +127,9 @@ None is combined with another row.
 | 83 | B | lift_scan canonicalizer (PR #926, run 38776966036) | not measured | not measured (online 1.5152 faster, fresh 16) | engineering; promoted by its own frozen rule; baseline row not replaced (no cold `S`) |
 | 83 | B | Feistel scan order (PR #927, run 38786433493) | not measured | not measured (online 1.4507 faster, held-out 384) | advance (probe count); promoted; baseline row not replaced (no cold `S`) |
 | 83 | better single arm (lift_scan) | lift_scan x Feistel (run 38803625711) | not measured | R_m 1.2363 [1.0671, 1.4276]; R_g 1.0611 [0.9083, 1.2430] | **not promoted**: frozen primary `not_separated` |
+| 83 | lift_scan x Feistel combined producer | software-pipelined, prefetched probes (run 38822490448) | not measured | 0.2047 → 0.1462 (online, tuned rho; 1.4001 faster) | engineering; promoted by its own frozen rule; baseline row not replaced (no cold `S`) |
+| 83 | probe-pipeline producer | two-level root table (run 38829449594) | not measured | 0.1620 → 0.1523 (online, tuned rho; 1.0633 faster) | engineering; promoted by its own frozen rule; baseline row not replaced (no cold `S` against rho) |
+| 83 | lift_scan x Feistel combined producer | folded S3 root index (run 38819494806) | 12.77 → 6.95 (rank stage excluded) | not improved (online 5% slower) | engineering; promoted by its own frozen rule; baseline row not replaced (rank stage still dominates cold cost) |
 
 The paired cold-time ratios between baselines, each in its own runs, are in
 crypto `research/notes/index-calculus/IC_TOOL_PROGRAM.md` §7. The gaps above
@@ -153,10 +159,20 @@ only once it moves an end-to-end `S` above.
 - **n=19 and n=41–61:** no Bernstein–Lange walk has run, so the BL figures
   are models or absent.
 - **n=83:** the baseline's experiment is on PR #918, which is not merged yet.
+
   lift_scan and the Feistel order are each promoted over B (rows above), and
   their combination is not promoted over the better single arm
   (`koblitz-n83-combined-20261015`). Which pipeline the baseline row names,
   and its cold `S`, are not decided here.
+  The probe pipeline is promoted over the combined producer
+  (`koblitz-n83-probepipe-20261015`); which pipeline the baseline row names,
+  and its cold `S`, are not decided here. The two-level root table is promoted
+  over the probe-pipeline producer (`koblitz-n83-tablefilter-20261015`, 1.0633,
+  mostly the 16-byte slot); which pipeline the baseline row names is likewise
+  not decided here.
+  The folded index is promoted over the combined producer on cold cost
+  (`koblitz-n83-state-fold-20261015`); the rank stage still dominates, and
+  which pipeline the baseline row names is not decided here.
 - **n=19:** there is no IC1 candidate manifest, and online `S` is not
   separable.
 
