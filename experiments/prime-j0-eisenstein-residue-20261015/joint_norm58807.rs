@@ -74,16 +74,32 @@ pub(super) struct Triple243Table {
 pub(super) struct Triple243Plan {
     graph: JointQGraphPlan,
     requested: Vec<((i16,i16),(i16,i16),u8)>,
+    low_weight_nodes: bool,
+    modeled_graph_adds: usize,
+    modeled_direct_rotations: usize,
     pub(super) retained_bytes: usize,
     pub(super) graph_edges: usize,
     pub(super) direct_seeds: usize,
 }
 
 pub(super) fn compile_triple243_plan(choices: &[Triple243Choices]) -> Triple243Plan {
+    let canonical = compile_triple243_policy(choices,false);
+    let low_weight = compile_triple243_policy(choices,true);
+    if (low_weight.modeled_graph_adds,low_weight.modeled_direct_rotations)
+        < (canonical.modeled_graph_adds,canonical.modeled_direct_rotations) {
+        low_weight
+    } else { canonical }
+}
+
+fn compile_triple243_policy(choices: &[Triple243Choices],
+    low_weight_nodes: bool) -> Triple243Plan {
     let requested = choices.iter().flat_map(|row| row.iter().copied())
         .filter(|&digit| digit!=(0,0))
         .collect::<std::collections::BTreeSet<_>>();
-    let seeds = requested.iter().copied().map(alt_orbit_canonical)
+    let seeds = requested.iter().copied().map(|digit| {
+        if low_weight_nodes { triple243_low_weight_seed(digit) }
+        else { alt_orbit_canonical(digit) }
+    })
         .collect::<std::collections::BTreeSet<_>>();
     let mut orbit = std::collections::BTreeMap::<(i16,i16),((i16,i16),usize)>::new();
     let mut nodes = Vec::with_capacity(seeds.len());
@@ -139,10 +155,22 @@ pub(super) fn compile_triple243_plan(choices: &[Triple243Choices]) -> Triple243P
         }
     }
     let requested = requested.into_iter().map(|digit| {
-        let seed = alt_orbit_canonical(digit);
+        let seed = if low_weight_nodes { triple243_low_weight_seed(digit) }
+            else { alt_orbit_canonical(digit) };
         let code = alt_orbit_code(digit,seed);
         (digit,seed,code)
     }).collect::<Vec<_>>();
+    let modeled_graph_adds = nodes.iter().map(|node| match node.op {
+        JointGraphOp::Direct => {
+            let seed = triple243_low_weight_seed(node.seed);
+            (seed.0.unsigned_abs().count_ones()
+                + seed.1.unsigned_abs().count_ones()) as usize - 1
+        },
+        _ => 1,
+    }).sum();
+    let modeled_direct_rotations = if low_weight_nodes { 0 }
+        else { nodes.iter().filter(|node| matches!(node.op,JointGraphOp::Direct)
+            && triple243_low_weight_seed(node.seed) != node.seed).count() };
     let nodes = nodes.into_boxed_slice();
     let graph = JointQGraphPlan {
         digit_ids: Box::new([]),terminal_ids: Box::new([]),
@@ -153,12 +181,14 @@ pub(super) fn compile_triple243_plan(choices: &[Triple243Choices]) -> Triple243P
     let retained_bytes = graph.retained_bytes
         + requested.capacity()*size_of::<((i16,i16),(i16,i16),u8)>()
         + size_of::<Triple243Plan>();
-    Triple243Plan { graph,requested,retained_bytes,graph_edges,direct_seeds }
+    Triple243Plan { graph,requested,low_weight_nodes,
+        modeled_graph_adds,modeled_direct_rotations,retained_bytes,
+        graph_edges,direct_seeds }
 }
 
 pub(super) fn prepare_triple243_table(point_hex: &str,
     plan: &Triple243Plan) -> Triple243Table {
-    let graph = triple243_graph_points(point_hex,&plan.graph);
+    let graph = triple243_graph_points(point_hex,&plan.graph,plan.low_weight_nodes);
     let projective = plan.requested.iter().map(|&(_,seed,code)|
         joint_projective_unit(graph[&seed],usize::from(code))).collect::<Vec<_>>();
     let affine = joint_batch_into_affine(&projective);
@@ -214,39 +244,47 @@ fn triple243_q_powers(q_hex: &str) -> ([U256Jacobian;9],[U256Jacobian;9]) {
     (a_powers,b_powers)
 }
 
-fn triple243_direct_orbit(seed: (i16,i16),
-    a_powers: &[U256Jacobian;9], b_powers: &[U256Jacobian;9]) -> U256Jacobian {
-    let mut representative = seed;
-    let mut best_code = 0usize;
+fn triple243_low_weight_seed(pair: (i16,i16)) -> (i16,i16) {
+    let mut best = pair;
     let mut best_weight = u32::MAX;
-    let mut rotated = seed;
-    for power in 0..3usize {
-        for sign in 0..2usize {
+    let mut rotated = pair;
+    for _ in 0..3 {
+        for sign in 0..2 {
             let candidate = if sign == 0 { rotated }
                 else { (-rotated.0,-rotated.1) };
             let weight = candidate.0.unsigned_abs().count_ones()
                 + candidate.1.unsigned_abs().count_ones();
-            if weight < best_weight {
-                representative = candidate;
-                best_code = 2*power+sign;
+            if (weight,candidate) < (best_weight,best) {
+                best = candidate;
                 best_weight = weight;
             }
         }
         rotated = alt_orbit_omega_pair(rotated);
     }
-    let point = triple243_seed_point(representative,a_powers,b_powers);
-    let inverse_code = 2*((3-best_code/2)%3)+best_code%2;
-    joint_projective_unit(point,inverse_code)
+    best
 }
 
-fn triple243_graph_points(q_hex: &str,plan: &JointQGraphPlan)
+fn triple243_direct_orbit(seed: (i16,i16),
+    a_powers: &[U256Jacobian;9], b_powers: &[U256Jacobian;9]) -> U256Jacobian {
+    let representative = triple243_low_weight_seed(seed);
+    let point = triple243_seed_point(representative,a_powers,b_powers);
+    joint_projective_unit(point,
+        usize::from(alt_orbit_code(seed,representative)))
+}
+
+fn triple243_graph_points(q_hex: &str,plan: &JointQGraphPlan,
+    low_weight_nodes: bool)
     -> std::collections::BTreeMap<(i16,i16),U256Jacobian> {
     let (a_powers,b_powers)=triple243_q_powers(q_hex);
     let mut graph=std::collections::BTreeMap::new();
     for node in plan.nodes.iter() {
         let point=match node.op {
             JointGraphOp::Direct =>
-                triple243_direct_orbit(node.seed,&a_powers,&b_powers),
+                if low_weight_nodes {
+                    triple243_seed_point(node.seed,&a_powers,&b_powers)
+                } else {
+                    triple243_direct_orbit(node.seed,&a_powers,&b_powers)
+                },
             JointGraphOp::Step {parent,parent_unit,base,bit,step_unit} => {
                 let parent=joint_projective_unit(graph[&parent],parent_unit);
                 let power=if base==0 {a_powers[bit]} else {b_powers[bit]};

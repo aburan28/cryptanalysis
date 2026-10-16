@@ -123,13 +123,37 @@ def graph_rows(seeds):
         elif any((seed[0]-p[0], seed[1]-p[1]) in seen
                  for p in seen):
             operation = 'sum'
-        canonical_adds = 0 if seed == (-2, 1) else bits(seed)-1
-        orbit_adds = min(bits(value) for value in orbit(seed))-1
+        canonical = min(orbit(seed))
+        canonical_adds = 0 if canonical == (-2, 1) else bits(canonical)-1
+        orbit_adds = bits(seed)-1
         rows.append({'seed': seed, 'operation': operation,
+                     'canonical_seed': canonical,
                      'canonical_direct_adds': canonical_adds,
                      'orbit_direct_adds': orbit_adds})
         seen.update(orbit(seed))
     return rows
+
+
+def policy(digit_rows, low_weight_nodes):
+    def key(digit):
+        variants = orbit(digit)
+        return min(variants, key=lambda item: (bits(item), item)) \
+            if low_weight_nodes else min(variants)
+    seeds = sorted({key(digit) for row in digit_rows for digit in row
+                    if digit != (0, 0)})
+    rows = graph_rows(seeds)
+    direct = [row for row in rows if row['operation'] == 'direct']
+    edges = len(rows)-len(direct)
+    direct_adds = sum(min(bits(value) for value in orbit(tuple(row['seed'])))-1
+                      for row in direct)
+    rotations = 0 if low_weight_nodes else sum(
+        tuple(row['seed']) != min(orbit(tuple(row['seed'])),
+                                  key=lambda item: (bits(item), item))
+        for row in direct)
+    return {'rows': rows, 'nodes': len(rows), 'graph_edges': edges,
+            'direct_seeds': len(direct), 'direct_adds': direct_adds,
+            'modeled_graph_adds': edges+direct_adds,
+            'modeled_direct_rotations': rotations}
 
 
 def main():
@@ -139,8 +163,26 @@ def main():
     replay = json.loads(replay_path.read_bytes())
     scalar = int(fixture['cases'][0]['b_hex'], 16)
     digits = recode(scalar)
-    seeds = sorted({min(orbit(digit)) for digit in digits if digit != (0, 0)})
-    rows = graph_rows(seeds)
+    one = {'canonical': policy([digits], False),
+           'low_weight': policy([digits], True)}
+    batch_digits = [recode(int(row['b_hex'], 16))
+                    for row in fixture['cases'][:128]]
+    batch = {'canonical': policy(batch_digits, False),
+             'low_weight': policy(batch_digits, True)}
+    for options, count in ((one, 1), (batch, 128)):
+        selected = min(options, key=lambda name: (
+            options[name]['modeled_graph_adds'],
+            options[name]['modeled_direct_rotations']))
+        options['selected'] = selected
+        native = next(row for row in replay['results']
+                      if row['fixture'] == 'frozen' and row['count'] == count)
+        chosen = options[selected]
+        assert (chosen['nodes'], chosen['graph_edges'], chosen['direct_seeds']) == (
+            native['constructed_q_points'], native['graph_edges'],
+            native['direct_seeds'])
+    assert one['selected'] == 'low_weight'
+    assert batch['selected'] == 'canonical'
+    rows = one['low_weight']['rows']
     old = sum(row['canonical_direct_adds'] for row in rows
               if row['operation'] == 'direct')
     new = sum(row['orbit_direct_adds'] for row in rows
@@ -159,6 +201,11 @@ def main():
                           ('joint_norm58807.rs', 'check_secp256k1_tau_generator.py')},
         'scalar_b_hex': fixture['cases'][0]['b_hex'],
         'digits': digits, 'graph_rows': rows,
+        'policy_options': {label: {name: {
+            key: value for key, value in option.items() if key != 'rows'}
+            if name != 'selected' else option
+            for name, option in options.items()}
+            for label, options in (('one', one), ('batch128', batch))},
         'canonical_direct_adds': old, 'orbit_direct_adds': new,
         'graph_edges': 1, 'direct_seeds': 16,
         'cost_boundary': 'group additions to construct direct Q seeds; excludes '
