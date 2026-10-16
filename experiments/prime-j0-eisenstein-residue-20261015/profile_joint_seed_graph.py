@@ -19,6 +19,16 @@ def weight(pair):
     return sum(bin(abs(value)).count('1') for value in pair)
 
 
+def unit_orbit(pair):
+    result = set()
+    for _ in range(3):
+        result.add(pair)
+        result.add((-pair[0],-pair[1]))
+        a,b = pair
+        pair = (a+3*b,-a-2*b)
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--binary', type=Path, required=True)
@@ -39,14 +49,20 @@ def main():
         seeds = [tuple(x) for x in profile['q_digit_seeds'] +
                  profile['q_terminal_seeds']]
         assert len(seeds) == len(set(seeds))
+        steps = set()
+        for bit in range(8):
+            steps.update(unit_orbit((1 << bit,0)))
+            steps.update(unit_orbit((0,1 << bit)))
         known, roots, edges = set(), [], 0
         for a, b in sorted(seeds):
-            if any((a+da,b+db) in known for da,db in
-                   ((-1,0),(0,-1),(1,0),(0,1))):
+            if (any((a-da,b-db) in known for da,db in
+                    ((1,0),(0,1),(-1,0),(0,-1))) or
+                any((a-da,b-db) in known for da,db in steps) or
+                any((a-u,b-v) in known for u,v in known)):
                 edges += 1
             else:
                 roots.append((a,b))
-            known.add((a,b))
+            known.update(unit_orbit((a,b)))
         direct_calls = sum(map(weight,seeds))
         root_calls = sum(map(weight,roots))
         assert len(seeds) == len(roots) + edges

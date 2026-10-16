@@ -42,10 +42,11 @@ def main():
         json.dumps(receipt, sort_keys=True, indent=2) + '\n')
     assert all(step['returncode'] == 0 for step in receipt['steps'])
     output = receipt['steps'][-1]['output']
-    for theorem in ('extend_edge', 'extend_direct', 'four_neighbor_steps'):
+    for theorem in ('extend_edge', 'extend_direct', 'extend_unit_edge',
+                    'extend_unit_sum', 'four_neighbor_steps'):
         assert "'JointSeedGraph." + theorem + "' depends on axioms:" in output
     assert 'sorryAx' not in output
-    print(json.dumps({'ok': True, 'theorems': 3,
+    print(json.dumps({'ok': True, 'theorems': 5,
                       'toolchain': receipt['toolchain']}, sort_keys=True))
 
 

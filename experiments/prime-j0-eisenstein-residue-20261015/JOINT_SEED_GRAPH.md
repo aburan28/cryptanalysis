@@ -3,36 +3,43 @@
 The graph builder reduces target-dependent Q-table construction for a batch
 of rho restart points `aG+bQ`. The norm-4033 recoder requests points indexed
 by Eisenstein pairs `(u,v)`, representing `uQ+vτ(Q)`. It creates only the
-requested pairs. When an earlier requested pair is one coordinate away, it
-adds `Q`, `−Q`, `τ(Q)`, or `−τ(Q)` to that point. An isolated pair uses the
-existing shared binary powers of `Q` and `τ(Q)`. One batch inversion then
+requested pairs. Each earlier point supplies its six unit rotations using
+the curve's order-three automorphism and point negation. The builder first
+tries a rotated earlier point plus `Q`, `−Q`, `τ(Q)`, or `−τ(Q)`; then a
+rotated shared binary power; then a sum of two earlier rotated points. A
+remaining isolated pair uses the direct binary-power construction. One batch inversion then
 normalizes the unique graph vertices, and the same sparse Q table feeds the
 shared Horner or fused-pair evaluator.
 
-The frozen one-restart stream requests 21 Q digit seeds: 20 use the direct
-builder and one uses a graph edge. The frozen 128-restart stream requests
-659 unique Q digit seeds: 22 use the direct builder and 637 use graph edges.
+The frozen one-restart stream requests 21 Q digit seeds: eight use the direct
+builder and 13 use graph edges. The frozen 128-restart stream requests
+659 unique Q digit seeds: one uses the direct builder and 658 use graph edges.
 The source-level `add_projective` call count for all requested seeds changes
 as follows; both builders also prepare the same binary powers and batch
 normalize the Q points:
 
 | Restart count | Direct builder calls | Graph root calls | Graph edge calls | Graph total calls |
 | ---: | ---: | ---: | ---: | ---: |
-| 1 | 113 | 106 | 1 | 107 |
-| 128 | 4098 | 115 | 637 | 752 |
+| 1 | 113 | 49 | 13 | 62 |
+| 128 | 4098 | 9 | 658 | 667 |
 
 These are calls in the seed construction loops, including additions whose
 left operand is the identity. They are not field-operation counts or wall
-time ratios. The graph builder retains the same Q table size as the sparse
+time ratios. The graph search and unit rotations also cost time and are
+charged to the target. In particular, an unisolated local one-restart
+invocation showed material search overhead; the operation reduction alone
+does not establish an online gain. The graph builder retains the same Q table size as the sparse
 builder: 453,204 bytes including global G and seed preparation for one
-restart, and 519,556 bytes for 128 restarts. Its temporary graph and batch
-normalization vectors are target preparation costs and are charged to
+restart, and 519,556 bytes for 128 restarts. The transient six-unit orbit
+index, graph, and batch-normalization vectors are absent from that retained
+payload figure; their construction is charged to
 `target_preparation_ms` in both new commands.
 
-The [Lean graph module](JointSeedGraph.lean) proves that an edge extends a
-valid coefficient-to-point graph under an additive evaluation map, that a
-directly checked seed can be inserted, and that the four searched neighbors
-have the required coefficient relation. The pinned [Lean receipt](joint-seed-graph-lean-check.json)
+The [Lean graph module](JointSeedGraph.lean) proves that a direct seed, a
+rotated-parent edge, and a two-parent rotated sum extend a valid
+coefficient-to-point graph under explicit additive and unit-action map
+premises. It also proves the four axis-neighbor coefficient relations. The
+pinned [Lean receipt](joint-seed-graph-lean-check.json)
 records the fresh build and `#print axioms`. The concrete Jacobian and field
 operations are checked by native exact-output replay; a Lean refinement of
 those machine operations remains open.

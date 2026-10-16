@@ -190,10 +190,17 @@ pub(super) fn prepare_joint_q_sparse(
                          constructed_points: projective.len() }
 }
 
+fn joint_projective_unit(mut point: U256Jacobian, code: usize) -> U256Jacobian {
+    assert!(code < 6);
+    point = point.rotate_power(code/2);
+    if code & 1 != 0 { point.y = u256_sub(super::U256::ZERO,point.y); }
+    point
+}
+
 // Build requested Q digits as a shared graph in the Eisenstein coefficient
-// lattice. Adjacent coefficients differ by Q or tau(Q), so a previously
-// constructed vertex needs one projective addition. Isolated vertices use
-// the original binary-power construction. Only requested vertices are held.
+// lattice. Unit rotations of earlier vertices and shared binary powers of
+// Q and tau(Q) supply one-addition edges; two earlier rotated vertices can
+// also supply an edge. Isolated vertices use the direct binary-power path.
 pub(super) fn prepare_joint_q_sparse_graph(
     q_hex: &str,
     b_choices: &[[(usize,usize); ALT_SPLIT_PRIME_STEPS+1]],
@@ -216,20 +223,67 @@ pub(super) fn prepare_joint_q_sparse_graph(
     let mut negative_tau_q = tau_q;
     negative_tau_q.y = u256_sub(super::U256::ZERO,negative_tau_q.y);
     let mut graph = std::collections::BTreeMap::<(i16,i16),U256Jacobian>::new();
+    let mut orbit = std::collections::BTreeMap::<(i16,i16),((i16,i16),usize)>::new();
     let (mut graph_edges,mut direct_seeds) = (0usize,0usize);
     for &(a,b) in &seeds {
-        let neighbors = [((a-1,b),q),((a,b-1),tau_q),
-                         ((a+1,b),negative_q),((a,b+1),negative_tau_q)];
-        let point = if let Some((parent,step)) = neighbors.iter().find_map(|(key,step)|
-            graph.get(key).map(|parent| (*parent,*step))) {
+        let mut constructed = None;
+        for ((da,db),step) in [((1,0),q),((0,1),tau_q),
+                               ((-1,0),negative_q),((0,-1),negative_tau_q)] {
+            if let Some(&(source,code)) = orbit.get(&(a-da,b-db)) {
+                constructed = Some(joint_projective_unit(graph[&source],code)
+                    .add_projective(step));
+                break;
+            }
+        }
+        if constructed.is_none() {
+            'power: for bit in 0..8 {
+                for (base,power_point) in [((1i16 << bit,0i16),a_powers[bit]),
+                                           ((0i16,1i16 << bit),b_powers[bit])] {
+                    let mut coefficient = base;
+                    for rotation in 0..3 {
+                        for sign in 0..2 {
+                            let step_pair = if sign == 0 { coefficient }
+                                else { (-coefficient.0,-coefficient.1) };
+                            if let Some(&(source,source_code)) =
+                                orbit.get(&(a-step_pair.0,b-step_pair.1)) {
+                                let parent = joint_projective_unit(graph[&source],source_code);
+                                let step = joint_projective_unit(power_point,2*rotation+sign);
+                                constructed = Some(parent.add_projective(step));
+                                break 'power;
+                            }
+                        }
+                        coefficient = alt_orbit_omega_pair(coefficient);
+                    }
+                }
+            }
+        }
+        if constructed.is_none() {
+            for (&coefficient,&(left_seed,left_code)) in &orbit {
+                if let Some(&(right_seed,right_code)) =
+                    orbit.get(&(a-coefficient.0,b-coefficient.1)) {
+                    let left = joint_projective_unit(graph[&left_seed],left_code);
+                    let right = joint_projective_unit(graph[&right_seed],right_code);
+                    constructed = Some(left.add_projective(right));
+                    break;
+                }
+            }
+        }
+        let point = if let Some(point) = constructed {
             graph_edges += 1;
-            parent.add_projective(step)
+            point
         } else {
             direct_seeds += 1;
             joint_seed_point((a,b),&a_powers,&b_powers)
         };
         assert!(!point.is_identity());
         graph.insert((a,b),point);
+        let mut coefficient = (a,b);
+        for rotation in 0..3 {
+            assert!(orbit.insert(coefficient,((a,b),2*rotation)).is_none());
+            assert!(orbit.insert((-coefficient.0,-coefficient.1),
+                                 ((a,b),2*rotation+1)).is_none());
+            coefficient = alt_orbit_omega_pair(coefficient);
+        }
     }
     let projective = seeds.iter().map(|seed| graph[seed]).collect::<Vec<_>>();
     let affine = joint_batch_into_affine(&projective);
