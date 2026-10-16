@@ -15,6 +15,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 HERE = Path(__file__).resolve().parent
 ORDER = int('FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141', 16)
 RANDOM_SEED = 0x648120261016
+RADIX_NORM = 6481
 
 
 def point(scalar):
@@ -59,11 +60,51 @@ def edge_fixture():
                        'point_hex': point(a+2*b)} for a, b in pairs]}
 
 
+def digit_audit():
+    """Enumerate every residue against an independently bounded lattice search.
+
+    4Q(a,b) = a² + 3(a+2b)² = (2a+3b)² + 3b². A candidate
+    with Q <= 2107 excludes |a| or |b| > 150 from improving it.
+    In that box, |a+82b-r| < 3*6481 for 0 <= r <= 3240.
+    """
+    max_norm = 0
+    for residue in range(1, (RADIX_NORM+1)//2):
+        selected = None
+        for lift_number in range(-2, 3):
+            lift = residue + lift_number*RADIX_NORM
+            center = (161*lift)//(2*RADIX_NORM)
+            for b in range(center-2, center+3):
+                a = lift-82*b
+                norm = a*a+3*a*b+3*b*b
+                score = (norm, abs(b), abs(a), a, b)
+                if selected is None or score < selected:
+                    selected = score
+        global_best = None
+        for b in range(-150, 151):
+            for lift_number in range(-3, 4):
+                a = residue+lift_number*RADIX_NORM-82*b
+                if -150 <= a <= 150:
+                    norm = a*a+3*a*b+3*b*b
+                    score = (norm, abs(b), abs(a), a, b)
+                    if global_best is None or score < global_best:
+                        global_best = score
+        assert selected == global_best, (residue, selected, global_best)
+        max_norm = max(max_norm, selected[0])
+    assert max_norm == 2107 and max_norm < RADIX_NORM
+    return {'signed_residue_classes': RADIX_NORM,
+            'positive_classes_checked': (RADIX_NORM-1)//2,
+            'max_selected_norm': max_norm,
+            'global_minimum_mismatches': 0,
+            'lattice_box_coordinate_limit': 150,
+            'norm_identity': '4Q=a^2+3(a+2b)^2=(2a+3b)^2+3b^2'}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
+    digit_result = digit_audit()
     binary = args.binary.resolve()
     base_path = HERE / 'rho-restart-first128-fixture.json'
     base = json.loads(base_path.read_bytes())
@@ -108,6 +149,7 @@ def main():
                                        'native_rho_restart_joint_overlay.py')},
         'platform': platform.platform(), 'cryptography_version': cryptography.__version__,
         'random_seed': RANDOM_SEED, 'results': results,
+        'digit_audit': digit_result,
         'timing_status': 'correctness_diagnostic_only',
     }
     args.output.write_text(json.dumps(receipt, sort_keys=True, indent=2) + '\n')

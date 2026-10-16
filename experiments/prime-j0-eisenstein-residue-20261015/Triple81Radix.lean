@@ -21,6 +21,33 @@ theorem conjugate_primePair81 (x : Pair) :
              Prod.mk.injEq]
   constructor <;> omega
 
+theorem prime_norm81 : AlternateRadix.norm 82 = 6481 := by decide
+
+/-- The quotient's Eisenstein norm contracts under a bounded digit.
+The digit bound is an explicit premise so a selector must establish it. -/
+theorem quotient_norm_step (current digit next : Pair)
+    (hquot : primePair81 next =
+      pairAdd current (-digit.1,-digit.2))
+    (hdigit : AlternateRadix.pairNorm digit.1 digit.2 ≤ 6481) :
+    100*6481*AlternateRadix.pairNorm next.1 next.2 ≤
+      101*AlternateRadix.pairNorm current.1 current.2 +
+      10100*6481 := by
+  rcases current with ⟨a,b⟩
+  rcases digit with ⟨da,db⟩
+  rcases next with ⟨u,v⟩
+  have hscale := AlternateRadix.multiply_prime_norm 82 u v
+  rw [prime_norm81] at hscale
+  have hweight := AlternateRadix.pair_norm_weighted a b da db
+  simp only [primePair81, pairAdd, Prod.mk.injEq] at hquot
+  have heq : AlternateRadix.multiplyPrime 82 u v =
+      (a-da,b-db) := by
+    simp only [AlternateRadix.multiplyPrime, Prod.mk.injEq]
+    constructor <;> omega
+  rw [heq] at hscale
+  rw [hscale] at hweight
+  simp only [Prod.fst, Prod.snd] at hdigit hweight ⊢
+  omega
+
 /-- One exact division step preserves the represented scalar pair. -/
 theorem quotient_step (current digit next : Pair)
     (quotient : conjugatePair81 (pairAdd current
@@ -107,6 +134,133 @@ theorem two_scalar_horner81 {Point : Type}
     (JointHorner.combine_horner add prime assoc comm prime_add g q
       digits terminalG terminalQ)
 
+/-- Twenty exact norm-6481 quotient steps with bounded digits reach the
+declared terminal table, from the certified initial lattice bound. -/
+theorem twenty_step_terminal_bound (q : Nat → Nat)
+    (hzero : q 0 ≤ 7*2^260)
+    (hstep : ∀ i : Nat, i < 20 →
+      100*6481*q (i+1) ≤ 101*q i + 10100*6481) :
+    q 20 < 5000 := by
+  have h0 : q 0 ≤ 7*2^260 := hzero
+  have h1 : q 1 ≤ 2021046309909768249701334643447427269921601707356466687878944900937375902720 := by
+    have hs : 100*6481*q 1 ≤ 101*q 0 + 10100*6481 := by
+      simpa using hstep 0 (by decide)
+    omega
+  have h2 : q 2 ≤ 314960156304407642678344081142092507733500651817625575491086923306087073 := by
+    have hs : 100*6481*q 2 ≤ 101*q 1 + 10100*6481 := by
+      simpa using hstep 1 (by decide)
+    omega
+  have h3 : q 3 ≤ 49083437412043159868095590488121190064933753793519801148896434584139 := by
+    have hs : 100*6481*q 3 ≤ 101*q 2 + 10100*6481 := by
+      simpa using hstep 2 (by decide)
+    omega
+  have h4 : q 4 ≤ 7649170156791172884859828173584694023388842976617034278720166577 := by
+    have hs : 100*6481*q 4 ≤ 101*q 3 + 10100*6481 := by
+      simpa using hstep 3 (by decide)
+    omega
+  have h5 : q 5 ≤ 1192047810269878817112857036772186539673311434405678849175749 := by
+    have hs : 100*6481*q 5 ≤ 101*q 4 + 10100*6481 := by
+      simpa using hstep 4 (by decide)
+    omega
+  have h6 : q 6 ≤ 185768907324884679105691345030073816551464982062912457696 := by
+    have hs : 100*6481*q 6 ≤ 101*q 5 + 10100*6481 := by
+      simpa using hstep 5 (by decide)
+    omega
+  have h7 : q 7 ≤ 28950254034583170173854074753953796438355135300654566 := by
+    have hs : 100*6481*q 7 ≤ 101*q 6 + 10100*6481 := by
+      simpa using hstep 6 (by decide)
+    omega
+  have h8 : q 8 ≤ 4511611877014195629623918454172710137747058579589 := by
+    have hs : 100*6481*q 8 ≤ 101*q 7 + 10100*6481 := by
+      simpa using hstep 7 (by decide)
+    omega
+  have h9 : q 9 ≤ 703090263197706771473562357462496102318242528 := by
+    have hs : 100*6481*q 9 ≤ 101*q 8 + 10100*6481 := by
+      simpa using hstep 8 (by decide)
+    omega
+  have h10 : q 10 ≤ 109569690762179268506140716098923169779676 := by
+    have hs : 100*6481*q 10 ≤ 101*q 9 + 10100*6481 := by
+      simpa using hstep 9 (by decide)
+    omega
+  have h11 : q 11 ≤ 17075356838420160652862540234518191967 := by
+    have hs : 100*6481*q 11 ≤ 101*q 10 + 10100*6481 := by
+      simpa using hstep 10 (by decide)
+    omega
+  have h12 : q 12 ≤ 2661026138991569550901275364428951 := by
+    have hs : 100*6481*q 12 ≤ 101*q 11 + 10100*6481 := by
+      simpa using hstep 11 (by decide)
+    omega
+  have h13 : q 13 ≤ 414694707665712890975202610512 := by
+    have hs : 100*6481*q 13 ≤ 101*q 12 + 10100*6481 := by
+      simpa using hstep 12 (by decide)
+    omega
+  have h14 : q 14 ≤ 64626084669398244080381931 := by
+    have hs : 100*6481*q 14 ≤ 101*q 13 + 10100*6481 := by
+      simpa using hstep 13 (by decide)
+    omega
+  have h15 : q 15 ≤ 10071338607636510804173 := by
+    have hs : 100*6481*q 15 ≤ 101*q 14 + 10100*6481 := by
+      simpa using hstep 14 (by decide)
+    omega
+  have h16 : q 16 ≤ 1569518900434018912 := by
+    have hs : 100*6481*q 16 ≤ 101*q 15 + 10100*6481 := by
+      simpa using hstep 15 (by decide)
+    omega
+  have h17 : q 17 ≤ 244594057929180 := by
+    have hs : 100*6481*q 17 ≤ 101*q 16 + 10100*6481 := by
+      simpa using hstep 16 (by decide)
+    omega
+  have h18 : q 18 ≤ 38117574320 := by
+    have hs : 100*6481*q 18 ≤ 101*q 17 + 10100*6481 := by
+      simpa using hstep 17 (by decide)
+    omega
+  have h19 : q 19 ≤ 5940350 := by
+    have hs : 100*6481*q 19 ≤ 101*q 18 + 10100*6481 := by
+      simpa using hstep 18 (by decide)
+    omega
+  have h20 : q 20 ≤ 1027 := by
+    have hs : 100*6481*q 20 ≤ 101*q 19 + 10100*6481 := by
+      simpa using hstep 19 (by decide)
+    omega
+  omega
+
+/-- The twenty exact quotient equations and per-digit norm bounds suffice
+to fit the terminal pair in the native norm-5000 table. -/
+theorem twenty_quotients_terminal (state digit : Nat → Pair)
+    (hinitial : AlternateRadix.pairNorm (state 0).1 (state 0).2 ≤
+      7*2^260)
+    (hquot : ∀ i : Nat, i < 20 →
+      primePair81 (state (i+1)) =
+        pairAdd (state i) (-(digit i).1,-(digit i).2))
+    (hdigit : ∀ i : Nat, i < 20 →
+      AlternateRadix.pairNorm (digit i).1 (digit i).2 ≤ 6481) :
+    AlternateRadix.pairNorm (state 20).1 (state 20).2 < 5000 := by
+  let q : Nat → Nat := fun i =>
+    (AlternateRadix.pairNorm (state i).1 (state i).2).toNat
+  have hq (i : Nat) : (q i : Int) =
+      AlternateRadix.pairNorm (state i).1 (state i).2 := by
+    have hn := AlternateRadix.pair_norm_nonnegative
+      (state i).1 (state i).2
+    simp [q, Int.toNat_of_nonneg hn]
+  have hzero : q 0 ≤ 7*2^260 := by
+    have heq := hq 0
+    omega
+  have hstep : ∀ i : Nat, i < 20 →
+      100*6481*q (i+1) ≤ 101*q i + 10100*6481 := by
+    intro i hi
+    have hs := quotient_norm_step (state i) (digit i) (state (i+1))
+      (hquot i hi) (hdigit i hi)
+    have hnow := hq i
+    have hnext := hq (i+1)
+    omega
+  have hterminal := twenty_step_terminal_bound q hzero hstep
+  have heq := hq 20
+  omega
+
+#print axioms prime_norm81
+#print axioms quotient_norm_step
+#print axioms twenty_step_terminal_bound
+#print axioms twenty_quotients_terminal
 #print axioms conjugate_primePair81
 #print axioms quotient_step
 #print axioms valid_trace_evaluates

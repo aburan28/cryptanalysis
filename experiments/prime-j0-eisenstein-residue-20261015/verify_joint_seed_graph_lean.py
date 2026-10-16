@@ -17,7 +17,10 @@ THEOREMS = {
                        'requested_seed_values', 'requested_projection'),
     'JointHorner': ('combine_horner', 'two_scalar_horner',
                     'two_scalar_horner_from_graph'),
-    'Triple81Radix': ('conjugate_primePair81', 'quotient_step',
+    'Triple81Radix': ('prime_norm81', 'quotient_norm_step',
+                      'twenty_step_terminal_bound',
+                      'twenty_quotients_terminal',
+                      'conjugate_primePair81', 'quotient_step',
                       'valid_trace_evaluates', 'point_horner81',
                       'two_scalar_horner81'),
 }

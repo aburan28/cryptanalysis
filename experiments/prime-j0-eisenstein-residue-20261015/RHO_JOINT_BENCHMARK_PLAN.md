@@ -269,12 +269,25 @@ table-amortization question.
 The pinned [Lean module](Triple81Radix.lean) proves the conjugate product,
 exact quotient-step implication, recoder trace reconstruction, and shared
 two-scalar Horner theorem with explicit point-addition and radix-map premises.
+It also proves that 20 exact quotient steps put the terminal pair below norm
+`5000` when the initial norm is at most `7*2^260` and each selected digit
+has norm at most `6481`. The proof map is
+`prime_norm81` for the radix norm, `quotient_norm_step` for each contraction,
+`twenty_step_terminal_bound` for the numeric recurrence, and
+`twenty_quotients_terminal` for the pair-sequence implication. The
+[native replay verifier](verify_triple81_native.py) independently enumerates
+all 3,240 nonzero positive residue classes, checks the Rust selector's search
+rule against a complete bounded lattice search, and records a maximum digit
+norm of `2107`. Sign symmetry and the zero digit cover all 6,481 residue
+classes. The coordinate box is complete because
+`4Q(a,b)=a²+3(a+2b)²=(2a+3b)²+3b²`; any coordinate outside `[-150,150]`
+has norm above `2107`. A Lean refinement of that concrete selector and the
+Jacobian operation remain formalization obligations; the frozen and
+alternate point replays check the implemented path.
 The [pinned proof receipt](joint-seed-graph-lean-check.json),
 [native replay receipt](triple81-local-replay.json), and
 [Tier 1 static audit](tier1-rho-joint-triple81-dryrun.json) retain the
 commands, hashes, and verification status.
-The concrete Jacobian tripling formula is checked here by native exact-point
-replay; its field-operation refinement into the abstract Lean point map is
-the remaining formalization bridge. Reproduce the native checks with the
+Reproduce the native checks with the
 flag above and counts `1` and `128` on the frozen fixture. Local elapsed
 times from these correctness commands are not used as Tier 1 comparisons.
