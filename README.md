@@ -206,6 +206,22 @@ Other commands: `ca factor N`, `ca prime N`, `ca solve --alg bsgs|kangaroo|grump
 ... --lo L --hi U` for interval problems, `ca_bench generic|interval|ic|cheon|gpu|ops`
 for the benchmark tables.
 
+### ECDLP across an isogeny volcano
+
+```
+$ CRYPTO_DIR=../crypto scripts/volcano_ecdlp.sh --curve 1000033,5,17 --trials 20
+```
+
+Point it at a curve `y² = x³ + Ax + B` over `F_P` (any prime `P < 2^62`). It
+counts the points, draws a seeded random generator and secret, walks the
+curve's 3-isogeny volcano (`--ell 2` for 2-isogenies) with verified Vélu
+maps, and carries the same instance to every curve. It then runs
+`ca solve --alg rho` on each curve and prints min / mean / max per curve
+and per volcano level. The walk and the bookkeeping are `volcano-rho` in
+[aburan28/crypto](https://github.com/aburan28/crypto) (`scripts/volcano_ecdlp.sh`,
+`research/isogeny-volcano-rho/`); `ca` does the solving. Each curve's
+instance is also written to `instances.jsonl` in `ca`'s own format.
+
 ### Every public header is reachable
 
 `ca num` and `ca group` expose the primitives the solvers are built from — the
