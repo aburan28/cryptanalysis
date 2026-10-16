@@ -52,7 +52,9 @@ Lean checks the block-evaluation identity for every member of the radix
 family under explicit point-map hypotheses. A further pinned Lean module
 checks the concrete secp256k1 subgroup eigenvalue and every family radix
 action modulo the subgroup order; an independent affine replay matches the
-executed `τ` formula on the generator.
+executed `τ` formula on the generator. Lean also checks both coordinate
+numerators of that formula against the affine chord equations modulo the
+field prime.
 
 The secp256k1 prime splits in the Eisenstein integers. An exact norm-
 `p` element
