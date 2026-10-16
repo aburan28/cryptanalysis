@@ -1,0 +1,306 @@
+{
+ "arms": {
+  "cR": {
+   "binary": "ic_online_rankcut_r770",
+   "fold": true,
+   "kind": "ic_cold",
+   "role": "candidate cold: the rank-cut producer's cold path, which is the stacked producer's code (KIC_RANK_SOLVE is read only by the rank stage, which a cold process skips); its own processes, so the candidate's end-to-end cost is measured on its own rows",
+   "table": "compact"
+  },
+  "cRI": {
+   "binary": "ic_online_rankcut_r770",
+   "fold": true,
+   "index_canon": "lift",
+   "kind": "ic_cold",
+   "role": "secondary (optional component): cR with lift_scan canonicalizing the index build (KIC_INDEX_CANON=lift; the stacked run's cSI, 1.33x cold without rank)",
+   "table": "compact"
+  },
+  "cS": {
+   "binary": "ic_online_rankcut_r770",
+   "fold": true,
+   "kind": "ic_cold",
+   "role": "baseline cold: the stacked producer (koblitz-n83-stacked-20261016 arm cS, the n=83 baseline of docs/ic/BASELINES.md), setup + one-target online with the verified cached factor-log table",
+   "table": "compact"
+  },
+  "kR": {
+   "binary": "ic_online_rankcut_r770",
+   "fold": true,
+   "kind": "ic_rank",
+   "rank_canon": "lift",
+   "rank_order": "feistel",
+   "rank_probe": "target",
+   "rank_solve": "padd",
+   "role": "candidate rank stage: kS with the partner roots by point addition from each stored root's y (KIC_RANK_SOLVE=padd), exact S3 order resolved at every hit, then one target",
+   "table": "compact"
+  },
+  "kRX": {
+   "binary": "ic_online_rankcut_r770",
+   "fold": true,
+   "kind": "ic_rank",
+   "rank_canon": "lift",
+   "rank_order": "feistel",
+   "rank_probe": "target",
+   "rank_solve": "padd_plant",
+   "role": "planted positive control: kR plus the work it removes (the S3 batch solve and both partners' normal-basis maps on every candidate), redone, compared with the point-addition pair as a set on every input and discarded",
+   "table": "compact"
+  },
+  "kRaa": {
+   "binary": "ic_online_rankcut_r770",
+   "fold": true,
+   "kind": "ic_rank",
+   "rank_canon": "lift",
+   "rank_order": "feistel",
+   "rank_probe": "target",
+   "rank_solve": "padd",
+   "role": "A/A control: a second process of kR",
+   "table": "compact"
+  },
+  "kS": {
+   "binary": "ic_online_rankcut_r770",
+   "fold": true,
+   "kind": "ic_rank",
+   "rank_canon": "lift",
+   "rank_order": "feistel",
+   "rank_probe": "target",
+   "rank_solve": "s3",
+   "role": "baseline rank stage: the stack's (lift_scan, Feistel, the 16-byte compact loop over the folded index, partner roots by the batched S3 root solve), then one target",
+   "table": "compact"
+  },
+  "rT": {
+   "binary": "rho_tuned_r770",
+   "kind": "rho_tuned",
+   "role": "A's tuned rho rT770 (Fold/64/DP6), the strongest one-target rho at n=83, same points"
+  }
+ },
+ "controls_pass_rule": {
+  "aa": "E2E(kR, cR) / E2E(kRaa, cS) (blocks paired) and cold cR / cS (the same cold code) point estimates both inside [0.97, 1.03]",
+  "otherwise": "verdict invalid",
+  "planted": "rank stage kRX / kR (per-attempt cost, attempts paired within blocks), 95% bootstrap lower bound above 1"
+ },
+ "cost_structure_of_the_baseline": {
+  "attempts": 600,
+  "failures": 0,
+  "mean_probes_per_attempt": 1667423,
+  "ns_per_probe": {
+   "online_same_process": 255.7,
+   "rank": 255.7
+  },
+  "policy": "guided: decompose [a]G - R_j for the first pivotless column j; stops at full rank",
+  "rank": 600,
+  "rank_pdp_share_of_rank_stage": "255,719 of 255,965 ms (99.9%)",
+  "reading": "no attempt is wasted and the stage already stops at full rank, so the number of attempts cannot fall; the cost per probe is the lever",
+  "relations": 600,
+  "rows_without_gain": 0,
+  "source": "run 38862448935, arm kS (serials 42 and 116), rank seeds 101 and 102"
+ },
+ "current_baseline": "the stacked producer (koblitz-n83-stacked-20261016, run 38862448935, PR #938): end-to-end cold 283.8 s, S 9.68, gap to rT770 94.4 [73.5, 125.3]; its rank stage is 257.8 s (91%)",
+ "decision_rule": {
+  "improvement": "R lower bound > 1 (the rank-cut producer becomes the new n=83 end-to-end cold baseline)",
+  "invalid": "any gate or control fails, or any scheduled row is missing (including time-guard skips)",
+  "not_separated": "otherwise",
+  "regression": "R upper bound < 1"
+ },
+ "design": {
+  "cold_arms": [
+   "cS",
+   "cR",
+   "cRI",
+   "rT"
+  ],
+  "cold_points": 20,
+  "process_model": "one point per process, fresh process per run, one pinned CPU, one runner",
+  "q0_arms": [
+   "cS",
+   "cR"
+  ],
+  "q0_point": [
+   "2655898345537166180532960",
+   "3881526307991673265292615"
+  ],
+  "rank_arms": [
+   "kS",
+   "kR",
+   "kRaa",
+   "kRX"
+  ],
+  "rank_blocks": [
+   {
+    "id": "K1",
+    "rank_seed": 201,
+    "unit": "s000"
+   },
+   {
+    "id": "K2",
+    "rank_seed": 202,
+    "unit": "s001"
+   },
+   {
+    "id": "K3",
+    "rank_seed": 203,
+    "unit": "s002"
+   },
+   {
+    "id": "K4",
+    "rank_seed": 204,
+    "unit": "s003"
+   }
+  ],
+  "rank_blocks_source": "analysis/power.json chosen_rank_blocks",
+  "rank_seeds_note": "201.. are new (the stacked run used 101 and 102); each seed fixes 600 new rank targets [a]G - R_j",
+  "rho_seed_base": 880000,
+  "runtime_estimate": "from run 38862448935: build and tests about 15 min; cold segment about 90 s (cS, cR about 26 s each, cRI about 20 s, rT 3 s); rank block about 1,050 s (kS about 282 s, kR and kRaa about 220 s if the local per-probe ratio holds, kRX about 300 s); 4 blocks; total about 2.3 h, up to about 3 h on a slower runner",
+  "segment_order": [
+   "O1",
+   "C1",
+   "C2",
+   "C3",
+   "C4",
+   "C5",
+   "K1",
+   "C6",
+   "C7",
+   "C8",
+   "C9",
+   "C10",
+   "K2",
+   "C11",
+   "C12",
+   "C13",
+   "C14",
+   "C15",
+   "K3",
+   "C16",
+   "C17",
+   "C18",
+   "C19",
+   "C20",
+   "K4"
+  ],
+  "segment_upper_estimate_s": {
+   "C": 240,
+   "K": 1800,
+   "O": 200
+  },
+  "time_guard": "skip a segment (rows skipped_time_guard) if elapsed + its estimate exceeds 300 min",
+  "timeout_s": {
+   "ic_cold": 600,
+   "ic_rank": 2400,
+   "rho_tuned": 600
+  },
+  "within_segment_order": "random.Random(2026101610 + block).shuffle (C), random.Random(2026101710 + block) (K), random.Random(2026101810) (O)"
+ },
+ "exactness_argument": "For points R, T of E(F_2^83) with x(R) != x(T), the two roots of S3(x(R), x(T), X) are x(T + R) and x(T - R), so the point-addition pair equals the S3 loop's pair as a set. Every stored root is the x of a point of E (it is x(P1 +- P2)); its y is recovered by the half-trace, and the Frobenius conjugates (x^(2^s), y^(2^s)) are points of E because E is defined over F_2. The keys are the same canonical rotations of the same normal-basis values; only the order inside a pair could differ, and at every root-table hit the S3 pair is recomputed with the S3 solver, asserted equal to the emitted pair as a set, and the pair is evaluated in the S3 order at the S3 loop's probe positions. Inputs exceptional for the S3 batch (zero denominator) are solved by the S3 solver itself. So the first hit, the lift, the relation and the probe count of every attempt are the S3 loop's; the attempts are a function of the rank seed and the earlier relations, so the echelon and the factor-log table are the baseline's. Tested on a 9-orbit base (every loop, both orders, a deliberately swapped emission order) and checked on every input of every kRX rank stage.",
+ "frozen_at_utc": "2026-10-16T10:47:44+00:00",
+ "frozen_before_any_timing": true,
+ "gates": [
+  "every scheduled row valid (exit 0, verified, schedule match, no memory event)",
+  "every IC process: lift_scan, Feistel, prefetch; the 16-byte compact table with 2^26 slots over the folded index (14,940,300 stored of 29,880,000 logical states); 29,878,182 table entries; logical-state blake3 and table-map digests equal B's (online.index_digest); no root bloom",
+  "per point: one scalar across every IC process (cold and rank) and rT, replayed as [d]G = Q in the pinned oracle",
+  "per point: one relation (point indices) and one probe count across every IC process on the point",
+  "Q0 (O1): cS and cR give the archived Feistel relation and scalar with 1,987,852 probes",
+  "rank arms: full rank, the arm's KIC_RANK_SOLVE recorded, and the written factor-log table equal to B's archived table, log for log",
+  "per rank block: rank_relations_blake3, the per-attempt probe vector (600 entries) and rank_root_calls_total identical across kS, kR, kRaa and kRX (the candidate keeps every relation and every probe of the baseline, not only the table)",
+  "kRX: rank_padd_plant_checked_inputs > 0 (every input of its rank stage compared with the S3 roots)"
+ ],
+ "kind": "n83-rankcut-e2e-cold-tier1",
+ "multiplicity": "one primary statistic; every secondary is descriptive and never changes the verdict",
+ "online": {
+  "base": "snapshots/r770/experiments/koblitz-single-target-n83-20261006/base_n83_K600.jsonl",
+  "base_hash": "d4a4da26d6e7cb09367de922d9806631fe49989f70d378cae76f347f8d76a9f7",
+  "cold_interval": "producer's own clock: process start (main) .. recovery_check_end of the one target = setup_complete + the five online phases (cold_in_process_ms); in ic_cold the rank stage is skipped (verified cached table); the index digest runs after the target, outside every interval",
+  "cold_targets_file": "inputs/cold_targets.json (role rankcut-cold-v1; disjoint from Q0, B's panel and every earlier n=83 panel of the law on main, including stacked-cold-v1)",
+  "curve_id": "EC1N83Ce1h35c7ced6b497",
+  "factor_log_table": "../koblitz-single-target-n83-tier1-20261014/tier1_github_38523707244/precompute/factor_logs_n83_K600.json",
+  "factor_log_table_sha256": "a771716f284bb826e7407e1e7b5ef882409c9e7e1df8b8a3ed5b60b421d9f17e",
+  "index_digest": {
+   "logical_states": 29880000,
+   "logical_states_blake3": "baf46d5a34732aa2aeba1fc0ca4f57036e3c324ade0bf8791431c838fe15d7ec",
+   "source": "B's unfolded index, protocol.json of koblitz-n83-state-fold-20261015; reproduced here by cP and cS on Q0 (smoke/)",
+   "table_entries": 29878182,
+   "table_map_sum64": "be14a80705232396",
+   "table_map_xor64": "8132bdcfd619010f"
+  },
+  "online_interval": "target_query_begin .. recovery_check_end, five exclusive phases (unchanged)",
+  "orbit_columns": 600,
+  "q0_identity": {
+   "probes_folded": 1987852,
+   "probes_unfolded": 1988184,
+   "relation": [
+    77273,
+    22971,
+    54962,
+    62539
+   ],
+   "scalar": "3141592653589793",
+   "source": "inputs/archived_identities.json old17.q0 (run 38786433493); folded probes from koblitz-n83-state-fold-20261015 (Q0 smoke, cF) and smoke/ here"
+  },
+  "rank_interval": "timing_ms.rank_stage of an ic_rank process: the guided rank stage to full rank (query, PDP, relation check per attempt, echelon insert); its process's cold_in_process_ms also includes setup, linear algebra and one target",
+  "regular_states": 29880000,
+  "root_filter_log2_bits": 28,
+  "root_table_entries": 29878182,
+  "root_table_slots": {
+   "folded": 67108864,
+   "unfolded": 134217728
+  },
+  "sqrt_r": 92573139.235,
+  "stored_states_folded": 14940300,
+  "subgroup_order": "8569786107849059",
+  "tuned_rho_config": "snapshots/r770/research/n83_evaluation_20261012/optimization/selected_config.json"
+ },
+ "power": {
+  "chosen_rank_blocks": 4,
+  "file": "analysis/power.json",
+  "min_delta": 1.05,
+  "power_at_min_delta": {
+   "mc_se": 7.071067811865476e-08,
+   "power": 1.0
+  }
+ },
+ "question": "Does computing the rank stage's partner roots by point addition (x(T+R), x(T-R) from the stored root's recovered y and one batched inversion per candidate, instead of the batched S3 root solve), with the S3 order resolved exactly at every root-table hit, lower the END-TO-END cold cost (setup + index build + rank stage + linear algebra + one-target online) of the stacked n=83 K600 producer on new targets and new rank seeds, with every rank relation, every per-attempt probe count, every scalar and the factor-log table unchanged?",
+ "schema": 1,
+ "sources": {
+  "crypto_770f6a69": "770f6a6925a0d29b768bd79074f54a173e967fe7 (snapshots/r770 via ../koblitz-n83-reconcile-20261014/restore_sources.py)",
+  "local_sha256": {
+   "archived_identities": "7ed7e056e8d883378e4d4033ad9bf93acc84cb5441e6410fee70ac67cae258db",
+   "arm_wrapper": "ef9c1c10e07004ab7e3eb55e1025c1a46dbd24b50ce62d91312f2b1c8ae658d5",
+   "cold_targets": "69b5efdf7970584844b24afefb619ede3caffd58a930b09550adbf84bfaadc2b",
+   "combined_derivation": "1a62eabf4a86417c5777fdc69ab2812eaea872b92031eb9ed60af2364ce15356",
+   "lift2_lib": "606b8a58d225e93d73d8b26ffaf4080250b0c12a37f8bbf782254fbcf5145463",
+   "lift2_lock": "739272e490c3b4956ce8320c55b3350fddff7ae7d2b619976a1f0eb96110746e",
+   "lift2_manifest": "77b04fcaa11a3f9f015619612b3e36c1f31a1b20d76116c929e5429e46dc271c",
+   "lift2_tests": "69561fbf09e2137ad1490d5795df54f6f9a5646aeebf3ecf12f1af55a495c566",
+   "log_table_check": "78d9297d9c17367ba15f30ea6507fa8f6edfe7b2cfafe0433bd83777c4dc2496",
+   "online_derivation": "7e81a642ebccf9570dd2d882360e99925d5754357c83bb1aff5a8635ac1cf011",
+   "online_lock": "24f559ae41e4163e393b12c1be6d9a7b0880ca007fd97d62c59907fca8ce77e4",
+   "online_manifest": "9531f43cdcaaeee0b2f36ed99858160b9ca13e8bd4483a235590471f9e8dfebf",
+   "power_check": "8b4de96c2d0e9dc21723abc72786287a9d116221d567a27bf6055ab958a9f33a",
+   "power_prior": "2134546b1822f509a1caa4e59c6ff7f3c5e3d04b709c22a4f6a8e3a5bac43cd8",
+   "power_prior_builder": "bee872b66c49201b94aa6214da04fbe5e689c281a4a892ad04872f3513078092",
+   "power_result": "c64c1d3c3bdca2692cc09121a3f224a35c01f814a810917036ab5c2a5cf22ebf",
+   "probepipe_derivation": "ce72f3e906d85c58ccc02b0e5d455e97c69c370e357162fbda166423ab8ce7f2",
+   "protocol_builder": "9430e2288062f3adba4153b92a50be0aafff5633a8f634d68cb6a95fe51364bc",
+   "receipt_verifier": "299bb63a16d762f25dbd5f3c0a7c5a79dcf5a8ce78b2e2623b1dbe27f2a3bb63",
+   "schedule_builder": "f0423dafcebe4ae5090123e3d623201f47fc917b10e562f5158034b663b78ae5",
+   "schedule_runner": "ea654c470d67ebbbb3b31064fe50163a68b49299a75a10b6c6267b83ff04e30d",
+   "stacked_derivation": "a2011ef804becc5b01f3027cf47ec6f7cb154f510e468e2a261c66e09f830aab",
+   "tablefilter_derivation": "3b2aa83df4d1bf70a107464a0b7fdd1f8ac133683b23cf19dd22bfecf12095ab",
+   "targets_builder": "cf7d1aa7e9cb0324c9a409b554df60d12359b64d3136455bcd80b10fd5284462"
+  },
+  "online_source_sha256": "c390733ec3a96243d06bf0b121d61b1973f5e34b5e5a2767c3506364d1f8bc2f",
+  "stacked_producer": "koblitz-n83-stacked-20261016 make_online_source.py (make_stacked_source.py here, verbatim with its three parents), output sha256 83b589880e5bbd80b2dcf0debf7d20ab268877d4de409c71cf5da17b2f62563c"
+ },
+ "statistics": {
+  "end_to_end_cold": "E2E(k, c) = mean over the rank blocks of timing_ms.rank_stage of rank arm k + mean over the cold points of cold_in_process_ms of cold arm c; the cold processes hold setup + online, the rank processes the rank stage, so E2E = setup + index build + rank stage + linear algebra + one-target online",
+  "primary": "R = E2E(kS, cS) / E2E(kR, cR). Bootstrap, 10,000 draws, seed 20261016: the rank blocks resampled with replacement; within each drawn block the attempt indices resampled with replacement and used for both kS and kR (the gate makes attempt i the same target with the same probes in both), each process's non-attempt time kept; the cold points resampled, paired across cS and cR",
+  "primary_is": "the END-TO-END cold ratio; the rank-stage and online ratios are co-reported and never decide",
+  "secondary": [
+   "rank stage kS/kR: whole-stage ratio and per-attempt cost ratio (paired bootstrap), ns per probe per arm, kR/kRaa",
+   "per-attempt ratio by probe-count tercile (does the gain depend on the attempt length)",
+   "cold without rank, setup, online and peak RSS cS/cR (expected 1: same code)",
+   "optional component: E2E(kS, cS) / E2E(kR, cRI) and cold cR / cRI (lift_scan in the index build on top of the rank cut)",
+   "the point-addition counters per rank process (fallback states, irregular inputs, resolved hits, swapped pairs)",
+   "rho ms/step from rT; S = cost / (rho ms/step) / sqrt(r) for E2E cold, cold without rank and online, per arm; delta S cS to cR; E2E cold gap IC / rT and online gaps to rT"
+  ]
+ },
+ "success_criterion": "AGENTS.md 'Success criterion: iterative improvement of the index-calculus baseline'"
+}

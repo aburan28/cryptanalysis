@@ -1,0 +1,351 @@
+--- koblitz_orbit_dlp_fast_online_stacked.rs
++++ profile.rs
+@@ -43,7 +43,7 @@
+ // KIC_INDEX_CANON, KIC_INDEX_DIGEST) onto every root-table layout and probe
+ // loop, and adds the rank-stage selectors (KIC_RANK_CANON, KIC_RANK_ORDER,
+ // KIC_RANK_PROBE) so the rank stage runs on the compact table in process.
+-#[path = "../../../lift2/src/lib.rs"]
++#[path = "../../../lift2/src/lib.rs (local absolute path)"]
+ #[allow(dead_code)]
+ mod lift2;
+ 
+@@ -3778,6 +3778,339 @@
+             index.root_table == TABLE_BASE || rank_loop != PIPE_OFF || cached_log_table.is_some(),
+             "KIC_ROOT_TABLE other than base needs KIC_RANK_PROBE=target or the verified cached factor-log table"
+         );
++        // LOCAL PROFILE 2 ONLY: partners by point addition from the stored root's y.
++        if std::env::var("KIC_PROF2").as_deref() == Ok("1") {
++            let fold = index.fold.as_ref().expect("prof needs the fold");
++            let compact = index.compact.as_ref().expect("prof needs compact");
++            let seed = rank_seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
++            let scalar = (seed >> 11) % (r - 1) + 1;
++            let rep: FastPoint128 = representatives[0].map(|[x, y]| (x, y));
++            let point = fast.add(fast.scalar_mul(generator, &BigUint::from(scalar)), FastBinaryCurve128::neg(rep));
++            let (target_x, target_y) = point.unwrap();
++            let len = index.logical_states;
++            let permutation = ScanPermutation::new(len, seed >> 20);
++            let want: usize = std::env::var("KIC_PROF_STATES").ok().and_then(|v| v.parse().ok()).unwrap_or(20000);
++            let mut list = Vec::with_capacity(want);
++            let mut position = 0u64;
++            while list.len() < want {
++                let logical = permutation.apply(position);
++                if logical < len as u64 {
++                    let logical = logical as usize;
++                    let mate = fold.mate_index(logical);
++                    if !(mate != logical && permutation.invert(mate as u64) < position) { list.push(logical); }
++                }
++                position += 1;
++            }
++            let n = gf.n;
++            let ca = fast.a;
++            let b_poly: u128 = 1;
++            let mut scan = StateScan128::new(n);
++            let mut xs_v: Vec<u128> = Vec::with_capacity(2 * n as usize);
++            let mut ys_v: Vec<u128> = Vec::with_capacity(2 * n as usize);
++            let mut pre: Vec<u128> = vec![0; 2 * n as usize];
++            let mut partners_v: Vec<[u128; 2]> = Vec::with_capacity(2 * n as usize);
++            let mut sink = 0u128;
++            // y of a state root (normal basis in, normal basis out)
++            let root_y = |xn: u128| -> u128 {
++                let xp = basis.to_poly.apply(xn);
++                let xi = invert128(&gf, &basis, xp);
++                let rhs = xp ^ ca ^ gf.mul(b_poly, gf.sqr(xi));
++                assert_eq!((rhs & solver.trace_mask).count_ones() & 1, 0, "state root not on the curve");
++                let u = solver.half_trace.apply(rhs);
++                assert_eq!(gf.sqr(u) ^ u, rhs);
++                basis.to_normal.apply(gf.mul(xp, u))
++            };
++            let mut padd = |state: &State128, xs_v: &mut Vec<u128>, ys_v: &mut Vec<u128>, partners_v: &mut Vec<[u128; 2]>| {
++                let yn = [root_y(state.normal_roots[0]), root_y(state.normal_roots[1])];
++                xs_v.clear(); ys_v.clear(); partners_v.clear();
++                for shift in 0..n {
++                    for k in 0..2 {
++                        xs_v.push(basis.to_poly.apply(basis.rotate(state.normal_roots[k], shift)));
++                        ys_v.push(basis.to_poly.apply(basis.rotate(yn[k], shift)));
++                    }
++                }
++                let mut product = 1u128;
++                for (i, &xs) in xs_v.iter().enumerate() {
++                    pre[i] = product;
++                    let d = xs ^ target_x;
++                    product = gf.mul(product, if d == 0 { 1 } else { d });
++                }
++                let mut inv = invert128(&gf, &basis, product);
++                let mut invs = [0u128; 256];
++                for i in (0..xs_v.len()).rev() {
++                    let d = xs_v[i] ^ target_x;
++                    let d = if d == 0 { 1 } else { d };
++                    invs[i] = gf.mul(inv, pre[i]);
++                    inv = gf.mul(inv, d);
++                }
++                if std::env::var_os("KIC_PROF2_NORMAL").is_some() {
++                    let nxt = basis.to_normal.apply(target_x ^ ca);
++                    for i in 0..xs_v.len() {
++                        let xs = xs_v[i];
++                        let nl = basis.to_normal.apply(gf.mul(target_y ^ ys_v[i], invs[i]));
++                        let nm = basis.to_normal.apply(gf.mul(xs, invs[i]));
++                        let nl2 = nl ^ nm;
++                        let nc = nxt ^ basis.rotate(state.normal_roots[i & 1], (i >> 1) as u32);
++                        partners_v.push([basis.rotate(nl, 1) ^ nl ^ nc, basis.rotate(nl2, 1) ^ nl2 ^ nc]);
++                    }
++                } else {
++                for i in 0..xs_v.len() {
++                    let xs = xs_v[i];
++                    let lambda = gf.mul(target_y ^ ys_v[i], invs[i]);
++                    let lambda2 = lambda ^ gf.mul(xs, invs[i]);
++                    let c = target_x ^ xs ^ ca;
++                    partners_v.push([gf.sqr(lambda) ^ lambda ^ c, gf.sqr(lambda2) ^ lambda2 ^ c]);
++                }
++                }
++            };
++            // verification on the first 3000 states: same partner sets as the S3 batch
++            let mut checked = 0u64; let mut same_order = 0u64;
++            for &logical in list.iter().take(3000) {
++                let state = fold_state128(&index, fold, &basis, logical);
++                padd(&state, &mut xs_v, &mut ys_v, &mut partners_v);
++                scan.inputs.clear();
++                for shift in 0..n { for &nr in &state.normal_roots { scan.inputs.push((basis.to_poly.apply(basis.rotate(nr, shift)), target_x)); } }
++                scan.batch.solve(&gf, &basis, &solver, &scan.inputs);
++                for (i, res) in scan.batch.results.iter().enumerate() {
++                    let s3 = res.expect("s3 root pair");
++                    let pa = if std::env::var_os("KIC_PROF2_NORMAL").is_some() { [basis.to_poly.apply(partners_v[i][0]), basis.to_poly.apply(partners_v[i][1])] } else { partners_v[i] };
++                    assert!((pa[0] == s3[0] && pa[1] == s3[1]) || (pa[0] == s3[1] && pa[1] == s3[0]), "partner sets differ");
++                    checked += 1; if pa[0] == s3[0] { same_order += 1; }
++                }
++            }
++            eprintln!("{}", json!({"prof2_verified_inputs": checked, "same_order": same_order}));
++            let normal_out = std::env::var_os("KIC_PROF2_NORMAL").is_some();
++            for round in 0..3 {
++                let t = Instant::now();
++                let mut keys = 0u64;
++                for &logical in &list {
++                    let state = fold_state128(&index, fold, &basis, logical);
++                    scan.inputs.clear();
++                    for shift in 0..n { for &nr in &state.normal_roots { scan.inputs.push((basis.to_poly.apply(basis.rotate(nr, shift)), target_x)); } }
++                    scan.batch.solve(&gf, &basis, &solver, &scan.inputs);
++                    for res in &scan.batch.results { if let Some(p) = res { sink ^= p[0] ^ p[1]; keys += 2; } }
++                }
++                let s3 = t.elapsed().as_nanos() as f64 / keys as f64;
++                let t = Instant::now();
++                for &logical in &list {
++                    let state = fold_state128(&index, fold, &basis, logical);
++                    padd(&state, &mut xs_v, &mut ys_v, &mut partners_v);
++                    for p in partners_v.iter() { sink ^= p[0] ^ p[1]; }
++                }
++                let pa = t.elapsed().as_nanos() as f64 / keys as f64;
++                // full pipeline with point-add partners: keys, prefetch, lookup
++                let t = Instant::now();
++                let mut hits = 0u64;
++                let mut ks: Vec<u128> = Vec::with_capacity(4 * n as usize);
++                for &logical in &list {
++                    let state = fold_state128(&index, fold, &basis, logical);
++                    padd(&state, &mut xs_v, &mut ys_v, &mut partners_v);
++                    ks.clear();
++                    for p in partners_v.iter() { for &partner in p { let (c, _) = target_canonical::<CANON_LIFT>(&basis, if normal_out { partner } else { basis.to_normal.apply(partner) }); compact.prefetch(c); ks.push(c); } }
++                    for &k in &ks { if compact.get(k).is_some() { hits += 1; } }
++                }
++                let full_pa = t.elapsed().as_nanos() as f64 / keys as f64;
++                let t = Instant::now();
++                let mut probes = 0u64; let mut found = 0u64;
++                let mut clock = PhaseClock::start(); let mut split = ExtractSplit::default();
++                for &logical in &list {
++                    let state = fold_state128(&index, fold, &basis, logical);
++                    if scan_state128_select::<CANON_LIFT, PIPE_COMPACT>(&gf, &fast, &basis, &solver, &index, &base, point, target_x, &state, &mut scan, &mut probes, &mut clock, &mut split).is_some() { found += 1; }
++                }
++                let prod = t.elapsed().as_nanos() as f64 / probes as f64;
++                eprintln!("{}", json!({"prof2_round": round, "keys": keys, "ns_per_probe": {"s3_solve_incl_inputs": s3, "point_add_incl_inputs_and_y": pa, "point_add_full_pipeline": full_pa, "production_compact_loop": prod}, "hits": hits, "found": found}));
++            }
++            eprintln!("sink {}", sink & 1);
++            std::process::exit(0);
++        }
++        // LOCAL PROFILE ONLY (not part of any frozen producer).
++        if std::env::var("KIC_PROF").as_deref() == Ok("1") {
++            let fold = index.fold.as_ref().expect("prof needs the fold");
++            let compact = index.compact.as_ref().expect("prof needs compact");
++            let mut seed = rank_seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
++            let scalar = (seed >> 11) % (r - 1) + 1;
++            let rep: FastPoint128 = representatives[0].map(|[x, y]| (x, y));
++            let point = fast.add(fast.scalar_mul(generator, &BigUint::from(scalar)), FastBinaryCurve128::neg(rep));
++            let (target_x, _) = point.unwrap();
++            let len = index.logical_states;
++            let permutation = ScanPermutation::new(len, seed >> 20);
++            let want: usize = std::env::var("KIC_PROF_STATES").ok().and_then(|v| v.parse().ok()).unwrap_or(20000);
++            let mut list = Vec::with_capacity(want);
++            let mut position = 0u64;
++            while list.len() < want {
++                let logical = permutation.apply(position);
++                if logical < len as u64 {
++                    let logical = logical as usize;
++                    let mate = fold.mate_index(logical);
++                    if !(mate != logical && permutation.invert(mate as u64) < position) {
++                        list.push(logical);
++                    }
++                }
++                position += 1;
++            }
++            seed ^= 1;
++            let _ = seed;
++            let n = gf.n;
++            let mut scan = StateScan128::new(n);
++            let mut sink = 0u128;
++            let mut keys_total = 0u64;
++            let reps_n: usize = std::env::var("KIC_PROF_REPS").ok().and_then(|v| v.parse().ok()).unwrap_or(3);
++            for rep_round in 0..reps_n {
++                // V0 fold rebuild
++                let t = Instant::now();
++                for &logical in &list {
++                    let state = fold_state128(&index, fold, &basis, logical);
++                    sink ^= black_box(state.normal_roots[0]);
++                }
++                let v0 = t.elapsed().as_nanos() as f64;
++                // V1 + inputs
++                let t = Instant::now();
++                for &logical in &list {
++                    let state = fold_state128(&index, fold, &basis, logical);
++                    scan.inputs.clear();
++                    for shift in 0..n {
++                        for &normal_root in &state.normal_roots {
++                            let absolute = basis.to_poly.apply(basis.rotate(normal_root, shift));
++                            scan.inputs.push((absolute, target_x));
++                        }
++                    }
++                    sink ^= black_box(scan.inputs[7].0);
++                }
++                let v1 = t.elapsed().as_nanos() as f64;
++                // V2 + batch solve
++                let t = Instant::now();
++                let mut solved = 0u64;
++                for &logical in &list {
++                    let state = fold_state128(&index, fold, &basis, logical);
++                    scan.inputs.clear();
++                    for shift in 0..n {
++                        for &normal_root in &state.normal_roots {
++                            let absolute = basis.to_poly.apply(basis.rotate(normal_root, shift));
++                            scan.inputs.push((absolute, target_x));
++                        }
++                    }
++                    scan.batch.solve(&gf, &basis, &solver, &scan.inputs);
++                    for result in &scan.batch.results {
++                        if let Some(p) = result { sink ^= p[0]; solved += 2; }
++                    }
++                }
++                let v2 = t.elapsed().as_nanos() as f64;
++                // V3 + to_normal + canonical (no prefetch, no lookup)
++                let t = Instant::now();
++                let mut keys = 0u64;
++                for &logical in &list {
++                    let state = fold_state128(&index, fold, &basis, logical);
++                    scan.inputs.clear();
++                    for shift in 0..n {
++                        for &normal_root in &state.normal_roots {
++                            let absolute = basis.to_poly.apply(basis.rotate(normal_root, shift));
++                            scan.inputs.push((absolute, target_x));
++                        }
++                    }
++                    scan.batch.solve(&gf, &basis, &solver, &scan.inputs);
++                    for result in &scan.batch.results {
++                        let Some(partners) = *result else { continue };
++                        for partner in partners {
++                            let (canonical, s) = target_canonical::<CANON_LIFT>(&basis, basis.to_normal.apply(partner));
++                            sink ^= canonical ^ s as u128;
++                            keys += 1;
++                        }
++                    }
++                }
++                let v3 = t.elapsed().as_nanos() as f64;
++                // V3b: to_normal only (no canonical)
++                let t = Instant::now();
++                for &logical in &list {
++                    let state = fold_state128(&index, fold, &basis, logical);
++                    scan.inputs.clear();
++                    for shift in 0..n {
++                        for &normal_root in &state.normal_roots {
++                            let absolute = basis.to_poly.apply(basis.rotate(normal_root, shift));
++                            scan.inputs.push((absolute, target_x));
++                        }
++                    }
++                    scan.batch.solve(&gf, &basis, &solver, &scan.inputs);
++                    for result in &scan.batch.results {
++                        let Some(partners) = *result else { continue };
++                        for partner in partners {
++                            sink ^= black_box(basis.to_normal.apply(partner));
++                        }
++                    }
++                }
++                let v3b = t.elapsed().as_nanos() as f64;
++                // V4 + prefetch + lookup (keys collected per state, then looked up, as the compact loop)
++                let t = Instant::now();
++                let mut hits = 0u64;
++                let mut ks: Vec<u128> = Vec::with_capacity(4 * n as usize);
++                for &logical in &list {
++                    let state = fold_state128(&index, fold, &basis, logical);
++                    scan.inputs.clear();
++                    for shift in 0..n {
++                        for &normal_root in &state.normal_roots {
++                            let absolute = basis.to_poly.apply(basis.rotate(normal_root, shift));
++                            scan.inputs.push((absolute, target_x));
++                        }
++                    }
++                    scan.batch.solve(&gf, &basis, &solver, &scan.inputs);
++                    ks.clear();
++                    for result in &scan.batch.results {
++                        let Some(partners) = *result else { continue };
++                        for partner in partners {
++                            let (canonical, _s) = target_canonical::<CANON_LIFT>(&basis, basis.to_normal.apply(partner));
++                            compact.prefetch(canonical);
++                            ks.push(canonical);
++                        }
++                    }
++                    for &k in &ks {
++                        if compact.get(k).is_some() { hits += 1; }
++                    }
++                }
++                let v4 = t.elapsed().as_nanos() as f64;
++                // V5: the production compact loop (scan_state128_select) over the same states
++                let t = Instant::now();
++                let mut probes = 0u64;
++                let mut found = 0u64;
++                let mut clock = PhaseClock::start();
++                let mut split = ExtractSplit::default();
++                for &logical in &list {
++                    let state = fold_state128(&index, fold, &basis, logical);
++                    if scan_state128_select::<CANON_LIFT, PIPE_COMPACT>(
++                        &gf, &fast, &basis, &solver, &index, &base, point, target_x, &state, &mut scan,
++                        &mut probes, &mut clock, &mut split).is_some() { found += 1; }
++                }
++                let v5 = t.elapsed().as_nanos() as f64;
++                // V6: lookups only, on stored keys of the first states (pipelined like V4)
++                let mut stored: Vec<u128> = Vec::new();
++                for &logical in list.iter().take(2000) {
++                    let state = fold_state128(&index, fold, &basis, logical);
++                    scan.inputs.clear();
++                    for shift in 0..n { for &nr in &state.normal_roots { scan.inputs.push((basis.to_poly.apply(basis.rotate(nr, shift)), target_x)); } }
++                    scan.batch.solve(&gf, &basis, &solver, &scan.inputs);
++                    for result in &scan.batch.results { let Some(ps) = *result else { continue }; for p in ps { stored.push(target_canonical::<CANON_LIFT>(&basis, basis.to_normal.apply(p)).0); } }
++                }
++                let t = Instant::now();
++                let mut h6 = 0u64;
++                for chunk in stored.chunks(332) {
++                    for &k in chunk { compact.prefetch(k); }
++                    for &k in chunk { if compact.get(k).is_some() { h6 += 1; } }
++                }
++                let v6 = t.elapsed().as_nanos() as f64 / stored.len() as f64;
++                let t = Instant::now();
++                let mut h7 = 0u64;
++                for &k in &stored { if compact.get(k).is_some() { h7 += 1; } }
++                let v7 = t.elapsed().as_nanos() as f64 / stored.len() as f64;
++                keys_total = keys;
++                let k = keys as f64;
++                eprintln!("{}", json!({"prof_round": rep_round, "states": list.len(), "keys": keys, "solved_partners": solved,
++                    "ns_per_probe": {"fold_rebuild": v0 / k, "plus_inputs": v1 / k, "plus_batch_solve": v2 / k,
++                    "plus_to_normal_only": v3b / k, "plus_to_normal_and_canonical": v3 / k, "plus_prefetch_lookup": v4 / k,
++                    "production_compact_loop": v5 / probes.max(1) as f64,
++                    "lookup_only_prefetched_chunks": v6, "lookup_only_unprefetched": v7},
++                    "hits": hits, "probes_v5": probes, "found_v5": found, "h6": h6, "h7": h7}));
++            }
++            eprintln!("prof sink {} keys {}", sink & 1, keys_total);
++            std::process::exit(0);
++        }
+         let rank_started = Instant::now();
+         let mut echelon = Echelon {
+             r,
