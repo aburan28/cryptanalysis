@@ -39,14 +39,17 @@ The graph can also be compiled from the public b-scalar stream without using Q.
 The resulting immutable plan stores the requested seeds and each
 direct, unit-power, or two-parent graph instruction. Instantiating that plan
 on a new Q performs the same group operations without repeating coefficient
-search or b-scalar recoding. The planned commands report `graph_plan_ms`
-outside their online interval and add `plan_bytes` to retained payload.
+search or b-scalar recoding. `--pilot-rho-restart-joint-write-plan` produces a
+separate JSON artifact from the frozen scalar stream before a candidate run.
+The planned commands take its path as a fourth argument, validate the stream
+and graph equations, report `plan_load_ms` outside their online interval, and
+add `plan_bytes` to retained payload.
 Including cached b-scalar choices, the frozen plans report 1,616 and
 84,080 bytes for one and 128 restarts.
 These setup costs belong in a cold-start comparison. Their exclusion from
 one-target online time requires a declared reusable scalar stream and a
-separate graph-plan receipt; the current command reports both costs, while
-the frozen panel still needs to verify that resource boundary.
+separate graph-plan receipt. The frozen panel hashes each plan artifact and
+records its path as a measured-job input.
 
 The [Lean graph module](JointSeedGraph.lean) proves that a direct seed, a
 rotated-parent edge, and a two-parent rotated sum extend a valid

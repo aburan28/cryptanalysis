@@ -58,6 +58,8 @@ def expected_hashes(binary_hash, libcrypto_hash):
         'fixture': digest((HERE / 'rho-restart-first128-fixture.json').read_bytes()),
         'overlay': digest((HERE / 'native_rho_restart_joint_overlay.py').read_bytes()),
         'ct_bignum': digest(archived_bytes('workspace/bench-sources/public-inputs/suite/src/ct_bignum.rs')),
+        'plan_1': digest((HERE / 'rho-joint-graph-plan-1.json').read_bytes()),
+        'plan_128': digest((HERE / 'rho-joint-graph-plan-128.json').read_bytes()),
     })
     return hashes
 
@@ -75,6 +77,8 @@ def main():
     paths = {
         'binary': str(BINARY), 'libcrypto': str(LIBCRYPTO),
         'fixture': str(PANELS / 'rho-restart-first128-fixture.json'),
+        'plan_1': str(PANELS / 'rho-joint-graph-plan-1.json'),
+        'plan_128': str(PANELS / 'rho-joint-graph-plan-128.json'),
         'overlay': str(PANELS / 'native_rho_restart_joint_overlay.py'),
         'ct_bignum': '/workspace/bench-sources/public-inputs/suite/src/ct_bignum.rs',
         'cargo_toml': str(SOURCE / 'Cargo.toml'),
@@ -92,8 +96,8 @@ def main():
                 'reusable G and canonical-seed preparation, include Q parsing/table '
                 'construction, a recoding, pair fusion where selected, Horner evaluation, '
                 'and affine output. Direct and online graph arms include b recoding. '
-                'Planned graph arms compile b choices and the Q-independent graph '
-                'before Q-dependent timing; graph_plan_ms and plan_bytes are reported separately. '
+                'Planned graph arms load a frozen Q-independent graph artifact '
+                'before Q-dependent timing; plan_load_ms and plan_bytes are reported separately. '
                 'Fixture parsing and process launch are outside.')
     for count in (1, 128):
         stem = f'tier1-rho-joint-{count}-cpu40'
@@ -102,12 +106,12 @@ def main():
         demand = [str(BINARY), '--pilot-rho-restart-joint-demand', paths['fixture'], str(count)]
         graph = [str(BINARY), '--pilot-rho-restart-joint-graph', paths['fixture'], str(count)]
         graph_planned = [str(BINARY), '--pilot-rho-restart-joint-graph-planned',
-                         paths['fixture'], str(count)]
+                         paths['fixture'], str(count), paths[f'plan_{count}']]
         fused = [str(BINARY), '--pilot-rho-restart-joint-fused', paths['fixture'], str(count)]
         fused_graph = [str(BINARY), '--pilot-rho-restart-joint-fused-graph',
                        paths['fixture'], str(count)]
         fused_graph_planned = [str(BINARY), '--pilot-rho-restart-joint-fused-graph-planned',
-                               paths['fixture'], str(count)]
+                               paths['fixture'], str(count), paths[f'plan_{count}']]
         cases = []
         for name, candidate in (
             ('cal_before', ref), ('compare_demand', demand),

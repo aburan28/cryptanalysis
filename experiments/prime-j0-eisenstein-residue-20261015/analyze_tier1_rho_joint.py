@@ -56,14 +56,24 @@ def audit(count, manifest_path, rules_path, raw_path):
     assert manifest['pair_fields'] == ['count', 'point']
     binary = rules['paths']['binary']
     fixture_remote = rules['paths']['fixture']
+    plan_remote = rules['paths'][f'plan_{count}']
+    plan_path = HERE / f'rho-joint-graph-plan-{count}.json'
+    plan_bytes = plan_path.read_bytes()
+    assert digest(plan_bytes) == rules['hashes'][f'plan_{count}']
+    assert b'q_hex' not in plan_bytes
+    frozen_plan = json.loads(plan_bytes)
+    assert frozen_plan['schema'] == 1 and frozen_plan['count'] == count
+    assert frozen_plan['b_hex'] == [row['b_hex'] for row in fixture['cases'][:count]]
+    assert len(frozen_plan['choices']) == count
+    assert all(len(row) == 23 for row in frozen_plan['choices'])
     reference = [binary, '--pilot-rho-restart', 'openssl_nowarm', fixture_remote, str(count)]
     candidates = {
         'compare_demand': [binary, '--pilot-rho-restart-joint-demand', fixture_remote, str(count)],
         'compare_graph': [binary, '--pilot-rho-restart-joint-graph', fixture_remote, str(count)],
-        'compare_graph_planned': [binary, '--pilot-rho-restart-joint-graph-planned', fixture_remote, str(count)],
+        'compare_graph_planned': [binary, '--pilot-rho-restart-joint-graph-planned', fixture_remote, str(count), plan_remote],
         'compare_fused': [binary, '--pilot-rho-restart-joint-fused', fixture_remote, str(count)],
         'compare_fused_graph': [binary, '--pilot-rho-restart-joint-fused-graph', fixture_remote, str(count)],
-        'compare_fused_graph_planned': [binary, '--pilot-rho-restart-joint-fused-graph-planned', fixture_remote, str(count)],
+        'compare_fused_graph_planned': [binary, '--pilot-rho-restart-joint-fused-graph-planned', fixture_remote, str(count), plan_remote],
     }
     for case in manifest['cases']:
         assert case['reference'] == reference
@@ -170,8 +180,10 @@ def audit(count, manifest_path, rules_path, raw_path):
                     evaluation = number(fields, 'restart_eval_ms')
                     assert abs(online - prep - evaluation) <= 0.00001
                     phase = phases.setdefault(mode, {'graph_plan_ms': [],
+                        'plan_load_ms': [],
                         'target_preparation_ms': [], 'restart_eval_ms': []})
                     phase['graph_plan_ms'].append(number(fields, 'graph_plan_ms'))
+                    phase['plan_load_ms'].append(number(fields, 'plan_load_ms'))
                     phase['target_preparation_ms'].append(prep)
                     phase['restart_eval_ms'].append(evaluation)
                     assert int(fields['constructed_q_points']) >= 0
@@ -183,7 +195,8 @@ def audit(count, manifest_path, rules_path, raw_path):
                         assert (int(fields['graph_edges']) + int(fields['direct_seeds']) ==
                                 int(fields['constructed_q_points']))
                     if mode in ('joint_graph_planned', 'joint_fused_graph_planned'):
-                        assert number(fields, 'graph_plan_ms') >= 0
+                        assert number(fields, 'graph_plan_ms') == 0
+                        assert number(fields, 'plan_load_ms') >= 0
                         assert int(fields['plan_bytes']) > 0
             else:
                 invalid.append({'serial': serial, 'status': run['status'],

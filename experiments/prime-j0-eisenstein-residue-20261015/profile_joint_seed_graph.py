@@ -78,7 +78,8 @@ def main():
         assert int(fields['direct_seeds']) == len(roots)
         planned_command = [str(args.binary),
                            '--pilot-rho-restart-joint-graph-planned',
-                           str(fixture), str(count)]
+                           str(fixture), str(count),
+                           str(HERE / f'rho-joint-graph-plan-{count}.json')]
         planned_proc = subprocess.run(planned_command, text=True, capture_output=True)
         assert planned_proc.returncode == 0 and planned_proc.stderr == '', planned_proc.stderr
         planned = dict(word.split('=',1) for word in planned_proc.stdout.split())

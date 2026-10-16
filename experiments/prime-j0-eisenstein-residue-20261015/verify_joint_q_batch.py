@@ -38,6 +38,14 @@ def run(binary, fixture, count, path, mode):
     argv = ([str(binary), command, 'openssl_nowarm', str(path), str(count)]
             if mode == 'openssl_nowarm' else
             [str(binary), command, str(path), str(count)])
+    if mode in ('joint_graph_planned', 'joint_fused_graph_planned'):
+        plan = path.with_name(path.stem + f'-plan-{count}.json')
+        planned = subprocess.run([str(binary), '--pilot-rho-restart-joint-write-plan',
+                                  str(path), str(count), str(plan)],
+                                 text=True, capture_output=True)
+        assert planned.returncode == 0, planned.stderr
+        assert 'q_hex' not in plan.read_text()
+        argv.append(str(plan))
     result = subprocess.run(argv,
                             text=True, capture_output=True)
     assert result.returncode == 0, result.stderr
@@ -63,7 +71,8 @@ def run(binary, fixture, count, path, mode):
         assert (int(fields['graph_edges']) + int(fields['direct_seeds']) ==
                 int(fields['constructed_q_points']))
     if mode in ('joint_graph_planned', 'joint_fused_graph_planned'):
-        assert float(fields['graph_plan_ms']) >= 0
+        assert float(fields['graph_plan_ms']) == 0
+        assert float(fields['plan_load_ms']) >= 0
         assert int(fields['plan_bytes']) > 0
     return {'mode': mode, 'fixture_sha256': sha256(path.read_bytes()).hexdigest(),
             'count': count, 'point': fields['point'], 'stdout': result.stdout.strip()}
@@ -93,6 +102,14 @@ def main():
     }
     with TemporaryDirectory(prefix='joint-q-batch-replay-') as temporary:
         root = Path(temporary)
+        frozen_path = root / 'frozen-eight.json'
+        frozen_path.write_text(json.dumps(frozen, sort_keys=True, separators=(',', ':')) + '\n')
+        reference_plan = root / 'frozen-eight-plan.json'
+        create = subprocess.run([str(args.binary), '--pilot-rho-restart-joint-write-plan',
+                                 str(frozen_path), '8', str(reference_plan)],
+                                text=True, capture_output=True)
+        assert create.returncode == 0, create.stderr
+        receipt['q_independent_plan_sha256'] = sha256(reference_plan.read_bytes()).hexdigest()
         for count in (1, 128):
             for mode in ('openssl_nowarm', 'joint', 'joint_demand', 'joint_fused',
                          'joint_graph', 'joint_fused_graph',
@@ -107,6 +124,15 @@ def main():
                 rows.append({'a_hex': row['a_hex'], 'b_hex': row['b_hex'],
                              'point_hex': point_hex(add(mul(a, G), mul(b, q)))})
             fixture = {'q_hex': point_hex(q), 'cases': rows}
+            variant_path = root / f'q{q_scalar}.json'
+            variant_path.write_text(json.dumps(fixture, sort_keys=True,
+                                               separators=(',', ':')) + '\n')
+            variant_plan = root / f'q{q_scalar}-plan.json'
+            create = subprocess.run([str(args.binary), '--pilot-rho-restart-joint-write-plan',
+                                     str(variant_path), '8', str(variant_plan)],
+                                    text=True, capture_output=True)
+            assert create.returncode == 0, create.stderr
+            assert variant_plan.read_bytes() == reference_plan.read_bytes()
             for mode in ('joint', 'joint_demand', 'joint_fused', 'joint_graph',
                          'joint_fused_graph', 'joint_graph_planned',
                          'joint_fused_graph_planned'):

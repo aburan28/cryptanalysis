@@ -324,6 +324,111 @@ pub(super) struct JointQGraphPlan {
     pub(super) direct_seeds: usize,
 }
 
+fn joint_unit_pair(mut pair: (i16,i16), code: usize) -> (i16,i16) {
+    assert!(code < 6);
+    for _ in 0..code/2 { pair = alt_orbit_omega_pair(pair); }
+    if code & 1 != 0 { pair = (-pair.0,-pair.1); }
+    pair
+}
+
+pub(super) fn joint_graph_plan_json(plan: &JointQGraphPlan) -> serde_json::Value {
+    let nodes = plan.nodes.iter().map(|node| {
+        let op = match node.op {
+            JointGraphOp::Direct => serde_json::json!(["direct"]),
+            JointGraphOp::Step { parent,parent_unit,base,bit,step_unit } =>
+                serde_json::json!(["step",parent.0,parent.1,parent_unit,base,bit,step_unit]),
+            JointGraphOp::Sum { left,left_unit,right,right_unit } =>
+                serde_json::json!(["sum",left.0,left.1,left_unit,
+                                   right.0,right.1,right_unit]),
+        };
+        serde_json::json!([node.seed.0,node.seed.1,op])
+    }).collect::<Vec<_>>();
+    serde_json::json!({"digit_ids":plan.digit_ids,"terminal_ids":plan.terminal_ids,
+                       "nodes":nodes})
+}
+
+pub(super) fn joint_graph_plan_from_json(value: &serde_json::Value) -> JointQGraphPlan {
+    let digit_ids = serde_json::from_value::<Vec<usize>>(value["digit_ids"].clone())
+        .expect("graph digit ids").into_boxed_slice();
+    let terminal_ids = serde_json::from_value::<Vec<usize>>(value["terminal_ids"].clone())
+        .expect("graph terminal ids").into_boxed_slice();
+    let (digit_seeds,terminal_seeds) = &*JOINT_SEED_SETS;
+    assert!(digit_ids.windows(2).all(|pair| pair[0] < pair[1]));
+    assert!(terminal_ids.windows(2).all(|pair| pair[0] < pair[1]));
+    assert!(digit_ids.iter().all(|&id| id > 0 && id < digit_seeds.len()));
+    assert!(terminal_ids.iter().all(|&id| id > 0 && id < terminal_seeds.len()));
+    let requested = digit_ids.iter().map(|&id| digit_seeds[id])
+        .chain(terminal_ids.iter().map(|&id| terminal_seeds[id]))
+        .collect::<std::collections::BTreeSet<_>>();
+    let rows = value["nodes"].as_array().expect("graph nodes");
+    let mut nodes = Vec::with_capacity(rows.len());
+    let mut seen = std::collections::BTreeSet::<(i16,i16)>::new();
+    let (mut graph_edges,mut direct_seeds) = (0usize,0usize);
+    for row in rows {
+        let parts = row.as_array().expect("graph node array");
+        assert_eq!(parts.len(),3);
+        let a = i16::try_from(parts[0].as_i64().expect("node a")).expect("node a range");
+        let b = i16::try_from(parts[1].as_i64().expect("node b")).expect("node b range");
+        let seed = (a,b);
+        assert!(requested.contains(&seed) && !seen.contains(&seed));
+        let fields = parts[2].as_array().expect("graph operation array");
+        let get_i16 = |index: usize| i16::try_from(fields[index].as_i64()
+            .expect("coefficient")).expect("coefficient range");
+        let get_usize = |index: usize| usize::try_from(fields[index].as_u64()
+            .expect("operation index")).expect("index range");
+        let op = match fields[0].as_str().expect("operation name") {
+            "direct" => { assert_eq!(fields.len(),1); direct_seeds += 1;
+                          JointGraphOp::Direct },
+            "step" => {
+                assert_eq!(fields.len(),7);
+                let parent = (get_i16(1),get_i16(2));
+                let parent_unit = get_usize(3);
+                let base = get_usize(4);
+                let bit = get_usize(5);
+                let step_unit = get_usize(6);
+                assert!(seen.contains(&parent) && parent_unit < 6 &&
+                        base < 2 && bit < 8 && step_unit < 6);
+                let power = 1i16 << bit;
+                let step = joint_unit_pair(if base == 0 { (power,0) }
+                                           else { (0,power) },step_unit);
+                let parent = joint_unit_pair(parent,parent_unit);
+                assert_eq!((i32::from(parent.0)+i32::from(step.0),
+                            i32::from(parent.1)+i32::from(step.1)),
+                           (i32::from(a),i32::from(b)));
+                graph_edges += 1;
+                JointGraphOp::Step { parent:(get_i16(1),get_i16(2)),
+                    parent_unit,base,bit,step_unit }
+            },
+            "sum" => {
+                assert_eq!(fields.len(),7);
+                let left = (get_i16(1),get_i16(2));
+                let left_unit = get_usize(3);
+                let right = (get_i16(4),get_i16(5));
+                let right_unit = get_usize(6);
+                assert!(seen.contains(&left) && seen.contains(&right) &&
+                        left_unit < 6 && right_unit < 6);
+                let l = joint_unit_pair(left,left_unit);
+                let r = joint_unit_pair(right,right_unit);
+                assert_eq!((i32::from(l.0)+i32::from(r.0),
+                            i32::from(l.1)+i32::from(r.1)),
+                           (i32::from(a),i32::from(b)));
+                graph_edges += 1;
+                JointGraphOp::Sum { left,left_unit,right,right_unit }
+            },
+            _ => panic!("unknown graph operation"),
+        };
+        seen.insert(seed);
+        nodes.push(JointGraphNode {seed,op});
+    }
+    assert_eq!(seen,requested);
+    let nodes = nodes.into_boxed_slice();
+    let retained_bytes = digit_ids.len()*size_of::<usize>()
+        + terminal_ids.len()*size_of::<usize>()
+        + nodes.len()*size_of::<JointGraphNode>() + size_of::<JointQGraphPlan>();
+    JointQGraphPlan { digit_ids,terminal_ids,nodes,retained_bytes,
+                      graph_edges,direct_seeds }
+}
+
 // The coefficient graph depends on the public scalar stream, not on Q.
 // It can be frozen before an arbitrary target point is supplied.
 pub(super) fn plan_joint_q_graph(

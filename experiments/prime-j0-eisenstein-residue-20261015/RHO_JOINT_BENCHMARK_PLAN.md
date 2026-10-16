@@ -32,13 +32,13 @@ restart. Its Q parsing and curve construction precede the timer. The joint
 commands exclude globally reusable G and canonical-seed preparation; their
 `online_ms` includes Q parsing and table construction, a-scalar recoding,
 restart evaluation, and affine output. Direct and online graph arms also
-charge b-scalar recoding. The two planned graph arms compile the b-scalar
-choices and graph topology without using Q, report that separate
-`graph_plan_ms` and `plan_bytes`, and charge graph instantiation on Q online.
-The auditor preserves mean graph-plan, target-preparation, and evaluation
-times by mode; `graph_plan_ms + online_ms` is a supplementary cold interval
-for the planned modes. Plan reuse requires the declared scalar stream to
-remain fixed across target points.
+charge b-scalar recoding. The two planned graph arms load a separately frozen
+artifact of b-scalar choices and graph topology. The artifact contains no Q
+and is hashed in the panel manifest. They report `plan_load_ms` and
+`plan_bytes`, and charge graph instantiation on Q online. The auditor preserves
+plan-load, target-preparation, and evaluation times by mode. Plan generation
+and loading are separate setup costs; reuse requires the declared scalar
+stream to remain fixed across target points.
 The joint boundary is therefore
 conservative with respect to reference Q parsing. Fixture reading, input
 decoding, process launch, and independent expected-point checks are outside

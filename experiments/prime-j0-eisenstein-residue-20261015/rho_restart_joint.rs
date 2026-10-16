@@ -44,18 +44,72 @@ pub(super) fn run(fixture_path: &str, count: usize) {
 }
 
 pub(super) fn run_demand(fixture_path: &str, count: usize) {
-    run_demand_variant(fixture_path,count,false,false);
+    run_demand_variant(fixture_path,count,false,None);
 }
 
 pub(super) fn run_graph(fixture_path: &str, count: usize) {
-    run_demand_variant(fixture_path,count,true,false);
+    run_demand_variant(fixture_path,count,true,None);
 }
 
-pub(super) fn run_graph_planned(fixture_path: &str, count: usize) {
-    run_demand_variant(fixture_path,count,true,true);
+pub(super) fn write_graph_plan(fixture_path: &str, count: usize, plan_path: &str) {
+    let fixture: Value = serde_json::from_str(
+        &std::fs::read_to_string(fixture_path).expect("read fixture"))
+        .expect("parse fixture");
+    let rows = fixture["cases"].as_array().expect("cases");
+    assert!(count > 0 && count <= rows.len());
+    let b_hex = rows.iter().take(count).map(|row|
+        row["b_hex"].as_str().expect("b hex").to_owned()).collect::<Vec<_>>();
+    let b_choices = b_hex.iter().map(|hex| {
+        let b = BigInt::parse_bytes(hex.as_bytes(),16).expect("b scalar");
+        unit_orbit_windows::joint_choices_for_words(scalar_words_256(&b).expect("b words"))
+    }).collect::<Vec<_>>();
+    let plan = unit_orbit_windows::plan_joint_q_graph(&b_choices);
+    let artifact = serde_json::json!({
+        "schema":1,"count":count,"b_hex":b_hex,"choices":b_choices,
+        "graph":unit_orbit_windows::joint_graph_plan_json(&plan),
+    });
+    std::fs::write(plan_path,serde_json::to_string_pretty(&artifact).unwrap()+"\n")
+        .expect("write graph plan");
+    println!("planned=1 count={count} graph_edges={} direct_seeds={} plan_bytes={}",
+             plan.graph_edges,plan.direct_seeds,plan.retained_bytes);
 }
 
-fn run_demand_variant(fixture_path: &str, count: usize, graph: bool, planned: bool) {
+fn load_graph_plan(plan_path: &str, rows: &[Value], count: usize)
+    -> (Vec<[(usize,usize);23]>,unit_orbit_windows::JointQGraphPlan) {
+    let artifact: Value = serde_json::from_str(
+        &std::fs::read_to_string(plan_path).expect("read graph plan"))
+        .expect("parse graph plan");
+    assert_eq!(artifact["schema"].as_u64(),Some(1));
+    assert_eq!(artifact["count"].as_u64(),Some(count as u64));
+    let b_hex = artifact["b_hex"].as_array().expect("plan b scalars");
+    assert_eq!(b_hex.len(),count);
+    for (stored,row) in b_hex.iter().zip(rows.iter().take(count)) {
+        assert_eq!(stored.as_str(),row["b_hex"].as_str(),"plan scalar stream");
+    }
+    let choices = artifact["choices"].as_array().expect("plan choices").iter()
+        .map(|row| {
+            let pairs = serde_json::from_value::<Vec<(usize,usize)>>(row.clone())
+                .expect("plan choice pairs");
+            let array: [(usize,usize);23] = pairs.try_into().expect("23 plan choices");
+            array
+        }).collect::<Vec<_>>();
+    assert_eq!(choices.len(),count);
+    for (stored,hex) in choices.iter().zip(b_hex.iter()) {
+        let b = BigInt::parse_bytes(hex.as_str().expect("b scalar").as_bytes(),16)
+            .expect("b hex");
+        assert_eq!(*stored,unit_orbit_windows::joint_choices_for_words(
+            scalar_words_256(&b).expect("b words")),"plan recoding");
+    }
+    let plan = unit_orbit_windows::joint_graph_plan_from_json(&artifact["graph"]);
+    (choices,plan)
+}
+
+pub(super) fn run_graph_from_plan(fixture_path: &str, count: usize, plan_path: &str) {
+    run_demand_variant(fixture_path,count,true,Some(plan_path));
+}
+
+fn run_demand_variant(fixture_path: &str, count: usize,
+                      graph: bool, plan_path: Option<&str>) {
     let fixture: Value = serde_json::from_str(
         &std::fs::read_to_string(fixture_path).expect("read frozen fixture"))
         .expect("parse frozen fixture");
@@ -74,17 +128,14 @@ fn run_demand_variant(fixture_path: &str, count: usize, graph: bool, planned: bo
     let generator_bytes = unit_orbit_windows::warm_alt_split_prime_two_x_table()
         + unit_orbit_windows::warm_joint_seed_sets();
     let generator_preparation_ms = generator_start.elapsed().as_secs_f64()*1000.0;
-    let plan_start = Instant::now();
-    let precomputed = if planned {
-        let choices = inputs.iter().map(|(_,b,_)|
-            unit_orbit_windows::joint_choices_for_words(*b)).collect::<Vec<_>>();
-        let plan = unit_orbit_windows::plan_joint_q_graph(&choices);
-        Some((choices,plan))
-    } else { None };
-    let graph_plan_ms = if planned { plan_start.elapsed().as_secs_f64()*1000.0 }
-        else { 0.0 };
+    let plan_load_start = Instant::now();
+    let precomputed = plan_path.map(|path| load_graph_plan(path,rows,count));
+    let plan_load_ms = if plan_path.is_some() {
+        plan_load_start.elapsed().as_secs_f64()*1000.0
+    } else { 0.0 };
+    let graph_plan_ms = 0.0;
     let target_start = Instant::now();
-    let online_choices = if planned { None } else { Some(inputs.iter().map(|(_,b,_)|
+    let online_choices = if plan_path.is_some() { None } else { Some(inputs.iter().map(|(_,b,_)|
         unit_orbit_windows::joint_choices_for_words(*b)).collect::<Vec<_>>()) };
     let b_choices = if let Some((choices,_)) = precomputed.as_ref() { choices }
         else { online_choices.as_ref().expect("online choices") };
@@ -113,13 +164,14 @@ fn run_demand_variant(fixture_path: &str, count: usize, graph: bool, planned: bo
         plan.retained_bytes + choices.capacity()*std::mem::size_of_val(&choices[0]))
         .unwrap_or(0);
     let retained_bytes = generator_bytes + q_table.retained_bytes + plan_bytes;
-    let mode = if planned { "joint_graph_planned" }
+    let mode = if plan_path.is_some() { "joint_graph_planned" }
         else if graph { "joint_graph" } else { "joint_demand" };
     println!("verified=1 count={count} online_ms={online_ms:.6} \
               target_preparation_ms={target_preparation_ms:.6} \
               restart_eval_ms={restart_eval_ms:.6} \
               generator_preparation_ms={generator_preparation_ms:.6} \
-              graph_plan_ms={graph_plan_ms:.6} plan_bytes={plan_bytes} \
+              graph_plan_ms={graph_plan_ms:.6} plan_load_ms={plan_load_ms:.6} \
+              plan_bytes={plan_bytes} \
               retained_bytes={retained_bytes} constructed_q_points={} \
               graph_edges={graph_edges} direct_seeds={direct_seeds} \
               mode={mode} point={}",
@@ -196,18 +248,19 @@ pub(super) fn run_profile(fixture_path: &str, count: usize) {
 }
 
 pub(super) fn run_fused(fixture_path: &str, count: usize) {
-    run_fused_variant(fixture_path,count,false,false);
+    run_fused_variant(fixture_path,count,false,None);
 }
 
 pub(super) fn run_fused_graph(fixture_path: &str, count: usize) {
-    run_fused_variant(fixture_path,count,true,false);
+    run_fused_variant(fixture_path,count,true,None);
 }
 
-pub(super) fn run_fused_graph_planned(fixture_path: &str, count: usize) {
-    run_fused_variant(fixture_path,count,true,true);
+pub(super) fn run_fused_graph_from_plan(fixture_path: &str, count: usize, plan_path: &str) {
+    run_fused_variant(fixture_path,count,true,Some(plan_path));
 }
 
-fn run_fused_variant(fixture_path: &str, count: usize, graph: bool, planned: bool) {
+fn run_fused_variant(fixture_path: &str, count: usize, graph: bool,
+                     plan_path: Option<&str>) {
     let fixture: Value = serde_json::from_str(
         &std::fs::read_to_string(fixture_path).expect("read frozen fixture"))
         .expect("parse frozen fixture");
@@ -227,17 +280,14 @@ fn run_fused_variant(fixture_path: &str, count: usize, graph: bool, planned: boo
     let generator_bytes = unit_orbit_windows::warm_alt_split_prime_two_x_table()
         + unit_orbit_windows::warm_joint_seed_sets();
     let generator_preparation_ms = generator_start.elapsed().as_secs_f64()*1000.0;
-    let plan_start = Instant::now();
-    let precomputed = if planned {
-        let choices = inputs.iter().map(|(_,b,_)|
-            unit_orbit_windows::joint_choices_for_words(*b)).collect::<Vec<_>>();
-        let plan = unit_orbit_windows::plan_joint_q_graph(&choices);
-        Some((choices,plan))
-    } else { None };
-    let graph_plan_ms = if planned { plan_start.elapsed().as_secs_f64()*1000.0 }
-        else { 0.0 };
+    let plan_load_start = Instant::now();
+    let precomputed = plan_path.map(|path| load_graph_plan(path,rows,count));
+    let plan_load_ms = if plan_path.is_some() {
+        plan_load_start.elapsed().as_secs_f64()*1000.0
+    } else { 0.0 };
+    let graph_plan_ms = 0.0;
     let target_start = Instant::now();
-    let online_choices = if planned { None } else { Some(inputs.iter().map(|(_,b,_)|
+    let online_choices = if plan_path.is_some() { None } else { Some(inputs.iter().map(|(_,b,_)|
         unit_orbit_windows::joint_choices_for_words(*b)).collect::<Vec<_>>()) };
     let b_choices = if let Some((choices,_)) = precomputed.as_ref() { choices }
         else { online_choices.as_ref().expect("online choices") };
@@ -265,13 +315,14 @@ fn run_fused_variant(fixture_path: &str, count: usize, graph: bool, planned: boo
         plan.retained_bytes + choices.capacity()*std::mem::size_of_val(&choices[0]))
         .unwrap_or(0);
     let retained_bytes = generator_bytes + q_table.retained_bytes + plan_bytes;
-    let mode = if planned { "joint_fused_graph_planned" }
+    let mode = if plan_path.is_some() { "joint_fused_graph_planned" }
         else if graph { "joint_fused_graph" } else { "joint_fused" };
     println!("verified=1 count={count} online_ms={online_ms:.6} \
               target_preparation_ms={target_preparation_ms:.6} \
               restart_eval_ms={restart_eval_ms:.6} \
               generator_preparation_ms={generator_preparation_ms:.6} \
-              graph_plan_ms={graph_plan_ms:.6} plan_bytes={plan_bytes} \
+              graph_plan_ms={graph_plan_ms:.6} plan_load_ms={plan_load_ms:.6} \
+              plan_bytes={plan_bytes} \
               retained_bytes={retained_bytes} constructed_q_points={} \
               graph_edges={graph_edges} direct_seeds={direct_seeds} \
               fused_pair_sums={fused_pair_sums} mode={mode} point={}",
