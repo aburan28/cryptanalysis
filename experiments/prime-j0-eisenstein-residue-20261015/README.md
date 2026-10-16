@@ -62,6 +62,15 @@ each graph arm. Pinned Lean checks the lattice-edge identity and its transfer
 through an additive point map; the native arithmetic bridge is tested by the
 replay and remains an explicit formal refinement obligation.
 
+The [rotated radix step](ROTATED_RADIX_STEP.md) evaluates `31+32τ` as
+`63−32ω`, replacing the explicit `τ` formula in each Horner step with an
+x rotation and a sixth doubling. Its same-input Tier 1 panels against the
+digit graph measured qualified paired ratios of **1.012×** for one scalar
+and **1.021×** for 128 points, with all A/A gates passing. Both arms of a
+separate full-fixture replay checked all **12,288** outputs. Pinned Lean
+checks the pair-lattice endomorphism identity and its conditional transfer
+to a point map.
+
 The [four-checkpoint radix-32 path](CHECKPOINTED_RADIX32.md) stores four
 five-digit windows at selected radix powers, retaining **832,396 bytes**.
 Its matched Tier 1 prepared-table panel evaluated 12,288 verified points
