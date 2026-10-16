@@ -43,12 +43,14 @@ ROOT = HERE.parents[1]
 sys.path.insert(0, str(PDP))
 sys.path.insert(0, str(HERE))
 
+import bitop_work  # noqa: E402
 import kernel  # noqa: E402
 import macaulay  # noqa: E402
 import opcount  # noqa: E402
 from calibrate import weights_for  # noqa: E402
 from factor_base import FactorBase  # noqa: E402
 from profile import pdp_config  # noqa: E402
+import rho_reference  # noqa: E402  (tools/, put on sys.path by bitop_work)
 from toycurve import ToyCurve, canonical, sha256_hex  # noqa: E402
 
 PHASES = ("setup", "isogeny", "factor_base", "precompute", "queries", "pdp", "relation_check",
@@ -58,6 +60,7 @@ SOURCES = [
     PDP / "descent.py", PDP / "macaulay.py", PDP / "relations.py", PDP / "monitor.py", PDP / "profile.py",
     PDP / "htsolver.py",
     HERE.parent / "pdp-scaling" / "sumpoly.py", HERE.parent / "pdp-scaling" / "gf2n.py", HERE / "bench.py",
+    HERE / "bitop_work.py", ROOT / "tools" / "bitops.py", ROOT / "tools" / "rho_reference.py",
 ]
 CALIBRATION = HERE / "calibration.json"
 HISTORY = HERE / "history.csv"
@@ -79,23 +82,18 @@ def batch_prefix_sizes(targets: int) -> list[int]:
     return out
 
 
-def batch_rho_group_operations(r: int, targets: int, class_divisor: int = 1) -> int:
-    """Kuhn-Struik batch-rho expectation on r/class_divisor equivalence classes.
+def batch_rho_group_operations(r: int, targets: int, class_divisor: int = 1, variant: str = "generous") -> int:
+    """Kuhn-Struik batch-rho expectation on r/class_divisor equivalence classes (tools/rho_reference.py).
 
     The T targets are solved in turn by one distinguished-point rho whose walks may
-    finish on trails belonging to targets already solved.  Detection lag, seeding and
-    jump-table setup are omitted, making this a deliberately generous rho reference.
+    finish on trails belonging to targets already solved.  ic-bench's own columns use
+    the `generous` variant (no detection lag, seeding or jump-table setup); the
+    receipt's `rho_reference` block also carries `with_setup`, the prime bridge's.
     For T=1 this is sqrt(pi*N/2), N=r/class_divisor.
     """
     if targets < 1 or class_divisor < 1:
         raise ValueError("targets and class_divisor must be positive")
-    coeff = 1.0
-    series = 0.0
-    for k in range(targets):
-        series += coeff
-        coeff *= (2 * k + 1) / (2 * k + 2)
-    classes = r / class_divisor
-    return round(math.sqrt(math.pi * classes / 2) * series)
+    return round(rho_reference.batch_group_operations(r, targets, class_divisor, variant))
 
 
 def workload_series_id(curve: ToyCurve, seed: int, cache_state: str) -> str:
@@ -166,6 +164,7 @@ def warm_accounting(total: int | None, per_target: list[int], rho: int, rho_floo
         "break_even_targets_vs_independent_rho": break_even,
         "prefixes": prefixes,
         "shared": "factor base, relation collection, relation LA and shared log checks; all target work is marginal",
+        "batch_rho_variant": "generous",
         "batch_rho_model": "Kuhn-Struik distinguished-point expectation; folded reference uses r/(2n) sign/Frobenius classes; no detection lag or setup",
     }
 
@@ -235,13 +234,14 @@ CSV_FIELDS = [
     "workload_series_id", "shared_operations", "target_operations", "mean_target_operations",
     "rho_independent_batch_operations", "rho_batch_operations", "rho_batch_floor_operations",
     "ratio_to_independent_rho_batch", "ratio_to_batch_rho", "ratio_to_batch_floor",
+    "bitops", "log2_bitops", "bitops_ratio_to_floor",
 ]
 DETERMINISTIC = [f for f in CSV_FIELDS if f.startswith(("ops_", "count_")) or f in (
     "status", "verified", "targets_verified", "fb_points", "effective_columns", "achievable_rank", "final_rank",
     "ordinary_queries", "pdp_verified", "pdp_proved_unsat", "pdp_budget", "pdp_lift_rejected",
     "verified_relations", "novel_rows", "descent_attempts", "total_operations", "rho_operations",
     "workload_series_id", "shared_operations", "target_operations", "rho_independent_batch_operations",
-    "rho_batch_operations", "rho_batch_floor_operations")]
+    "rho_batch_operations", "rho_batch_floor_operations", "bitops")]
 
 
 # ------------------------------------------------------------------ identities
@@ -278,13 +278,20 @@ def workload(curve: ToyCurve, seed: int, count: int, cache_state: str = "cold") 
         "rerandomization_law": "Q_i + [a]G with a uniform on [1, r-1], drawn from rerandomization_stream + '|i'",
         "rerandomization_stream": f"icbench-descent|{curve.curve_id}|{seed}",
         "cache_state": cache_state,
-        "rho_reference": {"group_operations": round(math.sqrt(math.pi * r / 2)),
+        # Hashed into the workload ID: the numbers come from tools/rho_reference.py, the
+        # text is frozen.  sqrt(pi r / (4 n)) is the floor sqrt(pi r / (2A)) with A = 2n.
+        "rho_reference": {"group_operations": round(rho_reference.single_target_group_operations(r)),
                           "rule": "expected parallel rho without equivalence classes, sqrt(pi r / 2)"},
-        "rho_floor": {"group_operations": round(math.sqrt(math.pi * r / (4 * curve.n))),
+        "rho_floor": {"group_operations": round(rho_reference.floor_group_operations(r, koblitz_automorphisms(curve))),
                       "rule": "rho on classes {+-tau^j P}, sqrt(pi r / (4 n))"},
         "seed": seed,
     }
     return sha256_hex(record)[:12], record
+
+
+def koblitz_automorphisms(curve: ToyCurve) -> int:
+    """A = 2n: negation and the n powers of the Frobenius tau on a Koblitz curve over F_2^n."""
+    return 2 * curve.n
 
 
 def endomorphism_record(curve: ToyCurve) -> dict:
@@ -526,6 +533,9 @@ def run_cell(cell: dict, calibration: dict) -> dict:
     per_target = [sum(k * weights[c] for c, k in d["ops"].items()) for d in descents]
     priced_charged = sum(phase_ops.values())
     warm = warm_accounting(total, per_target, rho, floor, r, curve.n, weights["ec_add"])
+    work = bitop_work.work_block(counters, [d["ops"] for d in descents], curve.n, r,
+                                 koblitz_automorphisms(curve), status == "complete")
+    rho_ref = rho_reference.references(r, len(descents) or 1, koblitz_automorphisms(curve), weights["ec_add"])
     series_id = workload_series_id(curve, cell["workload_seed"], "prepared" if primary else "cold")
     run = cell.get("run", 1)
     run_id = f"{cid}W{wid}R{run}"
@@ -588,9 +598,12 @@ def run_cell(cell: dict, calibration: dict) -> dict:
             "shared_dp_expected_operations": warm["batch_rho_operations"],
             "folded_shared_dp_expected_operations": warm["folded_batch_rho_operations"],
             "model": warm["batch_rho_model"],
+            "variant": "generous",
         },
         "S_rps": total / math.sqrt(r) if total is not None else None,
         "S_ec_add": total / (weights["ec_add"] * math.sqrt(r)) if total is not None else None,
+        "work": work,
+        "rho_reference": rho_ref,
         "warm": warm,
         "verified_scalar": status == "complete",
         "scalar_certificate_ref": f"{run_id}#descents" if status == "complete" else None,
@@ -687,6 +700,9 @@ def csv_row(rec: dict, commit: str, recorded_at: str) -> dict:
         "ratio_to_independent_rho_batch": rec["warm"]["ic_over_independent_rho"],
         "ratio_to_batch_rho": rec["warm"]["ic_over_batch_rho"],
         "ratio_to_batch_floor": rec["warm"]["ic_over_folded_batch_rho"],
+        "bitops": (rec.get("work") or {}).get("bitops"),
+        "log2_bitops": (rec.get("work") or {}).get("log2_bitops"),
+        "bitops_ratio_to_floor": (rec.get("work") or {}).get("ratio_to_floor"),
     }
     for k, v in row.items():
         if isinstance(v, float):

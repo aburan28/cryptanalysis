@@ -22,8 +22,10 @@ sys.path.insert(0, str(HERE.parent / "ic-candidate-catalog"))
 
 import amortize  # noqa: E402
 import bench  # noqa: E402
+import bitop_work  # noqa: E402
 import compare  # noqa: E402
 import cost_table  # noqa: E402
+import cross_report  # noqa: E402
 import opcount  # noqa: E402
 import prime_bridge  # noqa: E402
 from calibrate import weights_for  # noqa: E402
@@ -152,6 +154,52 @@ class ReceiptTest(unittest.TestCase):
         self.assertEqual({k: a[k] for k in bench.DETERMINISTIC}, {k: b[k] for k in bench.DETERMINISTIC})
         self.assertEqual(self.outs[0]["manifest"], self.outs[1]["manifest"])
 
+    def test_work_block_prices_every_counter_in_bitops(self):
+        import bitops
+        import rho_reference
+
+        rec = self.outs[0]["receipt"]
+        work = rec["work"]
+        self.assertEqual(work["unit"], "bitop/v1")
+        self.assertEqual(set(bitop_work.CLASS_PRIMITIVES), set(opcount.CLASSES))
+        # rps figures are still there, beside the bitops
+        self.assertEqual(rec["operation_unit"], CALIBRATION["unit"])
+        self.assertIsNotNone(rec["total_operations"])
+        self.assertEqual(work["bitops"], sum(work["phase_bitops"].values()))
+        field, w = work["field"], work["r_bits"]
+        self.assertEqual(work["bitops"], sum(k * bitops.gates(p, field, w) for p, k in work["primitives"].items()))
+        self.assertEqual(work["log2_bitops"], bitops.log2(work["bitops"]))
+        r, n = int(rec["subgroup_order"]), CELL["n"]
+        self.assertEqual(work["automorphisms"], 2 * n)
+        floor = rho_reference.floor_group_operations(r, 2 * n) * bitops.gates("group_add", field, w)
+        self.assertAlmostEqual(work["ratio_to_floor"], work["bitops"] / floor)
+        row = bench.csv_row(rec, "x", "t")
+        self.assertEqual(row["bitops"], work["bitops"])
+
+    def test_binary_stored_ratios_are_the_generous_variant(self):
+        rec = self.outs[0]["receipt"]
+        self.assertEqual(rec["rho_batch"]["variant"], "generous")
+        q = cross_report.ratios(rec, "generous")
+        self.assertAlmostEqual(q["folded"], rec["ratio_to_batch_floor"])
+        self.assertAlmostEqual(q["independent"], rec["ratio_to_independent_rho_batch"])
+        legacy = {k: v for k, v in rec.items() if k != "rho_reference"}  # receipts recorded before the block
+        self.assertEqual(cross_report.ratios(legacy, "with_setup"), cross_report.ratios(rec, "with_setup"))
+
+    def test_class_mapping_by_hand(self):
+        import bitops
+
+        n, w = 13, 11
+        f = bitops.binary_field(n)
+        self.assertEqual(bitop_work.bitops_of({"ec_add": 2}, n, w), 2 * bitops.gates("group_add", f, w))
+        self.assertEqual(bitop_work.bitops_of({"gf_lin": 1}, n, w), n * n + n * (n - 1))
+        self.assertEqual(bitop_work.bitops_of({"mac_op": 3, "anf_op": 1, "sys_word": 1}, n, w), 5 * 64)
+        self.assertEqual(bitop_work.primitives({"modr_inv": 1, "modr_mul": 2}, w),
+                         Counter({"modr_mul": 2, "modr_add": 2, "modr_inv": 1}))
+        self.assertEqual(bitop_work.primitives({"ec_lift": 1}, w),
+                         Counter({"field_sqr": 1, "field_inv": 1, "field_mul": 2, "field_add": 2, "as_solve": 2}))
+        with self.assertRaises(ValueError):
+            bitop_work.primitives({"mystery": 1}, w)
+
     def test_one_target_online_pair_is_verified_and_exclusive(self):
         import analyze
 
@@ -253,6 +301,40 @@ class PrimeBridgeTest(unittest.TestCase):
             analyze.validate_run(parsed)
             self.assertEqual(parsed["run_id"], item["receipt"]["run_id"])
             self.assertEqual(json.loads(next((out / "native").glob("*.json")).read_text()), self.report())
+
+    def test_prime_batch_rho_is_the_with_setup_variant(self):
+        import math
+
+        def legacy(r, w, t, folded):  # the formula prime_bridge.py carried before tools/rho_reference.py
+            n = r / w if folded else r
+            term, series = 1., 0.
+            for k in range(t):
+                series += term
+                term *= (2 * k + 1) / (2 * k + 2)
+            scalar = (3 * r.bit_length() + 1) // 2
+            return round(math.sqrt(math.pi * n / 2) * series + t * (2 * scalar + 1) + 32 * scalar)
+
+        for r in (65537, 1000003, (1 << 61) - 1):
+            for t in (1, 2, 7, 64):
+                for folded in (False, True):
+                    self.assertEqual(prime_bridge.batch_rho(r, 6, t, folded), legacy(r, 6, t, folded))
+        rec = prime_bridge.normalize(self.report(), host="test")["receipt"]
+        self.assertEqual(rec["rho_batch"]["variant"], "with_setup")
+        self.assertEqual(rec["warm"]["batch_rho_variant"], "with_setup")
+        ref = rec["rho_reference"]["variants"]["with_setup"]
+        self.assertEqual(ref["folded_batch_operations"], rec["warm"]["folded_batch_rho_operations"])
+
+    def test_cross_report_uses_one_variant_for_both_regimes(self):
+        prime = prime_bridge.normalize(self.report(), host="test")["receipt"]
+        # A prime receipt's stored ratio is with_setup; the table recomputes it under the asked variant.
+        q = cross_report.ratios(prime, "with_setup")
+        self.assertAlmostEqual(q["folded"], prime["ratio_to_batch_floor"])
+        g = cross_report.ratios(prime, "generous")
+        self.assertGreater(g["folded"], q["folded"])
+        lines = cross_report.table([prime], "generous")
+        self.assertIn("**generous**", lines[0])
+        with self.assertRaises(ValueError):
+            cross_report.table([prime], "mixed")
 
     def test_prime_candidate_and_workload_are_deterministic(self):
         a = prime_bridge.normalize(self.report(), host="a")

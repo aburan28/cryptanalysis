@@ -104,6 +104,52 @@ so the folded batch-rho number is generous to rho. Multi-target claims should
 use `ratio_to_batch_floor`; the older `ratio_to_rho` remains a cold whole-run /
 one-target diagnostic and is not a batch crossover metric.
 
+### One rho reference, two named variants
+
+Every rho figure here comes from [`tools/rho_reference.py`](../../tools/rho_reference.py):
+the floor `sqrt(pi r / (2A))` (`A` automorphisms; `A = 2n` on these Koblitz
+curves), the one-target expectation `sqrt(pi r / 2)`, and the Kuhn-Struik batch
+series in two explicitly named variants:
+
+| variant | batch rho, group operations | used by |
+|---|---|---|
+| `generous` | `sqrt(pi (r/A)/2) * sum_{k<T} C(2k,k)/4^k` (no seeding, jump table or detection lag) | `bench.py` columns (`rho_batch.variant`, `warm.batch_rho_variant`) |
+| `with_setup` | the same + `T (2 smul + 1) + 32 smul`, `smul = ceil(3 bits(r)/2)` | `prime_bridge.py` columns, and `ca-ic`'s `batch_rho_expected_ops` |
+
+Every receipt also carries a `rho_reference` block with both variants in its own
+unit. `cross_report.py --variant generous|with_setup` recomputes every ratio
+column of both regimes under the one variant it names (default `generous`), so a
+binary and a prime ratio are never set side by side under different conventions.
+`smul`: Rust's `(3 * bits).div_ceil(2)` and Python's `(3 * bits + 1) // 2` are the
+same integer for every `bits`, so the two implementations already agree.
+
+### Work in bitop/v1
+
+Beside the rps figures (unchanged), every receipt has a `work` block in the
+cross-repository unit [`bitop/v1`](../../docs/units/README.md): two-input
+Boolean gates, frozen per primitive (`tools/bitops.py`). Each opcount class is
+mapped by [`bitop_work.py`](bitop_work.py) to the primitives over `F_{2^n}` one
+increment performs; where an increment can be either of two operations the
+dearer is charged, so the total is an upper bound on the counted work. Python
+bookkeeping and the `instrument` phase are not counted, as in rps.
+
+| class | one increment | bitop/v1 primitives |
+|---|---|---|
+| `gf_mul` | an `F_2^n` product or squaring | `field_mul` |
+| `gf_inv` | an `F_2^n` inversion | `field_inv` |
+| `gf_lin` | a trace, half-trace or square root (`lin_apply`) | `as_solve` (`n^2` AND + `n(n-1)` XOR) |
+| `ec_add` | an affine addition or doubling | `group_add` (binary affine `I + 2M + S + 9A`) |
+| `ec_lift` | `rhs = x + a2 + b/x^2`, `Tr(rhs)`, `y = x * HT(rhs)` | `field_sqr + field_inv + 2 field_mul + 2 field_add + 2 as_solve` |
+| `modr_mul` | a multiply-subtract mod `r` | `modr_mul + modr_add` (BITOPS' `row_op`) |
+| `modr_inv` | an inversion mod `r` | `modr_inv` (bitop/v1: binary extended Euclid at `w = bits(r)`) |
+| `mac_op`, `anf_op`, `sys_word` | one 64-bit word XOR/test, monomial insertion, or coefficient-word slice | `word_op` (64) |
+
+The block reports `primitives`, `phase_bitops`, `per_target_bitops`, `bitops`,
+`log2_bitops` (both null unless the DLP is complete and verified, like
+`total_operations`) and `ratio_to_floor = bitops / (sqrt(pi r / (2A)) *
+gates(group_add))`. The CSV gains `bitops`, `log2_bitops` and
+`bitops_ratio_to_floor` at the end of its columns.
+
 **Instrument** work is recorded but not charged to supplementary cold operations.
 It covers structure checks, exact-yield enumeration, and predictions. Every
 target PDP enumeration that runs, including those of unsuccessful attempts, is
