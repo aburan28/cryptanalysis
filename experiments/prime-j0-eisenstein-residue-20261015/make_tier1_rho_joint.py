@@ -11,6 +11,7 @@ from tempfile import TemporaryDirectory
 from native_rho_restart_joint_overlay import main as apply_overlay
 
 HERE = Path(__file__).resolve().parent
+FOREST = HERE.parent / 'joint-seed-spanning-forest-20261016'
 ARCHIVE = HERE / 'rho-restart-hybrid-native-provenance.tar.gz'
 SOURCE = Path('/workspace/bench-sources/prime-j0-rho-restart-joint')
 BINARY = Path('/workspace/bench-target-rho-restart-joint/release/eisenstein_fixed')
@@ -60,6 +61,10 @@ def expected_hashes(binary_hash, libcrypto_hash):
         'ct_bignum': digest(archived_bytes('workspace/bench-sources/public-inputs/suite/src/ct_bignum.rs')),
         'plan_1': digest((HERE / 'rho-joint-graph-plan-1.json').read_bytes()),
         'plan_128': digest((HERE / 'rho-joint-graph-plan-128.json').read_bytes()),
+        'root_first_1': digest((FOREST / 'root-first-plan-1.json').read_bytes()),
+        'root_first_128': digest((FOREST / 'root-first-plan-128.json').read_bytes()),
+        'two_parent_1': digest((FOREST / 'two-parent-plan-1.json').read_bytes()),
+        'two_parent_128': digest((FOREST / 'two-parent-plan-128.json').read_bytes()),
     })
     return hashes
 
@@ -79,6 +84,10 @@ def main():
         'fixture': str(PANELS / 'rho-restart-first128-fixture.json'),
         'plan_1': str(PANELS / 'rho-joint-graph-plan-1.json'),
         'plan_128': str(PANELS / 'rho-joint-graph-plan-128.json'),
+        'root_first_1': str(PANELS / 'root-first-plan-1.json'),
+        'root_first_128': str(PANELS / 'root-first-plan-128.json'),
+        'two_parent_1': str(PANELS / 'two-parent-plan-1.json'),
+        'two_parent_128': str(PANELS / 'two-parent-plan-128.json'),
         'overlay': str(PANELS / 'native_rho_restart_joint_overlay.py'),
         'ct_bignum': '/workspace/bench-sources/public-inputs/suite/src/ct_bignum.rs',
         'cargo_toml': str(SOURCE / 'Cargo.toml'),
@@ -107,6 +116,10 @@ def main():
         graph = [str(BINARY), '--pilot-rho-restart-joint-graph', paths['fixture'], str(count)]
         graph_planned = [str(BINARY), '--pilot-rho-restart-joint-graph-planned',
                          paths['fixture'], str(count), paths[f'plan_{count}']]
+        root_first = [str(BINARY), '--pilot-rho-restart-joint-graph-planned',
+                      paths['fixture'], str(count), paths[f'root_first_{count}']]
+        two_parent = [str(BINARY), '--pilot-rho-restart-joint-graph-planned',
+                      paths['fixture'], str(count), paths[f'two_parent_{count}']]
         fused = [str(BINARY), '--pilot-rho-restart-joint-fused', paths['fixture'], str(count)]
         fused_graph = [str(BINARY), '--pilot-rho-restart-joint-fused-graph',
                        paths['fixture'], str(count)]
@@ -116,12 +129,15 @@ def main():
         for name, candidate in (
             ('cal_before', ref), ('compare_demand', demand),
             ('compare_graph', graph), ('compare_graph_planned', graph_planned),
+            ('compare_root_first', root_first), ('compare_two_parent', two_parent),
+            ('compare_two_parent_vs_root_first', two_parent),
             ('cal_mid', ref),
             ('compare_fused', fused), ('compare_fused_graph', fused_graph),
             ('compare_fused_graph_planned', fused_graph_planned),
             ('cal_after', ref),
         ):
-            cases.append({'id': name, 'reference': ref, 'candidate': candidate,
+            paired_ref = root_first if name == 'compare_two_parent_vs_root_first' else ref
+            cases.append({'id': name, 'reference': paired_ref, 'candidate': candidate,
                           'expected_fields': {'count': str(count)},
                           'expected_result': expected})
         rules = {
