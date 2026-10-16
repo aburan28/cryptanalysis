@@ -361,6 +361,8 @@ pub(super) fn joint_graph_plan_from_json(value: &serde_json::Value) -> JointQGra
         .chain(terminal_ids.iter().map(|&id| terminal_seeds[id]))
         .collect::<std::collections::BTreeSet<_>>();
     let rows = value["nodes"].as_array().expect("graph nodes");
+    assert!(rows.len() >= requested.len() && rows.len() <= requested.len()+16,
+            "bounded auxiliary graph vertices");
     let mut nodes = Vec::with_capacity(rows.len());
     let mut seen = std::collections::BTreeSet::<(i16,i16)>::new();
     let (mut graph_edges,mut direct_seeds) = (0usize,0usize);
@@ -370,7 +372,8 @@ pub(super) fn joint_graph_plan_from_json(value: &serde_json::Value) -> JointQGra
         let a = i16::try_from(parts[0].as_i64().expect("node a")).expect("node a range");
         let b = i16::try_from(parts[1].as_i64().expect("node b")).expect("node b range");
         let seed = (a,b);
-        assert!(requested.contains(&seed) && !seen.contains(&seed));
+        assert!(seed != (0,0) && a.unsigned_abs() < 256 && b.unsigned_abs() < 256);
+        assert!(!seen.contains(&seed));
         let fields = parts[2].as_array().expect("graph operation array");
         let get_i16 = |index: usize| i16::try_from(fields[index].as_i64()
             .expect("coefficient")).expect("coefficient range");
@@ -420,7 +423,7 @@ pub(super) fn joint_graph_plan_from_json(value: &serde_json::Value) -> JointQGra
         seen.insert(seed);
         nodes.push(JointGraphNode {seed,op});
     }
-    assert_eq!(seen,requested);
+    assert!(requested.is_subset(&seen),"all requested seeds constructed");
     let nodes = nodes.into_boxed_slice();
     let retained_bytes = digit_ids.len()*size_of::<usize>()
         + terminal_ids.len()*size_of::<usize>()

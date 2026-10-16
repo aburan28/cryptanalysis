@@ -65,6 +65,8 @@ def expected_hashes(binary_hash, libcrypto_hash):
         'root_first_128': digest((FOREST / 'root-first-plan-128.json').read_bytes()),
         'two_parent_1': digest((FOREST / 'two-parent-plan-1.json').read_bytes()),
         'two_parent_128': digest((FOREST / 'two-parent-plan-128.json').read_bytes()),
+        'steiner_1': digest((FOREST / 'steiner-plan-1.json').read_bytes()),
+        'steiner_128': digest((FOREST / 'steiner-plan-128.json').read_bytes()),
     })
     return hashes
 
@@ -88,6 +90,8 @@ def main():
         'root_first_128': str(PANELS / 'root-first-plan-128.json'),
         'two_parent_1': str(PANELS / 'two-parent-plan-1.json'),
         'two_parent_128': str(PANELS / 'two-parent-plan-128.json'),
+        'steiner_1': str(PANELS / 'steiner-plan-1.json'),
+        'steiner_128': str(PANELS / 'steiner-plan-128.json'),
         'overlay': str(PANELS / 'native_rho_restart_joint_overlay.py'),
         'ct_bignum': '/workspace/bench-sources/public-inputs/suite/src/ct_bignum.rs',
         'cargo_toml': str(SOURCE / 'Cargo.toml'),
@@ -120,6 +124,8 @@ def main():
                       paths['fixture'], str(count), paths[f'root_first_{count}']]
         two_parent = [str(BINARY), '--pilot-rho-restart-joint-graph-planned',
                       paths['fixture'], str(count), paths[f'two_parent_{count}']]
+        steiner = [str(BINARY), '--pilot-rho-restart-joint-graph-planned',
+                   paths['fixture'], str(count), paths[f'steiner_{count}']]
         fused = [str(BINARY), '--pilot-rho-restart-joint-fused', paths['fixture'], str(count)]
         fused_graph = [str(BINARY), '--pilot-rho-restart-joint-fused-graph',
                        paths['fixture'], str(count)]
@@ -131,12 +137,16 @@ def main():
             ('compare_graph', graph), ('compare_graph_planned', graph_planned),
             ('compare_root_first', root_first), ('compare_two_parent', two_parent),
             ('compare_two_parent_vs_root_first', two_parent),
+            ('compare_steiner', steiner),
+            ('compare_steiner_vs_two_parent', steiner),
             ('cal_mid', ref),
             ('compare_fused', fused), ('compare_fused_graph', fused_graph),
             ('compare_fused_graph_planned', fused_graph_planned),
             ('cal_after', ref),
         ):
-            paired_ref = root_first if name == 'compare_two_parent_vs_root_first' else ref
+            paired_ref = (root_first if name == 'compare_two_parent_vs_root_first'
+                          else two_parent if name == 'compare_steiner_vs_two_parent'
+                          else ref)
             cases.append({'id': name, 'reference': paired_ref, 'candidate': candidate,
                           'expected_fields': {'count': str(count)},
                           'expected_result': expected})

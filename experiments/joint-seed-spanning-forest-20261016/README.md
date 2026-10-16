@@ -1,8 +1,8 @@
 # Root-first Eisenstein seed graph
 
-Two-parent component linking lowers the source-level Q-seed `add_projective`
-count from 62 to **38** for the frozen one-restart stream. Root-first ordering
-lowers the 128-restart count from 667 to **660**. Both use the same scalar
+Two auxiliary coefficient vertices lower the source-level Q-seed
+`add_projective` count from 62 to **25** for the frozen one-restart stream.
+Root-first ordering lowers the 128-restart count from 667 to **660**. All use the same scalar
 recoding, requested seeds, Q input, and native evaluator as the [joint graph
 experiment](../prime-j0-eisenstein-residue-20261015/JOINT_SEED_GRAPH.md).
 
@@ -29,10 +29,23 @@ emits each explicit two-parent witness before walking that component's
 unit-power edges. The native loader checks these coefficient equations and
 topological dependencies.
 
-| Restarts | Requested seeds | Original calls | Root-first calls | Two-parent calls | Two-parent direct roots |
+| Restarts | Requested seeds | Original calls | Root-first calls | Two-parent calls | Auxiliary calls |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 21 | 62 | 55 | **38** | 4 |
-| 128 | 659 | 667 | **660** | **660** | 1 |
+| 1 | 21 | 62 | 55 | 38 | **25** |
+| 128 | 659 | 667 | 660 | 660 | **660** |
+
+The [auxiliary planner](steiner_plan.py) examines the remaining direct roots
+after two-parent linking. It finds two shared vertices, `(-3,0)` and `(0,-5)`,
+reachable from already constructed points by unit-power edges. Their unit-power
+edges construct the three remaining roots. Its finite mask search selects a
+two-vertex cover from candidates reachable in one step from the existing graph
+and able to reach a remaining root in one step. The
+one-restart plan therefore has one direct root, 22 edges, and 23 constructed
+vertices for 21 requested seeds. The loaded-plan validator bounds auxiliary
+vertices, checks every coefficient equation, and requires every requested
+seed. The [plan](steiner-plan-1.json), [count receipt](steiner-1-receipt.json),
+and [native replay](steiner-local-replay.json) freeze this candidate. For 128
+restarts the [plan](steiner-plan-128.json) is identical to the root-first plan.
 
 The count includes calls in direct-root construction, including calls whose
 left operand is the identity, plus one call per graph edge. It excludes the
@@ -48,7 +61,8 @@ The two-parent receipts and plans are
 [128-restart plan](two-parent-plan-128.json).
 
 The [root-first replay](root-first-local-replay.json) and
-[two-parent replay](two-parent-local-replay.json) each invoke both native planned
+[two-parent replay](two-parent-local-replay.json), and
+[auxiliary replay](steiner-local-replay.json) each invoke both native planned
 evaluators on the original Q and four independently constructed Q values. They
 checks every frozen point in the one- and 128-restart streams plus the
 alternate one-restart points. These local invocations provide correctness and
@@ -73,6 +87,12 @@ python3 two_parent_plan.py \
 python3 two_parent_plan.py \
   --source root-first-plan-128.json \
   --output two-parent-plan-128.json --receipt two-parent-128-receipt.json
+python3 steiner_plan.py \
+  --source two-parent-plan-1.json \
+  --output steiner-plan-1.json --receipt steiner-1-receipt.json
+python3 steiner_plan.py \
+  --source two-parent-plan-128.json \
+  --output steiner-plan-128.json --receipt steiner-128-receipt.json
 ```
 
 The plans are compatible with the existing

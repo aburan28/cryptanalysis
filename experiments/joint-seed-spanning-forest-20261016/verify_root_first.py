@@ -45,7 +45,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--plan-stem', choices=('root-first', 'two-parent'),
+    parser.add_argument('--plan-stem', choices=('root-first', 'two-parent', 'steiner'),
                         default='root-first')
     args = parser.parse_args()
     frozen_path = BASE / 'rho-restart-first128-fixture.json'
@@ -76,8 +76,11 @@ def main():
                'plan_stem': args.plan_stem,
                'binary_sha256': digest(args.binary),
                'frozen_fixture_sha256': digest(frozen_path),
-               'planner_sha256': digest(HERE / ('root_first_plan.py'
-                   if args.plan_stem == 'root-first' else 'two_parent_plan.py')),
+               'planner_sha256': digest(HERE / {
+                   'root-first': 'root_first_plan.py',
+                   'two-parent': 'two_parent_plan.py',
+                   'steiner': 'steiner_plan.py',
+               }[args.plan_stem]),
                'root_first_planner_sha256': digest(HERE / 'root_first_plan.py'),
                'results': results}
     args.output.write_text(json.dumps(receipt, sort_keys=True, indent=2) + '\n')
