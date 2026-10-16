@@ -36,6 +36,14 @@ further, from 93.50 ms for `k=6` to 52.67 ms (qualified paired gain
 and A/A gates. Lean also checks a conditional 20-step terminal norm bound
 for `k=5`.
 
+The [scalar-local digit path](ON_DEMAND_DIGITS.md) recodes one scalar before
+materializing only its selected radix-32 points. Its frozen same-point Tier 1
+cold panel measured **3.24 ms** against **54.02 ms** for the full `k=5` table,
+with a qualified paired **16.7364×** reference/candidate ratio and all A/A
+controls passing. The candidate also checked all **12,288** frozen outputs
+in each of two serial full-fixture replay arms. Those arms took about 33.9 s
+each, exposing the cost of rebuilding selected points for every scalar.
+
 The [four-checkpoint radix-32 path](CHECKPOINTED_RADIX32.md) stores four
 five-digit windows at selected radix powers, retaining **832,396 bytes**.
 Its matched Tier 1 prepared-table panel evaluated 12,288 verified points
