@@ -190,7 +190,8 @@ the targets and the arithmetic they stand on.
 
 | module | attack |
 |---|---|
-| `hnp_ecdsa`, `multi_key_hnp`, `bleichenbacher`, `cga_hnc`, `b_seed_profile`, `orbit_homology` | hidden-number-problem key recovery from biased nonces (LLL / BKZ), multi-key HNP, Bleichenbacher's bias attack and its relatives |
+| `hnp_ecdsa`, `multi_key_hnp`, `bleichenbacher`, `cga_hnc`, `orbit_homology` | hidden-number-problem key recovery from biased nonces (LLL / BKZ), multi-key HNP, Bleichenbacher's bias attack and its relatives |
+| `b_seed_profile` | statistical profile of P-256's `b` (Kolmogorov–Smirnov test of `b mod q` residues), a probe for a maliciously chosen seed; not a nonce attack. The seed was explained on 2026-10-16 |
 | `ecdsa_audit`, `signature_corpus` | transcript audits: nonce reuse, weak RNGs, bias scores, corpus-level findings |
 | `p256_attacks`, `p256_structural`, `p256_isogeny_cover`, `p256_speculation`, `solinas_correlations` | P-256-specific structure and the speculation that was tested and did not survive |
 | `mlwe::{params, cost, primal, dual, hybrid, sieve, report}`, `ml_kem_pco`, `ml_dsa_leakage`, `ml_dsa_fault` | ML-KEM / ML-DSA: primal / dual / hybrid estimators under five SVP cost models, working sieves and BKZ, and the decapsulation-oracle, mask-leakage and fault attacks against the crate's real FIPS 203 / 204 implementations ([write-up](docs/mlwe-cryptanalysis.md)) |

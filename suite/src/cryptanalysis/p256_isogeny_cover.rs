@@ -1601,6 +1601,8 @@ mod tests {
     /// **The hypothesis**: if NIST's seed was chosen adversarially
     /// to land on a curve with hidden structure, the empirical
     /// `a_ℓ mod m` distribution might deviate `> 3σ` from uniform.
+    /// (Update 2026-10-16: the seed is now explained as `drand48`
+    /// output seeded with a 1997 timestamp.)
     #[test]
     #[ignore]
     fn phase17_lang_trotter_p256_distribution() {
