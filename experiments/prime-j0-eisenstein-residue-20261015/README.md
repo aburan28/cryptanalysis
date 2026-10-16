@@ -54,7 +54,11 @@ checks the concrete secp256k1 subgroup eigenvalue and every family radix
 action modulo the subgroup order; an independent affine replay matches the
 executed `τ` formula on the generator. Lean also checks both coordinate
 numerators of that formula against the affine chord equations modulo the
-field prime.
+field prime. A further Lean proof normalizes both projective coordinates
+under an explicit inverse and isolates the denominator's exceptional locus
+to `x=0`. Quadratic reciprocity excludes that locus for secp256k1; the
+reciprocity step is recorded as written mathematics and a numeric check
+while its full Lean formalization remains open.
 
 The secp256k1 prime splits in the Eisenstein integers. An exact norm-
 `p` element
