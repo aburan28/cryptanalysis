@@ -78,6 +78,10 @@ measured a qualified paired **1.140×** one-scalar ratio and **1.017×**
 128-point ratio, with all A/A controls passing. Both serial full-fixture arms
 verified all **12,288** outputs. Pinned Lean checks the norm, quotient
 adjugate, exact division under the selector congruence, and radix action.
+A second checked module proves a uniform selected-digit norm bound and that
+22 exact quotient steps from the secp256k1 lattice envelope reach the native
+terminal table. A source-hash-bound independent sweep checks every residue
+class against a lattice minimum; native arithmetic refinement remains open.
 
 The [four-checkpoint radix-32 path](CHECKPOINTED_RADIX32.md) stores four
 five-digit windows at selected radix powers, retaining **832,396 bytes**.
