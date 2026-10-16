@@ -36,6 +36,6 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --target c
   volcanoes with independent code. `tests/test_volcano.c` pins that both
   give curve A of its `research/isogeny-volcano-rho/` study as 80 curves,
   2 / 6 / 18 / 54.
-- **Size:** this measures rho against rho. It is not an index-calculus
+- **Scope:** this measures rho against rho. It is not an index-calculus
   result, and a curve's level is not a speedup unless its mean beats the
   control's spread.
