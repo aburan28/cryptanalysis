@@ -11,11 +11,14 @@ pdflatex to `figures/<name>.pdf` and with pdftoppm to `figures/<name>.png`
   component's callgrind instructions per probe in the legend.
 * `probe_pipeline`: the two loop structures.
 
-The Tier 1 result figure is owed after the run.
+* `result` (only with a result.json argument): the Tier 1 ratios with 95% bootstrap
+  intervals on a log2 axis (dashed line = parity), read from result.json.
 """
 
 import json
+import math
 import subprocess
+import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -105,7 +108,44 @@ the successful probe in the final state (at most 4n - 1 canonicalizations).};
 """
 
 
+def result_tex(path):
+    s = json.loads(path.read_text())["statistics"]
+    dec = json.loads(path.read_text())["decision"]
+    ci = lambda k, lab, kind: (lab, s[k]["estimate"], s[k]["ci95"], s[k]["units"], kind)  # noqa: E731
+    sub = lambda k, lab, f: (lab, s[k][f]["estimate"], s[k][f]["ci95"], s[k][f]["units"], "")  # noqa: E731
+    R = [ci("primary_R_means", "PRIMARY R\\_m: combined / pipeline (means)", "p"),
+         ci("primary_R_geomeans", "R\\_g: combined / pipeline (geomeans)", ""),
+         ci("primary_R_means_slice_bootstrap", "R\\_m, slice bootstrap", ""),
+         ci("primary_probes_C_over_P", "probes combined / pipeline (must be 1)", ""),
+         ci("primary_aa_P_over_Paa", "A/A pipeline / pipeline", "c"),
+         ci("primary_planted_X_over_P", "planted pipeline+full scan / pipeline", "c"),
+         sub("rho_gap_rT_over_pP", "tuned rho / pipeline (means)", "means"),
+         sub("rho_gap_rT_over_pC", "tuned rho / combined (means)", "means"),
+         sub("old_fresh16_C_over_P", "16 fresh combined / pipeline (means)", "means")]
+    x = lambda v: math.log(max(v, 1e-9), 2)  # noqa: E731
+    lo_axis, hi_axis, n = 0.5, 16.0, len(R)
+    L = ["% Editable source for result.pdf, written by make_figures.py from the run's result.json",
+         "\\documentclass[tikz,border=6pt]{standalone}", "\\usepackage[T1]{fontenc}", "\\begin{document}",
+         "\\begin{tikzpicture}[font=\\sffamily\\footnotesize,x=18mm,y=-5.6mm]"]
+    for v in (0.5, 1, 2, 4, 8, 16):
+        L.append("\\draw[gray!35] (%.4f,-0.6) -- (%.4f,%d); \\node[gray] at (%.4f,%.1f) {%g};" % (x(v), x(v), n, x(v), n + 0.5, v))
+    L.append("\\draw[red!70!black,dashed] (0,-0.6) -- (0,%d);" % n)
+    L.append("\\node at (0,%.1f) {ratio (log scale); bars: estimate; whiskers: 95\\%% bootstrap};" % (n + 1.3))
+    L.append("\\node[anchor=west,font=\\sffamily\\bfseries] at (-9.5,-1.5) {Primary: %s; ratchet: new baseline (pipeline)};" % dec["primary"])
+    for i, (label, est, (lo, hi), units, kind) in enumerate(R):
+        col = {"p": "orange!60", "c": "gray!45", "s": "blue!20"}.get(kind, "blue!30")
+        L.append("\\node[anchor=east] at (%.4f,%d) {%s};" % (x(lo_axis) - 0.1, i, label))
+        L.append("\\fill[%s] (0,%f) rectangle (%.4f,%f);" % (col, i - 0.3, x(est), i + 0.3))
+        L.append("\\draw (%.4f,%d) -- (%.4f,%d); \\draw (%.4f,%f) -- (%.4f,%f); \\draw (%.4f,%f) -- (%.4f,%f);"
+                 % (x(lo), i, x(hi), i, x(lo), i - 0.15, x(lo), i + 0.15, x(hi), i - 0.15, x(hi), i + 0.15))
+        L.append("\\node[anchor=west,font=\\sffamily\\scriptsize] at (%.4f,%d) {%.4f [%.4f, %.4f], n=%d};" % (x(hi_axis) + 0.05, i, est, lo, hi, units))
+    L += ["\\end{tikzpicture}", "\\end{document}", ""]
+    return "\n".join(L)
+
+
 def main():
+    if len(sys.argv) > 1:
+        render("result", result_tex(Path(sys.argv[1]).resolve()))
     p = json.loads((HERE / "analysis" / "profile_local.json").read_text())
     render("probe_profile", profile_tex(p))
     render("probe_pipeline", diagram_tex())
