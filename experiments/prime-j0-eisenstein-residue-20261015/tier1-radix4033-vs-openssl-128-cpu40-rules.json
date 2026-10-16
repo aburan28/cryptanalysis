@@ -1,0 +1,41 @@
+{
+  "aa_acceptance": [
+    0.9,
+    1.11
+  ],
+  "case_order": [
+    "cal_before",
+    "compare_radix4033",
+    "cal_after"
+  ],
+  "comparison_acceptance": "all 16 comparison pairs valid; both adjacent A/A ratios in [0.90,1.11]; paired bootstrap 95% log-ratio interval excludes one",
+  "execution_cpu": 40,
+  "expected_count": 128,
+  "expected_point_hex": "4242d0263037bee835ba63f2d72e08c78e3b0878d533efa932bb8679b4776ce2:578ae2f3bb3528be284c5043f416760efafec71aa07d39b6278bd79940144ec9",
+  "fixture_sha256": "b69a91e404f5f0f8f378c230c09f1db60e9c0999cba93a34c68e215f0839cfe7",
+  "hashes": {
+    "libcrypto": "d6fc1bc9de29c55fc905f77edba1ccc7c7a50b32bd2bb9086b0d0b00104eafc4",
+    "openssl_binary": "9599c51e0aa2d6aacef960122ae3fa763048839daa133ea24a7e723ca70d4e76",
+    "openssl_fixture": "b69a91e404f5f0f8f378c230c09f1db60e9c0999cba93a34c68e215f0839cfe7",
+    "openssl_source": "1f0aeafd4511e3a46cade5235bbf2d58556518543ca8122a07602226ad72df73"
+  },
+  "openssl_build": "cc -O3 -march=x86-64-v3 -Wall -Wextra -Werror -o openssl_secp256k1_baseline openssl_secp256k1_baseline.c -lcrypto",
+  "openssl_version": "OpenSSL 3.0.13 30 Jan 2024 (Library: OpenSSL 3.0.13 30 Jan 2024)",
+  "paths": {
+    "candidate_binary": "/workspace/bench-target-radix4033/release/eisenstein_fixed",
+    "candidate_fixture": "/workspace/bench-sources/prime-j0-sparse-radix4033/src/bin/mixed640_uniform_fixture.json",
+    "candidate_overlay": "/workspace/isolated-bench/panels/native_sparse_radix4033_overlay.py",
+    "candidate_source": "/workspace/bench-sources/prime-j0-sparse-radix4033/src/bin/eisenstein_fixed.rs",
+    "candidate_windows": "/workspace/bench-sources/prime-j0-sparse-radix4033/src/bin/eisenstein_fixed/unit_orbit_windows.rs",
+    "libcrypto": "/usr/lib/x86_64-linux-gnu/libcrypto.so.3",
+    "openssl_binary": "/workspace/isolated-bench/panels/openssl_secp256k1_baseline",
+    "openssl_fixture": "/workspace/isolated-bench/panels/openssl-secp256k1-first128-fixture.txt",
+    "openssl_source": "/workspace/isolated-bench/panels/openssl_secp256k1_baseline.c"
+  },
+  "purpose": "radix4033-vs-openssl-fixed-base-128",
+  "repetitions": 16,
+  "schema": 1,
+  "service_cpu": 2,
+  "tier": "tier1_instance",
+  "timing_boundary": "OpenSSL: EC_POINT_mul plus affine x:y serialization; radix4033: recoding, graph synthesis, Horner evaluation and affine x:y serialization. Fixture loading, group setup, one OpenSSL warm multiply, process launch, and external replay are outside."
+}

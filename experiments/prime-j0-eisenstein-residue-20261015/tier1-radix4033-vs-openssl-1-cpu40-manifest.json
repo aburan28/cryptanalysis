@@ -1,0 +1,90 @@
+{
+  "allocation": {
+    "instance_id": "thyvmdqmzsz5ik",
+    "provider": "runpod",
+    "receipt": "/workspace/isolated-bench/panels/allocation.json"
+  },
+  "artifacts": [
+    "/workspace/isolated-bench/panels/allocation.json",
+    "/workspace/isolated-bench/panels/host-probe.json",
+    "/workspace/isolated-bench/panels/openssl_secp256k1_baseline.c",
+    "/workspace/isolated-bench/panels/openssl-secp256k1-first128-fixture.txt",
+    "/workspace/isolated-bench/panels/openssl_secp256k1_baseline",
+    "/usr/lib/x86_64-linux-gnu/libcrypto.so.3",
+    "/workspace/bench-sources/prime-j0-sparse-radix4033/src/bin/eisenstein_fixed.rs",
+    "/workspace/bench-sources/prime-j0-sparse-radix4033/src/bin/eisenstein_fixed/unit_orbit_windows.rs",
+    "/workspace/bench-sources/prime-j0-sparse-radix4033/src/bin/mixed640_uniform_fixture.json",
+    "/workspace/bench-target-radix4033/release/eisenstein_fixed",
+    "/workspace/isolated-bench/panels/native_sparse_radix4033_overlay.py",
+    "/workspace/isolated-bench/panels/tier1-radix4033-vs-openssl-1-cpu40-rules.json"
+  ],
+  "cases": [
+    {
+      "candidate": [
+        "/workspace/isolated-bench/panels/openssl_secp256k1_baseline",
+        "/workspace/isolated-bench/panels/openssl-secp256k1-first128-fixture.txt",
+        "1"
+      ],
+      "expected_fields": {
+        "count": "1"
+      },
+      "expected_result": "f5e9c9380424aa843ceb82ddc3e7095bf057e852f4dde758a7ce0132c61a9cea:5e86b2a5f173b7d80cabf89f9ac7ba8057f46a113764e400c40fe9d6ee7928a4",
+      "id": "cal_before",
+      "reference": [
+        "/workspace/isolated-bench/panels/openssl_secp256k1_baseline",
+        "/workspace/isolated-bench/panels/openssl-secp256k1-first128-fixture.txt",
+        "1"
+      ]
+    },
+    {
+      "candidate": [
+        "/workspace/bench-target-radix4033/release/eisenstein_fixed",
+        "--pilot-radix4033",
+        "1"
+      ],
+      "expected_fields": {
+        "count": "1"
+      },
+      "expected_result": "f5e9c9380424aa843ceb82ddc3e7095bf057e852f4dde758a7ce0132c61a9cea:5e86b2a5f173b7d80cabf89f9ac7ba8057f46a113764e400c40fe9d6ee7928a4",
+      "id": "compare_radix4033",
+      "reference": [
+        "/workspace/isolated-bench/panels/openssl_secp256k1_baseline",
+        "/workspace/isolated-bench/panels/openssl-secp256k1-first128-fixture.txt",
+        "1"
+      ]
+    },
+    {
+      "candidate": [
+        "/workspace/isolated-bench/panels/openssl_secp256k1_baseline",
+        "/workspace/isolated-bench/panels/openssl-secp256k1-first128-fixture.txt",
+        "1"
+      ],
+      "expected_fields": {
+        "count": "1"
+      },
+      "expected_result": "f5e9c9380424aa843ceb82ddc3e7095bf057e852f4dde758a7ce0132c61a9cea:5e86b2a5f173b7d80cabf89f9ac7ba8057f46a113764e400c40fe9d6ee7928a4",
+      "id": "cal_after",
+      "reference": [
+        "/workspace/isolated-bench/panels/openssl_secp256k1_baseline",
+        "/workspace/isolated-bench/panels/openssl-secp256k1-first128-fixture.txt",
+        "1"
+      ]
+    }
+  ],
+  "comparison_variant": "radix4033-vs-openssl-fixed-base-1",
+  "isolation": {
+    "cpus": "40",
+    "execution_cpu": 40
+  },
+  "measurement_boundary": "OpenSSL: EC_POINT_mul plus affine x:y serialization; radix4033: recoding, graph synthesis, Horner evaluation and affine x:y serialization. Fixture loading, group setup, one OpenSSL warm multiply, process launch, and external replay are outside.",
+  "measurement_tier": "tier1_instance",
+  "outer_repeats": 1,
+  "pair_fields": [
+    "count",
+    "point"
+  ],
+  "repetitions": 16,
+  "schema": 1,
+  "timeout_s": 30,
+  "workdir": "/workspace/bench-sources"
+}
