@@ -1438,6 +1438,17 @@ static int cmd_volcano(void)
     rc = ca_volcano_walk(p, a, b, order, ell, radius, (uint32_t)opt_u64("--max-vertices", 20000),
                          &vo);
     if (rc != CA_OK) die_status(rc);
+    for (uint32_t i = 0; i < vo.count; i++) { /* an edge moves at most one level */
+        const ca_volcano_vertex *v = &vo.v[i];
+        for (uint32_t q = 0; q < v->n_nbrs && v->level >= 0; q++) {
+            int32_t lw = vo.v[v->nbrs[q]].level;
+            if (lw >= 0 && (lw - v->level > 1 || v->level - lw > 1))
+                die("internal: a volcano edge skips a level");
+        }
+    }
+    if (vo.trace == 0)
+        fprintf(stderr, "warning: t = 0, the curve is supersingular; levels may not follow an "
+                        "ordinary volcano\n");
 
     /* The instance on the root, then carried along the breadth-first tree. */
     ca_rng rng;
