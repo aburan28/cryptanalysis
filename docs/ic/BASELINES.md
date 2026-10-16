@@ -5,7 +5,7 @@ rows added from run 38777903922. It takes no new measurement: every number is
 copied from a committed experiment, and each row cites that experiment. Figure 1
 was checked and stays current: no baseline row's numbers changed. The n=83 rows for lift_scan, the Feistel order and their (not promoted)
 combination were added on 2026-10-15; Figure 1 was checked and stays
-current, because no baseline row's numbers changed. The n=83 row for the probe pipeline was added on 2026-10-16, the two-level root table and the state fold the same day, each with the same Figure 1 check. On 2026-10-16 the stacked producer (`koblitz-n83-stacked-20261016`, run 38862448935) replaced B's n=83 baseline row, and Figure 1 was re-rendered. Also on 2026-10-16, an accounting correction (sheriff case SHF-20261016-3caa6f, K3 and K4): the n=83 row's `s_ic_setup` was 0.8856, which is setup without the rank stage plus online, while every other row's (B's 32.848 included) is cold minus online with the rank stage in it. It is now 9.6673 on that one meaning, and the B → stack ratchet entry records the paired within-run delta. No measurement changed, and Figure 1 (gaps only) is unchanged. The machine-readable twin is
+current, because no baseline row's numbers changed. The n=83 row for the probe pipeline was added on 2026-10-16, the two-level root table and the state fold the same day, each with the same Figure 1 check. On 2026-10-16 the stacked producer (`koblitz-n83-stacked-20261016`, run 38862448935) replaced B's n=83 baseline row, and Figure 1 was re-rendered. Also on 2026-10-16, an accounting correction (sheriff case SHF-20261016-3caa6f, K3 and K4): the n=83 row's `s_ic_setup` was 0.8856, which is setup without the rank stage plus online, while every other row's (B's 32.848 included) is cold minus online with the rank stage in it. It is now 9.6673 on that one meaning, and the B → stack ratchet entry records the paired within-run delta. No measurement changed, and Figure 1 (gaps only) is unchanged. Also on 2026-10-16, disclosures from the same case (K1, K2, R1; no number changed): the n=83 row's headline and `S` are wall time on one host class, with the host-independent operation-count ratio (rank-stage probes and root calls 1.4773x) beside it; factor-base construction is charged to neither arm, so the row's ratio is an upper bound and its cold `S` a lower bound; the §5a GAE band is not computable from that run; and the run was not replayed on another host class. The machine-readable twin is
 [`baselines.json`](baselines.json); update both files in the same change.
 
 ## The rule this file serves
@@ -59,7 +59,7 @@ baseline" (owner, 2026-10-15; cryptanalysis#919, crypto#1908):
 | 41 | K_0 / GF(2^41) | `ic price --single-target` at IC programme baseline v3: 6,560 points, 80 columns, aimed m=3 collection, m=2 pair-table descent; crypto `995ea207`; rule v3 | 64 public points, 1 process each, +4 A/A | 11.17 / 0.121 | 1.459 / 1.318 | **7.66** [6.90, 8.61] | 0.092 [0.071, 0.116] | **measured in a separate experiment, not combined**: see the 41 row of Other verified records (run 38777903922: online IC/tuned 0.09, cold 6.6); the matched rho in this row is ParallelRho (0.56× the strong walk's ns/step) | model only: 2.21 | crypto isolated_bench container | Setup is 98.9% of cold `S`: cut the reusable setup at fixed recipe, as a new IC programme round against v3 |
 | 53 | K_0 / GF(2^53) | same pipeline, 27,984 points, 264 columns; crypto `995ea207`; rule v3 | 64 + 4 A/A | 16.98 / 0.058 | 1.282 / 1.236 | **13.2** [11.8, 15.0] | 0.047 [0.036, 0.059] | **measured in a separate experiment, not combined**: see the 53 row below (online 0.0423, cold 10.6); ParallelRho here is 0.53× strong | model only: 1.77 | crypto isolated_bench container | Setup is 99.7% of cold `S`: cut it at fixed recipe; then price the n=53 representative-plus-Frobenius orbit domain as its replacement |
 | 61 | K_0 / GF(2^61) | same pipeline, 39,040 points, 320 columns; crypto `995ea207`; rule v3 | 64 + 4 A/A | 24.93 / 0.079 | 1.189 / 1.168 | **21.0** [18.6, 23.8] | 0.067 [0.051, 0.088] | **measured in a separate experiment, not combined**: see the 61 row below (online 0.0687, cold 18.9); ParallelRho here is 0.50× strong | model only: 3.52 | crypto isolated_bench container | Setup is 99.7% of cold `S`, and the cold gap grows as r^0.18: cut the setup; price the compact-orbit K=500 producer on these 64 points |
-| 83 | K_1 / GF(2^83) | the stacked producer (arms cS / kS): B's `koblitz_orbit_dlp_fast_online` + `ic_log_cache.patch`, K600 (99,600 points, 600 orbit columns), lift_scan x Feistel + prefetched probes + 16-byte compact root slots + folded S3 root index (14,940,300 stored states), rank stage on the stack's own probe loop (candidate ID below); crypto `770f6a69`; `koblitz-n83-stacked-20261016/protocol.json` at cryptanalysis `24abca74`; run 38862448935 | 20 new public points, two rank blocks, Q0 | 9.680 / 0.01314 (rT770 steps, 316.66 ns; setup 9.667, of which rank stage 8.795) | 0.1025 / 0.0944 | **94.4** [73.5, 125.3] (end-to-end cold: rank stage + setup + online) | 0.139 [0.077, 0.237] | **measured on this row**: end-to-end cold 94.4, online 0.139 | not measured on this row (B's 235 [61, 645] is in Other verified records) | Tier 1 (GitHub runner, one pinned CPU) | The rank stage is 257.8 s of the 283.8 s end-to-end cold cost (91%): cut it (the guided minimum-rank policy, fewer attempts), then setup (lift_scan in the index build, 1.33x cold without rank); re-run the BL arm on the stack |
+| 83 | K_1 / GF(2^83) | the stacked producer (arms cS / kS): B's `koblitz_orbit_dlp_fast_online` + `ic_log_cache.patch`, K600 (99,600 points, 600 orbit columns), lift_scan x Feistel + prefetched probes + 16-byte compact root slots + folded S3 root index (14,940,300 stored states), rank stage on the stack's own probe loop (candidate ID below); crypto `770f6a69`; `koblitz-n83-stacked-20261016/protocol.json` at cryptanalysis `24abca74`; run 38862448935 | 20 new public points, two rank blocks, Q0 | 9.680 / 0.01314 (wall time in rT770 steps, 316.66 ns, one host class; setup 9.667, of which rank stage 8.795; factor-base construction not charged, so cold is a lower bound) | 0.1025 / 0.0944 | **94.4** [73.5, 125.3] (end-to-end cold: rank stage + setup + online; wall time, one host; §5a band not computable) | 0.139 [0.077, 0.237] | **measured on this row**: end-to-end cold 94.4, online 0.139 | not measured on this row (B's 235 [61, 645] is in Other verified records) | Tier 1 (GitHub runner, EPYC 9V74, one pinned CPU, CPU-only); one run, not replayed on another host class | The rank stage is 257.8 s of the 283.8 s end-to-end cold cost (91%): cut it (the guided minimum-rank policy, fewer attempts), then setup (lift_scan in the index build, 1.33x cold without rank); re-run the BL arm on the stack |
 
 ![Distance to the matched rho and to Bernstein–Lange, per baseline row.](figures/baselines_gap.png)
 
@@ -101,6 +101,30 @@ source gives one ([source](figures/baselines_gap.tex),
   (rank stage included) that looked like a 37× setup drop, which was
   accounting (corrected 2026-10-16, `corrections` in the JSON). BL was not
   run on the stack.
+  - *Wall time, one host class.* The headline 3.2391 and every `S` are
+    wall time from one run on one GitHub runner (AMD EPYC 9V74, one pinned
+    CPU, CPU-only), not operation counts. The host-independent part is
+    the rank stage's operation counts: probes 2,976,293,514 (kP) against
+    2,014,683,345 (kS) and root calls 1,488,248,100 against 1,007,441,716,
+    both 1.4773x fewer. The rank-stage wall ratio 3.3737 is that 1.4773
+    times 2.2837 in wall ns per probe (584.48 against 255.94), which is
+    host-specific (canonicalizer, prefetch pipeline, table layout). Stored
+    index states halve (29,880,000 to 14,940,300); online probes are equal
+    (cP / cS 1.000133). Setup and index build emit no comparable count, so
+    there is no single end-to-end operation-count ratio.
+  - *Uncharged phase.* Factor-base construction is charged to neither arm:
+    every process loads the K600 base from a file. It is common to both
+    arms, so the ratio stays above 1 for any construction cost X, but
+    3.2391 is an upper bound and cold `S` 9.680 a lower bound on the
+    every-phase figures (X = 1 s: 3.231 and 9.715; 10 s: 3.163 and 10.02;
+    60 s: 2.848 and 11.73).
+  - *§5a band.* Not computable from this run: the IC arms emit no group
+    additions, scalar multiplications, canonicalizations, fold rotations or
+    index inserts, so the gap 94.4 has no 0 / 0.1 / 1 GAE band and holds
+    as a wall-time figure on this host only.
+  - *Replication.* Not replayed on another host class. A K1 replay of kP
+    and kS (order kS, kP, kP, kS) with the base construction timed in the
+    same job is proposed, not run.
 - **n=83, B (Other verified records).** `S` in B's run is wall ms over that
   run's rT770 step (180.8 ns) and √r. Cold is the matched precomputation
   P_IC (520,825 ms rank stage + 29,022 ms per-process setup; `s_ic_setup`
@@ -147,7 +171,7 @@ None is combined with another row.
 | 83 | lift_scan x Feistel combined producer | software-pipelined, prefetched probes (run 38822490448) | not measured | 0.2047 → 0.1462 (online, tuned rho; 1.4001 faster) | engineering; promoted by its own frozen rule; baseline row not replaced (no cold `S`) |
 | 83 | probe-pipeline producer | two-level root table (run 38829449594) | not measured | 0.1620 → 0.1523 (online, tuned rho; 1.0633 faster) | engineering; promoted by its own frozen rule; baseline row not replaced (no cold `S` against rho) |
 | 83 | lift_scan x Feistel combined producer | folded S3 root index (run 38819494806) | 12.77 → 6.95 (rank stage excluded) | not improved (online 5% slower) | engineering; promoted by its own frozen rule; baseline row not replaced (rank stage still dominates cold cost) |
-| 83 | B (BL-arm baseline row, run 38689817618) | stacked producer: probe pipeline + 16-byte slots + folded index + rank stage (run 38862448935) | **paired, this run:** 305.8 [237.5, 403.8] → 94.4 [73.5, 125.3] (end-to-end cold, from pP with B's rank stage; 3.24× closer). Context only: B's own run read 360 (a different run, instances and step time) | **paired, this run:** 0.133 [0.072, 0.229] → 0.139 [0.077, 0.237]: online 4.6% slower in this step. Context only: B's run read 1.01 | engineering; promoted by its own frozen primary (end-to-end cold cP / cS 3.2391 [2.9809, 3.5240], 20 points, two rank blocks, against the probe-pipeline producer); **baseline row replaced**: the first measured n=83 end-to-end cold `S` after B (9.68; was 32.93 in B's run, a different step time) |
+| 83 | B (BL-arm baseline row, run 38689817618) | stacked producer: probe pipeline + 16-byte slots + folded index + rank stage (run 38862448935) | **paired, this run:** 305.8 [237.5, 403.8] → 94.4 [73.5, 125.3] (end-to-end cold, from pP with B's rank stage; 3.24× closer). Context only: B's own run read 360 (a different run, instances and step time) | **paired, this run:** 0.133 [0.072, 0.229] → 0.139 [0.077, 0.237]: online 4.6% slower in this step. Context only: B's run read 1.01 | engineering; promoted by its own frozen primary (end-to-end cold cP / cS 3.2391 [2.9809, 3.5240] in wall time on one host class, factor-base construction excluded; rank-stage probes and root calls 1.4773x fewer; 20 points, two rank blocks, against the probe-pipeline producer); **baseline row replaced**: the first measured n=83 end-to-end cold `S` after B (9.68; was 32.93 in B's run, a different step time) |
 
 The paired cold-time ratios between baselines, each in its own runs, are in
 crypto `research/notes/index-calculus/IC_TOOL_PROGRAM.md` §7. The gaps above
@@ -180,7 +204,8 @@ only once it moves an end-to-end `S` above.
   (`koblitz-n83-stacked-20261016`, run 38862448935): the probe pipeline,
   16-byte slots, folded index and a rank stage on the stack's own probe loop,
   promoted end to end over the probe-pipeline producer (3.2391 [2.9809,
-  3.5240], 20 points, two rank blocks). Its end-to-end cold `S` is 9.68
+  3.5240] in wall time on one host class, of which 1.4773x is fewer
+  rank-stage probes and root calls; 20 points, two rank blocks). Its end-to-end cold `S` is 9.68
   against the tuned rho's 0.103 (gap 94.4 [73.5, 125.3]); it is the first
   n=83 row with a measured end-to-end cold `S` after B. B's earlier row
   (experiment on PR #918, not merged yet) moved to Other verified records.
@@ -209,6 +234,10 @@ only once it moves an end-to-end `S` above.
    Give `s_ic_setup` its one meaning (`s_ic_cold` - `s_ic_online`, rank
    stage included), and record the history delta paired within the
    promoting run; figures from an earlier run go in as context only.
+   Say whether the headline is wall time (and on which host class) or
+   operation counts, give the operation-count ratio beside a wall-time
+   one, name any phase the experiment did not charge, and say whether the
+   §5a band was computable and whether the run was replayed elsewhere.
 3. Name the next improvement to try in the new row.
 4. Re-render Figure 1 and this file's PDF:
 

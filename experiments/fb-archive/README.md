@@ -76,7 +76,16 @@ python3 experiments/fb-archive/compact_orbit_base_archive.py --verify-only
 
 The focused verify-only command checks all six archives against the committed
 source point sets and index rows. The repository-wide `fbarchive.py verify`
-currently reports three older unindexed archive files outside this family.
+reports no unindexed files (2,681 archives, 0 problems, 2026-10-16). Three
+older `.json.gz` files outside this family (`EC1N23...` `geomtraceu` l12 and
+l13 seed 1, `EC1N41...` `geomtraceu` l15 seed 1) were committed beside their
+indexed `.json.xz` archives but never indexed. Their decompressed content is
+byte-identical to the indexed `.xz` rows (same `content_sha256` and
+`factor_base_sha256`); only the compressed bytes differ, and their gzip header
+(OS byte 3) shows another gzip writer than `fbarchive.py`'s. Sheriff case
+SHF-20261016-3caa6f (finding X2) asked for them to be indexed or removed; they
+were indexed as new rows with their own `bytes` and `file_sha256`, which is the
+append-only route (no row or file was changed or deleted).
 
 `verify` rechecks every digest and count, and flags files that are not in the index.
 `--rebuild` also regenerates ordinary bases from their recipes and requires
