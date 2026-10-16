@@ -1,0 +1,103 @@
+{
+  "allocation": {
+    "instance_id": "thyvmdqmzsz5ik",
+    "provider": "runpod",
+    "receipt": "/workspace/isolated-bench/panels/allocation.json"
+  },
+  "artifacts": [
+    "/workspace/isolated-bench/panels/allocation.json",
+    "/workspace/isolated-bench/panels/host-probe.json",
+    "/workspace/bench-sources/prime-j0-rho-restart-hybrid/src/bin/eisenstein_fixed.rs",
+    "/workspace/bench-sources/prime-j0-rho-restart-hybrid/src/bin/eisenstein_fixed/unit_orbit_windows.rs",
+    "/workspace/bench-sources/prime-j0-rho-restart-hybrid/src/bin/rho_restart_hybrid.rs",
+    "/workspace/bench-target-rho-restart-hybrid/release/eisenstein_fixed",
+    "/workspace/isolated-bench/panels/rho-restart-first128-fixture.json",
+    "/workspace/isolated-bench/panels/native_rho_restart_hybrid_overlay.py",
+    "/workspace/bench-sources/public-inputs/suite/src/ct_bignum.rs",
+    "/workspace/bench-sources/prime-j0-rho-restart-hybrid/Cargo.toml",
+    "/workspace/bench-sources/prime-j0-rho-restart-hybrid/Cargo.lock",
+    "/usr/lib/x86_64-linux-gnu/libcrypto.so.3",
+    "/workspace/isolated-bench/panels/tier1-rho-restart-hybrid-128-cpu40-rules.json"
+  ],
+  "cases": [
+    {
+      "candidate": [
+        "/workspace/bench-target-rho-restart-hybrid/release/eisenstein_fixed",
+        "--pilot-rho-restart",
+        "openssl",
+        "/workspace/isolated-bench/panels/rho-restart-first128-fixture.json",
+        "128"
+      ],
+      "expected_fields": {
+        "count": "128"
+      },
+      "expected_result": "a774f4916d233b9c863b2483a11b56778789f22d06c82c5abd2614aeacc9441e:a6c00dda29b720eacdb2ad443383013b6d3732b1fbe59697b7b305df36fdcd1a",
+      "id": "cal_before",
+      "reference": [
+        "/workspace/bench-target-rho-restart-hybrid/release/eisenstein_fixed",
+        "--pilot-rho-restart",
+        "openssl",
+        "/workspace/isolated-bench/panels/rho-restart-first128-fixture.json",
+        "128"
+      ]
+    },
+    {
+      "candidate": [
+        "/workspace/bench-target-rho-restart-hybrid/release/eisenstein_fixed",
+        "--pilot-rho-restart",
+        "hybrid",
+        "/workspace/isolated-bench/panels/rho-restart-first128-fixture.json",
+        "128"
+      ],
+      "expected_fields": {
+        "count": "128"
+      },
+      "expected_result": "a774f4916d233b9c863b2483a11b56778789f22d06c82c5abd2614aeacc9441e:a6c00dda29b720eacdb2ad443383013b6d3732b1fbe59697b7b305df36fdcd1a",
+      "id": "compare_hybrid",
+      "reference": [
+        "/workspace/bench-target-rho-restart-hybrid/release/eisenstein_fixed",
+        "--pilot-rho-restart",
+        "openssl",
+        "/workspace/isolated-bench/panels/rho-restart-first128-fixture.json",
+        "128"
+      ]
+    },
+    {
+      "candidate": [
+        "/workspace/bench-target-rho-restart-hybrid/release/eisenstein_fixed",
+        "--pilot-rho-restart",
+        "openssl",
+        "/workspace/isolated-bench/panels/rho-restart-first128-fixture.json",
+        "128"
+      ],
+      "expected_fields": {
+        "count": "128"
+      },
+      "expected_result": "a774f4916d233b9c863b2483a11b56778789f22d06c82c5abd2614aeacc9441e:a6c00dda29b720eacdb2ad443383013b6d3732b1fbe59697b7b305df36fdcd1a",
+      "id": "cal_after",
+      "reference": [
+        "/workspace/bench-target-rho-restart-hybrid/release/eisenstein_fixed",
+        "--pilot-rho-restart",
+        "openssl",
+        "/workspace/isolated-bench/panels/rho-restart-first128-fixture.json",
+        "128"
+      ]
+    }
+  ],
+  "comparison_variant": "rho-restart-hybrid-vs-openssl-128",
+  "isolation": {
+    "cpus": "40",
+    "execution_cpu": 40
+  },
+  "measurement_boundary": "Both modes compute aG+bQ for the same frozen secp256k1 Q and public a,b. OpenSSL uses one EC_POINT_mul; hybrid uses norm4033 fixed-base aG, affine conversion, OpenSSL bQ, and EC_POINT_add. Both include affine output; fixture parsing, curve setup, OpenSSL warmup, table preparation, and process launch are outside.",
+  "measurement_tier": "tier1_instance",
+  "outer_repeats": 1,
+  "pair_fields": [
+    "count",
+    "point"
+  ],
+  "repetitions": 16,
+  "schema": 1,
+  "timeout_s": 30,
+  "workdir": "/workspace/bench-sources"
+}
