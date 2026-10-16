@@ -40,13 +40,13 @@ instance : MonadEnv AuditM := { getEnv := get, modifyEnv := modify }
 /-- An axiom `native_decide` introduces (`<thm>._native.native_decide.ax_…`) or the
 compiler-trust axioms it historically used. -/
 def isNativeAxiom (a : Name) : Bool :=
-  a == ``Lean.ofReduceBool || a == ``Lean.trustCompiler ||
+  a == `Lean.ofReduceBool || a == `Lean.trustCompiler ||
     (a.toString.splitOn "._native.native_decide.").length > 1
 
 def readTrusted (path : String) : IO (List Name) := do
   let lines ← IO.FS.lines path
   return lines.toList.filterMap fun l =>
-    let n := ((l.splitOn "#").head!).trim
+    let n := String.ofList (((l.splitOn "#").head!).toList.filter (fun c => !c.isWhitespace))
     if n.isEmpty then none else some n.toName
 
 def main (args : List String) : IO UInt32 := do
