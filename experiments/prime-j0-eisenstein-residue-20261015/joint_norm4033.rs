@@ -16,6 +16,20 @@ pub(super) struct SparseJointQTables {
     pub(super) constructed_points: usize,
 }
 
+impl SparseJointQTables {
+    fn digit(&self, index: usize, unit: usize) -> U256Affine {
+        let position = self.digit_window.binary_search_by_key(&index, |&(id,_)| id)
+            .expect("Q digit was prepared");
+        self.digit_window[position].1.unit(unit)
+    }
+
+    fn terminal(&self, index: usize, unit: usize) -> U256Affine {
+        let position = self.terminal_pairs.binary_search_by_key(&index, |&(id,_)| id)
+            .expect("Q terminal was prepared");
+        self.terminal_pairs[position].1.unit(unit)
+    }
+}
+
 fn joint_parse_point(q_hex: &str) -> U256Jacobian {
     let (xh, yh) = q_hex.split_once(':').expect("Q x:y");
     let x = num_bigint::BigUint::parse_bytes(xh.as_bytes(), 16).expect("Q x hex");
@@ -258,14 +272,116 @@ pub(super) fn multiply_u256_tau_joint_sparse(
 ) -> String {
     let a = joint_choices_for_words(a_words);
     joint_evaluate_choices(a, b,
-        |index,unit| {
-            let position = q_tables.digit_window.binary_search_by_key(&index, |&(id,_)| id)
-                .expect("Q digit was prepared");
-            q_tables.digit_window[position].1.unit(unit)
-        },
-        |index,unit| {
-            let position = q_tables.terminal_pairs.binary_search_by_key(&index, |&(id,_)| id)
-                .expect("Q terminal was prepared");
-            q_tables.terminal_pairs[position].1.unit(unit)
-        })
+        |index,unit| q_tables.digit(index,unit),
+        |index,unit| q_tables.terminal(index,unit))
+}
+
+struct JointPairPending {
+    position: usize,
+    left: U256Affine,
+    right: U256Affine,
+    numerator: super::U256,
+    denominator: super::U256,
+}
+
+fn joint_batch_invert(values: &[super::U256]) -> Vec<super::U256> {
+    if values.is_empty() { return Vec::new(); }
+    let ctx = &super::HYBRID_FIELD.0;
+    let mut prefix = Vec::with_capacity(values.len());
+    let mut product = ctx.r_mod_n;
+    for &value in values {
+        assert!(!bool::from(value.ct_is_zero()));
+        prefix.push(product);
+        product = ctx.mont_mul(&product, &value);
+    }
+    let mut inverse = super::hybrid_binary_invert(product,ctx);
+    let mut result = vec![super::U256::ZERO;values.len()];
+    for index in (0..values.len()).rev() {
+        result[index] = ctx.mont_mul(&inverse,&prefix[index]);
+        inverse = ctx.mont_mul(&inverse,&values[index]);
+    }
+    assert_eq!(inverse.0,ctx.r_mod_n.0,"pair denominator product check");
+    result
+}
+
+pub(super) fn multiply_u256_tau_joint_fused_batch(
+    a_words: &[[u64;4]],
+    b_choices: &[[(usize,usize);ALT_SPLIT_PRIME_STEPS+1]],
+    q_tables: &SparseJointQTables,
+) -> (Vec<String>,usize) {
+    assert_eq!(a_words.len(),b_choices.len());
+    let g_tables = &*ALT_HORNER_TABLES;
+    let slots = ALT_SPLIT_PRIME_STEPS+1;
+    let mut pairs = vec![None;slots*a_words.len()];
+    let mut pending = Vec::<JointPairPending>::new();
+    for (case,(&a_words,b)) in a_words.iter().zip(b_choices.iter()).enumerate() {
+        let a = joint_choices_for_words(a_words);
+        for index in 0..slots {
+            let (ga,gu) = a[index];
+            let (qb,qu) = b[index];
+            let g = if ga == 0 { None } else if index == ALT_SPLIT_PRIME_STEPS {
+                Some(g_tables.terminal_pairs[ga].unit(gu))
+            } else {
+                Some(g_tables.digit_window[ga].unit(gu))
+            };
+            let q = if qb == 0 { None } else if index == ALT_SPLIT_PRIME_STEPS {
+                Some(q_tables.terminal(qb,qu))
+            } else {
+                Some(q_tables.digit(qb,qu))
+            };
+            let position = case*slots+index;
+            match (g,q) {
+                (None,None) => {},
+                (Some(point),None) | (None,Some(point)) => pairs[position] = Some(point),
+                (Some(left),Some(right)) => {
+                    let (numerator,denominator) = if left.x.0 == right.x.0 {
+                        if left.y.0 != right.y.0 {
+                            assert_eq!(u256_add(left.y,right.y).0,
+                                       super::U256::ZERO.0,"opposite pair");
+                            continue;
+                        }
+                        let xx = u256_square(left.x);
+                        (u256_add(u256_add(xx,xx),xx),u256_add(left.y,left.y))
+                    } else {
+                        (u256_sub(right.y,left.y),u256_sub(right.x,left.x))
+                    };
+                    if bool::from(denominator.ct_is_zero()) { continue; }
+                    pending.push(JointPairPending {
+                        position,left,right,numerator,denominator,
+                    });
+                }
+            }
+        }
+    }
+    let denominators = pending.iter().map(|item| item.denominator).collect::<Vec<_>>();
+    let inverses = joint_batch_invert(&denominators);
+    for (item,inverse) in pending.iter().zip(inverses.into_iter()) {
+        let slope = u256_mul(item.numerator,inverse);
+        let x = u256_sub(u256_sub(u256_square(slope),item.left.x),item.right.x);
+        let y = u256_sub(u256_mul(slope,u256_sub(item.left.x,x)),item.left.y);
+        pairs[item.position] = Some(U256Affine {x,y});
+    }
+    let mut accumulators = Vec::with_capacity(a_words.len());
+    for case in 0..a_words.len() {
+        let base = case*slots;
+        let mut point = pairs[base+ALT_SPLIT_PRIME_STEPS]
+            .map(U256Jacobian::from_affine).unwrap_or_else(U256Jacobian::identity);
+        for index in (0..ALT_SPLIT_PRIME_STEPS).rev() {
+            point = alt_horner_mul_pi(point);
+            if let Some(digit) = pairs[base+index] {
+                point = point.add_mixed(digit);
+            }
+        }
+        accumulators.push(point);
+    }
+    let finite = accumulators.iter().copied().filter(|point| !point.is_identity())
+        .collect::<Vec<_>>();
+    let affine = joint_batch_into_affine(&finite);
+    let mut affine_iter = affine.into_iter();
+    let answers = accumulators.iter().map(|point| {
+        if point.is_identity() { "identity".to_owned() }
+        else { affine_layer_hex(Some(affine_iter.next().expect("normalized output"))) }
+    }).collect::<Vec<_>>();
+    assert!(affine_iter.next().is_none());
+    (answers,pending.len())
 }

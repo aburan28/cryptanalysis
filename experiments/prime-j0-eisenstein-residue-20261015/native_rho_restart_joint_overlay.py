@@ -28,6 +28,11 @@ def main(root):
     front_source = replace_once(front_source,
         '    let args: Vec<String> = std::env::args().skip(1).collect();\n',
         '    let args: Vec<String> = std::env::args().skip(1).collect();\n'
+        '    if args.len() == 3 && args[0] == "--pilot-rho-restart-joint-fused" {\n'
+        '        let count: usize = args[2].parse().expect("rho restart count");\n'
+        '        rho_restart_joint::run_fused(&args[1], count);\n'
+        '        return;\n'
+        '    }\n'
         '    if args.len() == 3 && args[0] == "--pilot-rho-restart-joint-profile" {\n'
         '        let count: usize = args[2].parse().expect("rho restart count");\n'
         '        rho_restart_joint::run_profile(&args[1], count);\n'

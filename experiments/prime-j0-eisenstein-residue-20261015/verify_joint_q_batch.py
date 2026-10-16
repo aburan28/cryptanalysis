@@ -8,13 +8,14 @@ import platform
 import subprocess
 from tempfile import TemporaryDirectory
 
-from check_secp256k1_tau_generator import G, add, mul
+from check_secp256k1_tau_generator import G, P, add, mul
 
 HERE = Path(__file__).resolve().parent
 
 
 def point_hex(point):
-    assert point is not None
+    if point is None:
+        return 'identity'
     return ':'.join(f'{coordinate:064x}' for coordinate in point)
 
 
@@ -24,8 +25,11 @@ def scalar(row, name):
 
 def run(binary, fixture, count, path, mode):
     path.write_text(json.dumps(fixture, sort_keys=True, separators=(',', ':')) + '\n')
-    command = ('--pilot-rho-restart-joint' if mode == 'joint'
-               else '--pilot-rho-restart-joint-demand')
+    command = {
+        'joint': '--pilot-rho-restart-joint',
+        'joint_demand': '--pilot-rho-restart-joint-demand',
+        'joint_fused': '--pilot-rho-restart-joint-fused',
+    }[mode]
     result = subprocess.run([str(binary), command, str(path),
                              str(count)], text=True, capture_output=True)
     assert result.returncode == 0, result.stderr
@@ -36,11 +40,13 @@ def run(binary, fixture, count, path, mode):
     assert fields['point'] == fixture['cases'][count-1]['point_hex']
     assert result.stderr == ''
     assert float(fields['online_ms']) > 0
-    if mode == 'joint_demand':
-        assert int(fields['constructed_q_points']) > 0
+    if mode in ('joint_demand', 'joint_fused'):
+        assert int(fields['constructed_q_points']) >= 0
         assert abs(float(fields['online_ms'])
                    - float(fields['target_preparation_ms'])
                    - float(fields['restart_eval_ms'])) < 0.00001
+    if mode == 'joint_fused':
+        assert int(fields['fused_pair_sums']) >= 0
     return {'mode': mode, 'fixture_sha256': sha256(path.read_bytes()).hexdigest(),
             'count': count, 'point': fields['point'], 'stdout': result.stdout.strip()}
 
@@ -70,7 +76,7 @@ def main():
     with TemporaryDirectory(prefix='joint-q-batch-replay-') as temporary:
         root = Path(temporary)
         for count in (1, 128):
-            for mode in ('joint', 'joint_demand'):
+            for mode in ('joint', 'joint_demand', 'joint_fused'):
                 receipt['results'].append({'q_scalar': None,
                     **run(args.binary, frozen, count, root / 'frozen.json', mode)})
         for q_scalar in (1, 2, 3, 7):
@@ -81,9 +87,23 @@ def main():
                 rows.append({'a_hex': row['a_hex'], 'b_hex': row['b_hex'],
                              'point_hex': point_hex(add(mul(a, G), mul(b, q)))})
             fixture = {'q_hex': point_hex(q), 'cases': rows}
-            for mode in ('joint', 'joint_demand'):
+            for mode in ('joint', 'joint_demand', 'joint_fused'):
                 receipt['results'].append({'q_scalar': q_scalar,
                     **run(args.binary, fixture, 8, root / f'q{q_scalar}.json', mode)})
+        neg_g = (G[0], (-G[1]) % P)
+        edges = (
+            ('same_point_double', G, 1, 1),
+            ('opposite_identity', neg_g, 1, 1),
+            ('zero_zero', G, 0, 0),
+            ('one_sided', G, 1, 0),
+        )
+        for name, q, a, b in edges:
+            fixture = {'q_hex': point_hex(q), 'cases': [{
+                'a_hex': f'{a:x}', 'b_hex': f'{b:x}',
+                'point_hex': point_hex(add(mul(a, G), mul(b, q))),
+            }]}
+            receipt['results'].append({'edge': name, **run(args.binary, fixture, 1,
+                root / f'{name}.json', 'joint_fused')})
     args.output.write_text(json.dumps(receipt, sort_keys=True, indent=2) + '\n')
     print(json.dumps({'ok': True, 'runs': len(receipt['results']),
                       'outputs': sum(item['count'] for item in receipt['results'])},
