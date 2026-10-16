@@ -194,7 +194,7 @@ class ReceiptTest(unittest.TestCase):
         self.assertEqual(bitop_work.bitops_of({"gf_lin": 1}, n, w), n * n + n * (n - 1))
         self.assertEqual(bitop_work.bitops_of({"mac_op": 3, "anf_op": 1, "sys_word": 1}, n, w), 5 * 64)
         self.assertEqual(bitop_work.primitives({"modr_inv": 1, "modr_mul": 2}, w),
-                         Counter({"modr_mul": 2 + 17, "modr_add": 2}))
+                         Counter({"modr_mul": 2, "modr_add": 2, "modr_inv": 1}))
         self.assertEqual(bitop_work.primitives({"ec_lift": 1}, w),
                          Counter({"field_sqr": 1, "field_inv": 1, "field_mul": 2, "field_add": 2, "as_solve": 2}))
         with self.assertRaises(ValueError):

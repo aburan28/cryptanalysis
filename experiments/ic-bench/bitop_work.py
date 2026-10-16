@@ -25,7 +25,7 @@ it is not counted in rps.
   modr_mul  one multiply-subtract mod r (monitor.RankTracker       modr_mul + modr_add (BITOPS
             elimination, normalisation, back substitution)         "row_op"; a plain product is
                                                                    charged as a multiply-subtract)
-  modr_inv  one inversion mod r (Python pow(v, -1, r))             ceil(3 w / 2) modr_mul: Fermat
+  modr_inv  one inversion mod r (Python pow(v, -1, r))             modr_inv (bitop/v1 primitive)
                                                                    v^(r-2) by square-and-multiply
                                                                    at BITOPS' 1.5 w-operation
                                                                    convention, w = bits(r)
@@ -53,7 +53,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import bitops  # noqa: E402
 import rho_reference  # noqa: E402
 
-# Fixed primitives per increment; modr_inv depends on w and is added in `primitives`.
+# Fixed primitives per increment.
 CLASS_PRIMITIVES: dict[str, dict[str, int]] = {
     "gf_mul": {"field_mul": 1},
     "gf_inv": {"field_inv": 1},
@@ -61,16 +61,12 @@ CLASS_PRIMITIVES: dict[str, dict[str, int]] = {
     "ec_add": {"group_add": 1},
     "ec_lift": {"field_sqr": 1, "field_inv": 1, "field_mul": 2, "field_add": 2, "as_solve": 2},
     "modr_mul": {"modr_mul": 1, "modr_add": 1},
-    "modr_inv": {},
+    "modr_inv": {"modr_inv": 1},
     "mac_op": {"word_op": 1},
     "anf_op": {"word_op": 1},
     "sys_word": {"word_op": 1},
 }
 
-
-def modr_inv_products(r_bits: int) -> int:
-    """modr_mul charged per inversion mod r: ceil(3 w / 2)."""
-    return (3 * max(r_bits, 1) + 1) // 2
 
 
 def primitives(counts: dict[str, int], r_bits: int) -> Counter:
@@ -82,8 +78,6 @@ def primitives(counts: dict[str, int], r_bits: int) -> Counter:
     for cls, k in counts.items():
         for prim, per in CLASS_PRIMITIVES[cls].items():
             out[prim] += k * per
-        if cls == "modr_inv":
-            out["modr_mul"] += k * modr_inv_products(r_bits)
     return +out
 
 
@@ -108,7 +102,7 @@ def work_block(phase_counters: dict[str, dict[str, int]], per_target: list[dict[
         "unit": bitops.UNIT,
         "field": field,
         "r_bits": r_bits,
-        "class_mapping": "experiments/ic-bench/bitop_work.py (CLASS_PRIMITIVES; modr_inv = ceil(3w/2) modr_mul)",
+        "class_mapping": "experiments/ic-bench/bitop_work.py (CLASS_PRIMITIVES)",
         "primitives": dict(sorted(prims.items())),
         "phase_bitops": {p: bitops_of(c, n, r_bits) for p, c in phase_counters.items()},
         "per_target_bitops": [bitops_of(c, n, r_bits) for c in per_target],

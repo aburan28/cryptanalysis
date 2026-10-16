@@ -141,7 +141,7 @@ bookkeeping and the `instrument` phase are not counted, as in rps.
 | `ec_add` | an affine addition or doubling | `group_add` (binary affine `I + 2M + S + 9A`) |
 | `ec_lift` | `rhs = x + a2 + b/x^2`, `Tr(rhs)`, `y = x * HT(rhs)` | `field_sqr + field_inv + 2 field_mul + 2 field_add + 2 as_solve` |
 | `modr_mul` | a multiply-subtract mod `r` | `modr_mul + modr_add` (BITOPS' `row_op`) |
-| `modr_inv` | an inversion mod `r` | `ceil(3w/2)` `modr_mul` (Fermat `v^(r-2)`, `w = bits(r)`) |
+| `modr_inv` | an inversion mod `r` | `modr_inv` (bitop/v1: binary extended Euclid at `w = bits(r)`) |
 | `mac_op`, `anf_op`, `sys_word` | one 64-bit word XOR/test, monomial insertion, or coefficient-word slice | `word_op` (64) |
 
 The block reports `primitives`, `phase_bitops`, `per_target_bitops`, `bitops`,

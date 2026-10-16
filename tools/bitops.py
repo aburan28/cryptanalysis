@@ -42,6 +42,7 @@ PRIMS = (
     "group_double",
     "modr_mul",
     "modr_add",
+    "modr_inv",
     "word_op",
     "hash_probe",
 )
@@ -161,6 +162,8 @@ def gates(prim: str, field: dict, r_bits: int) -> int:
         return fp_mul(w)
     if prim == "modr_add":
         return fp_add(w)
+    if prim == "modr_inv":
+        return fp_inv(w)
     if prim == "word_op":
         return 64
     kind = field["kind"]

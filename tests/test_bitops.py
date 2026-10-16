@@ -18,7 +18,7 @@ spec.loader.exec_module(bitops)
 VECTORS = ROOT / "docs" / "units" / "bitop-v1.vectors.json"
 # sha256 of crypto:docs/units/bitop-v1.vectors.json as copied (docs/units/README.md).
 # The copy must stay byte-identical to the source; a changed vector is bitop/v2.
-SOURCE_SHA256 = "b9b8a30f5b5101765b85311cbfd0bc148be6539bec1349cdb61aebbf1d172db7"
+SOURCE_SHA256 = "36a78bd8baf445307e2198ac49a79394138b4e7ae9d7cb7028cf1536e35132d8"
 
 
 class VectorsTest(unittest.TestCase):
@@ -33,7 +33,7 @@ class VectorsTest(unittest.TestCase):
 
     def test_every_row_reproduces_exactly(self):
         rows = self.doc["vectors"]
-        self.assertEqual(len(rows), 243)
+        self.assertEqual(len(rows), 264)
         for row in rows:
             with self.subTest(**{"field": str(row["field"]), "r_bits": row["r_bits"], "prim": row["prim"]}):
                 self.assertEqual(str(bitops.gates(row["prim"], row["field"], row["r_bits"])), row["gates"])
