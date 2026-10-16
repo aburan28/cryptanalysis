@@ -5,7 +5,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, ListFlowable, ListItem
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, ListFlowable, ListItem, Preformatted
 from PIL import Image as PILImage
 
 HERE = Path(__file__).resolve().parent
@@ -28,6 +28,11 @@ def build(md=HERE / 'REPORT.md', pdf=HERE / 'REPORT.pdf'):
     while i < len(lines):
         l = lines[i]
         if not l.strip(): i += 1; continue
+        if l.startswith('```'):
+            j = i + 1; code = []
+            while j < len(lines) and not lines[j].startswith('```'): code.append(lines[j]); j += 1
+            out += [Preformatted('\n'.join(code), ParagraphStyle('pre', fontName='Courier', fontSize=7.5, leading=9)), Spacer(1, 6)]
+            i = j + 1; continue
         m = re.match(r'(#+) (.*)', l)
         if m: out.append(Paragraph(inline(m.group(2)), H[min(len(m.group(1)), 3)])); i += 1; continue
         m = re.match(r'!\[[^\]]*\]\(([^)]+)\)', l)
