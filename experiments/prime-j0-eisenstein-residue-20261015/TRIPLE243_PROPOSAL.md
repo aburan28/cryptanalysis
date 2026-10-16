@@ -44,7 +44,7 @@ The norm contraction used for the terminal certificate is
 ```
 
 Iterating this inequality from `Q(initial) ≤ 7·2^260` gives
-`Q(state_16) ≤ 844 < 5000`. The native implementation would use the same
+`Q(state_16) ≤ 844 < 5000`. The native implementation uses the same
 norm-5000 terminal table as the current radix.
 
 ## Proof map and implementation gate
@@ -57,9 +57,29 @@ norm-5000 terminal table as the current radix.
 | Sixteen-step terminal norm | `Triple243Radix.sixteen_quotients_terminal` | Same audit |
 
 The statement is conditional on the certified initial lattice bound and on
-the selector returning a digit no longer than the rounded candidate. The
-next implementation step is a separate native `243 + omega` arm with exact
-scalar and point replay, followed by a Tier 1 paired comparison against the
-frozen `81 + omega` arm and the OpenSSL reference on the same one-restart
-point. The current radix-81 panel and transfer bundle remain frozen while
-this candidate is developed.
+the selector returning a digit no longer than the rounded candidate.
+
+## Native replay and next gate
+
+The opt-in [native module](joint_norm58807.rs) and
+[command module](rho_restart_joint243.rs) implement that arm. The
+[hash-guarded overlay](native_rho_restart_joint243_overlay.py) extends an
+exact radix-81 source snapshot without changing the frozen radix-81 panel or
+its transfer bundle. It uses a ninth doubling power for wider radix-243
+digits. The macOS ARM64 release binary with SHA-256
+`c92dde7e459f72c89f9adc59d2b7976c69fc8283a281a41c52593d6674154979`
+passed [393 independent point-output checks](triple243-local-replay.json):
+the frozen one- and 128-restart fixtures, alternate `Q` points, 128 fresh
+seeded pairs, and five edge pairs. The same binary retained the frozen
+radix-81 first-point output. The replay also enumerated 29,403 positive
+centered residue classes; its selected digit norm reached at most `19441`.
+
+The frozen one-restart radix-243 Q graph constructs 17 points through one
+graph edge and 16 direct seeds. The radix-81 graph constructs 21 points
+through 13 edges and eight direct seeds. In the 128-restart stream the
+radix-243 graph constructs 1,821 points. These counts identify Q-table
+construction as the next optimization target; neither operation counts nor
+local elapsed times decide the wall comparison. The next gate is a matched
+Tier 1 one-restart panel against the frozen radix-81 arm and OpenSSL on the
+same public point, with Q preparation charged and A/A controls. The batch
+question follows that primary result.
