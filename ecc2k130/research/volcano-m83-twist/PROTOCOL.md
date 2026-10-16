@@ -49,3 +49,15 @@ across orbits by one-way ANOVA on S (78 groups of 2; F against F(77, 78)), repor
 no promotion of any single orbit (2 solves per orbit cannot rank orbits).  A floor orbit would "beat"
 crater rho only if the pooled floor S were below the crater {±τ^i P} S = 0.107, which the derived
 absence of tau on floor curves rules out unless the data contradict the theory.
+
+## Addendum 2, 2026-10-16: {±P} rho on every 53-bit floor curve (frozen before any output of it)
+
+Requested: rho on each of the 6474 floor curves individually, not only one per Frobenius orbit.
+Runs.  scripts/rho_floor_all.py: f83x rho MODE 1, DP bits 14, seed 2000 on every floor curve O00-00 …
+O77-82 (6474 solves; seed 2000 is disjoint from addendum 1's seeds 1000/1001, so no solve repeats one
+already recorded).  Sharded by curve index (--shard i --of k) into outputs/rho-floor-all-a1.shard<i>.jsonl,
+resumable, checkpointed to git while running.  Every solve must recover its fixture scalar.
+Analysis.  Pooled S mean ± se against √(π/4); one-way ANOVA across the 78 orbits (83 curves each,
+F(77, 6396)) and a permutation cross-check; the within-orbit isomorphism predicts no orbit effect and
+the absence of τ on floor curves predicts S near √(π/4), not √(π/(4·83)).  The distribution of S is
+compared with the Rayleigh law of the collision time.  No single curve is promoted.
