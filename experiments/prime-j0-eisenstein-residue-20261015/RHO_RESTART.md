@@ -31,3 +31,14 @@ The on-demand command, `--pilot-rho-restart-joint-demand`, recodes the frozen pu
 The [joint Horner Lean module](JointHorner4033.lean) states the shared-chain identity for two equal-length streams under associative, commutative point addition and a norm-4033 endomorphism that preserves addition (`joint_eq_sum`). It also connects two exact scalar recoding traces to the shared two-base point (`joint_of_valid_traces`). The map premises retain the exact curve and endomorphism bridge required for secp256k1; source-level refinement from the native projective formulas and table construction remains open. The [pinned Lean 4.34.1 build receipt](joint-horner-lean-check.json) records an axiom-free `joint_eq_sum` and standard `propext` for `joint_of_valid_traces`; the [checker](check_joint_horner_lean.py) rebuilds fresh imports and audits both declarations. `lean4checker --fresh` was unavailable locally.
 
 The Linux Tier 1 comparison is queued only after the source upload and remote build are authorized. It will use the same native binary for OpenSSL and joint arms, the frozen 1 and 128 restart fixtures, alternating order, adjacent A/A controls, independent point replay, source and binary hashes, and serial execution on the existing RunPod benchmark worker. No Tier 1 timing for this candidate has been recorded.
+
+## Joint digit-pair reuse screen
+
+The [exact native profile](profile_joint_pairs.py) tests a second format: precompute sums of a G digit and a Q digit so each joint Horner step uses one point addition. It counts raw digit pairs and pairs identified by a common six-unit action, using the same frozen scalar recoder as the full and sparse paths. The [source-bound local receipt](joint-pair-profile-local.json) records these counts without using host wall time.
+
+| Frozen restarts | Steps with both digits | Distinct raw pairs | Distinct common-unit orbits | Maximum net additions saved before lookup and memory costs |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 22 | 22 | 22 | 0 |
+| 128 | 2,805 | 2,788 | 2,755 | 50 |
+
+The bound charges one point addition to prepare each distinct common-unit pair and credits one saved addition on every use. For this input law, a persistent pair-sum table would prepare 2,755 points for at most 50 net saved additions, before normalization, lookup, and memory costs. This directs the next experiment toward **per-restart batched pair fusion**: form only that restart's 22 sums with a shared inversion, then test its complete target-charged cost. The profile is a combinatorial screen, not a wall-time result.

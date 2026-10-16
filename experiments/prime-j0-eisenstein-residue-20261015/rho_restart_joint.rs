@@ -3,6 +3,7 @@ use std::time::Instant;
 use num_bigint::BigInt;
 use serde_json::Value;
 use super::{scalar_words_256, unit_orbit_windows};
+use std::collections::BTreeMap;
 
 pub(super) fn run(fixture_path: &str, count: usize) {
     let fixture: Value = serde_json::from_str(
@@ -84,4 +85,65 @@ pub(super) fn run_demand(fixture_path: &str, count: usize) {
               retained_bytes={retained_bytes} constructed_q_points={} \
               mode=joint_demand point={}",
               q_table.constructed_points,answers.last().expect("nonempty"));
+}
+
+pub(super) fn run_profile(fixture_path: &str, count: usize) {
+    let fixture: Value = serde_json::from_str(
+        &std::fs::read_to_string(fixture_path).expect("read frozen fixture"))
+        .expect("parse frozen fixture");
+    let rows = fixture["cases"].as_array().expect("cases");
+    assert!(count > 0 && count <= rows.len());
+    let mut digit_raw = BTreeMap::<(usize,usize,usize,usize),usize>::new();
+    let mut digit_orbit = BTreeMap::<(usize,usize,usize),usize>::new();
+    let mut terminal_raw = BTreeMap::<(usize,usize,usize,usize),usize>::new();
+    let mut terminal_orbit = BTreeMap::<(usize,usize,usize),usize>::new();
+    let (mut g_only,mut q_only,mut neither) = (0usize,0usize,0usize);
+    for row in rows.iter().take(count) {
+        let a = BigInt::parse_bytes(
+            row["a_hex"].as_str().expect("a").as_bytes(),16).expect("a hex");
+        let b = BigInt::parse_bytes(
+            row["b_hex"].as_str().expect("b").as_bytes(),16).expect("b hex");
+        let a = unit_orbit_windows::joint_choices_for_words(
+            scalar_words_256(&a).expect("a words"));
+        let b = unit_orbit_windows::joint_choices_for_words(
+            scalar_words_256(&b).expect("b words"));
+        for index in 0..a.len() {
+            let (ga,gu) = a[index];
+            let (qb,qu) = b[index];
+            if ga == 0 && qb == 0 { neither += 1; continue; }
+            if ga == 0 { q_only += 1; continue; }
+            if qb == 0 { g_only += 1; continue; }
+            assert!(gu < 6 && qu < 6);
+            let relative_rotation = ((qu/2+3-gu/2)%3)*2;
+            let relative_sign = (qu^gu)&1;
+            let orbit_key = (ga,qb,relative_rotation+relative_sign);
+            let raw_key = (ga,gu,qb,qu);
+            if index == a.len()-1 {
+                *terminal_raw.entry(raw_key).or_default() += 1;
+                *terminal_orbit.entry(orbit_key).or_default() += 1;
+            } else {
+                *digit_raw.entry(raw_key).or_default() += 1;
+                *digit_orbit.entry(orbit_key).or_default() += 1;
+            }
+        }
+    }
+    let both_digit = digit_raw.values().sum::<usize>();
+    let both_terminal = terminal_raw.values().sum::<usize>();
+    let digit_reused = digit_orbit.values().filter(|&&n| n > 1).count();
+    let terminal_reused = terminal_orbit.values().filter(|&&n| n > 1).count();
+    println!("{}",serde_json::json!({
+        "schema":1,"count":count,"steps_per_restart":23,
+        "g_only":g_only,"q_only":q_only,"neither":neither,
+        "both_digit":both_digit,"both_terminal":both_terminal,
+        "digit_unique_raw":digit_raw.len(),
+        "digit_unique_common_unit_orbit":digit_orbit.len(),
+        "digit_reused_orbits":digit_reused,
+        "digit_max_orbit_frequency":digit_orbit.values().copied().max().unwrap_or(0),
+        "digit_precompute_addition_savings_upper_bound":both_digit-digit_orbit.len(),
+        "terminal_unique_raw":terminal_raw.len(),
+        "terminal_unique_common_unit_orbit":terminal_orbit.len(),
+        "terminal_reused_orbits":terminal_reused,
+        "terminal_precompute_addition_savings_upper_bound":
+            both_terminal-terminal_orbit.len(),
+    }));
 }
