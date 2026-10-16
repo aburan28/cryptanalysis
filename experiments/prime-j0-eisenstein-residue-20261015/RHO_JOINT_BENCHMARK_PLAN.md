@@ -96,9 +96,20 @@ ledger and leaves the corresponding aggregate unknown.
 ## Build, freeze, and dispatch sequence
 
 1. After the source-transfer approval, copy the approved overlay, joint
-   module, and rho command module to the existing Pod. Apply the
+   module, rho command module, archived Cargo/base source, the
+   hash-checked `ct_bignum.rs`, and the
+   [compile fixture archive](mixed640-compile-fixtures-20261016.tar.gz)
+   to the existing Pod. Extract its three `mixed640_*_fixture.json` members
+   into `src/bin/` before compilation; their exact bytes are required by
+   `include_str!` even though the joint benchmark does not execute those
+   modes. The archive SHA-256 is
+   `378c611a5204abcfa1bcf819a73ca1ec3f0e5c1f335637a509125e5a9d021baa`.
+   Apply the
    [hash-guarded overlay](native_rho_restart_joint_overlay.py) to a fresh copy
-   of the archived hybrid source. Build the x86-64 release binary offline;
+   of the archived hybrid source, passing the `ct_bignum.rs` path as its
+   second argument. The overlay replaces the archived macOS absolute module
+   path with `eisenstein_fixed/ct_bignum.rs` and copies the checked source
+   into that relative location. Build the x86-64 release binary offline;
    preserve its stdout, stderr, compiler version, source hashes, linked
    `libcrypto`, and binary hash. The overlay adds the `openssl_nowarm` mode by
    patching the archived helper at its checked hash.
@@ -248,7 +259,7 @@ separate costs; the complete candidate is subject to the same Tier 1 paired
 wall gate as the current arms.
 
 The macOS ARM64 release binary with SHA-256
-`bc22190deda4b79ea49934c014682de175e34ca4d201677952109edc15b99e02`
+`105a36cc67330c810f271d4523fbb8c0961c57de1f4d4298382b0ab56b6fd372`
 verified 393 exact outputs: the frozen first and first 128 restart points;
 one restart each for independently constructed `Q=G`, `Q=2G`, and `Q=5G`;
 128 restarts for `Q=2G`; 128 fresh seeded `(a,b)` pairs with `Q=2G`; and five

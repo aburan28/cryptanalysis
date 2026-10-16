@@ -4,11 +4,16 @@ from hashlib import sha256
 from pathlib import Path
 import shutil
 import sys
+import tarfile
 
 HERE = Path(__file__).resolve().parent
 FRONT_SHA256 = '3fb9a699e0261849eee9bea04b215724f1df18a12ec9df97b6d779028c1a1d55'
 WINDOWS_SHA256 = '1cefa4288120140cc6e74303e6905bace389f50a9de2c725f89f473d4d57ab85'
 HYBRID_SHA256 = 'db6c2f69d38aac0a3109adfcd8bbe88381ff82b52c087d57bb95d24fa9b947cf'
+CT_BIGNUM_SHA256 = '5a7f8116ef40585ccebadd630a8e50e7945052669297613817b4dbac4daf3d34'
+CT_ARCHIVE_MEMBER = 'workspace/bench-sources/public-inputs/suite/src/ct_bignum.rs'
+CT_LEGACY_PATH = '#[path = "/Volumes/SSD990/llm/tmp/stack-tree-followup-20261013/suite/src/ct_bignum.rs"]'
+CT_RELATIVE_PATH = '#[path = "eisenstein_fixed/ct_bignum.rs"]'
 
 
 def replace_once(source, before, after):
@@ -16,7 +21,17 @@ def replace_once(source, before, after):
     return source.replace(before, after, 1)
 
 
-def main(root):
+def ct_bignum_bytes(source):
+    if source is None:
+        with tarfile.open(HERE / 'rho-restart-hybrid-native-provenance.tar.gz') as archive:
+            data = archive.extractfile(CT_ARCHIVE_MEMBER).read()
+    else:
+        data = source.read_bytes()
+    assert sha256(data).hexdigest() == CT_BIGNUM_SHA256
+    return data
+
+
+def main(root, ct_bignum_source=None):
     front = root / 'src/bin/eisenstein_fixed.rs'
     windows = root / 'src/bin/eisenstein_fixed/unit_orbit_windows.rs'
     hybrid = root / 'src/bin/rho_restart_hybrid.rs'
@@ -25,6 +40,7 @@ def main(root):
         assert sha256(path.read_bytes()).hexdigest() == expected, path
     front_source = replace_once(front.read_text(),
         'mod rho_restart_hybrid;', 'mod rho_restart_hybrid;\nmod rho_restart_joint;')
+    front_source = replace_once(front_source, CT_LEGACY_PATH, CT_RELATIVE_PATH)
     front_source = replace_once(front_source,
         '    let args: Vec<String> = std::env::args().skip(1).collect();\n',
         '    let args: Vec<String> = std::env::args().skip(1).collect();\n'
@@ -106,6 +122,9 @@ def main(root):
         '        warm_start.elapsed().as_secs_f64() * 1000.0\n'
         '    };')
     front.write_text(front_source)
+    ct_target = root / 'src/bin/eisenstein_fixed/ct_bignum.rs'
+    assert not ct_target.exists(), ct_target
+    ct_target.write_bytes(ct_bignum_bytes(ct_bignum_source))
     windows.write_text(windows_source)
     hybrid.write_text(hybrid_source)
     shutil.copyfile(HERE / 'rho_restart_joint.rs', root / 'src/bin/rho_restart_joint.rs')
@@ -114,5 +133,5 @@ def main(root):
 
 
 if __name__ == '__main__':
-    assert len(sys.argv) == 2
-    main(Path(sys.argv[1]))
+    assert len(sys.argv) in (2, 3)
+    main(Path(sys.argv[1]), Path(sys.argv[2]) if len(sys.argv) == 3 else None)

@@ -13,6 +13,8 @@ from native_rho_restart_joint_overlay import main as apply_overlay
 HERE = Path(__file__).resolve().parent
 FOREST = HERE.parent / 'joint-seed-spanning-forest-20261016'
 ARCHIVE = HERE / 'rho-restart-hybrid-native-provenance.tar.gz'
+COMPILE_FIXTURES = HERE / 'mixed640-compile-fixtures-20261016.tar.gz'
+COMPILE_FIXTURES_SHA256 = '378c611a5204abcfa1bcf819a73ca1ec3f0e5c1f335637a509125e5a9d021baa'
 SOURCE = Path('/workspace/bench-sources/prime-j0-rho-restart-joint')
 BINARY = Path('/workspace/bench-target-rho-restart-joint/release/eisenstein_fixed')
 PANELS = Path('/workspace/isolated-bench/panels')
@@ -32,6 +34,14 @@ def archived_bytes(member):
         return archive.extractfile(member).read()
 
 
+def compile_fixture_bytes(member):
+    assert digest(COMPILE_FIXTURES.read_bytes()) == COMPILE_FIXTURES_SHA256
+    with tarfile.open(COMPILE_FIXTURES) as archive:
+        assert sorted(archive.getnames()) == sorted(
+            f'mixed640_{stem}_fixture.json' for stem in ('bench', 'stream', 'uniform'))
+        return archive.extractfile(member).read()
+
+
 def expected_hashes(binary_hash, libcrypto_hash):
     stem = 'workspace/bench-sources/prime-j0-rho-restart-hybrid/'
     with TemporaryDirectory(prefix='rho-joint-plan-source-') as temp:
@@ -43,6 +53,9 @@ def expected_hashes(binary_hash, libcrypto_hash):
             path = root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(archived_bytes(stem + name))
+        for fixture_stem in ('bench', 'stream', 'uniform'):
+            name = f'mixed640_{fixture_stem}_fixture.json'
+            (root / 'src/bin' / name).write_bytes(compile_fixture_bytes(name))
         apply_overlay(root)
         hashes = {
             'cargo_toml': digest((root / 'Cargo.toml').read_bytes()),
@@ -52,6 +65,9 @@ def expected_hashes(binary_hash, libcrypto_hash):
             'hybrid': digest((root / 'src/bin/rho_restart_hybrid.rs').read_bytes()),
             'joint': digest((root / 'src/bin/rho_restart_joint.rs').read_bytes()),
             'joint_windows': digest((root / 'src/bin/eisenstein_fixed/joint_norm4033.rs').read_bytes()),
+            'mixed_bench': digest((root / 'src/bin/mixed640_bench_fixture.json').read_bytes()),
+            'mixed_stream': digest((root / 'src/bin/mixed640_stream_fixture.json').read_bytes()),
+            'mixed_uniform': digest((root / 'src/bin/mixed640_uniform_fixture.json').read_bytes()),
         }
     hashes.update({
         'binary': binary_hash,
@@ -59,6 +75,7 @@ def expected_hashes(binary_hash, libcrypto_hash):
         'fixture': digest((HERE / 'rho-restart-first128-fixture.json').read_bytes()),
         'overlay': digest((HERE / 'native_rho_restart_joint_overlay.py').read_bytes()),
         'ct_bignum': digest(archived_bytes('workspace/bench-sources/public-inputs/suite/src/ct_bignum.rs')),
+        'compile_fixtures_archive': COMPILE_FIXTURES_SHA256,
         'plan_1': digest((HERE / 'rho-joint-graph-plan-1.json').read_bytes()),
         'plan_128': digest((HERE / 'rho-joint-graph-plan-128.json').read_bytes()),
         'root_first_1': digest((FOREST / 'root-first-plan-1.json').read_bytes()),
@@ -109,7 +126,11 @@ def main():
         'cost_aware_1': str(PANELS / 'cost-aware-one-plan-1.json'),
         'mixed_cost_128': str(PANELS / 'mixed-cost-plan-128.json'),
         'overlay': str(PANELS / 'native_rho_restart_joint_overlay.py'),
-        'ct_bignum': '/workspace/bench-sources/public-inputs/suite/src/ct_bignum.rs',
+        'ct_bignum': str(SOURCE / 'src/bin/eisenstein_fixed/ct_bignum.rs'),
+        'compile_fixtures_archive': str(PANELS / COMPILE_FIXTURES.name),
+        'mixed_bench': str(SOURCE / 'src/bin/mixed640_bench_fixture.json'),
+        'mixed_stream': str(SOURCE / 'src/bin/mixed640_stream_fixture.json'),
+        'mixed_uniform': str(SOURCE / 'src/bin/mixed640_uniform_fixture.json'),
         'cargo_toml': str(SOURCE / 'Cargo.toml'),
         'cargo_lock': str(SOURCE / 'Cargo.lock'),
         'front': str(SOURCE / 'src/bin/eisenstein_fixed.rs'),
