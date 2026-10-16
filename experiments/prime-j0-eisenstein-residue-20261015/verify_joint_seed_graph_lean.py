@@ -9,8 +9,14 @@ import subprocess
 import tempfile
 
 HERE = Path(__file__).resolve().parent
-MODULES = ('AlternateRadix.lean', 'HornerRadix.lean', 'JointSeedGraph.lean')
-THEOREMS = ('certifiedStep_valid', 'certifiedTrace_valid', 'requested_seed_values')
+MODULES = ('AlternateRadix.lean', 'HornerRadix.lean', 'JointSeedGraph.lean',
+           'JointHorner.lean')
+THEOREMS = {
+    'JointSeedGraph': ('certifiedStep_valid', 'certifiedTrace_valid',
+                       'requested_seed_values'),
+    'JointHorner': ('combine_horner', 'two_scalar_horner',
+                    'two_scalar_horner_from_graph'),
+}
 
 
 def main():
@@ -27,6 +33,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='joint-seed-graph-lean-',
                                       dir='/private/tmp') as temp:
         env = dict(os.environ, LEAN_PATH=temp)
+        outputs = {}
         for name in MODULES:
             output = str(Path(temp) / (Path(name).stem + '.olean'))
             command = ['lean', '-o', output, name]
@@ -35,24 +42,29 @@ def main():
             steps.append({'command': command, 'returncode': result.returncode,
                           'output': result.stdout})
             assert result.returncode == 0, result.stdout
-        target_output = steps[-1]['output']
-        for theorem in THEOREMS:
-            line = next(line for line in target_output.splitlines()
-                        if line.startswith(f"'JointSeedGraph.{theorem}' depends"))
-            assert 'sorryAx' not in line and '[propext]' in line, line
+            outputs[Path(name).stem] = result.stdout
+        for module, theorems in THEOREMS.items():
+            for theorem in theorems:
+                line = next(line for line in outputs[module].splitlines()
+                            if line.startswith(f"'{module}.{theorem}' "))
+                assert 'sorryAx' not in line and (
+                    'does not depend on any axioms' in line or
+                    all(axiom in ('propext', 'Quot.sound', 'Classical.choice')
+                        for axiom in line.split('[')[1].split(']')[0].split(', '))), line
         if checker:
             command = [checker, '--fresh',
-                       str(Path(temp) / 'JointSeedGraph.olean')]
+                       str(Path(temp) / 'JointHorner.olean')]
             result = subprocess.run(command, cwd=HERE, env=env, text=True,
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             steps.append({'command': command, 'returncode': result.returncode,
                           'output': result.stdout})
             assert result.returncode == 0, result.stdout
     receipt = {
-        'schema': 2, 'toolchain': toolchain,
+        'schema': 3, 'toolchain': toolchain,
         'source_sha256': {name: sha256((HERE / name).read_bytes()).hexdigest()
                           for name in MODULES},
-        'new_theorems': list(THEOREMS),
+        'new_theorems': {module: list(theorems)
+                         for module, theorems in THEOREMS.items()},
         'lean4checker_fresh_available': checker is not None,
         'steps': steps,
     }

@@ -69,6 +69,20 @@ fresh build and `#print axioms`. The concrete Jacobian and field
 operations are checked by native exact-output replay; a Lean refinement of
 those machine operations remains open.
 
+The [joint Horner module](JointHorner.lean) composes both exact recoder traces
+into one point recurrence. `combine_horner` proves that synchronized chains
+can add their two digit points before each shared prime step, assuming the
+point addition is associative and commutative and the prime action preserves
+addition. `two_scalar_horner` applies the exact `ValidTrace` equations for the
+G and Q coefficient pairs and the respective additive and prime-action map
+laws. `two_scalar_horner_from_graph` then replaces every Q digit and terminal
+point by its certified graph lookup value, under explicit membership premises
+for the entries used by that scalar stream. The pinned Lean receipt covers all
+three declarations and records their `#print axioms` output. These theorems
+establish the complete abstract two-scalar schedule; native replay checks the
+specific secp256k1 arithmetic, while a Lean refinement of the machine field
+and Jacobian operations remains open.
+
 The local ARM64 [replay](joint-q-graph-local-replay.json) checks 1,268 exact
 outputs in 56 serial commands, including the original, graph, and planned builders,
 four alternate Q choices, and equal-point, opposite-point, zero-scalar, and
