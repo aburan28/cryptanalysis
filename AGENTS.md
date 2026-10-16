@@ -482,3 +482,15 @@ For new curve comparisons and UI exports, follow [docs/curve-identities.md](docs
 and `tools/curve_identity.py`. Reuse EC1 aliases and full curve UIDs across IC and
 Pollard rho; keep factor-base/isogeny candidate identities separate. Preserve
 immutable historical names and never infer exact identity from field degree alone.
+
+## Lean proofs
+
+Lean is optional here, but every Lean target that lands (a Lake project or a
+standalone `.lean` file) is checked by the repository-wide proof gate:
+`tools/lean/proof-gate.sh`, workflow `lean-proof-gate.yml`. It builds each
+target and fails any theorem whose transitive axioms include `sorryAx`, an
+unlisted `native_decide` or a user axiom. A `native_decide` a study
+deliberately trusts goes in `tools/lean/trusted-native.txt` with its reason. A
+passing gate does not show that the Lean statement is the claimed theorem.
+State that correspondence in the report. See `tools/lean/README.md`.
+
