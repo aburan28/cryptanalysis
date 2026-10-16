@@ -1,12 +1,13 @@
 # Eisenstein Q-seed graph scheduling
 
-A unit-root graph constructs the 21 requested Q seeds in the frozen
-one-restart stream with 19 full projective additions, three mixed additions,
+A cost-aware unit-root graph constructs the 21 requested Q seeds in the frozen
+one-restart stream with 18 full projective additions, four mixed additions,
 16 nontrivial unit rotations, and one normalization inversion. It uses the already prepared Q
 point to seed `(-2,1)` by one unit rotation, then links the remaining seeds
 through two auxiliary vertices. Under the pinned source-formula model it
-requires 394 field multiplications and 106 squares, compared with 422 and
-113 for the one-auxiliary graph and 437 and 117 for the earlier refined graph.
+requires 390 field multiplications and 105 squares, compared with 394 and
+106 for the earlier unit-root graph, 422 and 113 for the one-auxiliary graph,
+and 437 and 117 for the earlier refined graph.
 The scalar recoding and requested seeds are identical; this is an
 arithmetic-operation result, with
 wall-time comparison assigned to the isolated Tier 1 panel.
@@ -75,6 +76,17 @@ checks 20 exact outputs from both evaluators across this plan and the
 one-auxiliary predecessor on the frozen Q and four alternate Q points. The
 Lean `omega_square_q_coefficient` and `unit_root_value` declarations prove
 the coefficient identity and its abstract point-map consequence.
+
+The [cost-aware one-restart planner](cost_aware_one_plan.py) keeps the same
+unit root and requested seed set. It enumerates all bounded second links for
+the eight cheapest high-coverage first links, evaluates 372 complete graphs,
+and chooses `(-32,19)` followed by `(-2,5)`. Four graph edges now dispatch to
+mixed addition. Its [receipt](cost-aware-one-receipt.json) records the 10,692
+second-link candidates, exact plan hash, source-formula boundary, and ten
+native exact-output replays from both planned evaluators on the frozen Q and
+four alternate Q points. The [plan](cost-aware-one-plan-1.json) saves four
+multiplications and one square against the prior unit-root plan. Linux Tier 1
+wall timing remains the next measurement gate.
 
 The [low-rotation planner](weighted_plan.py) chooses a cheap direct root and
 grows each component through frontier edges with the fewest projective unit
