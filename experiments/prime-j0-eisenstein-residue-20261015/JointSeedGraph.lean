@@ -88,6 +88,106 @@ theorem extend_unit_sum {Point : Type} (evaluate : Pair → Point)
     exact (map_add (leftUnit left) (rightUnit right)).symm
   · exact valid coefficient point tail
 
+/-- A graph instruction is certified against the vertices already built.
+Unit-edge instructions rotate both the stored parent and the shared power;
+unit-sum instructions rotate both stored parents. -/
+inductive CertifiedStep {Point : Type} (evaluate : Pair → Point)
+    (add : Point → Point → Point)
+    (map_add : ∀ x y, evaluate (pairAdd x y) = add (evaluate x) (evaluate y)) :
+    List (Pair × Point) → List (Pair × Point) → Prop where
+  | direct (vertices : List (Pair × Point)) (seed : Pair) :
+      CertifiedStep evaluate add map_add vertices
+        ((seed, evaluate seed) :: vertices)
+  | unitEdge (vertices : List (Pair × Point))
+      (parent power : Pair) (parentValue : Point)
+      (parentUnit powerUnit : Pair → Pair)
+      (parentPointUnit powerPointUnit : Point → Point)
+      (parent_mem : (parent, parentValue) ∈ vertices)
+      (map_parent : ∀ x, evaluate (parentUnit x) = parentPointUnit (evaluate x))
+      (map_power : ∀ x, evaluate (powerUnit x) = powerPointUnit (evaluate x)) :
+      CertifiedStep evaluate add map_add vertices
+        ((pairAdd (parentUnit parent) (powerUnit power),
+          add (parentPointUnit parentValue)
+              (powerPointUnit (evaluate power))) :: vertices)
+  | unitSum (vertices : List (Pair × Point))
+      (left right : Pair) (leftValue rightValue : Point)
+      (leftUnit rightUnit : Pair → Pair)
+      (leftPointUnit rightPointUnit : Point → Point)
+      (left_mem : (left, leftValue) ∈ vertices)
+      (right_mem : (right, rightValue) ∈ vertices)
+      (map_left : ∀ x, evaluate (leftUnit x) = leftPointUnit (evaluate x))
+      (map_right : ∀ x, evaluate (rightUnit x) = rightPointUnit (evaluate x)) :
+      CertifiedStep evaluate add map_add vertices
+        ((pairAdd (leftUnit left) (rightUnit right),
+          add (leftPointUnit leftValue) (rightPointUnit rightValue)) :: vertices)
+
+/-- Every certified instruction preserves the coefficient-to-point relation,
+including instructions that construct auxiliary vertices. -/
+theorem certifiedStep_valid {Point : Type} (evaluate : Pair → Point)
+    (add : Point → Point → Point)
+    (map_add : ∀ x y, evaluate (pairAdd x y) = add (evaluate x) (evaluate y))
+    {before after : List (Pair × Point)}
+    (step : CertifiedStep evaluate add map_add before after)
+    (valid : ValidGraph evaluate before) : ValidGraph evaluate after := by
+  cases step with
+  | direct seed =>
+      exact extend_direct evaluate _ seed valid
+  | unitEdge parent power parentValue parentUnit powerUnit
+      parentPointUnit powerPointUnit parent_mem map_parent map_power =>
+      rw [← map_power power]
+      exact extend_unit_edge evaluate add parentUnit parentPointUnit
+        map_add map_parent _ parent (powerUnit power) parentValue
+        valid parent_mem
+  | unitSum left right leftValue rightValue leftUnit rightUnit
+      leftPointUnit rightPointUnit left_mem right_mem map_left map_right =>
+      exact extend_unit_sum evaluate add leftUnit rightUnit
+        leftPointUnit rightPointUnit map_add map_left map_right
+        _ left right leftValue rightValue valid left_mem right_mem
+
+/-- A topological schedule is a sequence of certified instructions beginning
+with an empty graph. Membership premises enforce parent-before-child order. -/
+inductive CertifiedTrace {Point : Type} (evaluate : Pair → Point)
+    (add : Point → Point → Point)
+    (map_add : ∀ x y, evaluate (pairAdd x y) = add (evaluate x) (evaluate y)) :
+    List (Pair × Point) → Prop where
+  | empty : CertifiedTrace evaluate add map_add []
+  | extend {before after : List (Pair × Point)}
+      (prior : CertifiedTrace evaluate add map_add before)
+      (step : CertifiedStep evaluate add map_add before after) :
+      CertifiedTrace evaluate add map_add after
+
+/-- Every point in a certified topological graph, requested or auxiliary,
+evaluates to its declared Eisenstein coefficient pair. -/
+theorem certifiedTrace_valid {Point : Type} (evaluate : Pair → Point)
+    (add : Point → Point → Point)
+    (map_add : ∀ x y, evaluate (pairAdd x y) = add (evaluate x) (evaluate y))
+    {vertices : List (Pair × Point)}
+    (trace : CertifiedTrace evaluate add map_add vertices) :
+    ValidGraph evaluate vertices := by
+  induction trace with
+  | empty =>
+      intro coefficient point member
+      simp at member
+  | extend prior step ih =>
+      exact certifiedStep_valid evaluate add map_add step ih
+
+/-- Auxiliary vertices do not change the values of covered requested seeds.
+The coverage premise is checked separately by the frozen-plan validator. -/
+theorem requested_seed_values {Point : Type} (evaluate : Pair → Point)
+    (add : Point → Point → Point)
+    (map_add : ∀ x y, evaluate (pairAdd x y) = add (evaluate x) (evaluate y))
+    {vertices : List (Pair × Point)}
+    (trace : CertifiedTrace evaluate add map_add vertices)
+    (requested : List Pair)
+    (covers : ∀ seed, seed ∈ requested →
+      ∃ value, (seed, value) ∈ vertices) :
+    ∀ seed, seed ∈ requested →
+      ∃ value, (seed, value) ∈ vertices ∧ value = evaluate seed := by
+  intro seed member
+  obtain ⟨value, in_graph⟩ := covers seed member
+  exact ⟨value, in_graph,
+    certifiedTrace_valid evaluate add map_add trace seed value in_graph⟩
+
 /-- The four searched neighbors in the implementation are the two basis
 directions and their negatives. -/
 theorem four_neighbor_steps (a b : Int) :
@@ -102,6 +202,9 @@ theorem four_neighbor_steps (a b : Int) :
 #print axioms extend_direct
 #print axioms extend_unit_edge
 #print axioms extend_unit_sum
+#print axioms certifiedStep_valid
+#print axioms certifiedTrace_valid
+#print axioms requested_seed_values
 #print axioms four_neighbor_steps
 
 end JointSeedGraph
