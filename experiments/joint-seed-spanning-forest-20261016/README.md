@@ -1,5 +1,14 @@
 # Eisenstein Q-seed graph scheduling
 
+A one-auxiliary coefficient graph constructs the 21 requested Q seeds in the
+frozen one-restart stream with 23 generic full additions, 20 nontrivial unit
+rotations, and one normalization inversion. The previous refined graph uses
+24 full additions and 23 rotations. Under the pinned source-formula model,
+the one-auxiliary graph requires 422 field multiplications and 113 squares,
+versus 437 and 117 for the previous refined graph. The scalar recoding and
+requested seeds are identical; this is an arithmetic-operation result, with
+wall-time comparison assigned to the isolated Tier 1 panel.
+
 Two auxiliary coefficient vertices lower the source-level Q-seed
 `add_projective` count from 62 to **25** for the frozen one-restart stream.
 Low-rotation ordering lowers the 128-restart count from 667 to **660** with
@@ -34,6 +43,20 @@ topological dependencies.
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 1 | 21 | 62 | 55 | 55 | 38 | **25** |
 | 128 | 659 | 667 | 660 | **660** | 660 | 660 |
+
+The [one-auxiliary planner](one_aux_plan.py) starts from the fixed requested
+root `(-40,16)`, closes all reachable requested seeds under unit-power and
+two-parent edges, and searches 1,362 bounded auxiliary candidates that are
+reachable from that closure and touch a missing seed. Eighteen candidates
+complete the remaining three seeds. It selects `(-44,15)` by modeled full
+addition count, then rotation count, then coefficient order. The resulting
+[plan](one-aux-plan-1.json) has one direct root, one auxiliary vertex, and
+21 graph edges; the [search receipt](one-aux-1-receipt.json) pins the domain
+and hashes. The planner ranks the schedules produced by its declared
+fixed-root greedy closure; it does not establish a global addition-chain
+optimum. The
+[native replay](one-aux-local-replay.json) verifies ten exact outputs from
+both planned evaluators on the frozen Q and four alternate Q points.
 
 The [low-rotation planner](weighted_plan.py) chooses a cheap direct root and
 grows each component through frontier edges with the fewest projective unit

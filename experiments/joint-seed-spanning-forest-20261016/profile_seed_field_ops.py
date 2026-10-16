@@ -73,6 +73,7 @@ def main():
         }
         if count == 1:
             plans['refined_auxiliary'] = HERE / 'refined-steiner-plan-1.json'
+            plans['one_auxiliary'] = HERE / 'one-aux-plan-1.json'
         else:
             plans['refined_weighted'] = HERE / 'refined-weighted-plan-128.json'
         rows[str(count)] = {name: profile(path, requested) for name, path in plans.items()}
