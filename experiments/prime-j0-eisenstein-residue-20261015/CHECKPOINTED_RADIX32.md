@@ -1,6 +1,6 @@
 # Four-checkpoint radix-32 scalar multiplication
 
-Four five-digit checkpoints for the sparse Eisenstein radix `π=31+32τ` evaluate 12,288 frozen secp256k1 scalar multiples in **567.90 ms**, against **624.07 ms** for plain `63+64τ` Horner evaluation on the matched Tier 1 RunPod panel. The qualified paired reference/checkpoint median is **1.09981** (95% bootstrap interval **[1.09867, 1.10015]**). The checkpointed table retains **832,396 bytes**, compared with **922,596 bytes** for the reference. Every output was independently checked.
+Four five-digit checkpoints for the sparse Eisenstein radix `π=31+32τ` evaluate 12,288 frozen secp256k1 scalar multiples in **567.90 ms**, against **624.07 ms** for plain `63+64τ` Horner evaluation on the matched Tier 1 RunPod panel. The qualified paired reference/checkpoint median is **1.09981** (95% bootstrap interval **[1.09867, 1.10015]**). In a separate direct cold batch panel that includes process-local table preparation, the same 12,288 outputs took **699.32 ms** against **722.34 ms**, a qualified paired **1.03225** gain. The checkpointed table retains **832,396 bytes**, compared with **922,596 bytes** for the reference. Every output was independently checked.
 
 ## Construction and proof
 
@@ -12,13 +12,16 @@ The [hash-guarded overlay](native_checkpointed_sparse32_width5_overlay.py) trans
 
 ## Paired Tier 1 results
 
-Both panels used the serial worker on pinned CPU 40, 16 alternating repetitions, adjacent A/A controls, frozen inputs, and exact output verification. All 96 arms and 48 pairs in each panel passed the artifact and timing gates. The prepared-table interval contains scalar evaluation over one pass of 12,288 distinct points after process-local table preparation. The one-scalar cold interval sums table preparation and evaluation for one frozen point; launch, fixture parsing, and independent point check are separate in both panels.
+All three panels used the serial worker on pinned CPU 40, 16 alternating repetitions, adjacent A/A controls, frozen inputs, and exact output verification. All 96 arms and 48 pairs in each panel passed the artifact and timing gates. The prepared-table interval contains scalar evaluation over one pass of 12,288 distinct points after process-local table preparation. The one-scalar cold interval sums table preparation and evaluation for one frozen point. The direct batch cold interval sums preparation and 12,288-point evaluation. Launch, fixture parsing, and independent point checks are separate from these intervals.
 
 | Matched workload | Plain radix-64 mean | Checkpointed radix-32 mean | Paired plain/checkpoint median | 95% interval |
 | --- | ---: | ---: | ---: | ---: |
 | 12,288 outputs, prepared table | 624.07 ms | **567.90 ms** | **1.09981** | [1.09867, 1.10015] |
 | One scalar, cold table | **93.30 ms** | 128.35 ms | **0.72691** | [0.72501, 0.72878] |
+| 12,288 outputs, cold table | 722.34 ms | **699.32 ms** | **1.03225** | [1.03102, 1.03372] |
 
 The [prepared manifest](tier1-tau32cp5-online-cpu40-manifest.json), [rules](tier1-tau32cp5-online-cpu40-rules.json), [launch](tier1-tau32cp5-online-cpu40-launch.json), [auditor](analyze_tier1_tau32cp5_online.py), [audit](tier1-tau32cp5-online-cpu40-audit.json), and [raw archive](tau32cp5-online-tier1-raw.tar.gz) preserve job `ac432472940d44c7b8921c9e0ee8a366`. The [cold manifest](tier1-tau32cp5-cold-cpu40-manifest.json), [rules](tier1-tau32cp5-cold-cpu40-rules.json), [launch](tier1-tau32cp5-cold-cpu40-launch.json), [auditor](analyze_tier1_tau32cp5_cold.py), [audit](tier1-tau32cp5-cold-cpu40-audit.json), and [raw archive](tau32cp5-cold-tier1-raw.tar.gz) preserve job `c2587ca888ca47efb8a6afdba6385750`. The prepared and cold raw archive SHA-256 values are `0f25220b98bb385af3f1de7f13e314f5e195335eacc782fb594bb87bcda56a54` and `29b6e68256f0c2c25acc388c24cc7bda55baddb1d5b99e3036658aaef9029ba6`.
 
-The two timed boundaries place this candidate between plain radix-32's low one-scalar preparation cost and the larger checkpoint schedules' prepared throughput. A direct frozen cold panel for a 12,288-point batch would determine whether the prepared gain already repays checkpoint construction within one pass.
+The direct cold batch [manifest](tier1-tau32cp5-batch1cold-cpu40-manifest.json), [rules](tier1-tau32cp5-batch1cold-cpu40-rules.json), [launch](tier1-tau32cp5-batch1cold-cpu40-launch.json), [auditor](analyze_tier1_tau32cp5_batch1cold.py), [audit](tier1-tau32cp5-batch1cold-cpu40-audit.json), and [raw archive](tau32cp5-batch1cold-tier1-raw.tar.gz) preserve job `689c6839e4504578801c1ec9339f5062`. It passed all 96 arms, 48 pairs, artifact and A/A gates. The auditor sums process-local preparation and one 12,288-point evaluation stream for each arm; launch, fixture parsing, and independent point checks are outside both intervals. The raw archive SHA-256 is `c03142d26e2ad84fb18e920039d039b1634de7f016e749c3faed4cfcd6b8f9fc`.
+
+The one-scalar and direct batch cold panels show that the prepared gain repays checkpoint construction within this 12,288-point workload. The smallest batch count at which that happens remains to be measured directly.

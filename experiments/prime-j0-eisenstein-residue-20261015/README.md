@@ -42,6 +42,9 @@ Its matched Tier 1 prepared-table panel evaluated 12,288 verified points
 in **567.90 ms** versus **624.07 ms** for plain radix-64, a qualified
 **1.0998×** paired gain with less retained memory. Its separate one-scalar
 cold panel measured **128.35 ms** versus **93.30 ms** for plain radix-64.
+In a direct cold 12,288-point batch panel, preparation plus evaluation
+measured **699.32 ms** versus **722.34 ms** for plain radix-64, a qualified
+**1.0323×** paired gain.
 Lean checks the block-evaluation identity for every member of the radix
 family under explicit point-map hypotheses.
 
