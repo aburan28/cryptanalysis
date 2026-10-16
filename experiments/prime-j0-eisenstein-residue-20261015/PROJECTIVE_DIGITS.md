@@ -1,0 +1,20 @@
+# Native projective synthesis for sparse Eisenstein digits
+
+The sparse `31+32τ` radix now synthesizes only the digit points used by the current scalar in native `U256Jacobian` coordinates. A shared seven-bit dyadic basis for `G` and `τG` constructs the selected signed digit pairs. The Horner accumulator consumes those projective points directly, so scalar-local digit preparation no longer invokes the older pair-field window builder or converts each selected point to affine coordinates. The [hash-guarded overlay](native_sparse_projective_digit_overlay.py) records the exact source transformation. The first target and the 128-point pilot each used at most 22 selected entries; this is an entry-count observation, not a peak-memory measurement.
+
+## Frozen Tier 1 comparisons
+
+The [one-scalar manifest](tier1-tau32-projective-1-v2-cpu40-manifest.json) and [128-point manifest](tier1-tau32-projective-128-v2-cpu40-manifest.json), with their respective [rules](tier1-tau32-projective-1-v2-cpu40-rules.json) and [rules](tier1-tau32-projective-128-v2-cpu40-rules.json), compare the projective builder with the earlier scalar-local builder on the same frozen inputs. Both used CPU 40 on RunPod pod `thyvmdqmzsz5ik`, 16 alternating repetitions, and adjacent reference/reference A/A controls. The measured interval is the native Rust `Instant` sum of scalar-local preparation and evaluation; process launch, fixture loading, and external replay are outside it. These are cloud-instance Tier 1 observations under the recorded allocation and noise envelope.
+
+| Frozen workload | Reference mean | Projective mean | Qualified paired reference/projective median | Paired bootstrap 95% interval | Valid arms / pairs |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| One scalar | 3.199 ms | 0.543 ms | 5.916× | [5.853, 5.937] | 96 / 48 |
+| 128 points | 349.468 ms | 39.829 ms | 8.761× | [8.719, 8.802] | 96 / 48 |
+
+The [independent auditor](analyze_tier1_tau32_projective.py) verified the frozen source and binary hashes, raw commands/stdout/stderr, all pair records, A/A gates, and independent scalar replay of all measured fixture points. The worker reported stable artifacts and every arm and pair passed the predeclared gates. The [one-scalar launch](tier1-tau32-projective-1-v2-cpu40-launch.json), [audit](tier1-tau32-projective-1-v2-cpu40-audit.json), and [raw archive](tau32-projective-1-v2-raw.tar.gz) identify job `508270ee2b714b2db002f9c37b906f38`. The corresponding [128-point launch](tier1-tau32-projective-128-v2-cpu40-launch.json), [audit](tier1-tau32-projective-128-v2-cpu40-audit.json), and [raw archive](tau32-projective-128-v2-raw.tar.gz) identify job `47fb3c09560f494eb27769d25135e7e4`. The [native provenance archive](tau32-projective-native-provenance.tar.gz) contains the exact sources and executable.
+
+## Dispatch correction
+
+The first frozen manifests used the earlier on-demand executable in both comparison slots. Jobs `6815d8a260564a7ba4bbd31d166a969e` and `844d71a000a94f0dafc1dc9a6b9f54a1` completed valid A/A runs, but they cannot measure a projective speed ratio. The [v1 auditor](analyze_tier1_tau32_projective_v1.py) verifies this wiring and sets `comparison_status=invalid_plan_candidate_equals_reference` with a null speedup. The [one-scalar](tier1-tau32-projective-1-cpu40-audit.json) and [128-point](tier1-tau32-projective-128-cpu40-audit.json) receipts, original [manifests](tier1-tau32-projective-1-cpu40-manifest.json) and [manifests](tier1-tau32-projective-128-cpu40-manifest.json), [launches](tier1-tau32-projective-1-cpu40-launch.json) and [launches](tier1-tau32-projective-128-cpu40-launch.json), and [raw archives](tau32-projective-1-raw.tar.gz) and [raw archives](tau32-projective-128-raw.tar.gz) preserve the mistake. The v2 plans were frozen and committed before dispatch and name the projective candidate executable explicitly.
+
+The next correctness check is a serial full-fixture replay of all 12,288 outputs through the projective path. The current independent replay covers every output in the one-scalar and 128-point measured panels.

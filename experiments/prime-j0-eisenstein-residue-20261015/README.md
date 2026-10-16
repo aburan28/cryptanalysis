@@ -44,6 +44,14 @@ controls passing. The candidate also checked all **12,288** frozen outputs
 in each of two serial full-fixture replay arms. Those arms took about 33.9 s
 each, exposing the cost of rebuilding selected points for every scalar.
 
+The [native projective digit path](PROJECTIVE_DIGITS.md) builds the selected
+points with a shared dyadic basis in `U256Jacobian`. Corrected same-input Tier 1
+panels measured **0.543 ms** for one scalar and **39.829 ms** for 128 points,
+with qualified paired ratios of **5.916×** and **8.761×** over the earlier
+scalar-local builder. The first dispatch accidentally compared the earlier
+builder against itself; its A/A-only receipts and the corrected frozen plans
+are retained with the result.
+
 The [four-checkpoint radix-32 path](CHECKPOINTED_RADIX32.md) stores four
 five-digit windows at selected radix powers, retaining **832,396 bytes**.
 Its matched Tier 1 prepared-table panel evaluated 12,288 verified points
