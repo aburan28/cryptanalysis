@@ -12,7 +12,7 @@ benchmark queue.
 The [fixture](rho-restart-first128-fixture.json) has SHA-256
 `fc6a0283c51e3fd9c2eb0b82961092d3060c242d8122c9648c37fdaf614d094a`.
 The one-restart panel uses its first case; the batch panel uses its first 128
-cases. Each panel runs 16 alternating repetitions of these sixteen cases:
+cases. Each panel runs 16 alternating repetitions of these eighteen cases:
 
 | Case | Reference | Candidate |
 | --- | --- | --- |
@@ -27,6 +27,8 @@ cases. Each panel runs 16 alternating repetitions of these sixteen cases:
 | `compare_two_parent_vs_root_first` | Root-first graph | Two-parent graph, same scalar stream and Q |
 | `compare_steiner` | OpenSSL no-warmup | Auxiliary-vertex graph and shared Horner |
 | `compare_steiner_vs_two_parent` | Two-parent graph | Auxiliary-vertex graph, same scalar stream and Q |
+| `compare_refined` | OpenSSL no-warmup | Refined graph and shared Horner |
+| `compare_refined_vs_prior` | Auxiliary-vertex graph for one restart; low-rotation graph for 128 | Refined graph, same scalar stream and Q |
 | `cal_mid` | OpenSSL no-warmup | OpenSSL no-warmup |
 | `compare_fused` | OpenSSL no-warmup | Sparse Q table, batched affine pair sums, shared Horner, batched output normalization |
 | `compare_fused_graph` | OpenSSL no-warmup | Shared Q-seed graph followed by batched affine pair sums and output normalization |
@@ -39,14 +41,15 @@ restart. Its Q parsing and curve construction precede the timer. The joint
 commands exclude globally reusable G and canonical-seed preparation; their
 `online_ms` includes Q parsing and table construction, a-scalar recoding,
 restart evaluation, and affine output. Direct and online graph arms also
-charge b-scalar recoding. The two planned graph arms load a separately frozen
+charge b-scalar recoding. The planned graph arms load separately frozen
 artifact of b-scalar choices and graph topology. The artifact contains no Q
 and is hashed in the panel manifest. They report `plan_load_ms` and
 `plan_bytes`, and charge graph instantiation on Q online. The auditor preserves
 plan-load, target-preparation, and evaluation times by mode. Plan generation
 and loading are separate setup costs; reuse requires the declared scalar
 stream to remain fixed across target points. The low-rotation versus root-first,
-root-first versus two-parent, and two-parent versus auxiliary pairs apply the same planned-command
+root-first versus two-parent, two-parent versus auxiliary, and refined versus
+its immediate predecessor pairs apply the same planned-command
 timing boundary to both arms, so each ratio isolates graph construction on
 the same Q.
 The joint boundary is therefore
@@ -55,7 +58,7 @@ decoding, process launch, and independent expected-point checks are outside
 every timed interval. The joint commands report target preparation and
 evaluation as exclusive phase costs whose sum is `online_ms`.
 
-Each panel has 256 planned pairs and 512 arms, including 48 OpenSSL A/A
+Each panel has 288 planned pairs and 576 arms, including 48 OpenSSL A/A
 control pairs. The queue runs one subprocess at a time on CPU 40. The Tier 1
 receipt must retain exposed topology, affinity, cgroup limits, throttling,
 steal time, memory and calibration noise. A comparison advances only when
@@ -77,7 +80,7 @@ ledger and leaves the corresponding aggregate unknown.
    `joint_graph`, `joint_graph_planned`, `joint_fused`,
    `joint_fused_graph`, and `joint_fused_graph_planned` modes before timing.
    Supply the distinct frozen lexicographic, root-first, low-rotation,
-   two-parent, and auxiliary plan
+   two-parent, auxiliary, and refined plan
    files to the planned graph mode. The
    [graph-order and auxiliary replays](../joint-seed-spanning-forest-20261016/README.md)
    check both graph evaluators with alternate Q points.
@@ -89,8 +92,10 @@ ledger and leaves the corresponding aggregate unknown.
    to write both manifest/rules pairs. The generator rebuilds the expected
    source tree from the archived base and current overlay; compare its hashes
    with every deployed artifact before submission. The generator's local
-   dry run validated both sixteen-case manifests. Its dry-run binary hash came
-   from macOS and must be replaced with the Linux binary hash.
+   [static dry run](tier1-rho-joint-refined-dryrun.json) validated both
+   eighteen-case manifests and the auditor's frozen-input checks. Its binary
+   hash comes from the local macOS correctness build and must be replaced
+   with the Linux binary hash before dispatch.
 4. Submit only the **one-restart** manifest to the live serial queue. Wait
    for a terminal queue result, archive raw stdout/stderr, run/pair ledgers,
    host counters, preflight and postflight, then audit all source hashes,

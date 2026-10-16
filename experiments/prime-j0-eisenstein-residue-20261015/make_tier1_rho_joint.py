@@ -69,6 +69,8 @@ def expected_hashes(binary_hash, libcrypto_hash):
         'steiner_128': digest((FOREST / 'steiner-plan-128.json').read_bytes()),
         'weighted_1': digest((FOREST / 'weighted-plan-1.json').read_bytes()),
         'weighted_128': digest((FOREST / 'weighted-plan-128.json').read_bytes()),
+        'refined_1': digest((FOREST / 'refined-steiner-plan-1.json').read_bytes()),
+        'refined_128': digest((FOREST / 'refined-weighted-plan-128.json').read_bytes()),
     })
     return hashes
 
@@ -96,6 +98,8 @@ def main():
         'steiner_128': str(PANELS / 'steiner-plan-128.json'),
         'weighted_1': str(PANELS / 'weighted-plan-1.json'),
         'weighted_128': str(PANELS / 'weighted-plan-128.json'),
+        'refined_1': str(PANELS / 'refined-steiner-plan-1.json'),
+        'refined_128': str(PANELS / 'refined-weighted-plan-128.json'),
         'overlay': str(PANELS / 'native_rho_restart_joint_overlay.py'),
         'ct_bignum': '/workspace/bench-sources/public-inputs/suite/src/ct_bignum.rs',
         'cargo_toml': str(SOURCE / 'Cargo.toml'),
@@ -132,6 +136,9 @@ def main():
                    paths['fixture'], str(count), paths[f'steiner_{count}']]
         weighted = [str(BINARY), '--pilot-rho-restart-joint-graph-planned',
                     paths['fixture'], str(count), paths[f'weighted_{count}']]
+        refined = [str(BINARY), '--pilot-rho-restart-joint-graph-planned',
+                   paths['fixture'], str(count), paths[f'refined_{count}']]
+        prior = steiner if count == 1 else weighted
         fused = [str(BINARY), '--pilot-rho-restart-joint-fused', paths['fixture'], str(count)]
         fused_graph = [str(BINARY), '--pilot-rho-restart-joint-fused-graph',
                        paths['fixture'], str(count)]
@@ -147,6 +154,8 @@ def main():
             ('compare_two_parent_vs_root_first', two_parent),
             ('compare_steiner', steiner),
             ('compare_steiner_vs_two_parent', steiner),
+            ('compare_refined', refined),
+            ('compare_refined_vs_prior', refined),
             ('cal_mid', ref),
             ('compare_fused', fused), ('compare_fused_graph', fused_graph),
             ('compare_fused_graph_planned', fused_graph_planned),
@@ -156,6 +165,7 @@ def main():
                           ('compare_two_parent_vs_root_first',
                            'compare_weighted_vs_root_first')
                           else two_parent if name == 'compare_steiner_vs_two_parent'
+                          else prior if name == 'compare_refined_vs_prior'
                           else ref)
             cases.append({'id': name, 'reference': paired_ref, 'candidate': candidate,
                           'expected_fields': {'count': str(count)},

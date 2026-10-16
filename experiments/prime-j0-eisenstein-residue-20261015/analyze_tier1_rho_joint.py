@@ -17,14 +17,16 @@ ORDER = ('cal_before', 'compare_demand', 'compare_graph',
          'compare_graph_planned', 'compare_root_first', 'compare_weighted',
          'compare_weighted_vs_root_first', 'compare_two_parent',
          'compare_two_parent_vs_root_first', 'compare_steiner',
-         'compare_steiner_vs_two_parent', 'cal_mid', 'compare_fused',
+         'compare_steiner_vs_two_parent', 'compare_refined',
+         'compare_refined_vs_prior', 'cal_mid', 'compare_fused',
          'compare_fused_graph', 'compare_fused_graph_planned', 'cal_after')
 AA = ('cal_before', 'cal_mid', 'cal_after')
 COMPARE = ('compare_demand', 'compare_graph', 'compare_graph_planned',
            'compare_root_first', 'compare_weighted',
            'compare_weighted_vs_root_first', 'compare_two_parent',
            'compare_two_parent_vs_root_first', 'compare_steiner',
-           'compare_steiner_vs_two_parent',
+           'compare_steiner_vs_two_parent', 'compare_refined',
+           'compare_refined_vs_prior',
            'compare_fused', 'compare_fused_graph', 'compare_fused_graph_planned')
 
 
@@ -108,7 +110,9 @@ def audit(count, manifest_path, rules_path, raw_path):
              'root_first': forest / f'root-first-plan-{count}.json',
              'two_parent': forest / f'two-parent-plan-{count}.json',
              'steiner': forest / f'steiner-plan-{count}.json',
-             'weighted': forest / f'weighted-plan-{count}.json'}
+             'weighted': forest / f'weighted-plan-{count}.json',
+             'refined': forest / ('refined-steiner-plan-1.json' if count == 1
+                                  else 'refined-weighted-plan-128.json')}
     plan_identity = None
     for stem, plan_path in plans.items():
         plan_bytes = plan_path.read_bytes()
@@ -124,7 +128,7 @@ def audit(count, manifest_path, rules_path, raw_path):
                     graph['terminal_ids'], validate_plan_graph(graph))
         if plan_identity is None:
             plan_identity = identity
-        elif stem == 'steiner':
+        elif stem in ('steiner', 'refined') and count == 1:
             assert identity[:3] == plan_identity[:3]
             assert plan_identity[3] <= identity[3]
             assert len(identity[3] - plan_identity[3]) <= 16
@@ -142,6 +146,8 @@ def audit(count, manifest_path, rules_path, raw_path):
         'compare_two_parent_vs_root_first': [binary, '--pilot-rho-restart-joint-graph-planned', fixture_remote, str(count), rules['paths'][f'two_parent_{count}']],
         'compare_steiner': [binary, '--pilot-rho-restart-joint-graph-planned', fixture_remote, str(count), rules['paths'][f'steiner_{count}']],
         'compare_steiner_vs_two_parent': [binary, '--pilot-rho-restart-joint-graph-planned', fixture_remote, str(count), rules['paths'][f'steiner_{count}']],
+        'compare_refined': [binary, '--pilot-rho-restart-joint-graph-planned', fixture_remote, str(count), rules['paths'][f'refined_{count}']],
+        'compare_refined_vs_prior': [binary, '--pilot-rho-restart-joint-graph-planned', fixture_remote, str(count), rules['paths'][f'refined_{count}']],
         'compare_fused': [binary, '--pilot-rho-restart-joint-fused', fixture_remote, str(count)],
         'compare_fused_graph': [binary, '--pilot-rho-restart-joint-fused-graph', fixture_remote, str(count)],
         'compare_fused_graph_planned': [binary, '--pilot-rho-restart-joint-fused-graph-planned', fixture_remote, str(count), rules['paths'][f'plan_{count}']],
@@ -152,6 +158,8 @@ def audit(count, manifest_path, rules_path, raw_path):
                                                 'compare_weighted_vs_root_first')
                               else candidates['compare_two_parent']
                               if case['id'] == 'compare_steiner_vs_two_parent'
+                              else candidates['compare_steiner' if count == 1 else 'compare_weighted']
+                              if case['id'] == 'compare_refined_vs_prior'
                               else reference)
         assert case['reference'] == expected_reference
         assert case['candidate'] == candidates.get(case['id'], reference)
@@ -240,6 +248,8 @@ def audit(count, manifest_path, rules_path, raw_path):
                     'compare_two_parent_vs_root_first': 'joint_graph_planned',
                     'compare_steiner': 'joint_graph_planned',
                     'compare_steiner_vs_two_parent': 'joint_graph_planned',
+                    'compare_refined': 'joint_graph_planned',
+                    'compare_refined_vs_prior': 'joint_graph_planned',
                     'compare_fused': 'joint_fused',
                     'compare_fused_graph': 'joint_fused_graph',
                     'compare_fused_graph_planned': 'joint_fused_graph_planned',
@@ -248,7 +258,8 @@ def audit(count, manifest_path, rules_path, raw_path):
                 mode = ('joint_graph_planned' if case_id in
                         ('compare_two_parent_vs_root_first',
                          'compare_weighted_vs_root_first',
-                         'compare_steiner_vs_two_parent') else 'openssl_nowarm')
+                         'compare_steiner_vs_two_parent',
+                         'compare_refined_vs_prior') else 'openssl_nowarm')
             key = (repeat, case_id, variant)
             assert key not in lookup
             lookup[key] = run
