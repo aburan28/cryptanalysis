@@ -43,6 +43,33 @@ def summarise(a2):
     return s, floor, reps
 
 
+THEORY_S = {0: math.sqrt(math.pi / 2), 1: math.sqrt(math.pi / 4), 2: math.sqrt(math.pi / (4 * 83))}
+BAND = (0, 0.1, 1)     # GAE per unpriced operation (canonicalisation squaring), AGENTS.md / crypto CLAUDE.md 5a
+
+
+def rho_summary():
+    rows = load('rho-a1.jsonl')
+    if not rows: return None
+    out = {}
+    for grp, sel in (('crater', lambda r: r['curve_id'] == 'E0'), ('floor', lambda r: r['curve_id'] != 'E0')):
+        for mode in (0, 1, 2):
+            R = [r for r in rows if sel(r) and r['mode'] == mode]
+            if not R: continue
+            S = [r['S'] for r in R]
+            sq = sum(r['canon_squarings'] for r in R) / sum(r['steps'] for r in R)
+            # charged group ops: walk steps + walk starts + multipliers (all counted adds/doubles)
+            G = [r['total_group_ops'] / twist.N53 ** 0.5 for r in R]
+            out['%s_mode%d' % (grp, mode)] = dict(
+                solves=len(R), curves=sorted({r['curve_id'] for r in R}), all_verified=all(r['k_ok'] == 1 for r in R),
+                S_steps_mean=st.mean(S), S_steps_se=st.stdev(S) / math.sqrt(len(S)) if len(S) > 1 else None,
+                S_theory=THEORY_S[mode], S_group_ops_mean=st.mean(G),
+                squarings_per_step=sq,
+                S_priced={str(w): st.mean(G) * (1 + w * sq) for w in BAND},
+                wall_s_mean=st.mean(r['wall_s'] for r in R), escapes=sum(r['escapes'] for r in R),
+                restarts=sum(r['restarts'] for r in R))
+    return out
+
+
 def figure(results):
     fig, axes = plt.subplots(1, len(results), figsize=(6.2 * len(results), 4.3))
     axes = axes if len(results) > 1 else [axes]
@@ -68,15 +95,49 @@ def figure(results):
         fig.savefig(twist.OUT / ('yield-census.%s' % ext), dpi=150)
 
 
+def rho_figure():
+    rows = load('rho-a1.jsonl')
+    if not rows: return
+    fig, ax = plt.subplots(figsize=(8.6, 4.2))
+    groups = [('E0', 2, 'crater\n{±τ^i P}'), ('E0', 1, 'crater\n{±P}'), ('E0', 0, 'crater\nplain'),
+              ('floor', 1, 'floor (3 curves)\n{±P}'), ('floor', 0, 'floor (3 curves)\nplain')]
+    for i, (g, mode, lab) in enumerate(groups):
+        R = [r for r in rows if r['mode'] == mode and ((r['curve_id'] == 'E0') == (g == 'E0'))]
+        S = [r['S'] for r in R]
+        ax.scatter([i + (j - len(S) / 2) * 0.025 for j in range(len(S))], S, s=14, color='#3b6fb6', zorder=3)
+        m = st.mean(S); se = st.stdev(S) / math.sqrt(len(S))
+        ax.errorbar([i + 0.28], [m], yerr=[1.96 * se], fmt='s', color='#9e2a2b', capsize=4, zorder=4)
+        ax.hlines(THEORY_S[mode], i - 0.35, i + 0.35, color='#444', ls='--', lw=1)
+    ax.set_xticks(range(len(groups))); ax.set_xticklabels([g[2] for g in groups], fontsize=8)
+    ax.set_yscale('log'); ax.set_ylabel('S = walk steps / sqrt(n)   (n = 8569786107849059)')
+    ax.set_title('Pollard rho on the a2 = 1 twist, f83x, one walk per solve, every scalar verified\n'
+                 'dots: solves; red: mean ± 1.96 se; dashed: sqrt(pi/2), sqrt(pi/4), sqrt(pi/(4·83))', fontsize=9)
+    fig.tight_layout()
+    for ext in ('png', 'svg'):
+        fig.savefig(twist.OUT / ('rho-a1.%s' % ext), dpi=150)
+
+
 def main():
     results = {}
     for a2 in (0, 1):
         r = summarise(a2)
         if r: results[a2] = r
-    (twist.OUT / 'summary.json').write_text(json.dumps({a2: r[0] for a2, r in results.items()}, indent=1) + '\n')
+    summary = {a2: r[0] for a2, r in results.items()}
+    rs = rho_summary()
+    if rs:
+        summary['rho_a1'] = rs
+        if 1 in results:   # IC at this k against measured rho, same subgroup (lower bound on IC queries)
+            c = results[1][0]['crater']
+            q = math.ceil(1.1 * c['x_count']) * (twist.N53 - 1) / c['eligible']
+            summary['ic_k12_vs_rho_a1'] = dict(
+                rows_needed=math.ceil(1.1 * c['x_count']), eligible=c['eligible'],
+                log2_queries_for_rows_lower_bound=math.log2(q),
+                log2_rho_steps_mode2_measured=math.log2(rs['crater_mode2']['S_steps_mean'] * twist.N53 ** 0.5),
+                note='k = 12 subspace base; the N83 pipeline uses ~5.7e5 projected points and a root index, not this base')
+    (twist.OUT / 'summary.json').write_text(json.dumps(summary, indent=1) + '\n')
     figure(results)
-    for a2, r in results.items():
-        print(json.dumps(r[0], indent=1))
+    rho_figure()
+    print(json.dumps(summary, indent=1))
 
 
 if __name__ == '__main__':
