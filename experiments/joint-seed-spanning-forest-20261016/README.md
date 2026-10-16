@@ -94,8 +94,12 @@ the one-restart auxiliary plan from 27 to 23 nontrivial projective rotations,
 and the 128-restart low-rotation plan from one to zero. The source-formula
 model consequently changes from 453 to 449 field multiplications for the
 one-restart Q-seed graph and from 11,863 to 11,862 for 128 restarts, with the
-same square and inversion counts. These are source-formula counts, not wall
-times. The [refined one-restart plan](refined-steiner-plan-1.json),
+same square and inversion counts. The native graph instantiator now normalizes
+only requested Q seeds. Its two auxiliary one-restart vertices stay projective,
+saving another 12 modeled multiplications and two squares; the final refined
+one-restart model is 437 multiplications, 117 squares, and one shared inversion.
+These are source-formula counts, not wall times. The
+[refined one-restart plan](refined-steiner-plan-1.json),
 [refined 128-restart plan](refined-weighted-plan-128.json), and
 [native replay](refined-local-replay.json) retain the exact coefficient and
 point checks: 266 expected outputs in 12 commands on the local ARM64 build.

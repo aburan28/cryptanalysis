@@ -531,9 +531,15 @@ pub(super) fn instantiate_joint_q_graph(q_hex: &str, plan: &JointQGraphPlan)
         assert!(!point.is_identity());
         graph.insert(node.seed,point);
     }
-    let projective = plan.nodes.iter().map(|node| graph[&node.seed]).collect::<Vec<_>>();
+    let requested = plan.digit_ids.iter().map(|&id| digit_seeds[id])
+        .chain(plan.terminal_ids.iter().map(|&id| terminal_seeds[id]))
+        .collect::<std::collections::BTreeSet<_>>();
+    let requested_nodes = plan.nodes.iter().filter(|node| requested.contains(&node.seed))
+        .collect::<Vec<_>>();
+    let projective = requested_nodes.iter().map(|node| graph[&node.seed])
+        .collect::<Vec<_>>();
     let affine = joint_batch_into_affine(&projective);
-    let lookup = plan.nodes.iter().map(|node| node.seed).zip(affine.into_iter())
+    let lookup = requested_nodes.iter().map(|node| node.seed).zip(affine.into_iter())
         .collect::<std::collections::BTreeMap<_,_>>();
     let digit_window = plan.digit_ids.iter().map(|&id| {
         (id,U256TwoXAffine::from_affine(lookup[&digit_seeds[id]]))
@@ -545,7 +551,7 @@ pub(super) fn instantiate_joint_q_graph(q_hex: &str, plan: &JointQGraphPlan)
         + terminal_pairs.len()*size_of::<(usize,U256Affine)>()
         + size_of::<SparseJointQTables>();
     SparseJointQTables { digit_window,terminal_pairs,retained_bytes,
-                         constructed_points: projective.len() }
+                         constructed_points: plan.nodes.len() }
 }
 
 fn joint_choices(words: [u64; 4], tables: &AltHornerTables)

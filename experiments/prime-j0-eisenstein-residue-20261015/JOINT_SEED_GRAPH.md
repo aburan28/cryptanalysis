@@ -8,7 +8,8 @@ the curve's order-three automorphism and point negation. The builder first
 tries a rotated earlier point plus `Q`, `−Q`, `τ(Q)`, or `−τ(Q)`; then a
 rotated shared binary power; then a sum of two earlier rotated points. A
 remaining isolated pair uses the direct binary-power construction. One batch inversion then
-normalizes the unique graph vertices, and the same sparse Q table feeds the
+normalizes the requested graph vertices, leaving auxiliary construction vertices
+projective, and the same sparse Q table feeds the
 shared Horner or fused-pair evaluator.
 
 The frozen one-restart stream requests 21 Q digit seeds: eight use the direct

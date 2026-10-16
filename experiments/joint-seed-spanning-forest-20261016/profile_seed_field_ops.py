@@ -13,8 +13,10 @@ def digest(path):
     return sha256(path.read_bytes()).hexdigest()
 
 
-def profile(path):
+def profile(path, requested=None):
     nodes = json.loads(path.read_bytes())['graph']['nodes']
+    normalized = len(nodes) if requested is None else sum(
+        (a, b) in requested for a, b, _ in nodes)
     direct_calls = full_adds = rotations = direct_roots = 0
     for a, b, op in nodes:
         if op[0] == 'direct':
@@ -34,14 +36,15 @@ def profile(path):
     graph_edges = len(nodes) - direct_roots
     return {
         'plan_sha256': digest(path), 'constructed_vertices': len(nodes),
+        'normalized_vertices': normalized,
         'direct_roots': direct_roots, 'direct_add_projective_calls': direct_calls,
         'graph_edge_calls': graph_edges,
         'total_add_projective_calls': direct_calls + graph_edges,
         'identity_return_calls': direct_roots,
         'generic_full_adds': full_adds,
         'nontrivial_unit_rotations': rotations,
-        'modeled_field_muls': 12*full_adds + rotations + 6*len(nodes),
-        'modeled_field_squares': 4*full_adds + len(nodes),
+        'modeled_field_muls': 12*full_adds + rotations + 6*normalized,
+        'modeled_field_squares': 4*full_adds + normalized,
         'shared_field_inversions': 1,
     }
 
@@ -58,6 +61,9 @@ def main():
     assert sha256(windows).hexdigest() == WINDOWS_SHA256
     rows = {}
     for count in (1, 128):
+        requested = {tuple(row[:2]) for row in json.loads(
+            (BASE / f'rho-joint-graph-plan-{count}.json').read_bytes()
+        )['graph']['nodes']}
         plans = {
             'lexicographic': BASE / f'rho-joint-graph-plan-{count}.json',
             'root_first': HERE / f'root-first-plan-{count}.json',
@@ -65,7 +71,11 @@ def main():
             'auxiliary': HERE / f'steiner-plan-{count}.json',
             'weighted': HERE / f'weighted-plan-{count}.json',
         }
-        rows[str(count)] = {name: profile(path) for name, path in plans.items()}
+        if count == 1:
+            plans['refined_auxiliary'] = HERE / 'refined-steiner-plan-1.json'
+        else:
+            plans['refined_weighted'] = HERE / 'refined-weighted-plan-128.json'
+        rows[str(count)] = {name: profile(path, requested) for name, path in plans.items()}
         assert len({row['shared_field_inversions'] for row in rows[str(count)].values()}) == 1
     receipt = {
         'schema': 1,
