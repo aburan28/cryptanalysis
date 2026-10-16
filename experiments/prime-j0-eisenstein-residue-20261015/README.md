@@ -53,6 +53,15 @@ builder against itself; its A/A-only receipts and the corrected frozen plans
 are retained with the result. A separate serial replay checked all **12,288**
 frozen outputs in each of two projective arms, with stable artifact hashes.
 
+The [adaptive digit graph](DIGIT_GRAPH.md) reuses already constructed
+Eisenstein digit points through short lattice displacements. Frozen Tier 1
+panels measured qualified paired ratios of **1.020×** for one scalar and
+**1.027×** for 128 points over independent projective synthesis, with every
+A/A gate passing. A separate serial replay checked all **12,288** outputs in
+each graph arm. Pinned Lean checks the lattice-edge identity and its transfer
+through an additive point map; the native arithmetic bridge is tested by the
+replay and remains an explicit formal refinement obligation.
+
 The [four-checkpoint radix-32 path](CHECKPOINTED_RADIX32.md) stores four
 five-digit windows at selected radix powers, retaining **832,396 bytes**.
 Its matched Tier 1 prepared-table panel evaluated 12,288 verified points
