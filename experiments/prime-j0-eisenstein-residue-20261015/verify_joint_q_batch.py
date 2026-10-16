@@ -26,12 +26,16 @@ def scalar(row, name):
 def run(binary, fixture, count, path, mode):
     path.write_text(json.dumps(fixture, sort_keys=True, separators=(',', ':')) + '\n')
     command = {
+        'openssl_nowarm': '--pilot-rho-restart',
         'joint': '--pilot-rho-restart-joint',
         'joint_demand': '--pilot-rho-restart-joint-demand',
         'joint_fused': '--pilot-rho-restart-joint-fused',
     }[mode]
-    result = subprocess.run([str(binary), command, str(path),
-                             str(count)], text=True, capture_output=True)
+    argv = ([str(binary), command, 'openssl_nowarm', str(path), str(count)]
+            if mode == 'openssl_nowarm' else
+            [str(binary), command, str(path), str(count)])
+    result = subprocess.run(argv,
+                            text=True, capture_output=True)
     assert result.returncode == 0, result.stderr
     fields = dict(word.split('=', 1) for word in result.stdout.split())
     assert fields['verified'] == '1'
@@ -40,6 +44,8 @@ def run(binary, fixture, count, path, mode):
     assert fields['point'] == fixture['cases'][count-1]['point_hex']
     assert result.stderr == ''
     assert float(fields['online_ms']) > 0
+    if mode == 'openssl_nowarm':
+        assert float(fields['openssl_warmup_ms']) == 0.0
     if mode in ('joint_demand', 'joint_fused'):
         assert int(fields['constructed_q_points']) >= 0
         assert abs(float(fields['online_ms'])
@@ -76,7 +82,7 @@ def main():
     with TemporaryDirectory(prefix='joint-q-batch-replay-') as temporary:
         root = Path(temporary)
         for count in (1, 128):
-            for mode in ('joint', 'joint_demand', 'joint_fused'):
+            for mode in ('openssl_nowarm', 'joint', 'joint_demand', 'joint_fused'):
                 receipt['results'].append({'q_scalar': None,
                     **run(args.binary, frozen, count, root / 'frozen.json', mode)})
         for q_scalar in (1, 2, 3, 7):

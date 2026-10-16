@@ -51,8 +51,23 @@ def main(root):
     windows_source = replace_once(windows.read_text(),
         '\n#[cfg(test)]\nmod split_prime_tests {',
         '\ninclude!("joint_norm4033.rs");\n\n#[cfg(test)]\nmod split_prime_tests {')
+    hybrid_source = replace_once(hybrid.read_text(),
+        '    assert!(mode == "openssl" || mode == "hybrid");',
+        '    assert!(mode == "openssl" || mode == "openssl_nowarm" || mode == "hybrid");')
+    hybrid_source = replace_once(hybrid_source,
+        '    let warm_start = Instant::now();\n'
+        '    let warm = unsafe { crypto.baseline(cases[0].a_bn, cases[0].b_bn) };\n'
+        '    assert_eq!(warm, cases[0].expected);\n'
+        '    let openssl_warmup_ms = warm_start.elapsed().as_secs_f64() * 1000.0;',
+        '    let openssl_warmup_ms = if mode == "openssl_nowarm" { 0.0 } else {\n'
+        '        let warm_start = Instant::now();\n'
+        '        let warm = unsafe { crypto.baseline(cases[0].a_bn, cases[0].b_bn) };\n'
+        '        assert_eq!(warm, cases[0].expected);\n'
+        '        warm_start.elapsed().as_secs_f64() * 1000.0\n'
+        '    };')
     front.write_text(front_source)
     windows.write_text(windows_source)
+    hybrid.write_text(hybrid_source)
     shutil.copyfile(HERE / 'rho_restart_joint.rs', root / 'src/bin/rho_restart_joint.rs')
     shutil.copyfile(HERE / 'joint_norm4033.rs',
                     root / 'src/bin/eisenstein_fixed/joint_norm4033.rs')
