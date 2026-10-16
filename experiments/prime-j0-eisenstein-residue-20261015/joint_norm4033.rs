@@ -303,6 +303,143 @@ pub(super) fn prepare_joint_q_sparse_graph(
      graph_edges,direct_seeds)
 }
 
+#[derive(Clone,Copy)]
+enum JointGraphOp {
+    Direct,
+    Step { parent: (i16,i16), parent_unit: usize,
+           base: usize, bit: usize, step_unit: usize },
+    Sum { left: (i16,i16), left_unit: usize,
+          right: (i16,i16), right_unit: usize },
+}
+
+#[derive(Clone,Copy)]
+struct JointGraphNode { seed: (i16,i16), op: JointGraphOp }
+
+pub(super) struct JointQGraphPlan {
+    digit_ids: Box<[usize]>,
+    terminal_ids: Box<[usize]>,
+    nodes: Box<[JointGraphNode]>,
+    pub(super) retained_bytes: usize,
+    pub(super) graph_edges: usize,
+    pub(super) direct_seeds: usize,
+}
+
+// The coefficient graph depends on the public scalar stream, not on Q.
+// It can be frozen before an arbitrary target point is supplied.
+pub(super) fn plan_joint_q_graph(
+    b_choices: &[[(usize,usize); ALT_SPLIT_PRIME_STEPS+1]],
+) -> JointQGraphPlan {
+    let (digit_seeds,terminal_seeds) = &*JOINT_SEED_SETS;
+    let digit_ids = b_choices.iter().flat_map(|choices| choices[..ALT_SPLIT_PRIME_STEPS]
+        .iter().map(|&(id,_)| id)).filter(|&id| id != 0)
+        .collect::<std::collections::BTreeSet<_>>();
+    let terminal_ids = b_choices.iter().map(|choices| choices[ALT_SPLIT_PRIME_STEPS].0)
+        .filter(|&id| id != 0).collect::<std::collections::BTreeSet<_>>();
+    let seeds = digit_ids.iter().map(|&id| digit_seeds[id])
+        .chain(terminal_ids.iter().map(|&id| terminal_seeds[id]))
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut orbit = std::collections::BTreeMap::<(i16,i16),((i16,i16),usize)>::new();
+    let mut nodes = Vec::with_capacity(seeds.len());
+    let (mut graph_edges,mut direct_seeds) = (0usize,0usize);
+    for &(a,b) in &seeds {
+        let mut op = None;
+        for ((da,db),base,step_unit) in [((1,0),0,0),((0,1),1,0),
+                                         ((-1,0),0,1),((0,-1),1,1)] {
+            if let Some(&(parent,parent_unit)) = orbit.get(&(a-da,b-db)) {
+                op = Some(JointGraphOp::Step { parent,parent_unit,base,bit:0,step_unit });
+                break;
+            }
+        }
+        if op.is_none() {
+            'power: for bit in 0..8 {
+                for (base,base_pair) in [(0,(1i16 << bit,0i16)),
+                                         (1,(0i16,1i16 << bit))] {
+                    let mut coefficient = base_pair;
+                    for rotation in 0..3 {
+                        for sign in 0..2 {
+                            let delta = if sign == 0 { coefficient }
+                                else { (-coefficient.0,-coefficient.1) };
+                            if let Some(&(parent,parent_unit)) =
+                                orbit.get(&(a-delta.0,b-delta.1)) {
+                                op = Some(JointGraphOp::Step { parent,parent_unit,
+                                    base,bit,step_unit:2*rotation+sign });
+                                break 'power;
+                            }
+                        }
+                        coefficient = alt_orbit_omega_pair(coefficient);
+                    }
+                }
+            }
+        }
+        if op.is_none() {
+            for (&coefficient,&(left,left_unit)) in &orbit {
+                if let Some(&(right,right_unit)) =
+                    orbit.get(&(a-coefficient.0,b-coefficient.1)) {
+                    op = Some(JointGraphOp::Sum { left,left_unit,right,right_unit });
+                    break;
+                }
+            }
+        }
+        let op = if let Some(op) = op { graph_edges += 1; op }
+            else { direct_seeds += 1; JointGraphOp::Direct };
+        nodes.push(JointGraphNode { seed:(a,b),op });
+        let mut coefficient = (a,b);
+        for rotation in 0..3 {
+            assert!(orbit.insert(coefficient,((a,b),2*rotation)).is_none());
+            assert!(orbit.insert((-coefficient.0,-coefficient.1),
+                                 ((a,b),2*rotation+1)).is_none());
+            coefficient = alt_orbit_omega_pair(coefficient);
+        }
+    }
+    let digit_ids = digit_ids.into_iter().collect::<Vec<_>>().into_boxed_slice();
+    let terminal_ids = terminal_ids.into_iter().collect::<Vec<_>>().into_boxed_slice();
+    let nodes = nodes.into_boxed_slice();
+    let retained_bytes = digit_ids.len()*size_of::<usize>()
+        + terminal_ids.len()*size_of::<usize>()
+        + nodes.len()*size_of::<JointGraphNode>() + size_of::<JointQGraphPlan>();
+    JointQGraphPlan { digit_ids,terminal_ids,nodes,retained_bytes,
+                      graph_edges,direct_seeds }
+}
+
+pub(super) fn instantiate_joint_q_graph(q_hex: &str, plan: &JointQGraphPlan)
+    -> SparseJointQTables {
+    let (digit_seeds,terminal_seeds) = &*JOINT_SEED_SETS;
+    let (a_powers,b_powers) = joint_q_powers(q_hex);
+    let mut graph = std::collections::BTreeMap::<(i16,i16),U256Jacobian>::new();
+    for node in plan.nodes.iter() {
+        let point = match node.op {
+            JointGraphOp::Direct => joint_seed_point(node.seed,&a_powers,&b_powers),
+            JointGraphOp::Step { parent,parent_unit,base,bit,step_unit } => {
+                let parent = joint_projective_unit(graph[&parent],parent_unit);
+                let power = if base == 0 { a_powers[bit] } else { b_powers[bit] };
+                parent.add_projective(joint_projective_unit(power,step_unit))
+            },
+            JointGraphOp::Sum { left,left_unit,right,right_unit } => {
+                let left = joint_projective_unit(graph[&left],left_unit);
+                let right = joint_projective_unit(graph[&right],right_unit);
+                left.add_projective(right)
+            },
+        };
+        assert!(!point.is_identity());
+        graph.insert(node.seed,point);
+    }
+    let projective = plan.nodes.iter().map(|node| graph[&node.seed]).collect::<Vec<_>>();
+    let affine = joint_batch_into_affine(&projective);
+    let lookup = plan.nodes.iter().map(|node| node.seed).zip(affine.into_iter())
+        .collect::<std::collections::BTreeMap<_,_>>();
+    let digit_window = plan.digit_ids.iter().map(|&id| {
+        (id,U256TwoXAffine::from_affine(lookup[&digit_seeds[id]]))
+    }).collect::<Vec<_>>().into_boxed_slice();
+    let terminal_pairs = plan.terminal_ids.iter().map(|&id| {
+        (id,lookup[&terminal_seeds[id]])
+    }).collect::<Vec<_>>().into_boxed_slice();
+    let retained_bytes = digit_window.len()*size_of::<(usize,U256TwoXAffine)>()
+        + terminal_pairs.len()*size_of::<(usize,U256Affine)>()
+        + size_of::<SparseJointQTables>();
+    SparseJointQTables { digit_window,terminal_pairs,retained_bytes,
+                         constructed_points: projective.len() }
+}
+
 fn joint_choices(words: [u64; 4], tables: &AltHornerTables)
     -> [(usize,usize); ALT_SPLIT_PRIME_STEPS+1] {
     let scalar = super::Uint(words);

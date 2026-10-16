@@ -13,10 +13,12 @@ from check_secp256k1_tau_generator import G, N, add, mul
 from make_tier1_rho_joint import expected_hashes
 
 HERE = Path(__file__).resolve().parent
-ORDER = ('cal_before', 'compare_demand', 'compare_graph', 'cal_mid',
-         'compare_fused', 'compare_fused_graph', 'cal_after')
+ORDER = ('cal_before', 'compare_demand', 'compare_graph',
+         'compare_graph_planned', 'cal_mid', 'compare_fused',
+         'compare_fused_graph', 'compare_fused_graph_planned', 'cal_after')
 AA = ('cal_before', 'cal_mid', 'cal_after')
-COMPARE = ('compare_demand', 'compare_graph', 'compare_fused', 'compare_fused_graph')
+COMPARE = ('compare_demand', 'compare_graph', 'compare_graph_planned',
+           'compare_fused', 'compare_fused_graph', 'compare_fused_graph_planned')
 
 
 def digest(data):
@@ -58,8 +60,10 @@ def audit(count, manifest_path, rules_path, raw_path):
     candidates = {
         'compare_demand': [binary, '--pilot-rho-restart-joint-demand', fixture_remote, str(count)],
         'compare_graph': [binary, '--pilot-rho-restart-joint-graph', fixture_remote, str(count)],
+        'compare_graph_planned': [binary, '--pilot-rho-restart-joint-graph-planned', fixture_remote, str(count)],
         'compare_fused': [binary, '--pilot-rho-restart-joint-fused', fixture_remote, str(count)],
         'compare_fused_graph': [binary, '--pilot-rho-restart-joint-fused-graph', fixture_remote, str(count)],
+        'compare_fused_graph_planned': [binary, '--pilot-rho-restart-joint-fused-graph-planned', fixture_remote, str(count)],
     }
     for case in manifest['cases']:
         assert case['reference'] == reference
@@ -109,8 +113,8 @@ def audit(count, manifest_path, rules_path, raw_path):
         runs_bytes, pairs_bytes = read('runs.jsonl'), read('pairs.jsonl')
         runs = [json.loads(line) for line in runs_bytes.splitlines()]
         pairs = [json.loads(line) for line in pairs_bytes.splitlines()]
-        assert len(runs) <= 224 and len(pairs) == 112
-        assert summary['expected_pairs'] == 112
+        assert len(runs) <= 288 and len(pairs) == 144
+        assert summary['expected_pairs'] == 144
         assert summary['manifest_sha256'] == digest(read('manifest.json'))
         assert summary['measurement_tier'] == 'tier1_instance'
         artifacts = summary['artifact_sha256']
@@ -121,7 +125,7 @@ def audit(count, manifest_path, rules_path, raw_path):
                      '/workspace/isolated-bench/panels/host-probe.json'):
             assert path in artifacts
         cases = {case['id']: case for case in manifest['cases']}
-        lookup, invalid = {}, []
+        lookup, invalid, phases = {}, [], {}
         for serial, run in enumerate(runs, 1):
             assert run['serial'] == serial
             repeat, case_id, variant = run['repeat'], run['case'], run['variant']
@@ -140,8 +144,10 @@ def audit(count, manifest_path, rules_path, raw_path):
             assert fields == run['fields']
             mode = {'cal_before': 'openssl_nowarm', 'compare_demand': 'joint_demand',
                     'compare_graph': 'joint_graph', 'cal_mid': 'openssl_nowarm',
+                    'compare_graph_planned': 'joint_graph_planned',
                     'compare_fused': 'joint_fused',
                     'compare_fused_graph': 'joint_fused_graph',
+                    'compare_fused_graph_planned': 'joint_fused_graph_planned',
                     'cal_after': 'openssl_nowarm'}[case_id]
             if variant == 'reference':
                 mode = 'openssl_nowarm'
@@ -163,12 +169,22 @@ def audit(count, manifest_path, rules_path, raw_path):
                     prep = number(fields, 'target_preparation_ms')
                     evaluation = number(fields, 'restart_eval_ms')
                     assert abs(online - prep - evaluation) <= 0.00001
+                    phase = phases.setdefault(mode, {'graph_plan_ms': [],
+                        'target_preparation_ms': [], 'restart_eval_ms': []})
+                    phase['graph_plan_ms'].append(number(fields, 'graph_plan_ms'))
+                    phase['target_preparation_ms'].append(prep)
+                    phase['restart_eval_ms'].append(evaluation)
                     assert int(fields['constructed_q_points']) >= 0
-                    if mode in ('joint_fused', 'joint_fused_graph'):
+                    if mode in ('joint_fused', 'joint_fused_graph',
+                                'joint_fused_graph_planned'):
                         assert int(fields['fused_pair_sums']) >= 0
-                    if mode in ('joint_graph', 'joint_fused_graph'):
+                    if mode in ('joint_graph', 'joint_fused_graph',
+                                'joint_graph_planned', 'joint_fused_graph_planned'):
                         assert (int(fields['graph_edges']) + int(fields['direct_seeds']) ==
                                 int(fields['constructed_q_points']))
+                    if mode in ('joint_graph_planned', 'joint_fused_graph_planned'):
+                        assert number(fields, 'graph_plan_ms') >= 0
+                        assert int(fields['plan_bytes']) > 0
             else:
                 invalid.append({'serial': serial, 'status': run['status'],
                                 'issues': run['issues'], 'stderr_sha256': digest(stderr)})
@@ -179,7 +195,7 @@ def audit(count, manifest_path, rules_path, raw_path):
             key = (pair['repeat'], pair['case'])
             assert key not in pair_lookup
             pair_lookup[key] = pair
-        assert len(pair_lookup) == 112
+        assert len(pair_lookup) == 144
         aa_failures, comparisons = [], {case: [] for case in COMPARE}
         low, high = rules['aa_acceptance']
         observed_serials = []
@@ -234,6 +250,8 @@ def audit(count, manifest_path, rules_path, raw_path):
         'completed_arms': len(runs), 'completed_pairs': len(pairs),
         'invalid_arms': invalid, 'aa_failures': aa_failures,
         'tier_gate_passed': gate, 'comparison': result,
+        'phase_ms_mean_by_mode': {mode: {name: statistics.mean(values)
+            for name,values in group.items()} for mode,group in phases.items()},
         'raw_archive_sha256': digest(raw_path.read_bytes()),
         'manifest_sha256': digest(manifest_path.read_bytes()),
         'rules_sha256': digest(rules_path.read_bytes()),

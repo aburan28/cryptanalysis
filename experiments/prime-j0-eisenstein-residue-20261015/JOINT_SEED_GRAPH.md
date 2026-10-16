@@ -33,7 +33,20 @@ builder: 453,204 bytes including global G and seed preparation for one
 restart, and 519,556 bytes for 128 restarts. The transient six-unit orbit
 index, graph, and batch-normalization vectors are absent from that retained
 payload figure; their construction is charged to
-`target_preparation_ms` in both new commands.
+`target_preparation_ms` in the online graph commands.
+
+The graph can also be compiled from the public b-scalar stream without using Q.
+The resulting immutable plan stores the requested seeds and each
+direct, unit-power, or two-parent graph instruction. Instantiating that plan
+on a new Q performs the same group operations without repeating coefficient
+search or b-scalar recoding. The planned commands report `graph_plan_ms`
+outside their online interval and add `plan_bytes` to retained payload.
+Including cached b-scalar choices, the frozen plans report 1,616 and
+84,080 bytes for one and 128 restarts.
+These setup costs belong in a cold-start comparison. Their exclusion from
+one-target online time requires a declared reusable scalar stream and a
+separate graph-plan receipt; the current command reports both costs, while
+the frozen panel still needs to verify that resource boundary.
 
 The [Lean graph module](JointSeedGraph.lean) proves that a direct seed, a
 rotated-parent edge, and a two-parent rotated sum extend a valid
@@ -44,12 +57,13 @@ records the fresh build and `#print axioms`. The concrete Jacobian and field
 operations are checked by native exact-output replay; a Lean refinement of
 those machine operations remains open.
 
-The local ARM64 [replay](joint-q-graph-local-replay.json) checks 942 exact
-outputs in 40 serial commands, including the original and graph builders,
+The local ARM64 [replay](joint-q-graph-local-replay.json) checks 1,268 exact
+outputs in 56 serial commands, including the original, graph, and planned builders,
 four alternate Q choices, and equal-point, opposite-point, zero-scalar, and
-one-sided edge cases. The new commands are `--pilot-rho-restart-joint-graph`
-and `--pilot-rho-restart-joint-fused-graph`; both charge graph construction
-inside `online_ms`. The [Tier 1 plan](RHO_JOINT_BENCHMARK_PLAN.md) pairs them
+one-sided edge cases. The graph commands are `--pilot-rho-restart-joint-graph`
+and `--pilot-rho-restart-joint-fused-graph`; the planned versions append
+`-planned`. All four charge Q-dependent group construction inside `online_ms`.
+The [Tier 1 plan](RHO_JOINT_BENCHMARK_PLAN.md) pairs them
 with OpenSSL and with the existing direct sparse variants on the same frozen
 restart stream. Linux source transfer and the serial Pod panel are pending
 the previously requested approval.

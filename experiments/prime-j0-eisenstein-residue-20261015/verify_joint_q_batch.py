@@ -32,6 +32,8 @@ def run(binary, fixture, count, path, mode):
         'joint_fused': '--pilot-rho-restart-joint-fused',
         'joint_graph': '--pilot-rho-restart-joint-graph',
         'joint_fused_graph': '--pilot-rho-restart-joint-fused-graph',
+        'joint_graph_planned': '--pilot-rho-restart-joint-graph-planned',
+        'joint_fused_graph_planned': '--pilot-rho-restart-joint-fused-graph-planned',
     }[mode]
     argv = ([str(binary), command, 'openssl_nowarm', str(path), str(count)]
             if mode == 'openssl_nowarm' else
@@ -48,16 +50,21 @@ def run(binary, fixture, count, path, mode):
     assert float(fields['online_ms']) > 0
     if mode == 'openssl_nowarm':
         assert float(fields['openssl_warmup_ms']) == 0.0
-    if mode in ('joint_demand', 'joint_fused', 'joint_graph', 'joint_fused_graph'):
+    if mode in ('joint_demand', 'joint_fused', 'joint_graph', 'joint_fused_graph',
+                'joint_graph_planned', 'joint_fused_graph_planned'):
         assert int(fields['constructed_q_points']) >= 0
         assert abs(float(fields['online_ms'])
                    - float(fields['target_preparation_ms'])
                    - float(fields['restart_eval_ms'])) < 0.00001
-    if mode in ('joint_fused', 'joint_fused_graph'):
+    if mode in ('joint_fused', 'joint_fused_graph', 'joint_fused_graph_planned'):
         assert int(fields['fused_pair_sums']) >= 0
-    if mode in ('joint_graph', 'joint_fused_graph'):
+    if mode in ('joint_graph', 'joint_fused_graph', 'joint_graph_planned',
+                'joint_fused_graph_planned'):
         assert (int(fields['graph_edges']) + int(fields['direct_seeds']) ==
                 int(fields['constructed_q_points']))
+    if mode in ('joint_graph_planned', 'joint_fused_graph_planned'):
+        assert float(fields['graph_plan_ms']) >= 0
+        assert int(fields['plan_bytes']) > 0
     return {'mode': mode, 'fixture_sha256': sha256(path.read_bytes()).hexdigest(),
             'count': count, 'point': fields['point'], 'stdout': result.stdout.strip()}
 
@@ -88,7 +95,8 @@ def main():
         root = Path(temporary)
         for count in (1, 128):
             for mode in ('openssl_nowarm', 'joint', 'joint_demand', 'joint_fused',
-                         'joint_graph', 'joint_fused_graph'):
+                         'joint_graph', 'joint_fused_graph',
+                         'joint_graph_planned', 'joint_fused_graph_planned'):
                 receipt['results'].append({'q_scalar': None,
                     **run(args.binary, frozen, count, root / 'frozen.json', mode)})
         for q_scalar in (1, 2, 3, 7):
@@ -100,7 +108,8 @@ def main():
                              'point_hex': point_hex(add(mul(a, G), mul(b, q)))})
             fixture = {'q_hex': point_hex(q), 'cases': rows}
             for mode in ('joint', 'joint_demand', 'joint_fused', 'joint_graph',
-                         'joint_fused_graph'):
+                         'joint_fused_graph', 'joint_graph_planned',
+                         'joint_fused_graph_planned'):
                 receipt['results'].append({'q_scalar': q_scalar,
                     **run(args.binary, fixture, 8, root / f'q{q_scalar}.json', mode)})
         neg_g = (G[0], (-G[1]) % P)
@@ -115,7 +124,8 @@ def main():
                 'a_hex': f'{a:x}', 'b_hex': f'{b:x}',
                 'point_hex': point_hex(add(mul(a, G), mul(b, q))),
             }]}
-            for mode in ('joint_fused', 'joint_fused_graph'):
+            for mode in ('joint_fused', 'joint_fused_graph',
+                         'joint_fused_graph_planned'):
                 receipt['results'].append({'edge': name, **run(args.binary, fixture, 1,
                     root / f'{name}.json', mode)})
     args.output.write_text(json.dumps(receipt, sort_keys=True, indent=2) + '\n')

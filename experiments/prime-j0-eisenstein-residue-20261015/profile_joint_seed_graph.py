@@ -76,6 +76,17 @@ def main():
         assert int(fields['constructed_q_points']) == len(seeds)
         assert int(fields['graph_edges']) == edges
         assert int(fields['direct_seeds']) == len(roots)
+        planned_command = [str(args.binary),
+                           '--pilot-rho-restart-joint-graph-planned',
+                           str(fixture), str(count)]
+        planned_proc = subprocess.run(planned_command, text=True, capture_output=True)
+        assert planned_proc.returncode == 0 and planned_proc.stderr == '', planned_proc.stderr
+        planned = dict(word.split('=',1) for word in planned_proc.stdout.split())
+        assert planned['verified'] == '1' and planned['mode'] == 'joint_graph_planned'
+        assert planned['point'] == fields['point']
+        assert int(planned['graph_edges']) == edges
+        assert int(planned['direct_seeds']) == len(roots)
+        assert int(planned['plan_bytes']) > 0
         result['runs'].append({
             'count': count, 'requested_unique_seeds': len(seeds),
             'seed_pairs_sha256': sha256(json.dumps(sorted(seeds),
@@ -85,6 +96,7 @@ def main():
             'graph_edge_add_projective_calls': edges,
             'graph_total_add_projective_calls': root_calls + edges,
             'direct_roots': len(roots),
+            'plan_bytes': int(planned['plan_bytes']),
             'verified_point': fields['point'],
         })
     args.output.write_text(json.dumps(result, sort_keys=True, indent=2) + '\n')

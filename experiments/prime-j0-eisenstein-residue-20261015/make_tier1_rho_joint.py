@@ -88,24 +88,33 @@ def main():
     fixture = json.loads((HERE / 'rho-restart-first128-fixture.json').read_text())
     assert len(fixture['cases']) >= 128
     boundary = ('OpenSSL nowarm times its first EC_POINT_mul(aG+bQ) and affine output; '
-                'its Q parsing and group setup are outside. Joint demand/graph/fused exclude '
-                'globally reusable G and canonical-seed preparation but include b recoding, '
-                'Q parsing/table construction, all a recoding, pair fusion where selected, '
-                'Horner evaluation, and affine output. Fixture parsing and process launch are outside.')
+                'its Q parsing and group setup are outside. Joint arms exclude globally '
+                'reusable G and canonical-seed preparation, include Q parsing/table '
+                'construction, a recoding, pair fusion where selected, Horner evaluation, '
+                'and affine output. Direct and online graph arms include b recoding. '
+                'Planned graph arms compile b choices and the Q-independent graph '
+                'before Q-dependent timing; graph_plan_ms and plan_bytes are reported separately. '
+                'Fixture parsing and process launch are outside.')
     for count in (1, 128):
         stem = f'tier1-rho-joint-{count}-cpu40'
         expected = fixture['cases'][count - 1]['point_hex']
         ref = [str(BINARY), '--pilot-rho-restart', 'openssl_nowarm', paths['fixture'], str(count)]
         demand = [str(BINARY), '--pilot-rho-restart-joint-demand', paths['fixture'], str(count)]
         graph = [str(BINARY), '--pilot-rho-restart-joint-graph', paths['fixture'], str(count)]
+        graph_planned = [str(BINARY), '--pilot-rho-restart-joint-graph-planned',
+                         paths['fixture'], str(count)]
         fused = [str(BINARY), '--pilot-rho-restart-joint-fused', paths['fixture'], str(count)]
         fused_graph = [str(BINARY), '--pilot-rho-restart-joint-fused-graph',
                        paths['fixture'], str(count)]
+        fused_graph_planned = [str(BINARY), '--pilot-rho-restart-joint-fused-graph-planned',
+                               paths['fixture'], str(count)]
         cases = []
         for name, candidate in (
             ('cal_before', ref), ('compare_demand', demand),
-            ('compare_graph', graph), ('cal_mid', ref),
+            ('compare_graph', graph), ('compare_graph_planned', graph_planned),
+            ('cal_mid', ref),
             ('compare_fused', fused), ('compare_fused_graph', fused_graph),
+            ('compare_fused_graph_planned', fused_graph_planned),
             ('cal_after', ref),
         ):
             cases.append({'id': name, 'reference': ref, 'candidate': candidate,
