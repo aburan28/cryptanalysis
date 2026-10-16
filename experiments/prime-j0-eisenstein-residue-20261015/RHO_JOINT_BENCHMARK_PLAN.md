@@ -12,17 +12,19 @@ benchmark queue.
 The [fixture](rho-restart-first128-fixture.json) has SHA-256
 `fc6a0283c51e3fd9c2eb0b82961092d3060c242d8122c9648c37fdaf614d094a`.
 The one-restart panel uses its first case; the batch panel uses its first 128
-cases. Each panel runs 16 alternating repetitions of these five cases:
+cases. Each panel runs 16 alternating repetitions of these seven cases:
 
 | Case | Reference | Candidate |
 | --- | --- | --- |
 | `cal_before` | OpenSSL no-warmup | OpenSSL no-warmup |
 | `compare_demand` | OpenSSL no-warmup | Sparse Q table and shared Horner |
+| `compare_graph` | OpenSSL no-warmup | Shared Q-seed graph and shared Horner |
 | `cal_mid` | OpenSSL no-warmup | OpenSSL no-warmup |
 | `compare_fused` | OpenSSL no-warmup | Sparse Q table, batched affine pair sums, shared Horner, batched output normalization |
+| `compare_fused_graph` | OpenSSL no-warmup | Shared Q-seed graph followed by batched affine pair sums and output normalization |
 | `cal_after` | OpenSSL no-warmup | OpenSSL no-warmup |
 
-All three commands time affine serialization. OpenSSL's interval starts at
+All five distinct commands time affine serialization. OpenSSL's interval starts at
 its first `EC_POINT_mul` for the public `a,b,Q` and includes every requested
 restart. Its Q parsing and curve construction precede the timer. The joint
 commands exclude globally reusable G and canonical-seed preparation; their
@@ -30,14 +32,14 @@ commands exclude globally reusable G and canonical-seed preparation; their
 restart evaluation, and affine output. The joint boundary is therefore
 conservative with respect to reference Q parsing. Fixture reading, input
 decoding, process launch, and independent expected-point checks are outside
-all three intervals. The joint commands report target preparation and
+every timed interval. The joint commands report target preparation and
 evaluation as exclusive phase costs whose sum is `online_ms`.
 
-Each panel has 80 planned pairs and 160 arms, including 48 OpenSSL A/A
+Each panel has 112 planned pairs and 224 arms, including 48 OpenSSL A/A
 control pairs. The queue runs one subprocess at a time on CPU 40. The Tier 1
 receipt must retain exposed topology, affinity, cgroup limits, throttling,
 steal time, memory and calibration noise. A comparison advances only when
-all 16 pairs for that case are valid, the adjacent A/A controls lie within
+all 16 pairs for that case are valid, the bracketing A/A controls lie within
 `[0.90,1.11]`, the paired bootstrap 95% log-ratio interval excludes one,
 and every point independently replays. A failed or noisy arm stays in the
 ledger and leaves the corresponding aggregate unknown.
@@ -51,17 +53,17 @@ ledger and leaves the corresponding aggregate unknown.
    preserve its stdout, stderr, compiler version, source hashes, linked
    `libcrypto`, and binary hash. The overlay adds the `openssl_nowarm` mode by
    patching the archived helper at its checked hash.
-2. Replay counts 1 and 128 in `openssl_nowarm`, `joint_demand`, and
-   `joint_fused` modes before timing. The local [correctness
-   receipt](joint-q-batch-local-replay.json) contains 616 exact outputs on
-   macOS ARM64, including four affine edge cases. Linux replay is required
+2. Replay counts 1 and 128 in `openssl_nowarm`, `joint_demand`,
+   `joint_graph`, `joint_fused`, and `joint_fused_graph` modes before timing.
+   The local [correctness receipt](joint-q-graph-local-replay.json) contains
+   942 exact outputs on macOS ARM64, including affine edge cases. Linux replay is required
    for the native x86-64 build.
 3. Read the deployed binary and `libcrypto` SHA-256 values. Run
    [make_tier1_rho_joint.py](make_tier1_rho_joint.py) locally with those hashes
    to write both manifest/rules pairs. The generator rebuilds the expected
    source tree from the archived base and current overlay; compare its hashes
    with every deployed artifact before submission. The generator's local
-   dry run validated both five-case manifests. Its dry-run binary hash came
+   dry run validated both seven-case manifests. Its dry-run binary hash came
    from macOS and must be replaced with the Linux binary hash.
 4. Submit only the **one-restart** manifest to the live serial queue. Wait
    for a terminal queue result, archive raw stdout/stderr, run/pair ledgers,
@@ -88,9 +90,11 @@ comparison on all three A/A controls. A partial pair remains in the ledger;
 the aggregate stays unknown. The command is for a completed archived Linux
 panel; the local manifest dry run has a macOS binary hash and is not a panel.
 
-The archived OpenSSL hybrid panel's one-restart A/A gate previously failed;
-this plan retains the same strict gate and adds a middle A/A control around
-the second candidate. The queue service was observed live as PID 2098 on the
+The [seed graph method](JOINT_SEED_GRAPH.md) is an additional candidate in
+this panel. Its local exact-output receipt has 942 outputs. The archived
+OpenSSL hybrid panel's one-restart A/A gate previously failed;
+this plan retains the same strict gate and uses a middle A/A control between
+the shared-Horner and fused-pair candidate groups. The queue service was observed live as PID 2098 on the
 named Pod, with Tier 1 support in its running script. The allocation receipt
 still identifies `thyvmdqmzsz5ik` as RunPod, and its current `libcrypto.so.3`
 hash is `d6fc1bc9de29c55fc905f77edba1ccc7c7a50b32bd2bb9086b0d0b00104eafc4`.

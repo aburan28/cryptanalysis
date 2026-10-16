@@ -43,6 +43,8 @@ def main():
         assert data['terminal_unique_raw'] <= data['both_terminal']
         assert (data['digit_precompute_addition_savings_upper_bound'] ==
                 data['both_digit'] - data['digit_unique_common_unit_orbit'])
+        data.pop('q_digit_seeds')
+        data.pop('q_terminal_seeds')
         receipt['runs'].append(data)
     args.output.write_text(json.dumps(receipt, sort_keys=True, indent=2) + '\n')
     print(json.dumps({'ok': True, 'counts': [run['count'] for run in receipt['runs']]},

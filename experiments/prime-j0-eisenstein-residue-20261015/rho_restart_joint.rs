@@ -44,6 +44,14 @@ pub(super) fn run(fixture_path: &str, count: usize) {
 }
 
 pub(super) fn run_demand(fixture_path: &str, count: usize) {
+    run_demand_variant(fixture_path,count,false);
+}
+
+pub(super) fn run_graph(fixture_path: &str, count: usize) {
+    run_demand_variant(fixture_path,count,true);
+}
+
+fn run_demand_variant(fixture_path: &str, count: usize, graph: bool) {
     let fixture: Value = serde_json::from_str(
         &std::fs::read_to_string(fixture_path).expect("read frozen fixture"))
         .expect("parse frozen fixture");
@@ -65,8 +73,13 @@ pub(super) fn run_demand(fixture_path: &str, count: usize) {
     let target_start = Instant::now();
     let b_choices = inputs.iter().map(|(_,b,_)|
         unit_orbit_windows::joint_choices_for_words(*b)).collect::<Vec<_>>();
-    let q_table = unit_orbit_windows::prepare_joint_q_sparse(
-        fixture["q_hex"].as_str().expect("Q"), &b_choices);
+    let (q_table,graph_edges,direct_seeds) = if graph {
+        unit_orbit_windows::prepare_joint_q_sparse_graph(
+            fixture["q_hex"].as_str().expect("Q"), &b_choices)
+    } else {
+        (unit_orbit_windows::prepare_joint_q_sparse(
+            fixture["q_hex"].as_str().expect("Q"), &b_choices),0,0)
+    };
     let target_preparation_ms = target_start.elapsed().as_secs_f64()*1000.0;
     let eval_start = Instant::now();
     let answers = inputs.iter().zip(b_choices.iter()).map(|((a,_,_),b)|
@@ -78,12 +91,14 @@ pub(super) fn run_demand(fixture_path: &str, count: usize) {
         assert_eq!(actual,expected,"rho sparse joint case {index}");
     }
     let retained_bytes = generator_bytes + q_table.retained_bytes;
+    let mode = if graph { "joint_graph" } else { "joint_demand" };
     println!("verified=1 count={count} online_ms={online_ms:.6} \
               target_preparation_ms={target_preparation_ms:.6} \
               restart_eval_ms={restart_eval_ms:.6} \
               generator_preparation_ms={generator_preparation_ms:.6} \
               retained_bytes={retained_bytes} constructed_q_points={} \
-              mode=joint_demand point={}",
+              graph_edges={graph_edges} direct_seeds={direct_seeds} \
+              mode={mode} point={}",
               q_table.constructed_points,answers.last().expect("nonempty"));
 }
 
@@ -131,7 +146,15 @@ pub(super) fn run_profile(fixture_path: &str, count: usize) {
     let both_terminal = terminal_raw.values().sum::<usize>();
     let digit_reused = digit_orbit.values().filter(|&&n| n > 1).count();
     let terminal_reused = terminal_orbit.values().filter(|&&n| n > 1).count();
+    let b_choices = rows.iter().take(count).map(|row| {
+        let b = BigInt::parse_bytes(row["b_hex"].as_str().expect("b").as_bytes(),16)
+            .expect("b hex");
+        unit_orbit_windows::joint_choices_for_words(scalar_words_256(&b).expect("b words"))
+    }).collect::<Vec<_>>();
+    let (q_digit_seeds,q_terminal_seeds) =
+        unit_orbit_windows::joint_q_seed_pairs_for_choices(&b_choices);
     println!("{}",serde_json::json!({
+        "q_digit_seeds":q_digit_seeds,"q_terminal_seeds":q_terminal_seeds,
         "schema":1,"count":count,"steps_per_restart":23,
         "g_only":g_only,"q_only":q_only,"neither":neither,
         "both_digit":both_digit,"both_terminal":both_terminal,
@@ -149,6 +172,14 @@ pub(super) fn run_profile(fixture_path: &str, count: usize) {
 }
 
 pub(super) fn run_fused(fixture_path: &str, count: usize) {
+    run_fused_variant(fixture_path,count,false);
+}
+
+pub(super) fn run_fused_graph(fixture_path: &str, count: usize) {
+    run_fused_variant(fixture_path,count,true);
+}
+
+fn run_fused_variant(fixture_path: &str, count: usize, graph: bool) {
     let fixture: Value = serde_json::from_str(
         &std::fs::read_to_string(fixture_path).expect("read frozen fixture"))
         .expect("parse frozen fixture");
@@ -171,8 +202,13 @@ pub(super) fn run_fused(fixture_path: &str, count: usize) {
     let target_start = Instant::now();
     let b_choices = inputs.iter().map(|(_,b,_)|
         unit_orbit_windows::joint_choices_for_words(*b)).collect::<Vec<_>>();
-    let q_table = unit_orbit_windows::prepare_joint_q_sparse(
-        fixture["q_hex"].as_str().expect("Q"), &b_choices);
+    let (q_table,graph_edges,direct_seeds) = if graph {
+        unit_orbit_windows::prepare_joint_q_sparse_graph(
+            fixture["q_hex"].as_str().expect("Q"), &b_choices)
+    } else {
+        (unit_orbit_windows::prepare_joint_q_sparse(
+            fixture["q_hex"].as_str().expect("Q"), &b_choices),0,0)
+    };
     let target_preparation_ms = target_start.elapsed().as_secs_f64()*1000.0;
     let eval_start = Instant::now();
     let (answers,fused_pair_sums) = unit_orbit_windows::multiply_u256_tau_joint_fused_batch(
@@ -183,11 +219,13 @@ pub(super) fn run_fused(fixture_path: &str, count: usize) {
         assert_eq!(actual,expected,"rho fused joint case {index}");
     }
     let retained_bytes = generator_bytes + q_table.retained_bytes;
+    let mode = if graph { "joint_fused_graph" } else { "joint_fused" };
     println!("verified=1 count={count} online_ms={online_ms:.6} \
               target_preparation_ms={target_preparation_ms:.6} \
               restart_eval_ms={restart_eval_ms:.6} \
               generator_preparation_ms={generator_preparation_ms:.6} \
               retained_bytes={retained_bytes} constructed_q_points={} \
-              fused_pair_sums={fused_pair_sums} mode=joint_fused point={}",
+              graph_edges={graph_edges} direct_seeds={direct_seeds} \
+              fused_pair_sums={fused_pair_sums} mode={mode} point={}",
               q_table.constructed_points,answers.last().expect("nonempty"));
 }

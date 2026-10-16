@@ -190,6 +190,65 @@ pub(super) fn prepare_joint_q_sparse(
                          constructed_points: projective.len() }
 }
 
+// Build requested Q digits as a shared graph in the Eisenstein coefficient
+// lattice. Adjacent coefficients differ by Q or tau(Q), so a previously
+// constructed vertex needs one projective addition. Isolated vertices use
+// the original binary-power construction. Only requested vertices are held.
+pub(super) fn prepare_joint_q_sparse_graph(
+    q_hex: &str,
+    b_choices: &[[(usize,usize); ALT_SPLIT_PRIME_STEPS+1]],
+) -> (SparseJointQTables,usize,usize) {
+    let (digit_seeds,terminal_seeds) = &*JOINT_SEED_SETS;
+    let digit_ids = b_choices.iter().flat_map(|choices| choices[..ALT_SPLIT_PRIME_STEPS]
+        .iter().map(|&(index,_)| index)).filter(|&index| index != 0)
+        .collect::<std::collections::BTreeSet<_>>();
+    let terminal_ids = b_choices.iter().map(|choices| choices[ALT_SPLIT_PRIME_STEPS].0)
+        .filter(|&index| index != 0)
+        .collect::<std::collections::BTreeSet<_>>();
+    let seeds = digit_ids.iter().map(|&id| digit_seeds[id])
+        .chain(terminal_ids.iter().map(|&id| terminal_seeds[id]))
+        .collect::<std::collections::BTreeSet<_>>();
+    let (a_powers,b_powers) = joint_q_powers(q_hex);
+    let q = a_powers[0];
+    let tau_q = b_powers[0];
+    let mut negative_q = q;
+    negative_q.y = u256_sub(super::U256::ZERO,negative_q.y);
+    let mut negative_tau_q = tau_q;
+    negative_tau_q.y = u256_sub(super::U256::ZERO,negative_tau_q.y);
+    let mut graph = std::collections::BTreeMap::<(i16,i16),U256Jacobian>::new();
+    let (mut graph_edges,mut direct_seeds) = (0usize,0usize);
+    for &(a,b) in &seeds {
+        let neighbors = [((a-1,b),q),((a,b-1),tau_q),
+                         ((a+1,b),negative_q),((a,b+1),negative_tau_q)];
+        let point = if let Some((parent,step)) = neighbors.iter().find_map(|(key,step)|
+            graph.get(key).map(|parent| (*parent,*step))) {
+            graph_edges += 1;
+            parent.add_projective(step)
+        } else {
+            direct_seeds += 1;
+            joint_seed_point((a,b),&a_powers,&b_powers)
+        };
+        assert!(!point.is_identity());
+        graph.insert((a,b),point);
+    }
+    let projective = seeds.iter().map(|seed| graph[seed]).collect::<Vec<_>>();
+    let affine = joint_batch_into_affine(&projective);
+    let lookup = seeds.into_iter().zip(affine.into_iter())
+        .collect::<std::collections::BTreeMap<_,_>>();
+    let digit_window = digit_ids.into_iter().map(|id| {
+        (id,U256TwoXAffine::from_affine(lookup[&digit_seeds[id]]))
+    }).collect::<Vec<_>>().into_boxed_slice();
+    let terminal_pairs = terminal_ids.into_iter().map(|id| {
+        (id,lookup[&terminal_seeds[id]])
+    }).collect::<Vec<_>>().into_boxed_slice();
+    let retained_bytes = digit_window.len()*size_of::<(usize,U256TwoXAffine)>()
+        + terminal_pairs.len()*size_of::<(usize,U256Affine)>()
+        + size_of::<SparseJointQTables>();
+    (SparseJointQTables { digit_window,terminal_pairs,retained_bytes,
+                          constructed_points: projective.len() },
+     graph_edges,direct_seeds)
+}
+
 fn joint_choices(words: [u64; 4], tables: &AltHornerTables)
     -> [(usize,usize); ALT_SPLIT_PRIME_STEPS+1] {
     let scalar = super::Uint(words);
@@ -230,6 +289,19 @@ fn joint_choices(words: [u64; 4], tables: &AltHornerTables)
 pub(super) fn joint_choices_for_words(words: [u64; 4])
     -> [(usize,usize); ALT_SPLIT_PRIME_STEPS+1] {
     joint_choices(words, &ALT_HORNER_TABLES)
+}
+
+pub(super) fn joint_q_seed_pairs_for_choices(
+    b_choices: &[[(usize,usize);ALT_SPLIT_PRIME_STEPS+1]],
+) -> (Vec<(i16,i16)>,Vec<(i16,i16)>) {
+    let (digit_seeds,terminal_seeds) = &*JOINT_SEED_SETS;
+    let digit_ids = b_choices.iter().flat_map(|choices|
+        choices[..ALT_SPLIT_PRIME_STEPS].iter().map(|&(id,_)| id))
+        .filter(|&id| id != 0).collect::<std::collections::BTreeSet<_>>();
+    let terminal_ids = b_choices.iter().map(|choices| choices[ALT_SPLIT_PRIME_STEPS].0)
+        .filter(|&id| id != 0).collect::<std::collections::BTreeSet<_>>();
+    (digit_ids.into_iter().map(|id| digit_seeds[id]).collect(),
+     terminal_ids.into_iter().map(|id| terminal_seeds[id]).collect())
 }
 
 fn joint_evaluate_choices<Digit, Terminal>(

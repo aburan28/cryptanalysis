@@ -30,6 +30,8 @@ def run(binary, fixture, count, path, mode):
         'joint': '--pilot-rho-restart-joint',
         'joint_demand': '--pilot-rho-restart-joint-demand',
         'joint_fused': '--pilot-rho-restart-joint-fused',
+        'joint_graph': '--pilot-rho-restart-joint-graph',
+        'joint_fused_graph': '--pilot-rho-restart-joint-fused-graph',
     }[mode]
     argv = ([str(binary), command, 'openssl_nowarm', str(path), str(count)]
             if mode == 'openssl_nowarm' else
@@ -46,13 +48,16 @@ def run(binary, fixture, count, path, mode):
     assert float(fields['online_ms']) > 0
     if mode == 'openssl_nowarm':
         assert float(fields['openssl_warmup_ms']) == 0.0
-    if mode in ('joint_demand', 'joint_fused'):
+    if mode in ('joint_demand', 'joint_fused', 'joint_graph', 'joint_fused_graph'):
         assert int(fields['constructed_q_points']) >= 0
         assert abs(float(fields['online_ms'])
                    - float(fields['target_preparation_ms'])
                    - float(fields['restart_eval_ms'])) < 0.00001
-    if mode == 'joint_fused':
+    if mode in ('joint_fused', 'joint_fused_graph'):
         assert int(fields['fused_pair_sums']) >= 0
+    if mode in ('joint_graph', 'joint_fused_graph'):
+        assert (int(fields['graph_edges']) + int(fields['direct_seeds']) ==
+                int(fields['constructed_q_points']))
     return {'mode': mode, 'fixture_sha256': sha256(path.read_bytes()).hexdigest(),
             'count': count, 'point': fields['point'], 'stdout': result.stdout.strip()}
 
@@ -82,7 +87,8 @@ def main():
     with TemporaryDirectory(prefix='joint-q-batch-replay-') as temporary:
         root = Path(temporary)
         for count in (1, 128):
-            for mode in ('openssl_nowarm', 'joint', 'joint_demand', 'joint_fused'):
+            for mode in ('openssl_nowarm', 'joint', 'joint_demand', 'joint_fused',
+                         'joint_graph', 'joint_fused_graph'):
                 receipt['results'].append({'q_scalar': None,
                     **run(args.binary, frozen, count, root / 'frozen.json', mode)})
         for q_scalar in (1, 2, 3, 7):
@@ -93,7 +99,8 @@ def main():
                 rows.append({'a_hex': row['a_hex'], 'b_hex': row['b_hex'],
                              'point_hex': point_hex(add(mul(a, G), mul(b, q)))})
             fixture = {'q_hex': point_hex(q), 'cases': rows}
-            for mode in ('joint', 'joint_demand', 'joint_fused'):
+            for mode in ('joint', 'joint_demand', 'joint_fused', 'joint_graph',
+                         'joint_fused_graph'):
                 receipt['results'].append({'q_scalar': q_scalar,
                     **run(args.binary, fixture, 8, root / f'q{q_scalar}.json', mode)})
         neg_g = (G[0], (-G[1]) % P)
@@ -108,8 +115,9 @@ def main():
                 'a_hex': f'{a:x}', 'b_hex': f'{b:x}',
                 'point_hex': point_hex(add(mul(a, G), mul(b, q))),
             }]}
-            receipt['results'].append({'edge': name, **run(args.binary, fixture, 1,
-                root / f'{name}.json', 'joint_fused')})
+            for mode in ('joint_fused', 'joint_fused_graph'):
+                receipt['results'].append({'edge': name, **run(args.binary, fixture, 1,
+                    root / f'{name}.json', mode)})
     args.output.write_text(json.dumps(receipt, sort_keys=True, indent=2) + '\n')
     print(json.dumps({'ok': True, 'runs': len(receipt['results']),
                       'outputs': sum(item['count'] for item in receipt['results'])},

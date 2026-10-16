@@ -88,7 +88,7 @@ def main():
     fixture = json.loads((HERE / 'rho-restart-first128-fixture.json').read_text())
     assert len(fixture['cases']) >= 128
     boundary = ('OpenSSL nowarm times its first EC_POINT_mul(aG+bQ) and affine output; '
-                'its Q parsing and group setup are outside. Joint demand/fused exclude '
+                'its Q parsing and group setup are outside. Joint demand/graph/fused exclude '
                 'globally reusable G and canonical-seed preparation but include b recoding, '
                 'Q parsing/table construction, all a recoding, pair fusion where selected, '
                 'Horner evaluation, and affine output. Fixture parsing and process launch are outside.')
@@ -97,11 +97,16 @@ def main():
         expected = fixture['cases'][count - 1]['point_hex']
         ref = [str(BINARY), '--pilot-rho-restart', 'openssl_nowarm', paths['fixture'], str(count)]
         demand = [str(BINARY), '--pilot-rho-restart-joint-demand', paths['fixture'], str(count)]
+        graph = [str(BINARY), '--pilot-rho-restart-joint-graph', paths['fixture'], str(count)]
         fused = [str(BINARY), '--pilot-rho-restart-joint-fused', paths['fixture'], str(count)]
+        fused_graph = [str(BINARY), '--pilot-rho-restart-joint-fused-graph',
+                       paths['fixture'], str(count)]
         cases = []
         for name, candidate in (
-            ('cal_before', ref), ('compare_demand', demand), ('cal_mid', ref),
-            ('compare_fused', fused), ('cal_after', ref),
+            ('cal_before', ref), ('compare_demand', demand),
+            ('compare_graph', graph), ('cal_mid', ref),
+            ('compare_fused', fused), ('compare_fused_graph', fused_graph),
+            ('cal_after', ref),
         ):
             cases.append({'id': name, 'reference': ref, 'candidate': candidate,
                           'expected_fields': {'count': str(count)},
@@ -113,7 +118,7 @@ def main():
             'q_hex': fixture['q_hex'], 'fixture_sha256': hashes['fixture'],
             'repetitions': 16, 'aa_acceptance': [0.90, 1.11],
             'case_order': [case['id'] for case in cases],
-            'comparison_acceptance': ('all 16 pairs per comparison valid; three adjacent '
+            'comparison_acceptance': ('all 16 pairs per comparison valid; three bracketing '
                                       'OpenSSL A/A controls within [0.90,1.11]; paired '
                                       'bootstrap 95% log-ratio interval excludes one'),
             'timing_boundary': boundary, 'paths': paths, 'hashes': hashes,
