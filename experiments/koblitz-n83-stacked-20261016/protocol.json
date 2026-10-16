@@ -1,0 +1,320 @@
+{
+ "arms": {
+  "cP": {
+   "binary": "ic_online_stacked_r770",
+   "fold": false,
+   "kind": "ic_cold",
+   "role": "baseline: the probe-pipeline producer pP (lift_scan x Feistel + prefetched probes, 32-byte root table, unfolded index; koblitz-n83-probepipe-20261015, promoted by run 38822490448), cold with the verified cached factor-log table",
+   "table": "base"
+  },
+  "cS": {
+   "binary": "ic_online_stacked_r770",
+   "fold": true,
+   "kind": "ic_cold",
+   "role": "candidate: the stack, pP + 16-byte compact slots (koblitz-n83-tablefilter-20261015) + folded S3 root index (koblitz-n83-state-fold-20261015), cold with the cached table",
+   "table": "compact"
+  },
+  "cSF": {
+   "binary": "ic_online_stacked_r770",
+   "fold": true,
+   "kind": "ic_cold",
+   "role": "secondary (optional component): the stack plus the 32 MiB root filter (KIC_ROOT_TABLE=filter)",
+   "table": "filter"
+  },
+  "cSI": {
+   "binary": "ic_online_stacked_r770",
+   "fold": true,
+   "index_canon": "lift",
+   "kind": "ic_cold",
+   "role": "secondary (optional component): the stack with lift_scan canonicalizing the index build",
+   "table": "compact"
+  },
+  "cSX": {
+   "binary": "ic_online_stacked_r770",
+   "fold": true,
+   "kind": "ic_cold",
+   "plant": true,
+   "role": "planted positive control: cS plus the work the fold removes, redone and discarded (every mate's S3 solve and two canonicalizations in the build; every skipped state rescanned online into fold_audit_probes)",
+   "table": "compact"
+  },
+  "cSaa": {
+   "binary": "ic_online_stacked_r770",
+   "fold": true,
+   "kind": "ic_cold",
+   "role": "A/A control: a second process of cS",
+   "table": "compact"
+  },
+  "cSmF": {
+   "binary": "ic_online_stacked_r770",
+   "fold": false,
+   "kind": "ic_cold",
+   "role": "ablation: the stack minus the fold (compact slots, unfolded)",
+   "table": "compact"
+  },
+  "cSmS": {
+   "binary": "ic_online_stacked_r770",
+   "fold": true,
+   "kind": "ic_cold",
+   "role": "ablation: the stack minus the compact slots (32-byte table, folded)",
+   "table": "base"
+  },
+  "kP": {
+   "binary": "ic_online_stacked_r770",
+   "fold": false,
+   "kind": "ic_rank",
+   "rank_canon": "full",
+   "rank_order": "left_major",
+   "rank_probe": "off",
+   "role": "pP's rank stage as B runs it (32-byte table, unfolded, full scan, left-major, sequential probes), then one target with pP's online path",
+   "table": "base"
+  },
+  "kS": {
+   "binary": "ic_online_stacked_r770",
+   "fold": true,
+   "kind": "ic_rank",
+   "rank_canon": "lift",
+   "rank_order": "feistel",
+   "rank_probe": "target",
+   "role": "the stack's rank stage: lift_scan, Feistel order, the stack's own probe loop on the 16-byte table over the folded index, then one target",
+   "table": "compact"
+  },
+  "kSaa": {
+   "binary": "ic_online_stacked_r770",
+   "fold": true,
+   "kind": "ic_rank",
+   "rank_canon": "lift",
+   "rank_order": "feistel",
+   "rank_probe": "target",
+   "role": "A/A control: a second process of kS",
+   "table": "compact"
+  },
+  "kSmF": {
+   "binary": "ic_online_stacked_r770",
+   "fold": false,
+   "kind": "ic_rank",
+   "rank_canon": "lift",
+   "rank_order": "feistel",
+   "rank_probe": "target",
+   "role": "ablation: kS minus the fold",
+   "table": "compact"
+  },
+  "kSmS": {
+   "binary": "ic_online_stacked_r770",
+   "fold": true,
+   "kind": "ic_rank",
+   "rank_canon": "lift",
+   "rank_order": "feistel",
+   "rank_probe": "target",
+   "role": "ablation: kS minus the compact slots (prefetch pipeline on the 32-byte table)",
+   "table": "base"
+  },
+  "rT": {
+   "binary": "rho_tuned_r770",
+   "kind": "rho_tuned",
+   "role": "A's tuned rho rT770 (Fold/64/DP6), the strongest one-target rho at n=83, same points"
+  }
+ },
+ "controls_pass_rule": {
+  "aa": "E2E(kS + cS) / E2E(kSaa + cSaa) and cold cS / cSaa point estimates both inside [0.97, 1.03]",
+  "otherwise": "verdict invalid",
+  "planted": "cSX / cS ratio of mean cold totals, 95% bootstrap lower bound above 1"
+ },
+ "current_baseline": "the probe-pipeline producer pP (koblitz-n83-probepipe-20261015, run 38822490448), the last promoted producer whose rank stage is B's; the compact slots (run 38829449594) and the fold (run 38819494806) were each promoted on their own parent, never stacked or measured end to end",
+ "decision_rule": {
+  "improvement": "R lower bound > 1 (the stack becomes the new n=83 end-to-end cold baseline)",
+  "invalid": "any gate or control fails, or any scheduled row is missing (including time-guard skips)",
+  "not_separated": "otherwise",
+  "regression": "R upper bound < 1"
+ },
+ "design": {
+  "cold_arms": [
+   "cP",
+   "cS",
+   "cSaa",
+   "cSX",
+   "cSmF",
+   "cSmS",
+   "cSF",
+   "cSI",
+   "rT"
+  ],
+  "cold_points": 20,
+  "power_chosen_size": 4,
+  "process_model": "one point per process, fresh process per run, one pinned CPU, one runner",
+  "q0_arms": [
+   "cP",
+   "cS"
+  ],
+  "q0_point": [
+   "2655898345537166180532960",
+   "3881526307991673265292615"
+  ],
+  "rank_arms": [
+   "kP",
+   "kS",
+   "kSaa",
+   "kSmF",
+   "kSmS"
+  ],
+  "rank_blocks": [
+   {
+    "id": "K1",
+    "rank_seed": 101,
+    "unit": "s000"
+   },
+   {
+    "id": "K2",
+    "rank_seed": 102,
+    "unit": "s001"
+   }
+  ],
+  "rho_seed_base": 870000,
+  "runtime_estimate": "from run 38819494806 (state fold) and run 38829449594 (table filter): build about 10-15 min; cold segment about 270 s (cP 45-52 s, cSmF 45-50, cSX 40, cS, cSaa, cSmS, cSF 22-26 each, cSI 17-20, rT 3); rank block about 1,900 s (kP 800-900, kS, kSaa, kSmF, kSmS 220-300 each); total about 3 h, up to about 3.5 h on a slower runner",
+  "segment_order": [
+   "O1",
+   "C1",
+   "C2",
+   "C3",
+   "C4",
+   "K1",
+   "C5",
+   "C6",
+   "C7",
+   "C8",
+   "C9",
+   "C10",
+   "C11",
+   "C12",
+   "K2",
+   "C13",
+   "C14",
+   "C15",
+   "C16",
+   "C17",
+   "C18",
+   "C19",
+   "C20"
+  ],
+  "segment_upper_estimate_s": {
+   "C": 480,
+   "K": 2700,
+   "O": 300
+  },
+  "time_guard": "skip a segment (rows skipped_time_guard) if elapsed + its estimate exceeds 300 min",
+  "timeout_s": {
+   "ic_cold": 600,
+   "ic_rank": 2700,
+   "rho_tuned": 600
+  },
+  "within_segment_order": "random.Random(2026101600 + block).shuffle (C), random.Random(2026101700 + block) (K), random.Random(2026101800) (O)"
+ },
+ "frozen_at_utc": "2026-10-16T06:29:04+00:00",
+ "frozen_before_any_timing": true,
+ "gates": [
+  "every scheduled row valid (exit 0, verified, schedule match, no memory event)",
+  "every IC process: lift_scan, Feistel, prefetch; the arm's root-table layout with 2^27 slots unfolded and 2^26 folded; logical state count 29,880,000; stored 14,940,300 iff folded; 29,878,182 table entries; logical-state blake3 and table-map digests equal B's (online.index_digest); no root bloom; no filter-rejected key found",
+  "per point: one scalar across every IC process (cold and rank) and rT, replayed as [d]G = Q in the pinned oracle",
+  "per point: one relation (point indices) across every IC process on the point",
+  "per point: probes cP = cSmF (= kP, kSmF targets); probes cS = cSaa = cSX = cSmS = cSF = cSI (= kS, kSaa, kSmS targets) <= cP; probes cSX + fold_audit_probes(cSX) = cP",
+  "Q0 (O1): cP and cS give the archived Feistel relation and scalar; probes 1,988,184 (cP) and 1,987,852 (cS)",
+  "rank arms: full rank and the written factor-log table equal to B's archived table, log for log; per block, rank_relations_blake3 identical across kS, kSaa, kSmF, kSmS; per-attempt probes identical across kS, kSaa, kSmS and kSmF >= kS attempt by attempt"
+ ],
+ "kind": "n83-stacked-e2e-cold-tier1",
+ "multiplicity": "one primary statistic; every secondary is descriptive and never changes the verdict",
+ "online": {
+  "base": "snapshots/r770/experiments/koblitz-single-target-n83-20261006/base_n83_K600.jsonl",
+  "base_hash": "d4a4da26d6e7cb09367de922d9806631fe49989f70d378cae76f347f8d76a9f7",
+  "cold_interval": "producer's own clock: process start (main) .. recovery_check_end of the one target = setup_complete + the five online phases (cold_in_process_ms); in ic_cold the rank stage is skipped (verified cached table); the index digest runs after the target, outside every interval",
+  "cold_targets_file": "inputs/cold_targets.json (role stacked-cold-v1; disjoint from Q0, B's panel and every earlier n=83 panel of the law on main)",
+  "curve_id": "EC1N83Ce1h35c7ced6b497",
+  "factor_log_table": "../koblitz-single-target-n83-tier1-20261014/tier1_github_38523707244/precompute/factor_logs_n83_K600.json",
+  "factor_log_table_sha256": "a771716f284bb826e7407e1e7b5ef882409c9e7e1df8b8a3ed5b60b421d9f17e",
+  "index_digest": {
+   "logical_states": 29880000,
+   "logical_states_blake3": "baf46d5a34732aa2aeba1fc0ca4f57036e3c324ade0bf8791431c838fe15d7ec",
+   "source": "B's unfolded index, protocol.json of koblitz-n83-state-fold-20261015; reproduced here by cP and cS on Q0 (smoke/)",
+   "table_entries": 29878182,
+   "table_map_sum64": "be14a80705232396",
+   "table_map_xor64": "8132bdcfd619010f"
+  },
+  "online_interval": "target_query_begin .. recovery_check_end, five exclusive phases (unchanged)",
+  "orbit_columns": 600,
+  "q0_identity": {
+   "probes_folded": 1987852,
+   "probes_unfolded": 1988184,
+   "relation": [
+    77273,
+    22971,
+    54962,
+    62539
+   ],
+   "scalar": "3141592653589793",
+   "source": "inputs/archived_identities.json old17.q0 (run 38786433493); folded probes from koblitz-n83-state-fold-20261015 (Q0 smoke, cF) and smoke/ here"
+  },
+  "rank_interval": "timing_ms.rank_stage of an ic_rank process: the guided rank stage to full rank (query, PDP, relation check per attempt, echelon insert); its process's cold_in_process_ms also includes setup, linear algebra and one target",
+  "regular_states": 29880000,
+  "root_filter_log2_bits": 28,
+  "root_table_entries": 29878182,
+  "root_table_slots": {
+   "folded": 67108864,
+   "unfolded": 134217728
+  },
+  "sqrt_r": 92573139.235,
+  "stored_states_folded": 14940300,
+  "subgroup_order": "8569786107849059",
+  "tuned_rho_config": "snapshots/r770/research/n83_evaluation_20261012/optimization/selected_config.json"
+ },
+ "power": {
+  "chosen": 4,
+  "expected_ratio_under_prior": 3.201814015823025,
+  "file": "analysis/power.json",
+  "frozen_size": 20,
+  "min_delta": 1.15
+ },
+ "question": "Does the stacked n=83 K600 one-target IC producer (lift_scan x Feistel + prefetched probes + 16-byte compact root slots + folded S3 root index, with its rank stage on the same probe loop) lower the END-TO-END cold cost (setup + index build + rank stage + linear algebra + one-target online) of the current best, the probe-pipeline producer pP with its rank stage as B runs it, on new targets, with every relation, scalar and the factor-log table unchanged?",
+ "schema": 1,
+ "sources": {
+  "crypto_770f6a69": "770f6a6925a0d29b768bd79074f54a173e967fe7 (snapshots/r770 via ../koblitz-n83-reconcile-20261014/restore_sources.py)",
+  "fold_port": "koblitz-n83-state-fold-20261015 make_online_source.py FOLD_CODE and fold_edits, ported in make_online_source.py",
+  "local_sha256": {
+   "archived_identities": "7ed7e056e8d883378e4d4033ad9bf93acc84cb5441e6410fee70ac67cae258db",
+   "arm_wrapper": "cd18afb07860f98d5abd2165b986e6a36a6e24ff3d8c6268a1360210e3cd602a",
+   "cold_targets": "62948201c9ad3997d9bf5fff9408157b472b23f9975c7030f0e4fd6b474aa802",
+   "combined_derivation": "1a62eabf4a86417c5777fdc69ab2812eaea872b92031eb9ed60af2364ce15356",
+   "lift2_lib": "606b8a58d225e93d73d8b26ffaf4080250b0c12a37f8bbf782254fbcf5145463",
+   "lift2_lock": "739272e490c3b4956ce8320c55b3350fddff7ae7d2b619976a1f0eb96110746e",
+   "lift2_manifest": "77b04fcaa11a3f9f015619612b3e36c1f31a1b20d76116c929e5429e46dc271c",
+   "lift2_tests": "69561fbf09e2137ad1490d5795df54f6f9a5646aeebf3ecf12f1af55a495c566",
+   "log_table_check": "78d9297d9c17367ba15f30ea6507fa8f6edfe7b2cfafe0433bd83777c4dc2496",
+   "online_derivation": "a2011ef804becc5b01f3027cf47ec6f7cb154f510e468e2a261c66e09f830aab",
+   "online_lock": "0ea6fadd954d467da4f243f9627a9d315321b20f580b858f10f57ce14dec0725",
+   "online_manifest": "728828ed6d61ae10644eec54dd4ebf89dbce333378b1451090ffec01c52e73e1",
+   "power_check": "93855fa279f0ebf1ed857cfe00cb6456e4f583e1caedf14795bf0af4bf4c7351",
+   "power_prior": "19027858652e98711aa894a81431c25f4c23220a2044ba194e31b92651ba7fb7",
+   "power_prior_builder": "369c630ab902ddc601e4ae2daea8d1f5b40f9be4ea16fabd04c88593e874cc90",
+   "power_result": "cd9d5451ebdeeb80c4776a7bf29d2d2f87f06aa4e7553d7d954089841e16fd34",
+   "probepipe_derivation": "ce72f3e906d85c58ccc02b0e5d455e97c69c370e357162fbda166423ab8ce7f2",
+   "protocol_builder": "c67f83657953fbaae56ec9e8d38756c74308a2975fa2d1c8fd6d8f49de793ce0",
+   "receipt_verifier": "92acc36986c615889fa0f8b09e6e831ea4619457e0a765ae6674f08b05cfc721",
+   "schedule_builder": "1f358b9c927283f963fceaf5a5a3370a491a1930cd09e34b19b122cc0b308827",
+   "schedule_runner": "1f5614146acb450889763ad5b91089d31c1581e37a897f5ca02e25b0d903f6b0",
+   "tablefilter_derivation": "3b2aa83df4d1bf70a107464a0b7fdd1f8ac133683b23cf19dd22bfecf12095ab",
+   "targets_builder": "417b786f8eac319b000f6af8f3961e440dbf0254e2cb396bf788cfeeaf3d44bb"
+  },
+  "online_source_sha256": "83b589880e5bbd80b2dcf0debf7d20ab268877d4de409c71cf5da17b2f62563c",
+  "tablefilter_producer": "koblitz-n83-tablefilter-20261015 make_online_source.py (make_tablefilter_source.py here, verbatim with its two parents), output sha256 70233510e07a9e1858793502ed85080711cd3d8a1b0fa3357861fe20a32dba0c"
+ },
+ "statistics": {
+  "end_to_end_cold": "E2E(k, c) = mean over k's rank processes of timing_ms.rank_stage + mean over the cold points of cold_in_process_ms(c); the cold processes hold setup + online, the rank processes the rank stage, so E2E = setup + index build + rank stage + linear algebra + one-target online",
+  "primary": "R = E2E(kP, cP) / E2E(kS, cS), bootstrap: the cold points resampled (paired across arms) and, independently for each rank process, its attempts resampled (its non-attempt time kept), 10,000 draws, seed 20261016",
+  "primary_is": "the END-TO-END cold ratio; the online ratio is co-reported as a secondary and never decides",
+  "secondary": [
+   "online cP/cS (ratio of means and geometric means), cold without the rank stage, setup, index-build and peak-RSS ratios cP/cS",
+   "ablations: E2E(kSmF, cSmF)/E2E(kS, cS) and E2E(kSmS, cSmS)/E2E(kS, cS); online, cold-without-rank and setup cSmF/cS and cSmS/cS (the fold's online cost is cSmF/cS online < 1)",
+   "optional components: cS/cSF and cS/cSI (cold without rank, online, setup)",
+   "rank stage: kP/kS, kSmF/kS, kSmS/kS, kS/kSaa stage ratios and per-attempt cost ratios (bootstrap over attempts); each rank process's single-process end-to-end cold time",
+   "rho ms/step from rT; S = cost / (rho ms/step) / sqrt(r) for E2E cold, cold without rank and online, per arm; delta S cP to cS; E2E cold gap IC / rT (cold) and online gaps to rT"
+  ]
+ },
+ "success_criterion": "AGENTS.md 'Success criterion: iterative improvement of the index-calculus baseline'"
+}

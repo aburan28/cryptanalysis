@@ -1,0 +1,137 @@
+{
+ "bootstrap": 1000,
+ "chosen_panel_size": 4,
+ "deltas": [
+  1.1,
+  1.15,
+  1.25,
+  1.5
+ ],
+ "expected_e2e_ratio_under_prior": 3.201814015823025,
+ "expected_ms": {
+  "pP_cold": 41819.74400809085,
+  "pP_rank_stage": 757179.5770055,
+  "stack_cold": 21891.251917249618,
+  "stack_rank_stage": 227654.57337585642
+ },
+ "min_delta": 1.15,
+ "model": "Power of the frozen primary before freezing (`analysis/power.json`).\n\nPrior: `inputs/power_prior.json` (run 38819494806's 16 cold points and four\nrank-stage processes, plus three measured online factors from main's runs).\n\nModel of one simulated experiment with N cold points and B = 2 rank blocks:\n\n* baseline pP, per point: cold = a setup drawn from the unfolded cB setups\n  + that point's cB online time / 1.4001 (the probe pipeline); rank stage per\n  block = the sum of 600 attempts drawn from B's kB attempts (pP's rank stage\n  is B's, on the 32-byte table, unchanged);\n* stack, per point: cold = a setup drawn from the folded cF setups / 1.0364\n  (16-byte slots, setup) / k + the same point's pP online time / 0.9490 (the\n  fold's online cost) / 1.0581 (the slots' online gain); rank stage per\n  block = the sum of 600 attempts drawn from the folded lift + Feistel kN\n  attempts / (1.4001 x 1.0581) / k (the pipeline and the slots on the rank\n  scan; kN already has the fold);\n* k = 1 is the prior's expected stack; for a power curve k is chosen so\n  that the expected end-to-end ratio equals delta;\n* an A/A stack arm repeats the stack: independent setup draws, and the\n  same rank attempts (the same rank seeds give the same attempt sequence)\n  with lognormal timing noise sigma 0.01 per rank process.\n\nPer simulated experiment: the frozen statistic R = E2E(pP) / E2E(stack),\nE2E = mean rank stage + mean cold, with its bootstrap (points resampled with\nreplacement, attempts resampled within each rank process), BOOT draws here\n(10,000 in the verifier), and the A/A gate (point estimate inside\n[0.97, 1.03]). Power = P(lower bound > 1 and A/A passes). The chosen size is\nthe smallest size in SIZES with power - 2 MC SE >= 0.80 at MIN_DELTA.\n\nMIN_DELTA = 1.15. The rank stage dominates both arms' end-to-end cost and\neach arm has two rank processes, so the attempt-level variance of the rank\nstage, not the number of points, limits the resolution (a third block was\nsimulated: power at 1.15 rose from about 0.91 to 0.95 for about 32 more\nminutes of runner time, so it was not added). The prior's own expected\nratio (`expected_e2e_ratio_under_prior`) is far above MIN_DELTA; every\ncomponent of the stack was already promoted separately, so the question\nhere is the size of the end-to-end move, not whether a 5% effect exists.\n\nA secondary power figure: the fold's online cost inside the stack (online\nstack-minus-fold / stack, expected 0.949), as a paired per-point online\nratio with lognormal process noise sigma 0.02 per arm: P(the 95% interval\nexcludes 1).",
+ "numpy": "2.5.3",
+ "power": {
+  "1.15@12": {
+   "k": 0.35886449120527975,
+   "mc_se": 0.01679506100239217,
+   "power": 0.9066666666666666
+  },
+  "1.15@16": {
+   "k": 0.35886449120527975,
+   "mc_se": 0.01876166303929372,
+   "power": 0.88
+  },
+  "1.15@20": {
+   "k": 0.35886449120527975,
+   "mc_se": 0.014401645996461909,
+   "power": 0.9333333333333333
+  },
+  "1.15@4": {
+   "k": 0.35886449120527975,
+   "mc_se": 0.017060893120645067,
+   "power": 0.9033333333333333
+  },
+  "1.15@8": {
+   "k": 0.35886449120527975,
+   "mc_se": 0.01679506100239217,
+   "power": 0.9066666666666666
+  },
+  "1.1@12": {
+   "k": 0.3432545398757187,
+   "mc_se": 0.02855533938526046,
+   "power": 0.5733333333333334
+  },
+  "1.1@16": {
+   "k": 0.3432545398757187,
+   "mc_se": 0.028722813232690145,
+   "power": 0.55
+  },
+  "1.1@20": {
+   "k": 0.3432545398757187,
+   "mc_se": 0.027874719729532708,
+   "power": 0.63
+  },
+  "1.1@4": {
+   "k": 0.3432545398757187,
+   "mc_se": 0.028116161162550595,
+   "power": 0.6133333333333333
+  },
+  "1.1@8": {
+   "k": 0.3432545398757187,
+   "mc_se": 0.028396009109262755,
+   "power": 0.59
+  },
+  "1.25@12": {
+   "k": 0.3900863441602812,
+   "mc_se": 0.0,
+   "power": 1.0
+  },
+  "1.25@16": {
+   "k": 0.3900863441602812,
+   "mc_se": 0.0,
+   "power": 1.0
+  },
+  "1.25@20": {
+   "k": 0.3900863441602812,
+   "mc_se": 0.0033277731404159692,
+   "power": 0.9966666666666667
+  },
+  "1.25@4": {
+   "k": 0.3900863441602812,
+   "mc_se": 0.0033277731404159692,
+   "power": 0.9966666666666667
+  },
+  "1.25@8": {
+   "k": 0.3900863441602812,
+   "mc_se": 0.0,
+   "power": 1.0
+  },
+  "1.5@12": {
+   "k": 0.4681523551691448,
+   "mc_se": 0.0,
+   "power": 1.0
+  },
+  "1.5@16": {
+   "k": 0.4681523551691448,
+   "mc_se": 0.0,
+   "power": 1.0
+  },
+  "1.5@20": {
+   "k": 0.4681523551691448,
+   "mc_se": 0.0,
+   "power": 1.0
+  },
+  "1.5@4": {
+   "k": 0.4681523551691448,
+   "mc_se": 0.0,
+   "power": 1.0
+  },
+  "1.5@8": {
+   "k": 0.4681523551691448,
+   "mc_se": 0.0,
+   "power": 1.0
+  }
+ },
+ "schema": 1,
+ "secondary_fold_online_cost_power": {
+  "16": 1.0,
+  "20": 1.0,
+  "8": 0.9766666666666667
+ },
+ "seed": 2026101601,
+ "simulations": 300,
+ "sizes": [
+  4,
+  8,
+  12,
+  16,
+  20
+ ]
+}
