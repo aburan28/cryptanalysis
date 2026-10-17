@@ -1,0 +1,82 @@
+warning: failed to query latest release, using existing version 'leanprover/lean4:v4.34.1'
+experiments/prime-j0-nearest-digit-12211-20261014/SplitPrime12211NearestDigits.lean:44:4: error: No goals to be solved
+experiments/prime-j0-nearest-digit-12211-20261014/SplitPrime12211NearestDigits.lean:53:12: error(lean.unknownIdentifier): Unknown identifier `le_trans`
+experiments/prime-j0-nearest-digit-12211-20261014/SplitPrime12211NearestDigits.lean:64:14: error(lean.unknownIdentifier): Unknown identifier `le_trans`
+experiments/prime-j0-nearest-digit-12211-20261014/SplitPrime12211NearestDigits.lean:74:17: warning: This simp argument is unused:
+  hcs
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+experiments/prime-j0-nearest-digit-12211-20261014/SplitPrime12211NearestDigits.lean:84:2: error: omega could not prove the goal:
+a possible counterexample may satisfy the constraints
+  c ≥ 0
+  1 ≤ a + 112*b - c - 12211*d ≤ 12210
+where
+ a := q.fst
+ b := q.snd
+ c := ↑r
+ d := (q.fst + 112 * q.snd - ↑r) / 12211
+experiments/prime-j0-nearest-digit-12211-20261014/SplitPrime12211NearestDigits.lean:113:15: error: unknown tactic
+experiments/prime-j0-nearest-digit-12211-20261014/SplitPrime12211NearestDigits.lean:111:89: error: unsolved goals
+r : Nat
+p : Int × Int
+ps : List (Int × Int)
+hcs : candidates r = p :: ps
+hall : ∀ (q : Int × Int), q ∈ p :: ps → (q.fst + 112 * q.snd - ↑r) % 12211 = 0
+q : Int × Int
+qs : List (Int × Int)
+ih :
+  ∀ (init : Int × Int),
+    (init.fst + 112 * init.snd - ↑r) % 12211 = 0 →
+      (∀ (q : Int × Int), q ∈ qs → (q.fst + 112 * q.snd - ↑r) % 12211 = 0) →
+        ((List.foldl pick init qs).fst + 112 * (List.foldl pick init qs).snd - ↑r) % 12211 = 0
+init : Int × Int
+hinit : (init.fst + 112 * init.snd - ↑r) % 12211 = 0
+hrest : ∀ (q_1 : Int × Int), q_1 ∈ q :: qs → (q_1.fst + 112 * q_1.snd - ↑r) % 12211 = 0
+hpick :
+  (pick init q).fst + 112 * (pick init q).snd =
+    if nrm init.fst init.snd ≤ nrm q.fst q.snd then init.fst + 112 * init.snd else q.fst + 112 * q.snd
+hq : (q.fst + 112 * q.snd - ↑r) % 12211 = 0
+⊢ ((if nrm init.fst init.snd ≤ nrm q.fst q.snd then init.fst + 112 * init.snd else q.fst + 112 * q.snd) - ↑r) % 12211 =
+    0
+experiments/prime-j0-nearest-digit-12211-20261014/SplitPrime12211NearestDigits.lean:104:23: error: unsolved goals
+case cons
+r : Nat
+p : Int × Int
+ps : List (Int × Int)
+hcs : candidates r = p :: ps
+hall : ∀ (q : Int × Int), q ∈ p :: ps → (q.fst + 112 * q.snd - ↑r) % 12211 = 0
+q : Int × Int
+qs : List (Int × Int)
+ih :
+  ∀ (init : Int × Int),
+    (init.fst + 112 * init.snd - ↑r) % 12211 = 0 →
+      (∀ (q : Int × Int), q ∈ qs → (q.fst + 112 * q.snd - ↑r) % 12211 = 0) →
+        ((List.foldl pick init qs).fst + 112 * (List.foldl pick init qs).snd - ↑r) % 12211 = 0
+init : Int × Int
+hinit : (init.fst + 112 * init.snd - ↑r) % 12211 = 0
+hrest : ∀ (q_1 : Int × Int), q_1 ∈ q :: qs → (q_1.fst + 112 * q_1.snd - ↑r) % 12211 = 0
+hpick :
+  (pick init q).fst + 112 * (pick init q).snd =
+    if nrm init.fst init.snd ≤ nrm q.fst q.snd then init.fst + 112 * init.snd else q.fst + 112 * q.snd
+hq : (q.fst + 112 * q.snd - ↑r) % 12211 = 0
+hi : ((pick init q).fst + 112 * (pick init q).snd - ↑r) % 12211 = 0
+⊢ ((List.foldl pick (pick init q) qs).fst + 112 * (List.foldl pick (pick init q) qs).snd - ↑r) % 12211 = 0
+experiments/prime-j0-nearest-digit-12211-20261014/SplitPrime12211NearestDigits.lean:91:14: error: unsolved goals
+case cons
+r : Nat
+p : Int × Int
+ps : List (Int × Int)
+hcs : candidates r = p :: ps
+hall : ∀ (q : Int × Int), q ∈ p :: ps → (q.fst + 112 * q.snd - ↑r) % 12211 = 0
+hfold :
+  ∀ (init : Int × Int),
+    (init.fst + 112 * init.snd - ↑r) % 12211 = 0 →
+      ∀ (rest : List (Int × Int)),
+        (∀ (q : Int × Int), q ∈ rest → (q.fst + 112 * q.snd - ↑r) % 12211 = 0) →
+          ((List.foldl pick init rest).fst + 112 * (List.foldl pick init rest).snd - ↑r) % 12211 = 0
+⊢ ((match p :: ps with
+            | [] => (0, 0)
+            | p :: ps => List.foldl pick p ps).

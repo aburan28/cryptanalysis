@@ -1,0 +1,15 @@
+warning: failed to query latest release, using existing version 'leanprover/lean4:v4.34.1'
+experiments/prime-j0-nearest-digit-12211-20261014/SplitPrime12211NearestDigits.lean:15:41: error: unexpected token 'by'; expected ']'
+experiments/prime-j0-nearest-digit-12211-20261014/SplitPrime12211NearestDigits.lean:23:50: error: Tactic `decide` failed for proposition
+  (List.range 6106).all boundCheck = true
+because its `Decidable` instance
+  instDecidableEqBool ((List.range 6106).all boundCheck) true
+did not reduce to `isTrue` or `isFalse`.
+
+After unfolding the instances `instDecidableEqBool` and `Bool.decEq`, reduction got stuck at the `Decidable` instance
+  match (List.range 6106).all boundCheck, true with
+  | false, false => isTrue ⋯
+  | false, true => isFalse ⋯
+  | true, false => isFalse ⋯
+  | true, true => isTrue ⋯
+'SplitPrime12211NearestDigits.all_residues_have_small_candidate' depends on axioms: [sorryAx]
