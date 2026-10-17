@@ -22,6 +22,10 @@ point comes from the claimed seed. Raw S3 objects and any RDS collision receipt
 must be retained for independent seed replay before claiming a result. The
 join token should be given to identified contributors; an anonymous open
 upload endpoint would allow false points to pollute the shared table.
+The [admission and scale plan](ADMISSION-AND-SCALE.md) specifies the missing
+website-issued per-contributor API keys, quotas, post-commit random seed audits, queue,
+backpressure and measured load gates. The current optional ingester does not
+enforce those gates, so do not start it for an open or large contributor pool.
 The [activation and device-validation problem](../../../problems/ecc2k130-public-gateway-activation.md)
 tracks the remaining live rollout gate.
 
@@ -123,7 +127,7 @@ large fleet.
 cd ecc2k130/runner/public
 docker compose up -d gateway ingress
 curl --fail https://ecc2k130.example.org/health
-# After a controlled end-to-end upload and RDS contract check:
+# For a bounded, trusted device test only, after a controlled upload and RDS check:
 python3 deploy/enable_ingest.py \
   --db-host rho-dp.cxqyicswioh8.us-west-2.rds.amazonaws.com --start
 ```
@@ -143,7 +147,7 @@ collisions in `collision_records`; a collision is a replay task, not a solved
 scalar. A separate resolver from the campaign's `crypto` source must perform
 seed re-walk and coefficient recovery.
 
-## Contributor command
+## Contributor command for the current invited device test
 
 On Linux amd64 with an NVIDIA driver supporting CUDA 13.3 and a GPU at
 `sm_80` or newer, give each GPU its own persistent host directory:
@@ -166,11 +170,17 @@ to flush and triggers a final upload. A new container with the same `/data`
 resumes its run. If local state is lost, keep the gateway's record and
 checkpoint for recovery; do not delete the registry assignment or start that
 ID again from zero. The join token is only needed at first registration.
+The intended public flow is a key generated on the ECC Challenges website and
+passed to this container at runtime through a read-only secret file. The
+current v0.1.0 image does not implement that flow; its shared join token is
+limited to an invited device test. See the [site-key contract](ADMISSION-AND-SCALE.md#admit-untrusted-contributors).
 
 The client requires HTTPS outside localhost. The gateway requires a join
 token, uses per-run bearer tokens, bounds upload sizes, and never gives AWS
 or RDS credentials to contributors. Invitation, rate limiting at ingress,
-storage quota monitoring, and seed-replay review remain operator duties.
+storage quota monitoring, and seed-replay review remain operator duties. The
+current client keeps walking while an upload is rejected or delayed; a fleet
+ramp needs explicit checkpoint-and-pause backpressure behavior.
 
 ## Verification boundaries
 
