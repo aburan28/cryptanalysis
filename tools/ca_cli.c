@@ -10,7 +10,7 @@
  *   ca volcano --p P --a A --b B [--order N] [--ell 2|3] [--seed S] [--trials T]
  *            [--per-level L] [--controls C] [--radius R] [--threads T]
  *            [--no-negation] [--automorphisms] [--diagram FILE] [--trials-out FILE]
- *            [--census-out FILE] [--edges-out FILE]
+ *            [--census-out FILE] [--edges-out FILE] [--ks K1,K2,...]
  *            one ECDLP instance carried by Velu isogenies to every curve of
  *            the l-volcano; rho on each; min / mean / max per curve and level
  *   ca curve --name NAME | (--group ec --p P --a A --b B [--order N]) | --list
@@ -166,7 +166,7 @@ static _Noreturn void usage(void)
         "  version | factor N | prime N | ec-order --p P --a A --b B | gpu-info\n"
         "  volcano --p P --a A --b B [--order N] [--ell 2|3] [--seed S] [--trials T]\n"
         "        [--per-level L] [--controls C] [--automorphisms] [--diagram FILE]\n"
-        "        [--trials-out FILE] [--census-out FILE] [--edges-out FILE]\n"
+        "        [--trials-out FILE] [--census-out FILE] [--edges-out FILE] [--ks K1,K2,..]\n"
         "  gen   --group zp|ec --p P [--a A --b B] [--order N] [--x X] [--seed S]\n"
         "  solve --alg bsgs|rho|kangaroo|grumpy|precomp|glv|dlog|gpu-rho --group zp|ec --p P [--a "
         "A "
@@ -1514,6 +1514,37 @@ static int cmd_volcano(void)
      * carried to them.  Edge lines are re-derived from each vertex's own model
      * (kernels and Velu codomain) and matched to a vertex by j. */
     const char *cpath = opt("--census-out"), *epath = opt("--edges-out");
+    /* --ks: scalars whose multiples [k]P are carried by the same tree (census hk). */
+    uint64_t ks[64];
+    size_t nks = 0;
+    uint64_t (*Wk)[4] = NULL;
+    const char *kslist = opt("--ks");
+    if (kslist && cpath) {
+        for (const char *c = kslist; *c && nks < 64;) {
+            char *end;
+            ks[nks++] = strtoull(c, &end, 10);
+            if (end == c) die("--ks takes decimal scalars separated by commas");
+            c = *end == ',' ? end + 1 : end;
+        }
+        Wk = malloc((size_t)vo.count * nks * sizeof(*Wk));
+        if (!Wk) die("out of memory");
+        for (size_t q = 0; q < nks; q++) {
+            ca_elem Qk;
+            ca_group_mul(&g0, &Qk, &P, ks[q], NULL);
+            ca_group_decode(&g0, Wk[q], &Qk);
+        }
+        for (uint32_t i = 1; i < vo.count; i++) {
+            const ca_volcano_vertex *v = &vo.v[i], *u = &vo.v[v->parent];
+            for (size_t q = 0; q < nks; q++) {
+                uint64_t out[3];
+                ca_velu_map(p, u->a, u->b, ell, v->kernel_x, Wk[(size_t)v->parent * nks + q], out);
+                Wk[(size_t)i * nks + q][0] = out[0];
+                Wk[(size_t)i * nks + q][1] = out[1];
+                Wk[(size_t)i * nks + q][2] = out[2];
+                Wk[(size_t)i * nks + q][3] = 0;
+            }
+        }
+    }
     if (cpath) {
         FILE *cf = fopen(cpath, "w");
         if (!cf) die("cannot open --census-out");
@@ -1553,7 +1584,15 @@ static int cmd_volcano(void)
                         ca_mulmod(ca_mulmod(u3, u3, p), v->b, p), ca_mulmod(u2, W[i][0], p),
                         ca_mulmod(u3, W[i][1], p), ca_mulmod(u2, wn[0], p), ca_mulmod(u3, wn[1], p));
             }
-            fprintf(cf, "]}\n");
+            fprintf(cf, "]");
+            if (Wk) {
+                fprintf(cf, ",\"hk\":[");
+                for (size_t q = 0; q < nks; q++)
+                    fprintf(cf, "%s\"%" PRIu64 ",%" PRIu64 "\"", q ? "," : "",
+                            Wk[(size_t)i * nks + q][0], Wk[(size_t)i * nks + q][1]);
+                fprintf(cf, "]");
+            }
+            fprintf(cf, "}\n");
         }
         fclose(cf);
     }
@@ -1898,6 +1937,7 @@ static int cmd_volcano(void)
     free(arms);
     free(found);
     free(W);
+    free(Wk);
     ca_volcano_free(&vo);
     if (wrong) {
         fprintf(stderr, "error: %zu rho solves returned no or the wrong logarithm\n", wrong);

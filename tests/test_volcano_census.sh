@@ -8,7 +8,7 @@ D=$(mktemp -d)
 trap 'rm -rf "$D"' EXIT
 "$CA" volcano --p 146833024135393 --a 14391545271884 --b 141956518099848 --ell 2 \
     --radius 8 --max-vertices 1000 --trials 1 --per-level 0 --controls 0 \
-    --census-out "$D/v.jsonl" --edges-out "$D/e.jsonl" > "$D/r.json"
+    --ks 5,7 --census-out "$D/v.jsonl" --edges-out "$D/e.jsonl" > "$D/r.json"
 test "$(wc -l < "$D/v.jsonl")" -eq 30
 for lv in 0:2 1:4 2:8 3:16; do
     l=${lv%%:*}; c=${lv##*:}
@@ -19,6 +19,7 @@ done
 test "$(grep -c '"tree":true' "$D/e.jsonl")" -eq 29
 test "$(grep -c '"model_match":true' "$D/e.jsonl")" -eq 29
 test "$(grep -c '"to":-1' "$D/e.jsonl")" -eq 0
+grep -q '"hk":\["' "$D/v.jsonl"
 grep -q '"controls":\[{"u":' "$D/v.jsonl"
 grep -q '"edges_verified":29' "$D/r.json"
 echo ok
