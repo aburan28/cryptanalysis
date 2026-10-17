@@ -9,7 +9,7 @@
  *   ca gpu-info
  *   ca volcano --p P --a A --b B [--order N] [--ell 2|3] [--seed S] [--trials T]
  *            [--per-level L] [--controls C] [--radius R] [--threads T]
- *            [--no-negation] [--diagram FILE] [--trials-out FILE]
+ *            [--no-negation] [--automorphisms] [--diagram FILE] [--trials-out FILE]
  *            one ECDLP instance carried by Velu isogenies to every curve of
  *            the l-volcano; rho on each; min / mean / max per curve and level
  *   ca curve --name NAME | (--group ec --p P --a A --b B [--order N]) | --list
@@ -164,7 +164,8 @@ static _Noreturn void usage(void)
         "        --check [--kat F] checks the selected backend (KAT: cuda only)\n"
         "  version | factor N | prime N | ec-order --p P --a A --b B | gpu-info\n"
         "  volcano --p P --a A --b B [--order N] [--ell 2|3] [--seed S] [--trials T]\n"
-        "        [--per-level L] [--controls C] [--diagram FILE] [--trials-out FILE]\n"
+        "        [--per-level L] [--controls C] [--automorphisms] [--diagram FILE]\n"
+        "        [--trials-out FILE]\n"
         "  gen   --group zp|ec --p P [--a A --b B] [--order N] [--x X] [--seed S]\n"
         "  solve --alg bsgs|rho|kangaroo|grumpy|precomp|glv|dlog|gpu-rho --group zp|ec --p P [--a "
         "A "
@@ -1388,6 +1389,7 @@ typedef struct varm {
     uint64_t P[4], Q[4];
     double *ops, *secs;
     size_t n;
+    uint32_t aut_order; /* > 0: solved by the automorphism-folded rho (ca_curve_solve) */
 } varm;
 
 static void table_row(const char *name, const char *lv, vstat o, vstat s)
@@ -1496,7 +1498,8 @@ static int cmd_volcano(void)
     }
 
     /* Arms: the root, up to per_level curves of each level, the controls. */
-    size_t cap = 1 + (depth + 1) * per_level + controls, na = 0;
+    int with_aut = flag("--automorphisms");
+    size_t cap = 2 * (1 + (depth + 1) * per_level) + controls, na = 0;
     varm *arms = calloc(cap, sizeof(*arms));
     if (!arms) die("out of memory");
     uint32_t *found = calloc(depth + 1, sizeof(*found));
@@ -1539,6 +1542,20 @@ static int cmd_volcano(void)
         m->Q[1] = ca_mulmod(u3, W[0][5], p);
     }
 
+    /* --automorphisms: every curve with automorphisms beyond negation (j = 0
+     * or 1728, compatible n) also runs the folded rho of ca_curve_solve on
+     * the same instance, beside its plain negation-map rho. */
+    for (size_t i = 0, base_arms = na; with_aut && i < base_arms && na < cap; i++) {
+        ca_curve_info ci;
+        if (arms[i].vertex < 0 || ca_curve_detect(p, arms[i].a, arms[i].b, n, &ci) != CA_OK ||
+            ci.endo == CA_CURVE_ENDO_NONE || !ci.lambda)
+            continue;
+        varm *m = &arms[na++];
+        *m = arms[i];
+        snprintf(m->label, sizeof(m->label), "%.18s+aut", arms[i].label);
+        m->aut_order = ci.aut_order;
+    }
+
     /* Rho: trial-major, so every curve sees the same seeds in turn. */
     ca_rho_params rp;
     ca_rho_params_default(&rp);
@@ -1553,8 +1570,10 @@ static int cmd_volcano(void)
         arms[i].ops = calloc(trials, sizeof(double));
         arms[i].secs = calloc(trials, sizeof(double));
         if (!arms[i].ops || !arms[i].secs) die("out of memory");
-        if (ca_group_ec_init(&gs[i], p, arms[i].a, arms[i].b, n) != CA_OK ||
-            !ca_group_encode(&gs[i], &eP[i], arms[i].P) ||
+        ca_status gi = arms[i].aut_order ? ca_curve_group(&gs[i], p, arms[i].a, arms[i].b, n, NULL)
+                                         : ca_group_ec_init(&gs[i], p, arms[i].a, arms[i].b, n);
+        if (arms[i].aut_order && !gs[i].endo_kind) die("internal: automorphism not enabled");
+        if (gi != CA_OK || !ca_group_encode(&gs[i], &eP[i], arms[i].P) ||
             !ca_group_encode(&gs[i], &eQ[i], arms[i].Q))
             die("internal: an instance is not on its curve");
     }
@@ -1576,7 +1595,8 @@ static int cmd_volcano(void)
         for (size_t i = 0; i < na; i++) {
             ca_stats st = {0};
             uint64_t x = 0;
-            rc = ca_rho_solve(&gs[i], &eP[i], &eQ[i], &rp, &x, &st);
+            rc = arms[i].aut_order ? ca_curve_solve(&gs[i], &eP[i], &eQ[i], rp.seed, &x, NULL, &st)
+                                   : ca_rho_solve(&gs[i], &eP[i], &eQ[i], &rp, &x, &st);
             if (rc != CA_OK || x != k) wrong++;
             arms[i].ops[t] = (double)st.group_ops;
             arms[i].secs[t] = st.seconds;
@@ -1591,7 +1611,7 @@ static int cmd_volcano(void)
     if (tf) fclose(tf);
 
     /* Pools: by level (isogenous curves), all isogenous, controls. */
-    size_t npool = depth + 3;
+    size_t npool = depth + 4; /* levels, all isogenous, controls, automorphism arms */
     double **pops = calloc(npool, sizeof(*pops)), **psec = calloc(npool, sizeof(*psec));
     size_t *pn = calloc(npool, sizeof(*pn)), *pc = calloc(npool, sizeof(*pc));
     if (!pops || !psec || !pn || !pc) die("out of memory");
@@ -1602,7 +1622,9 @@ static int cmd_volcano(void)
     }
     for (size_t i = 0; i < na; i++) {
         size_t pools[2], np = 0;
-        if (arms[i].vertex < 0) {
+        if (arms[i].aut_order) {
+            pools[np++] = depth + 3;
+        } else if (arms[i].vertex < 0) {
             pools[np++] = depth + 2;
         } else {
             pools[np++] = depth + 1;
@@ -1635,11 +1657,15 @@ static int cmd_volcano(void)
            na * trials, wrong, wall, sqrt(pi * (double)n / (rp.negation_map ? 4.0 : 2.0)));
     for (size_t i = 0; i < na; i++) {
         printf("%s{\"arm\":\"%s\",\"vertex\":%" PRId32 ",\"level\":%" PRId32
-               ",\"kind\":\"%s\",\"a\":%" PRIu64 ",\"b\":%" PRIu64 ",\"j\":%" PRIu64
-               ",\"g\":\"%" PRIu64 ",%" PRIu64 "\",\"h\":\"%" PRIu64 ",%" PRIu64 "\",",
+               ",\"kind\":\"%s\",\"aut_order\":%" PRIu32 ",\"a\":%" PRIu64 ",\"b\":%" PRIu64
+               ",\"j\":%" PRIu64 ",\"g\":\"%" PRIu64 ",%" PRIu64 "\",\"h\":\"%" PRIu64 ",%" PRIu64
+               "\",",
                i ? "," : "", arms[i].label, arms[i].vertex, arms[i].level,
-               arms[i].vertex < 0 ? "isomorphic-control" : "isogenous", arms[i].a, arms[i].b,
-               arms[i].j, arms[i].P[0], arms[i].P[1], arms[i].Q[0], arms[i].Q[1]);
+               arms[i].aut_order    ? "automorphism-folded"
+               : arms[i].vertex < 0 ? "isomorphic-control"
+                                    : "isogenous",
+               arms[i].aut_order ? arms[i].aut_order : 2, arms[i].a, arms[i].b, arms[i].j,
+               arms[i].P[0], arms[i].P[1], arms[i].Q[0], arms[i].Q[1]);
         print_vstat("ops", vstats(arms[i].ops, arms[i].n));
         printf(",");
         print_vstat("seconds", vstats(arms[i].secs, arms[i].n));
@@ -1664,7 +1690,28 @@ static int cmd_volcano(void)
     print_vstat("ops", vstats(pops[depth + 2], pn[depth + 2]));
     printf(",");
     print_vstat("seconds", vstats(psec[depth + 2], pn[depth + 2]));
-    printf("}}\n");
+    printf("}");
+    if (pn[depth + 3]) {
+        /* Speed-up of the folded arms over the plain isogenous arms, mean
+         * over mean, with a delta-method 95% interval; prediction
+         * sqrt(aut_order / 2) beyond the negation map both arms use. */
+        vstat va = vstats(pops[depth + 3], pn[depth + 3]);
+        vstat vi = vstats(pops[depth + 1], pn[depth + 1]);
+        double r = vi.mean / va.mean;
+        double rel = sqrt(pow(va.ci95 / va.mean, 2) + pow(vi.ci95 / vi.mean, 2));
+        uint32_t ao = 0;
+        for (size_t i = 0; i < na; i++)
+            if (arms[i].aut_order) ao = arms[i].aut_order;
+        printf(",\"automorphism\":{\"curves\":%zu,\"solves\":%zu,\"aut_order\":%" PRIu32 ",",
+               pc[depth + 3], pn[depth + 3], ao);
+        print_vstat("ops", va);
+        printf(",");
+        print_vstat("seconds", vstats(psec[depth + 3], pn[depth + 3]));
+        printf(",\"ops_speedup_vs_isogenous\":%.4f,\"ops_speedup_ci95_half\":%.4f,"
+               "\"predicted\":%.4f}",
+               r, r * rel, sqrt(ao / (rp.negation_map ? 2.0 : 1.0)));
+    }
+    printf("}\n");
 
     fprintf(stderr, "%-10s%6s%12s%12s%12s%11s\n", "curve", "level", "min ops", "mean ops",
             "max ops", "mean ms");
@@ -1686,6 +1733,9 @@ static int cmd_volcano(void)
     if (pn[depth + 2])
         table_row("control", "iso~", vstats(pops[depth + 2], pn[depth + 2]),
                   vstats(psec[depth + 2], pn[depth + 2]));
+    if (pn[depth + 3])
+        table_row("aut", "fold", vstats(pops[depth + 3], pn[depth + 3]),
+                  vstats(psec[depth + 3], pn[depth + 3]));
 
     /* The standard volcano diagram's input (volcano-diagram/v1, aburan28/crypto). */
     const char *dpath = opt("--diagram");

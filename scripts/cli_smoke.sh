@@ -266,6 +266,8 @@ want '"per_level":[9,14]' volcano --p 1000033 --a 5 --b 17 --trials 3 --per-leve
 want '"edges_verified":28' volcano --p 1000033 --a 5 --b 17 --trials 1 --per-level 1 --controls 0
 want '"wrong":0' volcano --p 1000033 --a 5 --b 17 --ell 2 --trials 2 --per-level 2 --controls 1
 want_fail volcano --p 1000033 --a 5 --b 17 --order 1000034 --trials 1
+# A j = 0 root also runs the automorphism-folded rho (order-6 automorphism).
+want '"aut_order":6,' volcano --p 1000033 --a 0 --b 11 --ell 2 --trials 3 --per-level 1 --controls 0 --automorphisms
 want_fail volcano --p 1000033 --a 5 --b 17 --ell 5
 
 # ── usage and unknown commands ──────────────────────────────────────────────
