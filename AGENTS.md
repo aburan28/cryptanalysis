@@ -325,6 +325,16 @@ working tree and copy the results back into the checkout:
   start them.
 - For whole agents on bigger machines, `cloud/modal_worker.py up NAME [--gpu
   TYPE]` starts a Cursor worker on Modal, and `status` shows it.
+- **On AWS (the default when the owner asks to run experiments remotely
+  rather than locally):** `pip install boto3`, then
+  `python3 deploy/aws/launch.py launch --region us-east-1 --allow-cidr
+  OWNER.IP/32`, then `deploy/aws/launch.py run exp [--out PATH] -- CMD`, and
+  `deploy/aws/launch.py terminate exp` when the experiment is done
+  ([`deploy/aws/README.md`](deploy/aws/README.md)). `OWNER.IP` is the
+  public address the owner connects from, never the agent VM's; ask for it
+  when it is not known. Confirm the instance type and hours with the owner
+  before `launch`, because it bills by the hour. The instance terminates
+  itself after `--hours` (default 6) in any case.
 
 If `FLEET_WORKER_NAME` is set, you are already on a fleet machine (a Runpod
 pod or a Modal worker): run locally, up to `$FLEET_CPUS` wide. Stop or kill whatever you start, never write
