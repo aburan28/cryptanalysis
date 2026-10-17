@@ -1759,7 +1759,7 @@ static int cmd_volcano(void)
                 fprintf(df, "%s%" PRIu32, q ? "," : "", v->nbrs[q]);
             fprintf(df, "]");
             for (size_t m = 0; m < na; m++)
-                if (arms[m].vertex == (int32_t)i)
+                if (arms[m].vertex == (int32_t)i && !arms[m].aut_order)
                     fprintf(df, ",\"value\":%.6g", vstats(arms[m].ops, arms[m].n).mean);
             if (i == 0) fprintf(df, ",\"highlight\":\"root\"");
             fprintf(df, "}");
