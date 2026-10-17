@@ -36,6 +36,9 @@ jobs:
         working-directory: suite
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch pinned crypto analysis crate
+        working-directory: .
+        run: tools/bootstrap_crypto_analysis_core.sh
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -138,6 +141,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch pinned crypto analysis crate
+        run: tools/bootstrap_crypto_analysis_core.sh
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
@@ -174,6 +179,9 @@ jobs:
         working-directory: suite
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch pinned crypto analysis crate
+        working-directory: .
+        run: tools/bootstrap_crypto_analysis_core.sh
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.87.0"
@@ -202,6 +210,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch pinned crypto analysis crate
+        run: tools/bootstrap_crypto_analysis_core.sh
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@v2
         with:

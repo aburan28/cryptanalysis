@@ -15,12 +15,15 @@ Markdown reports.  The suite links the C library (through
 depend on the suite.
 
 ```sh
+../tools/bootstrap_crypto_analysis_core.sh  # pinned sparse checkout of shared crypto modules
 cargo build --release                 # crax, ca-suite, ca-ic, ca-icx, ca-curves, ca-koblitz-pdp-prepare
 cargo test --release                  # 2867 unit + 65 integration tests, ~10 min on 4 cores
 ./target/release/crax --help         # the unified command line: docs/CRAX.md
 ```
 
 Requirements: Rust 1.87 or newer (declared in `Cargo.toml`, checked in CI).
+The bootstrap stores the exact crypto revision under the ignored `../deps/crypto/`
+path; run it once after cloning and whenever the pinned revision changes.
 AVX-512 target features are stable only from Rust 1.89, so `build.rs` compiles
 the AVX-512 kernels (Koblitz scan, `F_p` tower F4, `GF(2)` elimination, the
 wide FES walk) only on such a toolchain; older ones take the AVX2 and scalar
