@@ -196,3 +196,46 @@ index, and the changes that were tried and rejected with their numbers
 | `f4_gf2::xor_then_lead` as two non-aliasing slices (vectorisable XOR, `position` for the lead) instead of raw-pointer loops (2026-09-26) | suite f4gf2/f4batch kernels 0.81–0.99× vs the previous commit, 5 paired rounds, all inside the A/A spread and none faster: the rows are a few words long | not landed |
 | `bsgs_fast::FastField::inv` by extended Euclid instead of Fermat (considered) | not built: a 63-bit Euclid is ~40 dependent 64-bit divisions against ~94 pipelined Montgomery multiplications | not landed |
 | `prime_orbit_index_calculus::add_r`/`sub_r` with a conditional subtraction for reduced operands (2026-09-26) | orbit rho 1.01×, orbit IC 0.93×, both inside the A/A spread | not landed |
+
+## C rho index fast path: exploratory measurement (2026-10-14)
+
+The C rho walk normally chooses a power-of-two multiplier count.  The
+`src/rho.c` change on `codex/cryptanalysis-rho-index-fastpath` uses a mask for
+that case and retains fast remainder for explicit non-power-of-two counts.
+This is an engineering change to index calculation; it does not change the
+walk or its operation count.  The baseline is `c25dd9f940e92c9740eab79905b3a475d9f25cff`
+(the parent branch of this stacked change).  Both arms used AppleClang 17,
+Release CMake builds, the same `tools/ca_perfbench.c`, one thread, five paired
+rounds, one sample per arm, and `--max-seconds 1`.  The exact comparison was:
+
+```sh
+python3 scripts/perf/perfindex.py compare \
+  --base build-speed-baseline/ca_perfbench \
+  --cand build-speed-candidate/ca_perfbench \
+  --filter dlp/c_rho_ec36 --filter dlp/c_rho_zp40 \
+  --rounds 5 --samples 1 --max-seconds 1 --threads 1 \
+  --out build-speed-candidate/rho-compare
+```
+
+Raw invocation times in milliseconds are retained below by round;
+`A` is baseline, `B` is candidate, and `A2` is the repeat baseline.  All
+rounds had identical fingerprints across arms and repeats:
+`f4277749c86fe1c9` for EC36 and `8e58f9123c615d90` for Zp40.
+
+| round | EC36 A | EC36 B | EC36 A2 | Zp40 A | Zp40 B | Zp40 A2 |
+|--:|--:|--:|--:|--:|--:|--:|
+| 1 | 170.471 | 32.576 | 54.369 | 22.501 | 16.865 | 34.783 |
+| 2 | 249.327 | 43.036 | 47.220 | 11.312 | 20.652 | 13.211 |
+| 3 | 51.207 | 29.681 | 32.428 | 18.694 | 23.647 | 14.748 |
+| 4 | 37.174 | 142.014 | 48.408 | 20.045 | 32.659 | 40.849 |
+| 5 | 62.172 | 23.209 | 44.354 | 28.041 | 17.285 | 28.704 |
+
+The harness classified both kernels **neutral**: EC36's paired median ratio
+was 2.679× (95% bootstrap interval 0.262–5.793×, A/A noise 96.9%), and
+Zp40's was 0.791× (0.548–1.622×, A/A noise 42.1%).  Host load average was
+80.5–87.7 on 14 logical cores during the run.  This result confirms output
+identity on those fixtures, but cannot establish a wall-time gain or rule out
+a regression.  No instruction-count measurement was available on this macOS
+host.  A quiet, isolated rerun of the same frozen comparison is needed for a
+performance claim.  The focused `group`, `bsgs`, and `rho` C tests passed in
+both builds; the candidate rho test additionally exercises `r=15`.

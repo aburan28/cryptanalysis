@@ -63,6 +63,9 @@ int main(void)
     p.walks_per_thread = 3;
     p.r = 16;
     run_rho(&g, &gen, &p, 3, NULL);
+    /* User-supplied table sizes also exercise the general index path. */
+    p.r = 15;
+    run_rho(&g, &gen, &p, 3, NULL);
 
     /* tiny groups must still work (brute force path and dp_bits = 0) */
     fx_zp_safe(&g, &gen, 23);
