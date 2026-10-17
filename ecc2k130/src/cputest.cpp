@@ -229,6 +229,7 @@ int main(int argc, char **argv)
     table->build(P, Q);
 
     CheckResult cr = crossCheck(*table, rounds, 0x243F6A8885A308D3ULL);
+    cr.note(table->verifyTable(), "every table point is a P + b Q on the golden model");
     checkClmul(&cr);
     checkF131(*table, &cr);
     checkStartPoints(*table, &cr);

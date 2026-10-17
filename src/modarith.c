@@ -115,7 +115,7 @@ int ca_legendre(uint64_t a, uint64_t p)
     return 0; /* p not prime */
 }
 
-int ca_sqrtmod_prime(uint64_t a, uint64_t p, uint64_t *root)
+static int sqrtmod_plain(uint64_t a, uint64_t p, uint64_t *root)
 {
     a %= p;
     if (a == 0) { *root = 0; return 1; }
@@ -154,6 +154,53 @@ int ca_sqrtmod_prime(uint64_t a, uint64_t p, uint64_t *root)
     return 1;
 }
 
+int ca_sqrtmod_prime(uint64_t a, uint64_t p, uint64_t *root)
+{
+    /* The same steps as sqrtmod_plain, in one Montgomery context: the
+     * Legendre test, the exponentiations and Tonelli-Shanks' squarings
+     * share one setup instead of a 128-bit % per product and a fresh
+     * context per ca_powmod.  Residues are canonical in both forms, so
+     * every comparison, and the root returned, is the same. */
+    if ((p & 1) == 0 || p < 3) return sqrtmod_plain(a, p, root);
+    a %= p;
+    if (a == 0) { *root = 0; return 1; }
+    ca_mont m;
+    ca_mont_init(&m, p);
+    const uint64_t one = m.r1, minus_one = p - m.r1;
+    const uint64_t am = ca_mont_to(&m, a);
+    if (ca_mont_pow(&m, am, (p - 1) / 2) != one) return 0;
+    if ((p & 3) == 3) {
+        *root = ca_mont_from(&m, ca_mont_pow(&m, am, (p + 1) / 4));
+        return 1;
+    }
+    uint64_t q = p - 1;
+    unsigned s = 0;
+    while ((q & 1) == 0) { q >>= 1; s++; }
+    uint64_t z = 2;
+    while (ca_mont_pow(&m, ca_mont_to(&m, z), (p - 1) / 2) != minus_one) z++;
+    uint64_t c = ca_mont_pow(&m, ca_mont_to(&m, z), q);
+    uint64_t r = ca_mont_pow(&m, am, (q + 1) / 2);
+    uint64_t t = ca_mont_pow(&m, am, q);
+    unsigned mm = s;
+    while (t != one) {
+        unsigned i = 0;
+        uint64_t tt = t;
+        while (tt != one) {
+            tt = ca_mont_sqr(&m, tt);
+            i++;
+            if (i == mm) return 0;
+        }
+        uint64_t b = c;
+        for (unsigned j = 0; j + i + 1 < mm; j++) b = ca_mont_sqr(&m, b);
+        r = ca_mont_mul(&m, r, b);
+        c = ca_mont_sqr(&m, b);
+        t = ca_mont_mul(&m, t, c);
+        mm = i;
+    }
+    *root = ca_mont_from(&m, r);
+    return 1;
+}
+
 uint64_t ca_crt2(uint64_t r1, uint64_t m1, uint64_t r2, uint64_t m2)
 {
     /* x = r1 + m1 * ((r2 - r1) * m1^{-1} mod m2), with r1 reduced first:
@@ -176,9 +223,9 @@ int ca_mont_init(ca_mont *m, uint64_t p)
     for (int i = 0; i < 6; i++) inv *= 2 - p * inv;
     m->pinv = (uint64_t)0 - inv;
     /* R mod p where R = 2^64 */
-    m->r1 = (uint64_t)((((ca_u128)1) << 64) % p);
+    m->r1 = ((uint64_t)0 - p) % p; /* 2^64 - p == 2^64 (mod p) */
     m->r2 = (uint64_t)(((ca_u128)m->r1 * m->r1) % p);
-    m->r3 = (uint64_t)(((ca_u128)m->r2 * m->r1) % p);
+    m->r3 = ca_mont_mul(m, m->r2, m->r2); /* R^2 R^2 / R */
     return 1;
 }
 

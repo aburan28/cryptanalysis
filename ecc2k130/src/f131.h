@@ -95,22 +95,27 @@ F131_INLINE void mulTiny(uint64_t x, uint64_t y, uint64_t *lo, uint64_t *hi)
     *hi = ((y >> 63) & m1) ^ ((y >> 62) & m2);
 }
 
+// (hi:lo) >> k and (hi:lo) << k, low and high limb respectively, 0 < k < 64.
+// The two halves never share a bit, so | is the same value as ^; written with
+// | the compiler emits one double shift (shrd/shld) for the pair, which runs on
+// a different port from the single shifts this routine is otherwise bound on.
+F131_INLINE uint64_t shr2(uint64_t lo, uint64_t hi, int k) { return (lo >> k) | (hi << (64 - k)); }
+F131_INLINE uint64_t shl2(uint64_t hi, uint64_t lo, int k) { return (hi << k) | (lo >> (64 - k)); }
+
 // H mod m for a product H of degree at most 260, five limbs.
 F131_INLINE F131 reduce(const uint64_t h[5])
 {
-    const uint64_t d0 = (h[2] >> 3) | (h[3] << 61), d1 = (h[3] >> 3) | (h[4] << 61),
-                   d2 = (h[4] >> 3) & 3u;
-    const uint64_t r0 = d0 ^ (d0 >> 1) ^ (d1 << 63) ^ (d0 >> 3) ^ (d1 << 61);
-    const uint64_t r1 = d1 ^ (d1 >> 1) ^ (d2 << 63) ^ (d1 >> 3) ^ (d2 << 61);
+    const uint64_t d0 = shr2(h[2], h[3], 3), d1 = shr2(h[3], h[4], 3), d2 = (h[4] >> 3) & 3u;
+    const uint64_t r0 = d0 ^ shr2(d0, d1, 1) ^ shr2(d0, d1, 3);
+    const uint64_t r1 = d1 ^ shr2(d1, d2, 1) ^ shr2(d1, d2, 3);
     const uint64_t r2 = d2 ^ (d2 >> 1);
-    const uint64_t q0 = d0 ^ (r0 >> 1) ^ (r1 << 63) ^ (r0 >> 9) ^ (r1 << 55) ^ (r0 >> 25) ^
-                        (r1 << 39) ^ (r0 >> 57) ^ (r1 << 7) ^ (r1 >> 57) ^ (r2 << 7);
-    const uint64_t q1 = d1 ^ (r1 >> 1) ^ (r2 << 63) ^ (r1 >> 9) ^ (r2 << 55) ^ (r1 >> 25) ^
-                        (r2 << 39) ^ (r1 >> 57) ^ (r2 << 7);
+    const uint64_t q0 = d0 ^ shr2(r0, r1, 1) ^ shr2(r0, r1, 9) ^ shr2(r0, r1, 25) ^
+                        shr2(r0, r1, 57) ^ shr2(r1, r2, 57);
+    const uint64_t q1 = d1 ^ shr2(r1, r2, 1) ^ shr2(r1, r2, 9) ^ shr2(r1, r2, 25) ^ shr2(r1, r2, 57);
     const uint64_t q2 = d2 ^ (r2 >> 1);
     const uint64_t t0 = q0 ^ (q0 << 2) ^ (q0 << 3);
-    const uint64_t t1 = q1 ^ (q1 << 2) ^ (q0 >> 62) ^ (q1 << 3) ^ (q0 >> 61);
-    const uint64_t t2 = q2 ^ (q2 << 2) ^ (q1 >> 62) ^ (q2 << 3) ^ (q1 >> 61);
+    const uint64_t t1 = q1 ^ shl2(q1, q0, 2) ^ shl2(q1, q0, 3);
+    const uint64_t t2 = q2 ^ shl2(q2, q1, 2) ^ shl2(q2, q1, 3);
     F131 out;
     out.w[0] = h[0] ^ t0;
     out.w[1] = h[1] ^ t1 ^ t0 ^ (t0 << 32) ^ (t0 << 48) ^ (t0 << 56) ^ (q0 << 60);
@@ -154,6 +159,34 @@ F131_INLINE void product(const F131 &a, const F131 &b, uint64_t h[5])
     h[2] = vgetq_lane_u64(hi, 0);
     h[3] = vgetq_lane_u64(hi, 1);
     h[4] = vgetq_lane_u64(y, 1) ^ vgetq_lane_u64(t, 0);
+}
+#elif ECC_HOST_CLMUL && defined(__x86_64__)
+// The PCLMULQDQ form of the PMULL product above, term for term: the operands
+// stay in xmm registers, the four 3-bit cross terms and the top term are
+// carry-less multiplies instead of masked shifts (mulTiny), and only the five
+// limbs come back to the integer registers.
+F131_INLINE void product(const F131 &a, const F131 &b, uint64_t h[5])
+{
+    const __m128i av = _mm_loadu_si128(reinterpret_cast<const __m128i *>(a.w)),
+                  bv = _mm_loadu_si128(reinterpret_cast<const __m128i *>(b.w));
+    const __m128i a2 = _mm_set1_epi64x((long long)a.w[2]), b2 = _mm_set1_epi64x((long long)b.w[2]);
+    const __m128i as = _mm_xor_si128(av, _mm_srli_si128(av, 8)), // [a0 ^ a1, a1]
+                  bs = _mm_xor_si128(bv, _mm_srli_si128(bv, 8));
+    const __m128i l = _mm_clmulepi64_si128(av, bv, 0x00), u = _mm_clmulepi64_si128(av, bv, 0x11);
+    const __m128i m = _mm_xor_si128(_mm_clmulepi64_si128(as, bs, 0x00), _mm_xor_si128(l, u));
+    const __m128i x = _mm_xor_si128(_mm_clmulepi64_si128(a2, bv, 0x00),
+                                    _mm_clmulepi64_si128(b2, av, 0x00)); // at limb 2
+    const __m128i y = _mm_xor_si128(_mm_clmulepi64_si128(a2, bv, 0x11),
+                                    _mm_clmulepi64_si128(b2, av, 0x11)); // at limb 3
+    const __m128i t = _mm_clmulepi64_si128(a2, b2, 0x00);                // at limb 4
+    const __m128i lo = _mm_xor_si128(l, _mm_slli_si128(m, 8));           // l ^ [0, m0]
+    const __m128i hi =
+        _mm_xor_si128(_mm_xor_si128(u, x), _mm_alignr_epi8(y, m, 8));    // u ^ x ^ [m1, y0]
+    h[0] = (uint64_t)_mm_cvtsi128_si64(lo);
+    h[1] = (uint64_t)_mm_extract_epi64(lo, 1);
+    h[2] = (uint64_t)_mm_cvtsi128_si64(hi);
+    h[3] = (uint64_t)_mm_extract_epi64(hi, 1);
+    h[4] = (uint64_t)_mm_extract_epi64(y, 1) ^ (uint64_t)_mm_cvtsi128_si64(t);
 }
 #else
 F131_INLINE void product(const F131 &a, const F131 &b, uint64_t h[5])

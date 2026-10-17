@@ -86,8 +86,7 @@ static int ec_equal(const ca_group *g, const ca_elem *a, const ca_elem *b)
 static uint64_t ec_hash(const ca_group *g, const ca_elem *a)
 {
     (void)g;
-    if (FINF(a)) return 0x9e3779b97f4a7c15ULL;
-    return ca_mix64(FX(a) * 0x9E3779B97F4A7C15ULL ^ ca_mix64(FY(a)));
+    return ca_ec_hash_inline(a);
 }
 
 /*
@@ -95,21 +94,57 @@ static uint64_t ec_hash(const ca_group *g, const ca_elem *a)
  * one field inversion for n additions at the cost of 3(n-1) extra
  * multiplications.  Special cases (infinity, doubling, inverse pairs)
  * are handled inline so that the common path stays branch-light.
+ *
+ * The prefix products run as EC_BATCH_CHAINS interleaved chains (element i
+ * on chain i mod EC_BATCH_CHAINS) that share the one inversion.  A single
+ * chain makes every multiplication wait for the previous one, forward and
+ * backward; interleaved, consecutive multiplications are independent and
+ * overlap.  Each den[i]^{-1} is the same field element either way, so the
+ * sums are identical.
  */
-static void ec_batch_op(const ca_group *g, ca_elem *r, const ca_elem *a, const ca_elem *b,
-                        size_t n, uint64_t *scratch)
+#define EC_BATCH_CHAINS 4
+
+static inline uint64_t ec_batch_den(const ca_group *g, const ca_elem *A, const ca_elem *B,
+                                    uint64_t one)
 {
-    if (n == 0) return;
-    uint64_t *den = scratch;       /* n denominators */
-    uint64_t *pre = scratch + n;   /* n prefix products */
+    if (FINF(A) || FINF(B)) return one;
+    if (FX(A) == FX(B)) {
+        if (FY(A) == FY(B) && FY(A) != 0) return fadd(g, FY(A), FY(A));
+        return one;
+    }
+    return fsub(g, FX(B), FX(A));
+}
+
+/* The single-chain form, for batches too small for the chains' fixed
+ * cost (combining the chain totals) to pay for itself. */
+#define EC_BATCH_MIN_CHAINED 16
+
+static inline void ec_batch_finish(const ca_group *g, ca_elem *r, const ca_elem *A,
+                                   const ca_elem *B, uint64_t di)
+{
+    if (FINF(A)) { *r = *B; return; }
+    if (FINF(B)) { *r = *A; return; }
+    if (FX(A) == FX(B)) {
+        if (FY(A) == FY(B) && FY(A) != 0) {
+            uint64_t x2 = fsqr(g, FX(A));
+            uint64_t num = fadd(g, fadd(g, fadd(g, x2, x2), x2), g->a_mont);
+            ec_add_with_inv(g, r, A, A, fmul(g, num, di));
+        } else {
+            ec_identity(g, r);
+        }
+        return;
+    }
+    uint64_t lam = fmul(g, fsub(g, FY(B), FY(A)), di);
+    ec_add_with_inv(g, r, A, B, lam);
+}
+
+static void ec_batch_op_1(const ca_group *g, ca_elem *r, const ca_elem *a, const ca_elem *b,
+                          size_t n, uint64_t *scratch)
+{
+    uint64_t *den = scratch, *pre = scratch + n;
     const uint64_t one = g->mont.r1;
     for (size_t i = 0; i < n; i++) {
-        uint64_t d;
-        if (FINF(&a[i]) || FINF(&b[i])) d = one;
-        else if (FX(&a[i]) == FX(&b[i])) {
-            if (FY(&a[i]) == FY(&b[i]) && FY(&a[i]) != 0) d = fadd(g, FY(&a[i]), FY(&a[i]));
-            else d = one;
-        } else d = fsub(g, FX(&b[i]), FX(&a[i]));
+        uint64_t d = ec_batch_den(g, &a[i], &b[i], one);
         den[i] = d;
         pre[i] = i ? fmul(g, pre[i - 1], d) : d;
     }
@@ -117,21 +152,48 @@ static void ec_batch_op(const ca_group *g, ca_elem *r, const ca_elem *a, const c
     for (size_t i = n; i-- > 0;) {
         uint64_t di = i ? fmul(g, inv, pre[i - 1]) : inv; /* den[i]^{-1} */
         inv = fmul(g, inv, den[i]);
-        const ca_elem *A = &a[i], *B = &b[i];
-        if (FINF(A)) { r[i] = *B; continue; }
-        if (FINF(B)) { r[i] = *A; continue; }
-        if (FX(A) == FX(B)) {
-            if (FY(A) == FY(B) && FY(A) != 0) {
-                uint64_t x2 = fsqr(g, FX(A));
-                uint64_t num = fadd(g, fadd(g, fadd(g, x2, x2), x2), g->a_mont);
-                ec_add_with_inv(g, &r[i], A, A, fmul(g, num, di));
-            } else {
-                ec_identity(g, &r[i]);
-            }
-            continue;
-        }
-        uint64_t lam = fmul(g, fsub(g, FY(B), FY(A)), di);
-        ec_add_with_inv(g, &r[i], A, B, lam);
+        ec_batch_finish(g, &r[i], &a[i], &b[i], di);
+    }
+}
+
+static void ec_batch_op(const ca_group *g, ca_elem *r, const ca_elem *a, const ca_elem *b,
+                        size_t n, uint64_t *scratch)
+{
+    if (n == 0) return;
+    if (n < EC_BATCH_MIN_CHAINED) {
+        ec_batch_op_1(g, r, a, b, n, scratch);
+        return;
+    }
+    enum { L = EC_BATCH_CHAINS };
+    uint64_t *den = scratch;       /* n denominators */
+    uint64_t *pre = scratch + n;   /* n prefix products, per chain */
+    const uint64_t one = g->mont.r1;
+    for (size_t i = 0; i < n; i++) {
+        uint64_t d = ec_batch_den(g, &a[i], &b[i], one);
+        den[i] = d;
+        pre[i] = i >= L ? fmul(g, pre[i - L], d) : d;
+    }
+    /* chain totals, then each chain's inverse from the one inversion of
+     * their product (the same trick once more, over L values) */
+    uint64_t T[L], linv[L];
+    for (size_t l = 0; l < L; l++) {
+        if (l >= n) { T[l] = one; continue; }
+        size_t last = l + ((n - 1 - l) / L) * L;
+        T[l] = pre[last];
+    }
+    uint64_t P[L + 1];
+    P[0] = one;
+    for (size_t l = 0; l < L; l++) P[l + 1] = l ? fmul(g, P[l], T[l]) : T[0];
+    uint64_t inv = finv(g, P[L]);
+    for (size_t l = L; l-- > 0;) {
+        linv[l] = l ? fmul(g, inv, P[l]) : inv;
+        inv = fmul(g, inv, T[l]);
+    }
+    for (size_t i = n; i-- > 0;) {
+        const size_t l = i % L;
+        uint64_t di = i >= L ? fmul(g, linv[l], pre[i - L]) : linv[l]; /* den[i]^{-1} */
+        linv[l] = fmul(g, linv[l], den[i]);
+        ec_batch_finish(g, &r[i], &a[i], &b[i], di);
     }
 }
 
@@ -178,10 +240,7 @@ static int ec_is_valid(const ca_group *g, const ca_elem *a)
  * with negation, so this is a valid canonical choice. */
 static int ec_canonicalize(const ca_group *g, ca_elem *a)
 {
-    if (FINF(a) || FY(a) == 0) return 0;
-    uint64_t ny = g->p - FY(a);
-    if (ny < FY(a)) { FY(a) = ny; return 1; }
-    return 0;
+    return ca_ec_canonicalize_inline(g->p, a);
 }
 
 static const ca_group_vtable ec_vt = {
@@ -229,7 +288,8 @@ static void ec_jac_dbl(const ca_group *g, ec_jac *r)
 }
 
 /* P + (x2, y2) for a finite affine (x2, y2) (madd-2007-bl). */
-static void ec_jac_add_affine(const ca_group *g, ec_jac *r, uint64_t x2, uint64_t y2)
+static inline __attribute__((always_inline)) void ec_jac_add_affine(const ca_group *g, ec_jac *r,
+                                                                    uint64_t x2, uint64_t y2)
 {
     if (r->inf) {
         r->x = x2;
@@ -288,6 +348,56 @@ int ca_ec_group_mul(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k)
     FINF(r) = 0;
     r->w[3] = 0;
     return 1;
+}
+
+/* Affine 2^j P for j < 64, so that k P (and k1 P1 + k2 P2) is a run of
+ * mixed Jacobian additions with no doublings and one inversion at the end.
+ * Any correct method returns the same affine point, so this is a drop-in
+ * for ca_group_mul / ca_group_op where the same base is used many times. */
+int ca_ec_pow2_init(const ca_group *g, ca_ec_pow2 *t, const ca_elem *P)
+{
+    if (g->vt != &ec_vt) return 0;
+    ca_elem cur = *P;
+    t->inf_mask = 0;
+    for (int j = 0; j < 64; j++) {
+        if (FINF(&cur)) {
+            t->inf_mask |= (uint64_t)1 << j;
+            t->x[j] = t->y[j] = 0;
+        } else {
+            t->x[j] = FX(&cur);
+            t->y[j] = FY(&cur);
+        }
+        if (j < 63) ec_dbl(g, &cur, &cur);
+    }
+    return 1;
+}
+
+static inline void ec_pow2_accumulate(const ca_group *g, ec_jac *acc, const ca_ec_pow2 *t,
+                                      uint64_t k)
+{
+    k &= ~t->inf_mask;
+    while (k) {
+        int j = __builtin_ctzll(k);
+        k &= k - 1;
+        ec_jac_add_affine(g, acc, t->x[j], t->y[j]);
+    }
+}
+
+void ca_ec_pow2_mul2(const ca_group *g, ca_elem *r, const ca_ec_pow2 *t1, uint64_t k1,
+                     const ca_ec_pow2 *t2, uint64_t k2)
+{
+    ec_jac acc = {0, 0, 0, 1};
+    ec_pow2_accumulate(g, &acc, t1, k1);
+    if (t2) ec_pow2_accumulate(g, &acc, t2, k2);
+    if (acc.inf) {
+        ec_identity(g, r);
+        return;
+    }
+    uint64_t zi = finv(g, acc.z), zi2 = fsqr(g, zi);
+    FX(r) = fmul(g, acc.x, zi2);
+    FY(r) = fmul(g, acc.y, fmul(g, zi2, zi));
+    FINF(r) = 0;
+    r->w[3] = 0;
 }
 
 ca_status ca_group_ec_init(ca_group *g, uint64_t p, uint64_t a, uint64_t b, uint64_t order)

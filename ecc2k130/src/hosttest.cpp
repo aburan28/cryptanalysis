@@ -223,6 +223,9 @@ int main(int argc, char **argv)
     walk->build(P, Q);
 
     CheckResult cr = crossCheck(*walk, rounds, 0x243F6A8885A308D3ULL);
+#if ECC_WALK_TABLE
+    cr.note(walk->verifyTable(), "every table point is a P + b Q on the golden model");
+#endif
 
     /* A report the reference produces must re-walk; the same record with one
      * coordinate bit flipped, or under another seed, must not. */

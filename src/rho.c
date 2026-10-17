@@ -35,6 +35,7 @@ typedef struct rho_shared {
     uint64_t r_magic; /* floor(2^64 / r) + 1, for rho_index */
     ca_elem *M;
     uint64_t *alpha, *beta;
+    ca_ec_pow2 *pow2; /* [0] base, [1] target; NULL unless a plain curve */
     int negmap;
     int dp_bits;
     uint64_t dp_mask;
@@ -90,16 +91,30 @@ static inline void exp_add(uint64_t n, uint64_t *a, uint64_t d)
     *a = ca_addmod(*a, d, n);
 }
 
+/* Y = a*base + b*target, charging ops as two ca_group_mul and one
+ * ca_group_op.  On a plain curve the fixed-base tables give the same
+ * point with one inversion instead of three and no doublings. */
+static void rho_combine(const rho_shared *sh, ca_elem *Y, uint64_t a, uint64_t b, uint64_t *ops)
+{
+    const ca_group *g = sh->g;
+    if (sh->pow2) {
+        ca_ec_pow2_mul2(g, Y, &sh->pow2[0], a, &sh->pow2[1], b);
+        *ops += ca_mul_ops(a) + ca_mul_ops(b) + 1;
+        return;
+    }
+    ca_elem t1, t2;
+    ca_group_mul(g, &t1, &sh->base, a, ops);
+    ca_group_mul(g, &t2, &sh->target, b, ops);
+    ca_group_op(g, Y, &t1, &t2);
+    (*ops)++;
+}
+
 static void walk_restart(rho_shared *sh, rho_walk *w, ca_rng *rng, uint64_t *ops)
 {
     const ca_group *g = sh->g;
     w->a = ca_rng_below(rng, sh->n);
     w->b = ca_rng_below(rng, sh->n);
-    ca_elem t1, t2;
-    ca_group_mul(g, &t1, &sh->base, w->a, ops);
-    ca_group_mul(g, &t2, &sh->target, w->b, ops);
-    ca_group_op(g, &w->Y, &t1, &t2);
-    (*ops)++;
+    rho_combine(sh, &w->Y, w->a, w->b, ops);
     if (sh->negmap && ca_group_canonicalize(g, &w->Y)) {
         w->a = w->a ? sh->n - w->a : 0;
         w->b = w->b ? sh->n - w->b : 0;
@@ -232,6 +247,7 @@ static void *rho_thread_main(void *arg)
     uint64_t ops = 0;
     for (uint32_t w = 0; w < W; w++) walk_restart(sh, &walks[w], &rng, &ops);
     const uint64_t abandon = (uint64_t)24 << sh->dp_bits;
+    const int ec_plain = sh->pow2 != NULL; /* g uses the library's curve vtable */
     uint64_t local_dps = 0, local_restarts = 0;
 
     while (!atomic_load_explicit(&sh->done, memory_order_relaxed)) {
@@ -245,8 +261,16 @@ static void *rho_thread_main(void *arg)
         ops += W;
         for (uint32_t w = 0; w < W; w++) {
             rho_walk *wk = &walks[w];
-            int neg = sh->negmap ? ca_group_canonicalize(g, &Yn[w]) : 0;
-            uint64_t h = ca_group_hash(g, &Yn[w]);
+            int neg;
+            uint64_t h;
+            if (ec_plain) {
+                /* the same functions the curve vtable calls, inlined */
+                neg = sh->negmap ? ca_ec_canonicalize_inline(g->p, &Yn[w]) : 0;
+                h = ca_ec_hash_inline(&Yn[w]);
+            } else {
+                neg = sh->negmap ? ca_group_canonicalize(g, &Yn[w]) : 0;
+                h = ca_group_hash(g, &Yn[w]);
+            }
             if (sh->negmap && rho_index(sh, h) == wk->idx) {
                 wk->idx = (wk->idx + 1) % sh->r;
                 wk->retry = 1;
@@ -435,8 +459,16 @@ ca_status ca_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *ta
     sh.alpha = calloc(sh.r, sizeof(uint64_t));
     sh.beta = calloc(sh.r, sizeof(uint64_t));
     if (!sh.M || !sh.alpha || !sh.beta) {
-        free(sh.M); free(sh.alpha); free(sh.beta);
+        free(sh.M); free(sh.alpha); free(sh.beta); free(sh.pow2);
         return CA_ERR_NOMEM;
+    }
+    if (g->kind == CA_GROUP_EC) {
+        sh.pow2 = malloc(2 * sizeof(ca_ec_pow2));
+        if (sh.pow2 && !(ca_ec_pow2_init(g, &sh.pow2[0], base) &&
+                         ca_ec_pow2_init(g, &sh.pow2[1], target))) {
+            free(sh.pow2);
+            sh.pow2 = NULL;
+        }
     }
     ca_rng rng;
     ca_rng_seed(&rng, sh.seed);
@@ -444,15 +476,11 @@ ca_status ca_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *ta
     for (uint32_t i = 0; i < sh.r; i++) {
         sh.alpha[i] = ca_rng_below(&rng, n);
         sh.beta[i] = ca_rng_below(&rng, n);
-        ca_elem t1, t2;
-        ca_group_mul(g, &t1, base, sh.alpha[i], &setup_ops);
-        ca_group_mul(g, &t2, target, sh.beta[i], &setup_ops);
-        ca_group_op(g, &sh.M[i], &t1, &t2);
-        setup_ops++;
+        rho_combine(&sh, &sh.M[i], sh.alpha[i], sh.beta[i], &setup_ops);
     }
     double expected_dps = 1.25 * (double)sqrt_n / (double)(1ULL << dp) + 1024;
     if (ca_htab_init(&sh.tab, (size_t)(expected_dps < 1e8 ? expected_dps : 1e8)) != CA_OK) {
-        free(sh.M); free(sh.alpha); free(sh.beta);
+        free(sh.M); free(sh.alpha); free(sh.beta); free(sh.pow2);
         return CA_ERR_NOMEM;
     }
     pthread_mutex_init(&sh.lock, NULL);
@@ -467,7 +495,7 @@ ca_status ca_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *ta
         free(ths);
         free(created);
         ca_htab_free(&sh.tab);
-        free(sh.M); free(sh.alpha); free(sh.beta);
+        free(sh.M); free(sh.alpha); free(sh.beta); free(sh.pow2);
         pthread_mutex_destroy(&sh.lock);
         return CA_ERR_NOMEM;
     }
@@ -504,7 +532,7 @@ ca_status ca_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *ta
     free(ths);
     free(created);
     ca_htab_free(&sh.tab);
-    free(sh.M); free(sh.alpha); free(sh.beta);
+    free(sh.M); free(sh.alpha); free(sh.beta); free(sh.pow2);
     pthread_mutex_destroy(&sh.lock);
     return rc;
 }
