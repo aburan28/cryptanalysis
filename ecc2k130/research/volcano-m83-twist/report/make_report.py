@@ -10,6 +10,8 @@ ctl = json.loads((OUT / 'control-run06.json').read_text())
 a0, a1, rho, icr = S['0'], S['1'], S['rho_a1'], S['ic_k12_vs_rho_a1']
 _rf = OUT / 'rho-floor-summary.json'
 RF = json.loads(_rf.read_text()) if _rf.exists() else None
+_ra = OUT / 'rho-floor-all-summary.json'
+RA = json.loads(_ra.read_text()) if _ra.exists() else None
 
 
 def f(x, d=6): return ('%.' + str(d) + 'f') % x
@@ -153,7 +155,38 @@ E_b → E_{{b²}}, so one representative per orbit (O00-00 … O77-00) covers th
   floor loses, as derived.
 - The pooled floor mean sits {(RF['S_mean'] - RF['S_theory']) / RF['S_se']:.1f} se above √(π/4). Observed and not explained here; an r = 32
   adding walk with fruitless-cycle escapes is expected to sit slightly above the random-mapping constant, which this run does not test.
-- Not run: all 6474 curves individually (~45 h on this VM); the a2 = 0 floor (~2^37 steps per solve).
+- The a2 = 0 floor (~2^37 steps per solve) was not run.
+""")}
+
+## Pollard rho on every one of the 6474 floor curves (measured; protocol addendum 2)
+
+{("" if RA is None else f"""![](../outputs/rho-floor-all-a1.png)
+
+`scripts/rho_floor_all.py` ran one {{±P}} solve on every floor curve (seed 2000), split over 8 cloud sessions
+(`--shard I --of 8`; session IDs in `outputs/rho-floor-all-a1.sessions.json`) and merged here:
+{RA['solves']} solves on {RA['distinct_curves']} distinct curves of {RA['expected_curves']} expected, {RA['n_missing']} missing,
+{RA['duplicates']} duplicates, all verified ({RA['all_verified']}), {RA['restarts']} restart, {RA['steps_total']:.3g} walk steps,
+mean wall time {RA['wall_s_mean']:.0f} s per solve.
+
+{table(['quantity', 'value'], [
+    ('S = steps / √n, mean ± se', '%.4f ± %.4f' % (RA['S_mean'], RA['S_se'])),
+    ('S standard deviation', '%.3f' % RA['S_sd']),
+    ('theory √(π/4)', '%.4f' % RA['S_theory']),
+    ('mean − theory', '%+.2f se' % RA['S_mean_minus_theory_in_se']),
+    ('ANOVA over the 78 orbits', 'F(%d, %d) = %.3f, p = %.3f' % (RA['anova']['df'][0], RA['anova']['df'][1], RA['anova']['F'], RA['anova']['p'])),
+    ('permutation test (%d draws)' % RA['anova']['permutations'], 'p = %.3f' % RA['anova']['permutation_p']),
+    ('Rayleigh KS distance (95 % critical)', '%.4f (%.4f)' % (RA['rayleigh_ks_D'], RA['rayleigh_ks_D_crit95'])),
+    ('orbit mean range', '%.3f – %.3f' % tuple(RA['orbit_mean_range']))])}
+
+- No isogeny on the floor changes rho: the 78 orbits are indistinguishable (ANOVA and permutation p ≈ 0.5), and
+  the per-curve S follow a Rayleigh shape (KS distance well under its critical value). The orbit means span
+  {RA['orbit_mean_range'][0]:.2f}–{RA['orbit_mean_range'][1]:.2f} with ~83 solves each, the spread expected from sd {RA['S_sd']:.2f}.
+- The pooled mean is {RA['S_mean_minus_theory_in_se']:.1f} se above √(π/4), confirming the 156-solve offset at much higher precision.
+  Approximate attribution, not proven: retried additions on the {{±P}} class (≈ 1/32), the r = 32 adding walk's
+  departure from a random mapping (≈ 1.6 %) and escapes (0.12 % of steps) predict S ≈ 0.93; the measured value sits
+  about 2 se above that. Reported as observed.
+- The 81-bit (a2 = 0) crater and floor were not run: they need ~2^37 steps per solve and a distributed walk that
+  this session did not build, and the cloud credentials in the environment are placeholders.
 """)}
 
 ## What this does not show
@@ -166,7 +199,7 @@ E_b → E_{{b²}}, so one representative per orbit (O00-00 … O77-00) covers th
 
 ## Graphs checked
 
-New: `outputs/structure.svg`, `outputs/yield-census.svg`, `outputs/rho-a1.svg`, `outputs/rho-floor-a1.svg` (rendered PNG beside each).
+New: `outputs/structure.svg`, `outputs/yield-census.svg`, `outputs/rho-a1.svg`, `outputs/rho-floor-a1.svg`, `outputs/rho-floor-all-a1.svg` (rendered PNG beside each).
 ../volcano-m83 figures and `experiments/volcano-ic/figures/` were checked and remain current: no verified edge
 or curve was added and the a2 = 0 census agrees with ../volcano-m83 Run-06.
 
@@ -178,6 +211,9 @@ cd scripts
 python3 control_run06.py && python3 s00_small_isogenies.py
 python3 census.py floor --a2 0; ./run_rest.sh; python3 rho_panel.py
 python3 analyze.py && python3 diagram.py
+python3 rho_floor.py && python3 rho_floor_analyze.py
+python3 rho_floor_all.py --shard I --of 8   # I = 0..7, then:
+python3 rho_floor_all_analyze.py
 cd ../report && python3 make_report.py && python3 build_report.py
 ```
 """
