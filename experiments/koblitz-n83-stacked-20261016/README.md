@@ -354,9 +354,36 @@ and the rank records in `panel/runs/` (00042, 00043, 00116, 00120).
   host only. Between the two IC arms the order holds on every emitted
   counter.
 - **No other-host replay (R1).** The run was not replayed on another host
-  class. Preregistration is provable from GitHub records (protocol commit
+  class (as of 2026-10-16; replayed 2026-10-17, see "Replay result"). Preregistration is provable from GitHub records (protocol commit
   `24abca74` is the parent of the result commit on `claude/n83-stacked`),
   not from main's squashed history.
+
+### Replay result (2026-10-17)
+
+The preregistered K1 replay ran on another host class
+([run 39007026856](https://github.com/aburan28/cryptanalysis/actions/runs/39007026856),
+INTEL(R) XEON(R) PLATINUM 8573C against this run's AMD EPYC 9V74) and
+passed every frozen check (`replay_pass`; archived in
+[`../koblitz-n83-replay-20261017/RESULTS.md`](../koblitz-n83-replay-20261017/RESULTS.md)).
+No measurement, statistic or verdict above changes.
+
+- **R1, determinism.** All four rank processes (kS, kP, kP, kS) reproduce
+  serials 42 and 43 exactly: every per-attempt probe count (first 100 and
+  all 600) and the relation digest. The operation-count ratio 1.4773 is host
+  independent; the binaries' sha256 are the same on both hosts.
+- **R1, wall time.** The per-probe wall ratio kP / kS is 2.6583 on the Intel
+  host (first 100 attempts 2.7013) against 2.2905 for K1 here (2.2837 both
+  blocks): the per-probe factor, and with it the 3.24x wall-time headline,
+  is host dependent. The replay did not re-measure the cold arms, so it gives
+  no new R or `S`.
+- **K2, construction time X.** One cold in-process construction of the K600
+  base (`construct:83:1:600`, base hash equal to the retained file's) took
+  X = 427.524 ms, 65.541 ms more than loading the retained file (361.984 ms)
+  on the same host. With the formula above, R 3.2357 and cold `S` 9.6950
+  (illustrative: an Intel-host X added to this run's EPYC-host times), so
+  the upper / lower bounds 3.2391 and 9.6805 are within 0.11% and 0.15% of
+  the every-phase figures.
+- The §5a band stays uncomputable (follow-up 1).
 
 ### Follow-up (proposed, not run; the frozen code here is not changed)
 
@@ -378,8 +405,9 @@ and the rank records in `panel/runs/` (00042, 00043, 00116, 00120).
    about 40 minutes for the four processes on this runner) and the first 100
    attempts are read from the per-attempt records. Preregistered on
    2026-10-17 as `../koblitz-n83-replay-20261017/PROTOCOL.md` (workflow
-   `n83-replay.yml`); result pending, and nothing in this report changes
-   until it is archived.
+   `n83-replay.yml`). **Run and archived 2026-10-17: `replay_pass`**
+   (run 39007026856; see "Replay result" above and
+   `../koblitz-n83-replay-20261017/RESULTS.md`).
 
 ## Files
 

@@ -5,7 +5,7 @@ rows added from run 38777903922. It takes no new measurement: every number is
 copied from a committed experiment, and each row cites that experiment. Figure 1
 was checked and stays current: no baseline row's numbers changed. The n=83 rows for lift_scan, the Feistel order and their (not promoted)
 combination were added on 2026-10-15; Figure 1 was checked and stays
-current, because no baseline row's numbers changed. The n=83 row for the probe pipeline was added on 2026-10-16, the two-level root table and the state fold the same day, each with the same Figure 1 check. On 2026-10-16 the stacked producer (`koblitz-n83-stacked-20261016`, run 38862448935) replaced B's n=83 baseline row, and Figure 1 was re-rendered. Also on 2026-10-16, an accounting correction (sheriff case SHF-20261016-3caa6f, K3 and K4): the n=83 row's `s_ic_setup` was 0.8856, which is setup without the rank stage plus online, while every other row's (B's 32.848 included) is cold minus online with the rank stage in it. It is now 9.6673 on that one meaning, and the B → stack ratchet entry records the paired within-run delta. No measurement changed, and Figure 1 (gaps only) is unchanged. Also on 2026-10-16, disclosures from the same case (K1, K2, R1; no number changed): the n=83 row's headline and `S` are wall time on one host class, with the host-independent operation-count ratio (rank-stage probes and root calls 1.4773x) beside it; factor-base construction is charged to neither arm, so the row's ratio is an upper bound and its cold `S` a lower bound; the §5a GAE band is not computable from that run; and the run was not replayed on another host class. On 2026-10-17, corrections from re-audit SHF-20261017-e4d7f6 (K-N1, K-N2, K-N4; no measurement changed): the setup convention now names what each row leaves out (both n=83 rows leave out factor-base construction; B's row also leaves out 51.3 ms of linear algebra and 32.3 ms of input control, now listed in its JSON `uncharged_phases`); the B → stack history entry's standard gap fields now hold the paired within-run gaps, with B's cross-run figures under `cross_run_context_*`; the n=83 rank stage rounds to 8.7949 (8.79486), not 8.7948; and 2.2837 is per-probe wall time, not a host-speed factor. A replay of rank block K1 with one timed base construction is preregistered (`experiments/koblitz-n83-replay-20261017/PROTOCOL.md`), result pending. Figure 1 (gaps only) is unchanged. The machine-readable twin is
+current, because no baseline row's numbers changed. The n=83 row for the probe pipeline was added on 2026-10-16, the two-level root table and the state fold the same day, each with the same Figure 1 check. On 2026-10-16 the stacked producer (`koblitz-n83-stacked-20261016`, run 38862448935) replaced B's n=83 baseline row, and Figure 1 was re-rendered. Also on 2026-10-16, an accounting correction (sheriff case SHF-20261016-3caa6f, K3 and K4): the n=83 row's `s_ic_setup` was 0.8856, which is setup without the rank stage plus online, while every other row's (B's 32.848 included) is cold minus online with the rank stage in it. It is now 9.6673 on that one meaning, and the B → stack ratchet entry records the paired within-run delta. No measurement changed, and Figure 1 (gaps only) is unchanged. Also on 2026-10-16, disclosures from the same case (K1, K2, R1; no number changed): the n=83 row's headline and `S` are wall time on one host class, with the host-independent operation-count ratio (rank-stage probes and root calls 1.4773x) beside it; factor-base construction is charged to neither arm, so the row's ratio is an upper bound and its cold `S` a lower bound; the §5a GAE band is not computable from that run; and the run was not replayed on another host class. On 2026-10-17, corrections from re-audit SHF-20261017-e4d7f6 (K-N1, K-N2, K-N4; no measurement changed): the setup convention now names what each row leaves out (both n=83 rows leave out factor-base construction; B's row also leaves out 51.3 ms of linear algebra and 32.3 ms of input control, now listed in its JSON `uncharged_phases`); the B → stack history entry's standard gap fields now hold the paired within-run gaps, with B's cross-run figures under `cross_run_context_*`; the n=83 rank stage rounds to 8.7949 (8.79486), not 8.7948; and 2.2837 is per-probe wall time, not a host-speed factor. A replay of rank block K1 with one timed base construction is preregistered (`experiments/koblitz-n83-replay-20261017/PROTOCOL.md`). Figure 1 (gaps only) is unchanged. On 2026-10-17 that replay was archived (`experiments/koblitz-n83-replay-20261017/RESULTS.md`, [run 39007026856](https://github.com/aburan28/cryptanalysis/actions/runs/39007026856)): `replay_pass` on another host class (Intel Xeon Platinum 8573C), rank-stage work identical, per-probe wall ratio 2.6583 there against 2.2905 on the EPYC; construction time X = 427.5 ms is now measured. The n=83 row's replication and uncharged-phase notes record it; no figure of the row changed, and Figure 1 is unchanged. The machine-readable twin is
 [`baselines.json`](baselines.json); update both files in the same change.
 
 ## The rule this file serves
@@ -64,7 +64,7 @@ baseline" (owner, 2026-10-15; cryptanalysis#919, crypto#1908):
 | 41 | K_0 / GF(2^41) | `ic price --single-target` at IC programme baseline v3: 6,560 points, 80 columns, aimed m=3 collection, m=2 pair-table descent; crypto `995ea207`; rule v3 | 64 public points, 1 process each, +4 A/A | 11.17 / 0.121 | 1.459 / 1.318 | **7.66** [6.90, 8.61] | 0.092 [0.071, 0.116] | **measured in a separate experiment, not combined**: see the 41 row of Other verified records (run 38777903922: online IC/tuned 0.09, cold 6.6); the matched rho in this row is ParallelRho (0.56× the strong walk's ns/step) | model only: 2.21 | crypto isolated_bench container | Setup is 98.9% of cold `S`: cut the reusable setup at fixed recipe, as a new IC programme round against v3 |
 | 53 | K_0 / GF(2^53) | same pipeline, 27,984 points, 264 columns; crypto `995ea207`; rule v3 | 64 + 4 A/A | 16.98 / 0.058 | 1.282 / 1.236 | **13.2** [11.8, 15.0] | 0.047 [0.036, 0.059] | **measured in a separate experiment, not combined**: see the 53 row below (online 0.0423, cold 10.6); ParallelRho here is 0.53× strong | model only: 1.77 | crypto isolated_bench container | Setup is 99.7% of cold `S`: cut it at fixed recipe; then price the n=53 representative-plus-Frobenius orbit domain as its replacement |
 | 61 | K_0 / GF(2^61) | same pipeline, 39,040 points, 320 columns; crypto `995ea207`; rule v3 | 64 + 4 A/A | 24.93 / 0.079 | 1.189 / 1.168 | **21.0** [18.6, 23.8] | 0.067 [0.051, 0.088] | **measured in a separate experiment, not combined**: see the 61 row below (online 0.0687, cold 18.9); ParallelRho here is 0.50× strong | model only: 3.52 | crypto isolated_bench container | Setup is 99.7% of cold `S`, and the cold gap grows as r^0.18: cut the setup; price the compact-orbit K=500 producer on these 64 points |
-| 83 | K_1 / GF(2^83) | the stacked producer (arms cS / kS): B's `koblitz_orbit_dlp_fast_online` + `ic_log_cache.patch`, K600 (99,600 points, 600 orbit columns), lift_scan x Feistel + prefetched probes + 16-byte compact root slots + folded S3 root index (14,940,300 stored states), rank stage on the stack's own probe loop (candidate ID below); crypto `770f6a69`; `koblitz-n83-stacked-20261016/protocol.json` at cryptanalysis `24abca74`; run 38862448935 | 20 new public points, two rank blocks, Q0 | 9.680 / 0.01314 (wall time in rT770 steps, 316.66 ns, one host class; setup 9.667, of which rank stage 8.795; factor-base construction not charged, so cold is a lower bound) | 0.1025 / 0.0944 | **94.4** [73.5, 125.3] (end-to-end cold: rank stage + setup + online; wall time, one host; §5a band not computable) | 0.139 [0.077, 0.237] | **measured on this row**: end-to-end cold 94.4, online 0.139 | not measured on this row (B's 235 [61, 645] is in Other verified records) | Tier 1 (GitHub runner, EPYC 9V74, one pinned CPU, CPU-only); one run, not replayed on another host class | The rank stage is 257.8 s of the 283.8 s end-to-end cold cost (91%): cut it (the guided minimum-rank policy, fewer attempts), then setup (lift_scan in the index build, 1.33x cold without rank); re-run the BL arm on the stack |
+| 83 | K_1 / GF(2^83) | the stacked producer (arms cS / kS): B's `koblitz_orbit_dlp_fast_online` + `ic_log_cache.patch`, K600 (99,600 points, 600 orbit columns), lift_scan x Feistel + prefetched probes + 16-byte compact root slots + folded S3 root index (14,940,300 stored states), rank stage on the stack's own probe loop (candidate ID below); crypto `770f6a69`; `koblitz-n83-stacked-20261016/protocol.json` at cryptanalysis `24abca74`; run 38862448935 | 20 new public points, two rank blocks, Q0 | 9.680 / 0.01314 (wall time in rT770 steps, 316.66 ns, one host class; setup 9.667, of which rank stage 8.795; factor-base construction not charged, so cold is a lower bound; measured X = 0.43 s gives 9.695, illustrative) | 0.1025 / 0.0944 | **94.4** [73.5, 125.3] (end-to-end cold: rank stage + setup + online; wall time, one host; §5a band not computable) | 0.139 [0.077, 0.237] | **measured on this row**: end-to-end cold 94.4, online 0.139 | not measured on this row (B's 235 [61, 645] is in Other verified records) | Tier 1 (GitHub runner, EPYC 9V74, one pinned CPU, CPU-only); one run; rank block K1 replayed on another host class (Intel Xeon 8573C, [run 39007026856](https://github.com/aburan28/cryptanalysis/actions/runs/39007026856)): exact determinism pass, per-probe wall ratio host-dependent (2.66 vs 2.28) | The rank stage is 257.8 s of the 283.8 s end-to-end cold cost (91%): cut it (the guided minimum-rank policy, fewer attempts), then setup (lift_scan in the index build, 1.33x cold without rank); re-run the BL arm on the stack |
 
 ![Distance to the matched rho and to Bernstein–Lange, per baseline row.](figures/baselines_gap.png)
 
@@ -127,19 +127,33 @@ source gives one ([source](figures/baselines_gap.tex),
     arms, so the ratio stays above 1 for any construction cost X, but
     3.2391 is an upper bound and cold `S` 9.680 a lower bound on the
     every-phase figures (X = 1 s: 3.231 and 9.715; 10 s: 3.163 and 10.02;
-    60 s: 2.848 and 11.73). X is unmeasured; one timed construction is in
-    the preregistered replay below.
+    60 s: 2.848 and 11.73). **X measured (2026-10-17):** one cold in-process
+    construction (`construct:83:1:600`, base hash equal to the retained
+    file's) took X = 427.524 ms in the replay below, 65.541 ms more than
+    loading the retained file on the same host (361.984 ms). At that X the
+    every-phase figures are R 3.2357 and cold `S` 9.6950 (gap 94.56):
+    illustrative, since X is from the Intel replay host and the rest from the
+    EPYC run. The bounds 3.2391 and 9.680 are within 0.11% and 0.15%.
   - *§5a band.* Not computable from this run: the IC arms emit no group
     additions, scalar multiplications, canonicalizations, fold rotations or
     index inserts, so the gap 94.4 has no 0 / 0.1 / 1 GAE band and holds
     as a wall-time figure on this host only.
-  - *Replication.* Not replayed on another host class. A K1 replay of kP
-    and kS (order kS, kP, kP, kS, rank seed 101, full rank) with one timed
-    cold base construction in the same job is preregistered in
-    `experiments/koblitz-n83-replay-20261017/PROTOCOL.md` (workflow
-    `n83-replay.yml`); its result is pending and changes nothing here until
-    archived. It emits no group-operation counts, so the §5a band stays
-    uncomputable after it (Open).
+  - *Replication.* Rank block K1 was replayed on another host class on
+    2026-10-17: [run 39007026856](https://github.com/aburan28/cryptanalysis/actions/runs/39007026856) on an
+    INTEL(R) XEON(R) PLATINUM 8573C (the original: AMD EPYC 9V74; same
+    image, kernel, toolchain and binary sha256), under the protocol frozen
+    at `863f6090` (`experiments/koblitz-n83-replay-20261017/PROTOCOL.md`;
+    archived in `RESULTS.md` there). Verdict `replay_pass`: all six runs
+    valid; kS, kP, kP, kS reproduce every per-attempt probe count (first
+    100 and all 600) and the relation digest of the archived K1 records;
+    the constructed base equals the retained one. Not gated: the per-probe
+    wall ratio kP / kS is 2.6583 there (first 100 attempts 2.7013) against
+    2.2905 for K1 on the EPYC (2.2837 both blocks), so the 3.24x wall-time
+    headline is host-dependent, while the operation-count ratio 1.4773
+    stands. The replay did not re-measure the cold arms, so it gives no new
+    R or `S`; one replay, one other host class, two processes per arm. It
+    emits no group-operation counts, so the §5a band stays uncomputable
+    (Open).
 - **n=83, B (Other verified records).** `S` in B's run is wall ms over that
   run's rT770 step (180.8 ns) and √r. Cold is the matched precomputation
   P_IC (520,825 ms rank stage + 29,022 ms per-process setup; `s_ic_setup`
@@ -242,12 +256,15 @@ only once it moves an end-to-end `S` above.
   separable.
 - **n=83, §5a band:** the 0 / 0.1 / 1 GAE band for the IC / rho gap is
   uncomputable on both n=83 rows, because the frozen producer emits no
-  group-operation counts. The preregistered K1 replay times factor-base
-  construction but uses the same producer, so the band stays open until a
-  producer that emits the counts runs under a new protocol.
-- **n=83, construction time X:** unmeasured on both n=83 rows (cold `S` is a
-  lower bound; the stacked ratio falls below 2 only at X >= 351.6 s). One
-  timed construction is preregistered in `koblitz-n83-replay-20261017`.
+  group-operation counts. The K1 replay (archived 2026-10-17) timed
+  factor-base construction but used the same producer, so the band stays
+  open until a producer that emits the counts runs under a new protocol.
+- **n=83, construction time X (resolved 2026-10-17):** measured in
+  `koblitz-n83-replay-20261017` ([run 39007026856](https://github.com/aburan28/cryptanalysis/actions/runs/39007026856)): X = 427.5 ms,
+  65.5 ms over the retained-file load. Every-phase stacked R 3.2357 and cold
+  `S` 9.6950 (illustrative, two hosts) against the row's 3.2391 and 9.680;
+  the row's figures are unchanged. B's row uses the same base; its cold `S`
+  was not recomputed.
 
 ## Updating this file
 
