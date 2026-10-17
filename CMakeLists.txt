@@ -200,6 +200,10 @@ if(CA_BUILD_TESTS)
       add_test(NAME ${t} COMMAND test_${t})
     endif()
   endforeach()
+  if(TARGET ca)
+    add_test(NAME volcano_census
+             COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_volcano_census.sh $<TARGET_FILE:ca>)
+  endif()
 endif()
 
 # ---- fuzzing ---------------------------------------------------------------

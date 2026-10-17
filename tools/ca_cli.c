@@ -10,6 +10,7 @@
  *   ca volcano --p P --a A --b B [--order N] [--ell 2|3] [--seed S] [--trials T]
  *            [--per-level L] [--controls C] [--radius R] [--threads T]
  *            [--no-negation] [--automorphisms] [--diagram FILE] [--trials-out FILE]
+ *            [--census-out FILE] [--edges-out FILE]
  *            one ECDLP instance carried by Velu isogenies to every curve of
  *            the l-volcano; rho on each; min / mean / max per curve and level
  *   ca curve --name NAME | (--group ec --p P --a A --b B [--order N]) | --list
@@ -165,7 +166,7 @@ static _Noreturn void usage(void)
         "  version | factor N | prime N | ec-order --p P --a A --b B | gpu-info\n"
         "  volcano --p P --a A --b B [--order N] [--ell 2|3] [--seed S] [--trials T]\n"
         "        [--per-level L] [--controls C] [--automorphisms] [--diagram FILE]\n"
-        "        [--trials-out FILE]\n"
+        "        [--trials-out FILE] [--census-out FILE] [--edges-out FILE]\n"
         "  gen   --group zp|ec --p P [--a A --b B] [--order N] [--x X] [--seed S]\n"
         "  solve --alg bsgs|rho|kangaroo|grumpy|precomp|glv|dlog|gpu-rho --group zp|ec --p P [--a "
         "A "
@@ -1398,6 +1399,14 @@ static void table_row(const char *name, const char *lv, vstat o, vstat s)
             s.mean * 1e3);
 }
 
+static const ca_volcano_vertex *g_vsort;
+
+static int cmp_idx_by_j(const void *x, const void *y)
+{
+    uint64_t a = g_vsort[*(const uint32_t *)x].j, b = g_vsort[*(const uint32_t *)y].j;
+    return (a > b) - (a < b);
+}
+
 static int cmd_volcano(void)
 {
     uint64_t p = opt_u64("--p", 0), a = opt_u64("--a", 0), b = opt_u64("--b", 0);
@@ -1495,6 +1504,105 @@ static int cmd_volcano(void)
         if (W[i][2] || !ca_group_is_identity(&gv, &chk))
             die("internal: a Velu map did not keep the order of P");
         verified++;
+    }
+
+    /* --census-out / --edges-out: every vertex of the walk (not a sample) and
+     * every directed rational l-kernel edge, one JSON object per line, for a
+     * durable census.  Vertex lines carry the transported generator g and
+     * target h, a seeded native generator gn (order n, independent of the
+     * transport) and two isomorphic re-scalings (u^4 a, u^6 b) with g and gn
+     * carried to them.  Edge lines are re-derived from each vertex's own model
+     * (kernels and Velu codomain) and matched to a vertex by j. */
+    const char *cpath = opt("--census-out"), *epath = opt("--edges-out");
+    if (cpath) {
+        FILE *cf = fopen(cpath, "w");
+        if (!cf) die("cannot open --census-out");
+        for (uint32_t i = 0; i < vo.count; i++) {
+            const ca_volcano_vertex *v = &vo.v[i];
+            ca_group gv;
+            if (ca_group_ec_init(&gv, p, v->a, v->b, n) != CA_OK) die("internal: singular vertex");
+            ca_elem R, Pn;
+            uint64_t wn[4];
+            uint64_t s0 = ca_mix64((seed * 0x9E3779B97F4A7C15ULL) ^ v->j ^ 0x6e6174697665ULL);
+            for (uint64_t t = 0;; t++) {
+                ca_ec_random_point(&gv, &R, ca_mix64(s0 + t) | 1);
+                ca_group_mul(&gv, &Pn, &R, cof, NULL);
+                if (!ca_group_is_identity(&gv, &Pn)) break;
+            }
+            ca_group_decode(&gv, wn, &Pn);
+            fprintf(cf,
+                    "{\"id\":%" PRIu32 ",\"level\":%" PRId32 ",\"dist\":%" PRIu32
+                    ",\"parent\":%" PRId32 ",\"kernel_x\":%" PRIu64 ",\"kernels\":%" PRIu32
+                    ",\"a\":%" PRIu64 ",\"b\":%" PRIu64 ",\"j\":%" PRIu64 ",\"nbrs\":[",
+                    i, v->level, v->dist, v->parent, v->kernel_x, v->kernels, v->a, v->b, v->j);
+            for (uint32_t q = 0; q < v->n_nbrs; q++)
+                fprintf(cf, "%s%" PRIu32, q ? "," : "", v->nbrs[q]);
+            fprintf(cf,
+                    "],\"g\":\"%" PRIu64 ",%" PRIu64 "\",\"h\":\"%" PRIu64 ",%" PRIu64
+                    "\",\"gn\":\"%" PRIu64 ",%" PRIu64 "\",\"controls\":[",
+                    W[i][0], W[i][1], W[i][4], W[i][5], wn[0], wn[1]);
+            ca_rng cr;
+            ca_rng_seed(&cr, ca_mix64(seed ^ v->j ^ 0x63746c73ULL) | 1);
+            for (unsigned c = 0; c < 2; c++) {
+                uint64_t u = 2 + ca_rng_below(&cr, p - 2), u2 = ca_mulmod(u, u, p);
+                uint64_t u3 = ca_mulmod(u2, u, p);
+                fprintf(cf,
+                        "%s{\"u\":%" PRIu64 ",\"a\":%" PRIu64 ",\"b\":%" PRIu64 ",\"g\":\"%" PRIu64
+                        ",%" PRIu64 "\",\"gn\":\"%" PRIu64 ",%" PRIu64 "\"}",
+                        c ? "," : "", u, ca_mulmod(ca_mulmod(u2, u2, p), v->a, p),
+                        ca_mulmod(ca_mulmod(u3, u3, p), v->b, p), ca_mulmod(u2, W[i][0], p),
+                        ca_mulmod(u3, W[i][1], p), ca_mulmod(u2, wn[0], p), ca_mulmod(u3, wn[1], p));
+            }
+            fprintf(cf, "]}\n");
+        }
+        fclose(cf);
+    }
+    if (epath) {
+        FILE *ef = fopen(epath, "w");
+        if (!ef) die("cannot open --edges-out");
+        uint32_t *idx = malloc(vo.count * sizeof(*idx));
+        if (!idx) die("out of memory");
+        for (uint32_t i = 0; i < vo.count; i++) idx[i] = i;
+        g_vsort = vo.v;
+        qsort(idx, vo.count, sizeof(*idx), cmp_idx_by_j);
+        for (uint32_t i = 0; i < vo.count; i++) {
+            const ca_volcano_vertex *u = &vo.v[i];
+            uint64_t xs[CA_VOLCANO_MAX_NBRS] = {0};
+            unsigned nk = ca_isogeny_kernels(p, u->a, u->b, ell, xs);
+            for (unsigned ki = 0; ki < nk; ki++) {
+                uint64_t a2 = 0, b2 = 0;
+                if (ca_velu_codomain(p, u->a, u->b, ell, xs[ki], &a2, &b2) != CA_OK) die("internal: Velu codomain failed");
+                /* j = 1728 * 4a^3 / (4a^3 + 27 b^2) */
+                uint64_t a3 = ca_mulmod(ca_mulmod(a2, a2, p), a2, p);
+                uint64_t t4 = ca_mulmod(4 % p, a3, p);
+                uint64_t den = ca_addmod(t4, ca_mulmod(27 % p, ca_mulmod(b2, b2, p), p), p);
+                uint64_t j2 = ca_mulmod(ca_mulmod(1728 % p, t4, p), ca_invmod(den, p), p);
+                int64_t to = -1;
+                uint32_t lo = 0, hi = vo.count;
+                while (lo < hi) {
+                    uint32_t mid = (lo + hi) / 2;
+                    if (vo.v[idx[mid]].j < j2) lo = mid + 1; else hi = mid;
+                }
+                if (lo < vo.count && vo.v[idx[lo]].j == j2) to = idx[lo];
+                const char *dir = "unknown";
+                if (to >= 0 && u->level >= 0 && vo.v[to].level >= 0)
+                    dir = vo.v[to].level > u->level   ? "down"
+                          : vo.v[to].level < u->level ? "up"
+                                                      : "horizontal";
+                int tree = to >= 0 && vo.v[to].parent == (int32_t)i && vo.v[to].kernel_x == xs[ki];
+                int model = tree && vo.v[to].a == a2 && vo.v[to].b == b2;
+                const char *special = (j2 == 0 || j2 == 1728 % p) ? "true" : "false";
+                fprintf(ef,
+                        "{\"from\":%" PRIu32 ",\"to\":%" PRId64 ",\"kernel_x\":%" PRIu64
+                        ",\"codomain_a\":%" PRIu64 ",\"codomain_b\":%" PRIu64
+                        ",\"codomain_j\":%" PRIu64
+                        ",\"dir\":\"%s\",\"tree\":%s,\"model_match\":%s,\"special_j\":%s}\n",
+                        i, to, xs[ki], a2, b2, j2, dir, tree ? "true" : "false",
+                        model ? "true" : "false", special);
+            }
+        }
+        free(idx);
+        fclose(ef);
     }
 
     /* Arms: the root, up to per_level curves of each level, the controls. */
