@@ -1550,9 +1550,11 @@ static int cmd_volcano(void)
         if (arms[i].vertex < 0 || ca_curve_detect(p, arms[i].a, arms[i].b, n, &ci) != CA_OK ||
             ci.endo == CA_CURVE_ENDO_NONE || !ci.lambda)
             continue;
+        char base[sizeof(arms[i].label)];
+        memcpy(base, arms[i].label, sizeof(base));
         varm *m = &arms[na++];
         *m = arms[i];
-        snprintf(m->label, sizeof(m->label), "%.18s+aut", arms[i].label);
+        snprintf(m->label, sizeof(m->label), "%.18s+aut", base);
         m->aut_order = ci.aut_order;
     }
 
