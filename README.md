@@ -206,6 +206,39 @@ Other commands: `ca factor N`, `ca prime N`, `ca solve --alg bsgs|kangaroo|grump
 ... --lo L --hi U` for interval problems, `ca_bench generic|interval|ic|cheon|gpu|ops`
 for the benchmark tables.
 
+### ECDLP across an isogeny volcano
+
+```
+$ ./build/ca volcano --p 1000033 --a 5 --b 17 --trials 20 --diagram volcano.diagram.json
+volcano: 29 curves, 28 edges verified, depth 1; rho: 12 curves x 20 trials
+curve      level     min ops    mean ops     max ops    mean ms
+...
+L0            5c         277         391         552       0.05
+L1            4c         305         409         597       0.05
+{"status":"ok","p":1000033,...,"depth":1,"crater":"split","walk":{...,"per_level":[9,14]},...}
+```
+
+Point it at a curve `y² = x³ + Ax + B` over `F_P` (prime `3 < P < 2^62`).
+- **Setup:** it counts points (or checks `--order`), takes `n` the largest
+  prime factor, and draws `P` of order `n` and `Q = kP` from `--seed`.
+- **Walk:** it walks the 3-isogeny volcano (`--ell 2` for 2-isogenies)
+  with Vélu maps from `ca_volcano.h`. It carries `(P, Q)` along every edge
+  and checks that each image is on its codomain, the map is a
+  homomorphism, and the order is kept.
+- **Measure:** it runs `ca_rho_solve` `--trials` times on the root, on up
+  to `--per-level` curves of each level, and on `--controls` isomorphic
+  re-scalings of the root.
+
+Output:
+- **stdout:** JSON with min / mean / median / max / sd / 95% CI of group
+  operations and seconds per curve, per level (0 = crater … depth =
+  floor), and pooled.
+- **stderr:** the same as a table.
+- **`--trials-out FILE`:** one CSV row per solve.
+- **`--diagram FILE`:** writes the input of the standard volcano diagram
+  (`volcano-diagram/v1`, rendered by `tools/volcano-diagram` in
+  [aburan28/crypto](https://github.com/aburan28/crypto)).
+
 ### Every public header is reachable
 
 `ca num` and `ca group` expose the primitives the solvers are built from — the

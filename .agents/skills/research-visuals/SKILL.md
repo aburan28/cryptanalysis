@@ -31,6 +31,18 @@ records, measurement boundaries, and checked Sage launcher.
    generation is blocked, retain complete source and name the blocker; never
    silently reuse an older PDF.
 
+## Isogeny volcanoes: the standard diagram
+
+Draw every ℓ-isogeny volcano with the shared renderer in aburan28/crypto,
+`tools/volcano-diagram/volcano_diagram.py` (`volcano-diagram/v1` input,
+documented in its README). It shows strata from crater (0) to floor,
+descending trees under each crater vertex in cycle order, measured
+vertices on one labelled colour scale with unmeasured ones small and grey,
+unverified edges dashed, the root circled, and the run id in the subtitle.
+Save the input as `<name>.diagram.json` beside the SVG and PNG, and map
+short vertex labels to full curve ids in the report. Extend the renderer
+there rather than forking it here.
+
 ## Update the graph set
 
 - Locate graphs affected by the search in the relevant experiment, including

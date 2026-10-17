@@ -7,6 +7,11 @@
  *   ca ec-order --p P --a A --b B
  *   ca gen   --group zp|ec --p P [--a A --b B] [--order N] [--x X] [--seed S]
  *   ca gpu-info
+ *   ca volcano --p P --a A --b B [--order N] [--ell 2|3] [--seed S] [--trials T]
+ *            [--per-level L] [--controls C] [--radius R] [--threads T]
+ *            [--no-negation] [--automorphisms] [--diagram FILE] [--trials-out FILE]
+ *            one ECDLP instance carried by Velu isogenies to every curve of
+ *            the l-volcano; rho on each; min / mean / max per curve and level
  *   ca curve --name NAME | (--group ec --p P --a A --b B [--order N]) | --list
  *            report a curve's endomorphism structure (GLV) and chosen solver
  *   cryptanalysis bsgs|rho --group zp|ec --p P --order N --g G --h H
@@ -78,6 +83,7 @@
 #include <signal.h>
 #include <time.h>
 #include <inttypes.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -157,6 +163,9 @@ static _Noreturn void usage(void)
         "        cuda: campaign sigma walk; metal: separate table walk\n"
         "        --check [--kat F] checks the selected backend (KAT: cuda only)\n"
         "  version | factor N | prime N | ec-order --p P --a A --b B | gpu-info\n"
+        "  volcano --p P --a A --b B [--order N] [--ell 2|3] [--seed S] [--trials T]\n"
+        "        [--per-level L] [--controls C] [--automorphisms] [--diagram FILE]\n"
+        "        [--trials-out FILE]\n"
         "  gen   --group zp|ec --p P [--a A --b B] [--order N] [--x X] [--seed S]\n"
         "  solve --alg bsgs|rho|kangaroo|grumpy|precomp|glv|dlog|gpu-rho --group zp|ec --p P [--a "
         "A "
@@ -1318,6 +1327,477 @@ static int cmd_curve(void)
     return 0;
 }
 
+/* ---- volcano: one ECDLP instance on every curve of an l-isogeny volcano --
+ *
+ * ca volcano --p P --a A --b B [--order N] [--ell 2|3] [--seed S] [--trials T]
+ *            [--per-level L] [--controls C] [--radius R] [--max-vertices M]
+ *            [--threads T] [--dp-bits D] [--r R] [--no-negation]
+ *            [--diagram FILE] [--trials-out FILE]
+ *
+ * Counts #E (unless --order), takes n the largest prime factor, draws P of
+ * order n (cofactor times a seeded random point) and Q = kP, walks the
+ * l-volcano (ca_volcano_walk), carries (P, Q) along every edge with Velu's
+ * map (checked: on the codomain, a homomorphism, order n kept), and runs
+ * ca_rho_solve --trials times on the root, up to --per-level curves of each
+ * level, and --controls isomorphic re-scalings of the root.  JSON on stdout
+ * with min / mean / median / max / sd / 95% CI of group operations and
+ * seconds per curve, per level and pooled; a table on stderr.
+ */
+
+typedef struct vstat {
+    double min, max, mean, median, sd, ci95;
+} vstat;
+
+static int cmp_dbl(const void *x, const void *y)
+{
+    double a = *(const double *)x, b = *(const double *)y;
+    return (a > b) - (a < b);
+}
+
+static vstat vstats(const double *x, size_t n)
+{
+    vstat s = {0};
+    if (!n) return s;
+    double *t = malloc(n * sizeof(*t));
+    if (!t) die("out of memory");
+    memcpy(t, x, n * sizeof(*t));
+    qsort(t, n, sizeof(*t), cmp_dbl);
+    double sum = 0, var = 0;
+    for (size_t i = 0; i < n; i++) sum += t[i];
+    s.mean = sum / (double)n;
+    for (size_t i = 0; i < n; i++) var += (t[i] - s.mean) * (t[i] - s.mean);
+    s.sd = n > 1 ? sqrt(var / (double)(n - 1)) : 0;
+    s.ci95 = 1.96 * s.sd / sqrt((double)n);
+    s.min = t[0];
+    s.max = t[n - 1];
+    s.median = n % 2 ? t[n / 2] : (t[n / 2 - 1] + t[n / 2]) / 2;
+    free(t);
+    return s;
+}
+
+static void print_vstat(const char *name, vstat s)
+{
+    printf("\"%s\":{\"min\":%.6g,\"mean\":%.6g,\"median\":%.6g,\"max\":%.6g,\"sd\":%.6g,"
+           "\"ci95_half\":%.6g}",
+           name, s.min, s.mean, s.median, s.max, s.sd, s.ci95);
+}
+
+typedef struct varm {
+    char label[24];
+    int32_t vertex, level; /* vertex -1 for an isomorphic control */
+    uint64_t a, b, j;
+    uint64_t P[4], Q[4];
+    double *ops, *secs;
+    size_t n;
+    uint32_t aut_order; /* > 0: solved by the automorphism-folded rho (ca_curve_solve) */
+} varm;
+
+static void table_row(const char *name, const char *lv, vstat o, vstat s)
+{
+    fprintf(stderr, "%-10s%6s%12.0f%12.0f%12.0f%11.2f\n", name, lv, o.min, o.mean, o.max,
+            s.mean * 1e3);
+}
+
+static int cmd_volcano(void)
+{
+    uint64_t p = opt_u64("--p", 0), a = opt_u64("--a", 0), b = opt_u64("--b", 0);
+    if (!p) die("volcano needs --p P --a A --b B");
+    unsigned ell = (unsigned)opt_u64("--ell", 3);
+    uint64_t seed = opt_u64("--seed", 1), trials = opt_u64("--trials", 20);
+    uint64_t per_level = opt_u64("--per-level", 10), controls = opt_u64("--controls", 3);
+    uint64_t order = opt_u64("--order", 0);
+    if (ell != 2 && ell != 3) die("--ell must be 2 or 3");
+    if (!trials) die("--trials must be at least 1");
+    if (p <= 3 || p >= (1ULL << 62) || !ca_is_prime(p)) die("--p must be a prime 3 < p < 2^62");
+    a %= p;
+    b %= p;
+
+    ca_group g0;
+    ca_status rc = ca_group_ec_init(&g0, p, a, b, 0);
+    if (rc != CA_OK) die_status(rc);
+    if (!order) {
+        rc = ca_ec_count_points(p, a, b, &order, NULL);
+        if (rc != CA_OK) die_status(rc);
+    }
+    unsigned depth;
+    int crater;
+    rc = ca_volcano_depth(p, order, ell, &depth, &crater);
+    if (rc != CA_OK) die_status(rc);
+    for (uint64_t i = 0; i < 8; i++) { /* a wrong --order fails here */
+        ca_elem R, O;
+        ca_ec_random_point(&g0, &R, ca_mix64(seed + 0x6f72646572ULL + i));
+        ca_group_mul(&g0, &O, &R, order, NULL);
+        if (!ca_group_is_identity(&g0, &O)) die("--order is not #E(F_p)");
+    }
+    ca_factorization fz;
+    ca_factorize(order, &fz);
+    uint64_t n = fz.f[fz.count - 1].p, cof = order / n;
+    if (n % ell == 0) die("l divides the subgroup order n; use the other --ell");
+    if (n < 5) die("the curve has no prime-order subgroup of order >= 5");
+
+    uint32_t radius = (uint32_t)opt_u64("--radius", 2 * depth + 2);
+    ca_volcano vo;
+    rc = ca_volcano_walk(p, a, b, order, ell, radius, (uint32_t)opt_u64("--max-vertices", 20000),
+                         &vo);
+    if (rc != CA_OK) die_status(rc);
+    for (uint32_t i = 0; i < vo.count; i++) { /* an edge moves at most one level */
+        const ca_volcano_vertex *v = &vo.v[i];
+        for (uint32_t q = 0; q < v->n_nbrs && v->level >= 0; q++) {
+            int32_t lw = vo.v[v->nbrs[q]].level;
+            if (lw >= 0 && (lw - v->level > 1 || v->level - lw > 1))
+                die("internal: a volcano edge skips a level");
+        }
+    }
+    if (vo.trace == 0)
+        fprintf(stderr, "warning: t = 0, the curve is supersingular; levels may not follow an "
+                        "ordinary volcano\n");
+
+    /* The instance on the root, then carried along the breadth-first tree. */
+    ca_rng rng;
+    ca_rng_seed(&rng, seed);
+    rc = ca_group_ec_init(&g0, p, a, b, n);
+    if (rc != CA_OK) die_status(rc);
+    ca_elem P, Q;
+    for (;;) {
+        ca_elem R;
+        ca_ec_random_point(&g0, &R, ca_rng_next(&rng) | 1);
+        ca_group_mul(&g0, &P, &R, cof, NULL);
+        if (!ca_group_is_identity(&g0, &P)) break;
+    }
+    uint64_t k = 1 + ca_rng_below(&rng, n - 1);
+    ca_group_mul(&g0, &Q, &P, k, NULL);
+    uint64_t(*W)[8] = malloc(vo.count * sizeof(*W));
+    if (!W) die("out of memory");
+    ca_group_decode(&g0, W[0], &P);
+    ca_group_decode(&g0, W[0] + 4, &Q);
+    uint32_t verified = 0;
+    for (uint32_t i = 1; i < vo.count; i++) {
+        const ca_volcano_vertex *v = &vo.v[i], *u = &vo.v[v->parent];
+        ca_group gu, gv;
+        ca_elem eP, eQ, eS, iP, iQ, iS, chk;
+        uint64_t s[4], ms[4];
+        ca_velu_map(p, u->a, u->b, ell, v->kernel_x, W[v->parent], W[i]);
+        ca_velu_map(p, u->a, u->b, ell, v->kernel_x, W[v->parent] + 4, W[i] + 4);
+        if (ca_group_ec_init(&gu, p, u->a, u->b, n) != CA_OK ||
+            ca_group_ec_init(&gv, p, v->a, v->b, n) != CA_OK)
+            die("internal: a volcano curve is singular");
+        ca_group_encode(&gu, &eP, W[v->parent]);
+        ca_group_encode(&gu, &eQ, W[v->parent] + 4);
+        ca_group_op(&gu, &eS, &eP, &eQ);
+        ca_group_decode(&gu, s, &eS);
+        ca_velu_map(p, u->a, u->b, ell, v->kernel_x, s, ms);
+        if (!ca_group_encode(&gv, &iP, W[i]) || !ca_group_encode(&gv, &iQ, W[i] + 4) ||
+            !ca_group_encode(&gv, &iS, ms))
+            die("internal: a Velu image is off its codomain");
+        ca_group_op(&gv, &chk, &iP, &iQ);
+        if (!ca_group_equal(&gv, &chk, &iS)) die("internal: a Velu map is not a homomorphism");
+        ca_group_mul(&gv, &chk, &iP, n, NULL);
+        if (W[i][2] || !ca_group_is_identity(&gv, &chk))
+            die("internal: a Velu map did not keep the order of P");
+        verified++;
+    }
+
+    /* Arms: the root, up to per_level curves of each level, the controls. */
+    int with_aut = flag("--automorphisms");
+    size_t cap = 2 * (1 + (depth + 1) * per_level) + controls, na = 0;
+    varm *arms = calloc(cap, sizeof(*arms));
+    if (!arms) die("out of memory");
+    uint32_t *found = calloc(depth + 1, sizeof(*found));
+    if (!found) die("out of memory");
+    for (uint32_t i = 0; i < vo.count; i++)
+        if (vo.v[i].level >= 0) found[vo.v[i].level]++;
+    for (unsigned lv = 0; lv <= depth + 1; lv++) {
+        uint64_t taken = 0;
+        for (uint32_t i = 0; i < vo.count && na < cap; i++) {
+            const ca_volcano_vertex *v = &vo.v[i];
+            int root_pass = lv == depth + 1;
+            if (root_pass ? i != 0 : (i == 0 || v->level != (int32_t)lv || taken >= per_level))
+                continue;
+            varm *m = &arms[na++];
+            snprintf(m->label, sizeof(m->label), "v%" PRIu32, i);
+            m->vertex = (int32_t)i;
+            m->level = v->level;
+            m->a = v->a;
+            m->b = v->b;
+            m->j = v->j;
+            memcpy(m->P, W[i], 4 * sizeof(uint64_t));
+            memcpy(m->Q, W[i] + 4, 4 * sizeof(uint64_t));
+            taken++;
+        }
+    }
+    for (uint64_t c = 0; c < controls && na < cap; c++) {
+        /* (u^4 a, u^6 b), (x, y) -> (u^2 x, u^3 y): the root in new coordinates. */
+        uint64_t u = 2 + ca_rng_below(&rng, p - 2), u2 = ca_mulmod(u, u, p);
+        uint64_t u3 = ca_mulmod(u2, u, p);
+        varm *m = &arms[na++];
+        snprintf(m->label, sizeof(m->label), "iso%" PRIu64, c);
+        m->vertex = -1;
+        m->level = vo.v[0].level;
+        m->a = ca_mulmod(ca_mulmod(u2, u2, p), a, p);
+        m->b = ca_mulmod(ca_mulmod(u3, u3, p), b, p);
+        m->j = vo.v[0].j;
+        m->P[0] = ca_mulmod(u2, W[0][0], p);
+        m->P[1] = ca_mulmod(u3, W[0][1], p);
+        m->Q[0] = ca_mulmod(u2, W[0][4], p);
+        m->Q[1] = ca_mulmod(u3, W[0][5], p);
+    }
+
+    /* --automorphisms: every curve with automorphisms beyond negation (j = 0
+     * or 1728, compatible n) also runs the folded rho of ca_curve_solve on
+     * the same instance, beside its plain negation-map rho. */
+    for (size_t i = 0, base_arms = na; with_aut && i < base_arms && na < cap; i++) {
+        ca_curve_info ci;
+        if (arms[i].vertex < 0 || ca_curve_detect(p, arms[i].a, arms[i].b, n, &ci) != CA_OK ||
+            ci.endo == CA_CURVE_ENDO_NONE || !ci.lambda)
+            continue;
+        char base[sizeof(arms[i].label)];
+        memcpy(base, arms[i].label, sizeof(base));
+        varm *m = &arms[na++];
+        *m = arms[i];
+        snprintf(m->label, sizeof(m->label), "%.18s+aut", base);
+        m->aut_order = ci.aut_order;
+    }
+
+    /* Rho: trial-major, so every curve sees the same seeds in turn. */
+    ca_rho_params rp;
+    ca_rho_params_default(&rp);
+    rp.threads = (uint32_t)opt_u64("--threads", 1);
+    rp.dp_bits = (int32_t)opt_u64("--dp-bits", (uint64_t)-1);
+    rp.r = (uint32_t)opt_u64("--r", 0);
+    rp.negation_map = !flag("--no-negation");
+    ca_group *gs = calloc(na, sizeof(*gs));
+    ca_elem *eP = calloc(na, sizeof(*eP)), *eQ = calloc(na, sizeof(*eQ));
+    if (!gs || !eP || !eQ) die("out of memory");
+    for (size_t i = 0; i < na; i++) {
+        arms[i].ops = calloc(trials, sizeof(double));
+        arms[i].secs = calloc(trials, sizeof(double));
+        if (!arms[i].ops || !arms[i].secs) die("out of memory");
+        ca_status gi = arms[i].aut_order ? ca_curve_group(&gs[i], p, arms[i].a, arms[i].b, n, NULL)
+                                         : ca_group_ec_init(&gs[i], p, arms[i].a, arms[i].b, n);
+        if (arms[i].aut_order && !gs[i].endo_kind) die("internal: automorphism not enabled");
+        if (gi != CA_OK || !ca_group_encode(&gs[i], &eP[i], arms[i].P) ||
+            !ca_group_encode(&gs[i], &eQ[i], arms[i].Q))
+            die("internal: an instance is not on its curve");
+    }
+    FILE *tf = NULL;
+    const char *tpath = opt("--trials-out");
+    if (tpath) {
+        tf = fopen(tpath, "w");
+        if (!tf) die("cannot open --trials-out");
+    }
+    if (tf) fprintf(tf, "arm,vertex,level,trial,seed,ops,seconds\n");
+    fprintf(stderr,
+            "volcano: %" PRIu32 " curves, %" PRIu32 " edges verified, depth %u; rho: %zu "
+            "curves x %" PRIu64 " trials\n",
+            vo.count, verified, depth, na, trials);
+    size_t wrong = 0;
+    double t0 = ca_now();
+    for (uint64_t t = 0; t < trials; t++) {
+        rp.seed = ca_mix64(seed * 0x9E3779B97F4A7C15ULL + t) | 1;
+        for (size_t i = 0; i < na; i++) {
+            ca_stats st = {0};
+            uint64_t x = 0;
+            rc = arms[i].aut_order ? ca_curve_solve(&gs[i], &eP[i], &eQ[i], rp.seed, &x, NULL, &st)
+                                   : ca_rho_solve(&gs[i], &eP[i], &eQ[i], &rp, &x, &st);
+            if (rc != CA_OK || x != k) wrong++;
+            arms[i].ops[t] = (double)st.group_ops;
+            arms[i].secs[t] = st.seconds;
+            arms[i].n = t + 1;
+            if (tf)
+                fprintf(tf, "%s,%" PRId32 ",%" PRId32 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%.9f\n",
+                        arms[i].label, arms[i].vertex, arms[i].level, t, rp.seed, st.group_ops,
+                        st.seconds);
+        }
+    }
+    double wall = ca_now() - t0;
+    if (tf) fclose(tf);
+
+    /* Pools: by level (isogenous curves), all isogenous, controls. */
+    size_t npool = depth + 4; /* levels, all isogenous, controls, automorphism arms */
+    double **pops = calloc(npool, sizeof(*pops)), **psec = calloc(npool, sizeof(*psec));
+    size_t *pn = calloc(npool, sizeof(*pn)), *pc = calloc(npool, sizeof(*pc));
+    if (!pops || !psec || !pn || !pc) die("out of memory");
+    for (size_t q = 0; q < npool; q++) {
+        pops[q] = malloc(na * trials * sizeof(double));
+        psec[q] = malloc(na * trials * sizeof(double));
+        if (!pops[q] || !psec[q]) die("out of memory");
+    }
+    for (size_t i = 0; i < na; i++) {
+        size_t pools[2], np = 0;
+        if (arms[i].aut_order) {
+            pools[np++] = depth + 3;
+        } else if (arms[i].vertex < 0) {
+            pools[np++] = depth + 2;
+        } else {
+            pools[np++] = depth + 1;
+            if (arms[i].level >= 0) pools[np++] = (size_t)arms[i].level;
+        }
+        for (size_t q = 0; q < np; q++) {
+            memcpy(pops[pools[q]] + pn[pools[q]], arms[i].ops, arms[i].n * sizeof(double));
+            memcpy(psec[pools[q]] + pn[pools[q]], arms[i].secs, arms[i].n * sizeof(double));
+            pn[pools[q]] += arms[i].n;
+            pc[pools[q]]++;
+        }
+    }
+
+    const char *shape = crater > 0 ? "split" : crater < 0 ? "inert" : "ramified";
+    double pi = 3.14159265358979323846;
+    printf("{\"status\":\"%s\",\"p\":%" PRIu64 ",\"a\":%" PRIu64 ",\"b\":%" PRIu64
+           ",\"order\":%" PRIu64 ",\"n\":%" PRIu64 ",\"cofactor\":%" PRIu64 ",\"trace\":%" PRId64
+           ",\"ell\":%u,\"depth\":%u,\"crater\":\"%s\",\"k\":%" PRIu64 ",\"g\":\"%" PRIu64
+           ",%" PRIu64 "\",\"h\":\"%" PRIu64 ",%" PRIu64 "\",",
+           wrong ? "wrong" : "ok", p, a, b, order, n, cof, vo.trace, ell, depth, shape, k, W[0][0],
+           W[0][1], W[0][4], W[0][5]);
+    printf("\"walk\":{\"vertices\":%" PRIu32 ",\"edges\":%" PRIu32 ",\"edges_verified\":%" PRIu32
+           ",\"special_j_skipped\":%" PRIu32 ",\"radius\":%" PRIu32 ",\"per_level\":[",
+           vo.count, vo.edges, verified, vo.special_j, radius);
+    for (unsigned lv = 0; lv <= depth; lv++) printf("%s%" PRIu32, lv ? "," : "", found[lv]);
+    printf("]},\"rho\":{\"trials\":%" PRIu64 ",\"seed\":%" PRIu64 ",\"threads\":%" PRIu32
+           ",\"negation_map\":%s,\"solves\":%" PRIu64 ",\"wrong\":%zu,\"wall_seconds\":%.3f,"
+           "\"expected_ops\":%.1f},\"curves\":[",
+           trials, seed, rp.threads ? rp.threads : 1, rp.negation_map ? "true" : "false",
+           (uint64_t)na * trials, wrong, wall,
+           sqrt(pi * (double)n / (rp.negation_map ? 4.0 : 2.0)));
+    for (size_t i = 0; i < na; i++) {
+        printf("%s{\"arm\":\"%s\",\"vertex\":%" PRId32 ",\"level\":%" PRId32
+               ",\"kind\":\"%s\",\"aut_order\":%" PRIu32 ",\"a\":%" PRIu64 ",\"b\":%" PRIu64
+               ",\"j\":%" PRIu64 ",\"g\":\"%" PRIu64 ",%" PRIu64 "\",\"h\":\"%" PRIu64 ",%" PRIu64
+               "\",",
+               i ? "," : "", arms[i].label, arms[i].vertex, arms[i].level,
+               arms[i].aut_order    ? "automorphism-folded"
+               : arms[i].vertex < 0 ? "isomorphic-control"
+                                    : "isogenous",
+               arms[i].aut_order ? arms[i].aut_order : 2, arms[i].a, arms[i].b, arms[i].j,
+               arms[i].P[0], arms[i].P[1], arms[i].Q[0], arms[i].Q[1]);
+        print_vstat("ops", vstats(arms[i].ops, arms[i].n));
+        printf(",");
+        print_vstat("seconds", vstats(arms[i].secs, arms[i].n));
+        printf("}");
+    }
+    printf("],\"levels\":[");
+    for (unsigned lv = 0, first = 1; lv <= depth; lv++) {
+        if (!pn[lv]) continue;
+        printf("%s{\"level\":%u,\"curves\":%zu,\"solves\":%zu,", first ? "" : ",", lv, pc[lv],
+               pn[lv]);
+        print_vstat("ops", vstats(pops[lv], pn[lv]));
+        printf(",");
+        print_vstat("seconds", vstats(psec[lv], pn[lv]));
+        printf("}");
+        first = 0;
+    }
+    printf("],\"all_isogenous\":{\"curves\":%zu,\"solves\":%zu,", pc[depth + 1], pn[depth + 1]);
+    print_vstat("ops", vstats(pops[depth + 1], pn[depth + 1]));
+    printf(",");
+    print_vstat("seconds", vstats(psec[depth + 1], pn[depth + 1]));
+    printf("},\"controls\":{\"curves\":%zu,\"solves\":%zu,", pc[depth + 2], pn[depth + 2]);
+    print_vstat("ops", vstats(pops[depth + 2], pn[depth + 2]));
+    printf(",");
+    print_vstat("seconds", vstats(psec[depth + 2], pn[depth + 2]));
+    printf("}");
+    if (pn[depth + 3]) {
+        /* Speed-up of the folded arms over the plain isogenous arms, mean
+         * over mean, with a delta-method 95% interval; prediction
+         * sqrt(aut_order / 2) beyond the negation map both arms use. */
+        vstat va = vstats(pops[depth + 3], pn[depth + 3]);
+        vstat vi = vstats(pops[depth + 1], pn[depth + 1]);
+        double r = vi.mean / va.mean;
+        double rel = sqrt(pow(va.ci95 / va.mean, 2) + pow(vi.ci95 / vi.mean, 2));
+        uint32_t ao = 0;
+        for (size_t i = 0; i < na; i++)
+            if (arms[i].aut_order) ao = arms[i].aut_order;
+        printf(",\"automorphism\":{\"curves\":%zu,\"solves\":%zu,\"aut_order\":%" PRIu32 ",",
+               pc[depth + 3], pn[depth + 3], ao);
+        print_vstat("ops", va);
+        printf(",");
+        print_vstat("seconds", vstats(psec[depth + 3], pn[depth + 3]));
+        printf(",\"ops_speedup_vs_isogenous\":%.4f,\"ops_speedup_ci95_half\":%.4f,"
+               "\"predicted\":%.4f}",
+               r, r * rel, sqrt(ao / (rp.negation_map ? 2.0 : 1.0)));
+    }
+    printf("}\n");
+
+    fprintf(stderr, "%-10s%6s%12s%12s%12s%11s\n", "curve", "level", "min ops", "mean ops",
+            "max ops", "mean ms");
+    for (size_t i = 0; i < na; i++) {
+        char lv[16];
+        snprintf(lv, sizeof(lv), "%" PRId32, arms[i].level);
+        table_row(arms[i].label, lv, vstats(arms[i].ops, arms[i].n),
+                  vstats(arms[i].secs, arms[i].n));
+    }
+    for (unsigned lv = 0; lv <= depth; lv++) {
+        if (!pn[lv]) continue;
+        char name[16], c[16];
+        snprintf(name, sizeof(name), "L%u", lv);
+        snprintf(c, sizeof(c), "%zuc", pc[lv]);
+        table_row(name, c, vstats(pops[lv], pn[lv]), vstats(psec[lv], pn[lv]));
+    }
+    table_row("all", "iso", vstats(pops[depth + 1], pn[depth + 1]),
+              vstats(psec[depth + 1], pn[depth + 1]));
+    if (pn[depth + 2])
+        table_row("control", "iso~", vstats(pops[depth + 2], pn[depth + 2]),
+                  vstats(psec[depth + 2], pn[depth + 2]));
+    if (pn[depth + 3])
+        table_row("aut", "fold", vstats(pops[depth + 3], pn[depth + 3]),
+                  vstats(psec[depth + 3], pn[depth + 3]));
+
+    /* The standard volcano diagram's input (volcano-diagram/v1, aburan28/crypto). */
+    const char *dpath = opt("--diagram");
+    if (dpath) {
+        FILE *df = fopen(dpath, "w");
+        if (!df) die("cannot open --diagram");
+        fprintf(df,
+                "{\"schema\":\"volcano-diagram/v1\",\"ell\":%u,\"depth\":%u,"
+                "\"title\":\"%u-isogeny volcano, depth %u, p = %" PRIu64 "\","
+                "\"subtitle\":\"ca volcano --seed %" PRIu64 "\","
+                "\"value_label\":\"mean rho group operations (ca)\",\"vertices\":[",
+                ell, depth, ell, depth, p, seed);
+        for (uint32_t i = 0, first = 1; i < vo.count; i++) {
+            const ca_volcano_vertex *v = &vo.v[i];
+            if (v->level < 0) continue;
+            fprintf(df,
+                    "%s{\"id\":%" PRIu32 ",\"label\":\"v%" PRIu32 "\",\"level\":%" PRId32
+                    ",\"nbrs\":[",
+                    first ? "" : ",", i, i, v->level);
+            for (uint32_t q = 0; q < v->n_nbrs; q++)
+                fprintf(df, "%s%" PRIu32, q ? "," : "", v->nbrs[q]);
+            fprintf(df, "]");
+            for (size_t m = 0; m < na; m++)
+                if (arms[m].vertex == (int32_t)i && !arms[m].aut_order)
+                    fprintf(df, ",\"value\":%.6g", vstats(arms[m].ops, arms[m].n).mean);
+            if (i == 0) fprintf(df, ",\"highlight\":\"root\"");
+            fprintf(df, "}");
+            first = 0;
+        }
+        fprintf(df, "]}\n");
+        fclose(df);
+    }
+
+    for (size_t q = 0; q < npool; q++) {
+        free(pops[q]);
+        free(psec[q]);
+    }
+    for (size_t i = 0; i < na; i++) {
+        free(arms[i].ops);
+        free(arms[i].secs);
+    }
+    free(pops);
+    free(psec);
+    free(pn);
+    free(pc);
+    free(gs);
+    free(eP);
+    free(eQ);
+    free(arms);
+    free(found);
+    free(W);
+    ca_volcano_free(&vo);
+    if (wrong) {
+        fprintf(stderr, "error: %zu rho solves returned no or the wrong logarithm\n", wrong);
+        return 1;
+    }
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     argc_g = argc;
@@ -1394,6 +1874,7 @@ int main(int argc, char **argv)
     if (!strcmp(cmd, "num")) return cmd_num();
     if (!strcmp(cmd, "group")) return cmd_group();
     if (!strcmp(cmd, "curve")) return cmd_curve();
+    if (!strcmp(cmd, "volcano")) return cmd_volcano();
     usage();
     return 2;
 }

@@ -37,5 +37,6 @@
 #include "ca_gpu.h"
 #include "ca_coord.h"
 #include "ca_ffi.h"
+#include "ca_volcano.h"
 
 #endif /* CRYPTANALYSIS_H */
