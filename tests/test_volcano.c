@@ -90,5 +90,18 @@ int main(void)
     CHECK(vo.count == 80);
     CHECK(per[0] == 2 && per[1] == 6 && per[2] == 18 && per[3] == 54);
     ca_volcano_free(&vo);
+
+    /* A whole 2-volcano of depth 3 over p = 1 mod 8 (curve C of the study):
+     * ramified crater, a binary tree, 2 + 4 + 8 + 16. */
+    CHECK(ca_volcano_walk(146833024135393ULL, 14391545271884ULL, 141956518099848ULL, 0, 2, 8, 0,
+                          &vo) == CA_OK);
+    CHECK(vo.order == 146833030777920ULL && vo.depth == 3 && vo.crater == 0);
+    unsigned per2[4] = {0};
+    for (uint32_t i = 0; i < vo.count; i++)
+        if (vo.v[i].level >= 0) per2[vo.v[i].level]++;
+    CHECK(vo.count == 30);
+    CHECK(per2[0] == 2 && per2[1] == 4 && per2[2] == 8 && per2[3] == 16);
+    ca_volcano_free(&vo);
+    check_walk(146833024135393ULL, 14391545271884ULL, 141956518099848ULL, 2, 3);
     TEST_MAIN_END();
 }
