@@ -11,6 +11,7 @@ places to run work:
 | One index-calculus run or benchmark on a GPU of a chosen type | `runpod_pod.py run NAME -- CMD`: a pod rented for the command and deleted after it | the pod's hourly rate while it exists |
 | A queue of GPU jobs, run one at a time on a runner, each to a receipt | **cairn's host agent on a Runpod pod** (`cairn_queue.py`) | the pod's hourly rate; stops itself when idle |
 | Burst or fan-out: 1-100 containers, any core count, any GPU type, then back to zero | **Modal** (`modal_run.py`) | per second of sandbox time (3x the function rate) |
+| One EC2 instance on AWS, ssh from your address only, this checkout synced to it | [`deploy/aws/launch.py`](../deploy/aws/README.md) `launch`, `run NAME -- CMD`, `terminate` | the instance's hourly rate; terminates itself after `--hours` |
 
 Everything here is Python standard library plus the `modal` client, and needs
 no local GPU or Docker.

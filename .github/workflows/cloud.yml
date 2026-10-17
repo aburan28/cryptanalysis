@@ -1,15 +1,15 @@
 name: cloud
-# The Runpod worker fleet, the Modal job runner, the Modal workers and the
-# cairn job queue (cloud/).  Nothing here talks to Runpod, Modal or Cursor; the
+# The Runpod worker fleet, the Modal job runner, the Modal workers, the
+# cairn job queue (cloud/) and the EC2 experiment launcher (deploy/aws/).  Nothing here talks to Runpod, Modal or Cursor; the
 # tests run the job runner locally and the queue's jobs through a cairn agent
 # and node on the runner, and the Modal client is installed only so its
 # definitions import.
 on:
   push:
     branches: ["claude/cryptanalysis-repo-setup-p59kek"]
-    paths: ['cloud/**', 'ecc2k130/scripts/fetch_cuda.sh', '.github/workflows/cloud.yml']
+    paths: ['cloud/**', 'deploy/aws/**', 'ecc2k130/scripts/fetch_cuda.sh', '.github/workflows/cloud.yml']
   pull_request:
-    paths: ['cloud/**', 'ecc2k130/scripts/fetch_cuda.sh', '.github/workflows/cloud.yml']
+    paths: ['cloud/**', 'deploy/aws/**', 'ecc2k130/scripts/fetch_cuda.sh', '.github/workflows/cloud.yml']
 permissions:
   contents: read
 concurrency:
@@ -38,7 +38,9 @@ jobs:
           tar -xzf "$t"
           echo "CAIRN_BIN=$RUNNER_TEMP/cairn" >> "$GITHUB_ENV"
       - name: Unit tests
-        run: python -m unittest discover -s cloud/tests -v
+        run: |
+          python -m unittest discover -s cloud/tests -v
+          python -m unittest discover -s deploy/aws/tests -v
       - name: shellcheck
         run: |
           shellcheck -x cloud/job_runner.sh cloud/worker/*.sh cloud/cairn_runner.sh cloud/pod_env.sh
@@ -50,3 +52,9 @@ jobs:
               > "$RUNNER_TEMP/$v.sh"
             shellcheck -x -s bash "$RUNNER_TEMP/$v.sh"
           done
+          python -c 'import sys; sys.path.insert(0, "deploy/aws"); import launch; print(launch.USER_DATA.format(minutes=60, user="ubuntu"))' \
+            > "$RUNNER_TEMP/user_data.sh"
+          shellcheck "$RUNNER_TEMP/user_data.sh"
+          python -c 'import sys; sys.path.insert(0, "deploy/aws"); import launch; print(launch.BOOTSTRAP)' \
+            > "$RUNNER_TEMP/aws_bootstrap.sh"
+          shellcheck -x -s bash "$RUNNER_TEMP/aws_bootstrap.sh"
