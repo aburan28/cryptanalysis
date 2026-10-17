@@ -1458,7 +1458,7 @@ static int cmd_volcano(void)
     rc = ca_group_ec_init(&g0, p, a, b, n);
     if (rc != CA_OK) die_status(rc);
     ca_elem P, Q;
-    for (uint64_t i = 0;; i++) {
+    for (;;) {
         ca_elem R;
         ca_ec_random_point(&g0, &R, ca_rng_next(&rng) | 1);
         ca_group_mul(&g0, &P, &R, cof, NULL);
@@ -1651,10 +1651,11 @@ static int cmd_volcano(void)
            vo.count, vo.edges, verified, vo.special_j, radius);
     for (unsigned lv = 0; lv <= depth; lv++) printf("%s%" PRIu32, lv ? "," : "", found[lv]);
     printf("]},\"rho\":{\"trials\":%" PRIu64 ",\"seed\":%" PRIu64 ",\"threads\":%" PRIu32
-           ",\"negation_map\":%s,\"solves\":%zu,\"wrong\":%zu,\"wall_seconds\":%.3f,"
+           ",\"negation_map\":%s,\"solves\":%" PRIu64 ",\"wrong\":%zu,\"wall_seconds\":%.3f,"
            "\"expected_ops\":%.1f},\"curves\":[",
            trials, seed, rp.threads ? rp.threads : 1, rp.negation_map ? "true" : "false",
-           na * trials, wrong, wall, sqrt(pi * (double)n / (rp.negation_map ? 4.0 : 2.0)));
+           (uint64_t)na * trials, wrong, wall,
+           sqrt(pi * (double)n / (rp.negation_map ? 4.0 : 2.0)));
     for (size_t i = 0; i < na; i++) {
         printf("%s{\"arm\":\"%s\",\"vertex\":%" PRId32 ",\"level\":%" PRId32
                ",\"kind\":\"%s\",\"aut_order\":%" PRIu32 ",\"a\":%" PRIu64 ",\"b\":%" PRIu64
