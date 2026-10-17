@@ -18,7 +18,8 @@ one-target online) by **3.2391 [2.9809, 3.5240]** (E2E(kP, cP) / E2E(kS, cS)),
 pinned CPU, CPU-only), with factor-base construction charged to neither arm.
 Beside it, the host-independent operation counts: the stack's rank stage
 makes **1.4773x fewer probes and root calls**; the rest of its 3.3737x
-rank-stage gain is 2.2837x lower wall time per probe on this host. See
+rank-stage gain is 2.2837x lower wall time per probe on this host (per-probe
+wall time, not host speed: a kP probe and a kS probe are not the same work). See
 [Result](#result) and [Disclosures](#disclosures-2026-10-16). The numbers under "Local validation" and in
 [`smoke/`](smoke/README.md) are diagnostics from the cloud-agent VM, not
 timing evidence.
@@ -323,9 +324,12 @@ and the rank records in `panel/runs/` (00042, 00043, 00116, 00120).
   | wall ns per probe | 584.48 | 255.94 | 2.2837 |
 
   3.3737 = 1.4773 x 2.2837: fewer probes (the Feistel order; deterministic in
-  the rank seed) times cheaper
-  probes on this host (the lift_scan canonicalizer, the prefetch pipeline and
-  the table layout), which is host- and memory-system-specific. Stored index
+  the rank seed) times lower per-probe wall time on this host. The 2.2837 is
+  per-probe wall time, not a host-speed factor: a kP probe (full
+  canonicalization, base table, sequential loop) and a kS probe (lift_scan,
+  compact table, prefetch loop) are not the same work, so it mixes cheaper
+  per-probe work with host and memory-system effects. It cannot be split
+  into the two until field operations per probe are emitted (follow-up 1). Stored index
   states halve (29,880,000 to 14,940,300; build time 2.0184x); online probes
   are equal (cP / cS 1.000133 over the 20 points). Setup and index build emit
   no count comparable to probes, so no single end-to-end operation-count
@@ -368,10 +372,14 @@ and the rank records in `panel/runs/` (00042, 00043, 00116, 00120).
    construction of the K600 base in the same job. Check: per-attempt probe
    counts equal the archived ones exactly; the per-probe ratio (2.2837 here)
    on the second host; the construction time X. R < 2 would need the
-   per-probe ratio to fall to about 1.3. The frozen schedule and producer
+   per-probe ratio to fall to 1.358 (holding kP's per-probe wall time and
+   both cold arms at this run's values; 1.361 if kS's is held instead). The frozen schedule and producer
    have no attempt cap, so the replay runs K1 to full rank (600 attempts;
    about 40 minutes for the four processes on this runner) and the first 100
-   attempts are read from the per-attempt records.
+   attempts are read from the per-attempt records. Preregistered on
+   2026-10-17 as `../koblitz-n83-replay-20261017/PROTOCOL.md` (workflow
+   `n83-replay.yml`); result pending, and nothing in this report changes
+   until it is archived.
 
 ## Files
 
