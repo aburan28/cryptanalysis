@@ -4,7 +4,17 @@ against sqrt(pi/4), one-way ANOVA across the 78 Frobenius orbits (83 curves each
 Rayleigh comparison; writes outputs/rho-floor-all-summary.json and outputs/rho-floor-all-a1.{png,svg}."""
 import glob, json, math, random, statistics as st
 import twist
-from rho_floor_analyze import anova, f_sf
+from rho_floor_analyze import f_sf
+
+
+def anova(groups):
+    """One-way ANOVA F with plain float sums (statistics.mean is exact and too slow for the permutation loop)."""
+    n = sum(len(g) for g in groups); gm = sum(sum(g) for g in groups) / n
+    means = [sum(g) / len(g) for g in groups]
+    ssb = sum(len(g) * (m - gm) ** 2 for g, m in zip(groups, means))
+    ssw = sum((v - m) ** 2 for g, m in zip(groups, means) for v in g)
+    d1, d2 = len(groups) - 1, n - len(groups)
+    return (ssb / d1) / (ssw / d2), d1, d2
 import matplotlib; matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
