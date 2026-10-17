@@ -28,11 +28,58 @@ const char *ca_solver_name(ca_solver s)
     return "?";
 }
 
+/* Scan consecutive EC multiples in 64-point blocks.  Building the offsets
+ * by doubling prefixes and translating a block both use one field inversion
+ * per batch, while candidate comparisons retain their original order. */
+static ca_status brute_force_ec_batch(const ca_group *g, const ca_elem *base,
+                                      const ca_elem *target, uint64_t lo, uint64_t hi,
+                                      const ca_elem *start, uint64_t *x, ca_stats *st)
+{
+    enum { LANES = 64 };
+    ca_elem offsets[LANES], addends[LANES], left[LANES], candidates[LANES];
+    uint64_t scratch[2 * LANES];
+    ca_group_identity(g, &offsets[0]);
+    offsets[1] = *base;
+    for (size_t span = 2; span < LANES; span *= 2) {
+        ca_elem offset;
+        ca_group_dbl(g, &offset, &offsets[span / 2]);
+        for (size_t i = 0; i < span; i++) addends[i] = offset;
+        ca_group_batch_op(g, offsets + span, offsets, addends, span, scratch);
+        if (st) st->group_ops += span + 1; /* additions and one doubling */
+    }
+    ca_elem stride, cur = *start;
+    ca_group_dbl(g, &stride, &offsets[LANES / 2]);
+    if (st) st->group_ops++;
+
+    for (uint64_t k = lo;;) {
+        uint64_t remaining = hi - k;
+        size_t count = remaining < LANES ? (size_t)remaining + 1 : LANES;
+        for (size_t i = 0; i < count; i++) left[i] = cur;
+        ca_group_batch_op(g, candidates, left, offsets, count, scratch);
+        if (st) st->group_ops += count; /* charge all computed candidates */
+        for (size_t i = 0; i < count; i++) {
+            if (ca_group_equal(g, &candidates[i], target)) {
+                *x = k + i;
+                return CA_OK;
+            }
+        }
+        if (remaining < LANES) break;
+        k += LANES;
+        ca_group_op(g, &cur, &cur, &stride);
+        if (st) st->group_ops++;
+    }
+    return CA_ERR_NOT_FOUND;
+}
+
 static ca_status brute_force(const ca_group *g, const ca_elem *base, const ca_elem *target,
                              uint64_t lo, uint64_t hi, uint64_t *x, ca_stats *st)
 {
     ca_elem cur;
     ca_group_mul(g, &cur, base, lo, st ? &st->group_ops : NULL);
+    if (g->kind == CA_GROUP_EC && hi - lo >= 63) {
+        if (ca_group_equal(g, &cur, target)) { *x = lo; return CA_OK; }
+        return brute_force_ec_batch(g, base, target, lo, hi, &cur, x, st);
+    }
     for (uint64_t k = lo;; k++) {
         if (ca_group_equal(g, &cur, target)) { *x = k; return CA_OK; }
         if (k == hi) break;
@@ -54,7 +101,10 @@ ca_status ca_dlog_prime_order(const ca_group *g, const ca_elem *base, const ca_e
     ca_solver s = params->solver;
     if (s == CA_SOLVER_AUTO) {
         uint64_t limit = params->bsgs_max_prime ? params->bsgs_max_prime : (1ULL << 36);
-        if (width < 4096) s = CA_SOLVER_BRUTE;
+        /* Keep the old brute behavior below 4096 when a caller caps BSGS
+         * below this EC interval; the cap must not select kangaroo here. */
+        if (width < 4096 &&
+            (g->kind != CA_GROUP_EC || width < 256 || width > limit)) s = CA_SOLVER_BRUTE;
         else if (width <= limit) s = CA_SOLVER_BSGS;
         else if (lo == 0 && g->order && hi == g->order - 1) s = CA_SOLVER_RHO;
         else s = CA_SOLVER_KANGAROO;
