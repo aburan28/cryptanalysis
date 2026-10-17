@@ -81,8 +81,14 @@ older `.json.gz` files outside this family (`EC1N23...` `geomtraceu` l12 and
 l13 seed 1, `EC1N41...` `geomtraceu` l15 seed 1) were committed beside their
 indexed `.json.xz` archives but never indexed. Their decompressed content is
 byte-identical to the indexed `.xz` rows (same `content_sha256` and
-`factor_base_sha256`); only the compressed bytes differ, and their gzip header
-(OS byte 3) shows another gzip writer than `fbarchive.py`'s. Sheriff case
+`factor_base_sha256`). Their gzip bytes are exactly what `fbarchive.py`'s
+`compress()` writes (level 9, `mtime` 0) except header byte 9, the OS byte:
+re-compressing each payload under Python 3.13 gives the same length and the
+same bytes apart from that byte (3 in the files, 255 from 3.13's
+`gzip.compress`). OS byte 3 does not mark another writer: 2,568 of the 2,664
+indexed `.json.gz` archives carry it (96 carry 255), so it reflects the Python
+/ zlib version that wrote them (checked 2026-10-17 for sheriff re-audit
+SHF-20261017-e4d7f6, K-N3, which corrected an earlier sentence here). Sheriff case
 SHF-20261016-3caa6f (finding X2) asked for them to be indexed or removed; they
 were indexed as new rows with their own `bytes` and `file_sha256`, which is the
 append-only route (no row or file was changed or deleted).
