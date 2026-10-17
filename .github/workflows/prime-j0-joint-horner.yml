@@ -1,0 +1,32 @@
+name: prime-j0-joint-horner
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/prime-j0-joint-horner.yml"
+      - "experiments/prime-j0-eisenstein-residue-20261015/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  proof:
+    name: Pinned Lean joint Horner proof
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install elan for pinned Lean
+        run: |
+          set -euo pipefail
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Build and audit joint scalar multiplication theorems
+        run: |
+          set -euo pipefail
+          python3 experiments/prime-j0-eisenstein-residue-20261015/verify_joint_seed_graph_lean.py
+          python3 experiments/prime-j0-eisenstein-residue-20261015/verify_triple81_digit_lean.py
+          python3 experiments/prime-j0-eisenstein-residue-20261015/verify_triple243_lean.py
+          python3 experiments/prime-j0-eisenstein-residue-20261015/verify_triple_mixed_lean.py

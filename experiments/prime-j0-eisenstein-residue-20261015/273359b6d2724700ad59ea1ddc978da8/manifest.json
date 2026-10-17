@@ -1,0 +1,84 @@
+{
+  "allocation": {
+    "instance_id": "thyvmdqmzsz5ik",
+    "provider": "runpod",
+    "receipt": "/workspace/isolated-bench/panels/allocation.json"
+  },
+  "artifacts": [
+    "/workspace/bench-sources/eisenstein-residue-native/Cargo.toml",
+    "/workspace/bench-sources/eisenstein-residue-native/Cargo.lock",
+    "/workspace/bench-sources/eisenstein-residue-native/src/bin/eisenstein_pair_fixed.rs",
+    "/workspace/bench-sources/eisenstein-residue-native/src/bin/eisenstein_pair_fixed_int.rs",
+    "/workspace/bench-sources/eisenstein-residue-native/src/bin/eisenstein_pair_montgomery.rs",
+    "/workspace/bench-sources/eisenstein-residue-native/eisenstein_pair_fixed",
+    "/workspace/bench-sources/eisenstein-residue-native/eisenstein_pair_montgomery",
+    "/workspace/bench-sources/eisenstein-residue-native/montgomery-build.stderr",
+    "/workspace/bench-sources/eisenstein-residue-native/montgomery-full-replay.stdout",
+    "/workspace/bench-sources/eisenstein-residue-native/montgomery-full-replay.stderr",
+    "/workspace/bench-sources/eisenstein-residue-native/fixed-full-replay.stdout",
+    "/workspace/bench-sources/eisenstein-residue-native/fixed-limb-test.stdout",
+    "/workspace/bench-sources/eisenstein-residue-native/fixed-512-screen.stdout",
+    "/workspace/bench-sources/eisenstein-residue-native/montgomery-512-screen.stdout",
+    "/workspace/bench-sources/prime-j0-affine-uniform-native/src/bin/mixed640_uniform_fixture.json",
+    "/workspace/cryptanalysis/scripts/isolated_bench.py",
+    "/workspace/isolated-bench/panels/allocation.json",
+    "/workspace/isolated-bench/panels/host-probe.json",
+    "/workspace/isolated-bench/panels/tier1-eisenstein-montgomery-cpu40-rules.json"
+  ],
+  "cases": [
+    {
+      "candidate": [
+        "/workspace/bench-sources/eisenstein-residue-native/eisenstein_pair_fixed",
+        "/workspace/bench-sources/prime-j0-affine-uniform-native/src/bin/mixed640_uniform_fixture.json",
+        "512"
+      ],
+      "id": "cal_before",
+      "reference": [
+        "/workspace/bench-sources/eisenstein-residue-native/eisenstein_pair_fixed",
+        "/workspace/bench-sources/prime-j0-affine-uniform-native/src/bin/mixed640_uniform_fixture.json",
+        "512"
+      ]
+    },
+    {
+      "candidate": [
+        "/workspace/bench-sources/eisenstein-residue-native/eisenstein_pair_montgomery",
+        "/workspace/bench-sources/prime-j0-affine-uniform-native/src/bin/mixed640_uniform_fixture.json",
+        "512"
+      ],
+      "id": "compare",
+      "reference": [
+        "/workspace/bench-sources/eisenstein-residue-native/eisenstein_pair_fixed",
+        "/workspace/bench-sources/prime-j0-affine-uniform-native/src/bin/mixed640_uniform_fixture.json",
+        "512"
+      ]
+    },
+    {
+      "candidate": [
+        "/workspace/bench-sources/eisenstein-residue-native/eisenstein_pair_fixed",
+        "/workspace/bench-sources/prime-j0-affine-uniform-native/src/bin/mixed640_uniform_fixture.json",
+        "512"
+      ],
+      "id": "cal_after",
+      "reference": [
+        "/workspace/bench-sources/eisenstein-residue-native/eisenstein_pair_fixed",
+        "/workspace/bench-sources/prime-j0-affine-uniform-native/src/bin/mixed640_uniform_fixture.json",
+        "512"
+      ]
+    }
+  ],
+  "isolation": {
+    "cpus": "40",
+    "execution_cpu": 40
+  },
+  "measurement_boundary": "Rust Instant times 512 independently expected binary scalar multiplications on the same frozen SHAKE256-derived fixture, including scalar parsing and projective arithmetic, after JSON loading and generator conversion. Expected-point, rotation, and pack/unpack checks follow the interval. The comparison changes only the pair-field multiplication reducer from exact pseudo-Mersenne lattice reduction to radix-2^128 Montgomery reduction with exact canonical fallback.",
+  "measurement_tier": "tier1_instance",
+  "pair_fields": [
+    "count",
+    "verified",
+    "packed_x_bytes"
+  ],
+  "repetitions": 16,
+  "schema": 1,
+  "timeout_s": 15,
+  "workdir": "/workspace/bench-sources/eisenstein-residue-native"
+}

@@ -1,0 +1,96 @@
+{
+  "allocation": {
+    "instance_id": "thyvmdqmzsz5ik",
+    "provider": "runpod",
+    "receipt": "/workspace/isolated-bench/panels/allocation.json"
+  },
+  "artifacts": [
+    "/workspace/cryptanalysis/scripts/isolated_bench.py",
+    "/workspace/isolated-bench/panels/allocation.json",
+    "/workspace/isolated-bench/panels/host-probe.json",
+    "/workspace/isolated-bench/panels/tier1-checkpoint5-cold-cpu40-rules.json",
+    "/workspace/isolated-bench/panels/native_checkpointed_sparse_overlay.py",
+    "/workspace/isolated-bench/panels/native_checkpointed_sparse_width5_overlay.py",
+    "/workspace/bench-sources/prime-j0-sparse-tau-radix/Cargo.toml",
+    "/workspace/bench-sources/prime-j0-sparse-tau-radix/Cargo.lock",
+    "/workspace/bench-sources/prime-j0-sparse-tau-radix/src/bin/eisenstein_fixed.rs",
+    "/workspace/bench-sources/prime-j0-sparse-tau-radix/src/bin/eisenstein_fixed/unit_orbit_windows.rs",
+    "/workspace/bench-sources/prime-j0-sparse-tau-radix/src/bin/mixed640_uniform_fixture.json",
+    "/workspace/bench-sources/prime-j0-sparse-tau-radix/target/release/eisenstein_fixed",
+    "/workspace/bench-sources/prime-j0-sparse-checkpoint5/Cargo.toml",
+    "/workspace/bench-sources/prime-j0-sparse-checkpoint5/Cargo.lock",
+    "/workspace/bench-sources/prime-j0-sparse-checkpoint5/src/bin/eisenstein_fixed.rs",
+    "/workspace/bench-sources/prime-j0-sparse-checkpoint5/src/bin/eisenstein_fixed/unit_orbit_windows.rs",
+    "/workspace/bench-sources/prime-j0-sparse-checkpoint5/src/bin/mixed640_uniform_fixture.json",
+    "/workspace/bench-sources/prime-j0-sparse-checkpoint5/target/release/eisenstein_fixed"
+  ],
+  "cases": [
+    {
+      "candidate": [
+        "/workspace/bench-sources/prime-j0-sparse-tau-radix/target/release/eisenstein_fixed",
+        "--pilot-alt-horner",
+        "1"
+      ],
+      "expected_fields": {
+        "count": "1"
+      },
+      "expected_result": "f5e9c9380424aa843ceb82ddc3e7095bf057e852f4dde758a7ce0132c61a9cea:5e86b2a5f173b7d80cabf89f9ac7ba8057f46a113764e400c40fe9d6ee7928a4",
+      "id": "cal_before",
+      "reference": [
+        "/workspace/bench-sources/prime-j0-sparse-tau-radix/target/release/eisenstein_fixed",
+        "--pilot-alt-horner",
+        "1"
+      ]
+    },
+    {
+      "candidate": [
+        "/workspace/bench-sources/prime-j0-sparse-checkpoint5/target/release/eisenstein_fixed",
+        "--pilot-alt-horner",
+        "1"
+      ],
+      "expected_fields": {
+        "count": "1"
+      },
+      "expected_result": "f5e9c9380424aa843ceb82ddc3e7095bf057e852f4dde758a7ce0132c61a9cea:5e86b2a5f173b7d80cabf89f9ac7ba8057f46a113764e400c40fe9d6ee7928a4",
+      "id": "compare_checkpoint5_cold",
+      "reference": [
+        "/workspace/bench-sources/prime-j0-sparse-tau-radix/target/release/eisenstein_fixed",
+        "--pilot-alt-horner",
+        "1"
+      ]
+    },
+    {
+      "candidate": [
+        "/workspace/bench-sources/prime-j0-sparse-tau-radix/target/release/eisenstein_fixed",
+        "--pilot-alt-horner",
+        "1"
+      ],
+      "expected_fields": {
+        "count": "1"
+      },
+      "expected_result": "f5e9c9380424aa843ceb82ddc3e7095bf057e852f4dde758a7ce0132c61a9cea:5e86b2a5f173b7d80cabf89f9ac7ba8057f46a113764e400c40fe9d6ee7928a4",
+      "id": "cal_after",
+      "reference": [
+        "/workspace/bench-sources/prime-j0-sparse-tau-radix/target/release/eisenstein_fixed",
+        "--pilot-alt-horner",
+        "1"
+      ]
+    }
+  ],
+  "comparison_variant": "checkpoint5-vs-sparse-horner-cold",
+  "isolation": {
+    "cpus": "40",
+    "execution_cpu": 40
+  },
+  "measurement_boundary": "One frozen scalar with a newly built table per process. Rust Instant measures table preparation and scalar multiplication separately; independent auditor sums both for cold cost. Fixture parsing, launch, and point check are outside both intervals; runner online_ms ratio is not the cold result.",
+  "measurement_tier": "tier1_instance",
+  "outer_repeats": 1,
+  "pair_fields": [
+    "count",
+    "point"
+  ],
+  "repetitions": 16,
+  "schema": 1,
+  "timeout_s": 30,
+  "workdir": "/workspace/bench-sources"
+}

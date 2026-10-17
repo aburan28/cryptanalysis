@@ -1,0 +1,105 @@
+{
+  "allocation": {
+    "instance_id": "thyvmdqmzsz5ik",
+    "provider": "runpod",
+    "receipt": "/workspace/isolated-bench/panels/allocation.json"
+  },
+  "artifacts": [
+    "/workspace/cryptanalysis/scripts/isolated_bench.py",
+    "/workspace/isolated-bench/panels/allocation.json",
+    "/workspace/isolated-bench/panels/host-probe.json",
+    "/workspace/isolated-bench/panels/tier1-checkpoint5-repeat4-cold-cpu40-rules.json",
+    "/workspace/isolated-bench/panels/native_checkpointed_sparse_overlay.py",
+    "/workspace/isolated-bench/panels/native_checkpointed_sparse_width5_overlay.py",
+    "/workspace/bench-sources/prime-j0-sparse-tau-repeat/Cargo.toml",
+    "/workspace/bench-sources/prime-j0-sparse-tau-repeat/Cargo.lock",
+    "/workspace/bench-sources/prime-j0-sparse-tau-repeat/src/bin/eisenstein_fixed.rs",
+    "/workspace/bench-sources/prime-j0-sparse-tau-repeat/src/bin/eisenstein_fixed/unit_orbit_windows.rs",
+    "/workspace/bench-sources/prime-j0-sparse-tau-repeat/src/bin/mixed640_uniform_fixture.json",
+    "/workspace/bench-sources/prime-j0-sparse-tau-repeat/target/release/eisenstein_fixed",
+    "/workspace/bench-sources/prime-j0-sparse-checkpoint5-repeat/Cargo.toml",
+    "/workspace/bench-sources/prime-j0-sparse-checkpoint5-repeat/Cargo.lock",
+    "/workspace/bench-sources/prime-j0-sparse-checkpoint5-repeat/src/bin/eisenstein_fixed.rs",
+    "/workspace/bench-sources/prime-j0-sparse-checkpoint5-repeat/src/bin/eisenstein_fixed/unit_orbit_windows.rs",
+    "/workspace/bench-sources/prime-j0-sparse-checkpoint5-repeat/src/bin/mixed640_uniform_fixture.json",
+    "/workspace/bench-sources/prime-j0-sparse-checkpoint5-repeat/target/release/eisenstein_fixed",
+    "/workspace/isolated-bench/panels/native_alt_horner_repeat_overlay.py",
+    "/workspace/isolated-bench/panels/sparse-repeat-build.log",
+    "/workspace/isolated-bench/panels/checkpoint5-repeat-build.log"
+  ],
+  "cases": [
+    {
+      "candidate": [
+        "/workspace/bench-sources/prime-j0-sparse-tau-repeat/target/release/eisenstein_fixed",
+        "--benchmark-alt-horner-repeats",
+        "4"
+      ],
+      "expected_fields": {
+        "count": "49152",
+        "passes": "4",
+        "unique_points": "12288"
+      },
+      "expected_result": "741d173790d3cc184bd91f7ad785d5231ce1592d3140ba7189c0e481a0892864:21c429d0b7a2d5828d6c937de87924409cd4d848f039e599374852556111cfaa",
+      "id": "cal_before",
+      "reference": [
+        "/workspace/bench-sources/prime-j0-sparse-tau-repeat/target/release/eisenstein_fixed",
+        "--benchmark-alt-horner-repeats",
+        "4"
+      ]
+    },
+    {
+      "candidate": [
+        "/workspace/bench-sources/prime-j0-sparse-checkpoint5-repeat/target/release/eisenstein_fixed",
+        "--benchmark-alt-horner-repeats",
+        "4"
+      ],
+      "expected_fields": {
+        "count": "49152",
+        "passes": "4",
+        "unique_points": "12288"
+      },
+      "expected_result": "741d173790d3cc184bd91f7ad785d5231ce1592d3140ba7189c0e481a0892864:21c429d0b7a2d5828d6c937de87924409cd4d848f039e599374852556111cfaa",
+      "id": "compare_checkpoint5_repeat4_cold",
+      "reference": [
+        "/workspace/bench-sources/prime-j0-sparse-tau-repeat/target/release/eisenstein_fixed",
+        "--benchmark-alt-horner-repeats",
+        "4"
+      ]
+    },
+    {
+      "candidate": [
+        "/workspace/bench-sources/prime-j0-sparse-tau-repeat/target/release/eisenstein_fixed",
+        "--benchmark-alt-horner-repeats",
+        "4"
+      ],
+      "expected_fields": {
+        "count": "49152",
+        "passes": "4",
+        "unique_points": "12288"
+      },
+      "expected_result": "741d173790d3cc184bd91f7ad785d5231ce1592d3140ba7189c0e481a0892864:21c429d0b7a2d5828d6c937de87924409cd4d848f039e599374852556111cfaa",
+      "id": "cal_after",
+      "reference": [
+        "/workspace/bench-sources/prime-j0-sparse-tau-repeat/target/release/eisenstein_fixed",
+        "--benchmark-alt-horner-repeats",
+        "4"
+      ]
+    }
+  ],
+  "comparison_variant": "checkpoint5-vs-sparse-horner-repeat4-cold",
+  "isolation": {
+    "cpus": "40",
+    "execution_cpu": 40
+  },
+  "measurement_boundary": "Four passes over the same 12288 distinct frozen scalar points, for 49152 checked outputs. Rust Instant separately times process-local table preparation and repeated scalar evaluation; independent auditor sums both for cold cost. Fixture parsing, process launch, and verification are outside both intervals. Only one serial job may run on the worker.",
+  "measurement_tier": "tier1_instance",
+  "outer_repeats": 1,
+  "pair_fields": [
+    "count",
+    "point"
+  ],
+  "repetitions": 16,
+  "schema": 1,
+  "timeout_s": 45,
+  "workdir": "/workspace/bench-sources"
+}

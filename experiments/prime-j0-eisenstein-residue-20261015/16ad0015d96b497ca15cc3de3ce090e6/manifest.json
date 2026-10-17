@@ -1,0 +1,101 @@
+{
+  "allocation": {
+    "instance_id": "thyvmdqmzsz5ik",
+    "provider": "runpod",
+    "receipt": "/workspace/isolated-bench/panels/allocation.json"
+  },
+  "artifacts": [
+    "/workspace/bench-sources/eisenstein-residue-native/Cargo.toml",
+    "/workspace/bench-sources/eisenstein-residue-native/Cargo.lock",
+    "/workspace/bench-sources/eisenstein-residue-native/src/bin/eisenstein_pair_native.rs",
+    "/workspace/bench-sources/eisenstein-residue-native/eisenstein_pair_native",
+    "/workspace/bench-sources/eisenstein-residue-native/native-solinas-build.stderr",
+    "/workspace/bench-sources/eisenstein-residue-native/native-solinas-full-replay.stdout",
+    "/workspace/bench-sources/prime-j0-affine-uniform-native/src/bin/mixed640_uniform_fixture.json",
+    "/workspace/cryptanalysis/scripts/isolated_bench.py",
+    "/workspace/isolated-bench/panels/allocation.json",
+    "/workspace/isolated-bench/panels/host-probe.json",
+    "/workspace/isolated-bench/panels/tier1-eisenstein-reducer-cpu40-rules.json"
+  ],
+  "cases": [
+    {
+      "candidate": [
+        "/workspace/bench-sources/eisenstein-residue-native/eisenstein_pair_native",
+        "/workspace/bench-sources/prime-j0-affine-uniform-native/src/bin/mixed640_uniform_fixture.json",
+        "128",
+        "division"
+      ],
+      "expected_fields": {
+        "count": "128",
+        "packed_x_bytes": "33",
+        "scheme": "eisenstein_pair_bigint",
+        "verified": "1"
+      },
+      "id": "cal_before",
+      "reference": [
+        "/workspace/bench-sources/eisenstein-residue-native/eisenstein_pair_native",
+        "/workspace/bench-sources/prime-j0-affine-uniform-native/src/bin/mixed640_uniform_fixture.json",
+        "128",
+        "division"
+      ]
+    },
+    {
+      "candidate": [
+        "/workspace/bench-sources/eisenstein-residue-native/eisenstein_pair_native",
+        "/workspace/bench-sources/prime-j0-affine-uniform-native/src/bin/mixed640_uniform_fixture.json",
+        "128",
+        "solinas"
+      ],
+      "expected_fields": {
+        "count": "128",
+        "packed_x_bytes": "33",
+        "scheme": "eisenstein_pair_bigint",
+        "verified": "1"
+      },
+      "id": "compare",
+      "reference": [
+        "/workspace/bench-sources/eisenstein-residue-native/eisenstein_pair_native",
+        "/workspace/bench-sources/prime-j0-affine-uniform-native/src/bin/mixed640_uniform_fixture.json",
+        "128",
+        "division"
+      ]
+    },
+    {
+      "candidate": [
+        "/workspace/bench-sources/eisenstein-residue-native/eisenstein_pair_native",
+        "/workspace/bench-sources/prime-j0-affine-uniform-native/src/bin/mixed640_uniform_fixture.json",
+        "128",
+        "division"
+      ],
+      "expected_fields": {
+        "count": "128",
+        "packed_x_bytes": "33",
+        "scheme": "eisenstein_pair_bigint",
+        "verified": "1"
+      },
+      "id": "cal_after",
+      "reference": [
+        "/workspace/bench-sources/eisenstein-residue-native/eisenstein_pair_native",
+        "/workspace/bench-sources/prime-j0-affine-uniform-native/src/bin/mixed640_uniform_fixture.json",
+        "128",
+        "division"
+      ]
+    }
+  ],
+  "isolation": {
+    "cpus": "40",
+    "execution_cpu": 40
+  },
+  "measurement_boundary": "Rust Instant times 128 independent binary scalar multiplications in the Eisenstein pair field after JSON fixture parsing and generator conversion; full expected-point, rotation, and pack/unpack checks follow the interval. The two arms differ only in exact quotient reduction: BigInt division or Solinas shift plus one correction.",
+  "measurement_tier": "tier1_instance",
+  "pair_fields": [
+    "scheme",
+    "count",
+    "verified",
+    "packed_x_bytes"
+  ],
+  "repetitions": 16,
+  "schema": 1,
+  "timeout_s": 15,
+  "workdir": "/workspace/bench-sources/eisenstein-residue-native"
+}
