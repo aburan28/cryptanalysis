@@ -137,9 +137,12 @@ impl PreprocessingTable {
 // (which corresponds to some g^a), the discrete log of h is
 // recovered as `a_table - steps_online (mod n)`.
 
+fn low_byte(x: &BigUint) -> u8 {
+    x.iter_u32_digits().next().unwrap_or(0) as u8
+}
+
 fn partition(x: &BigUint) -> u8 {
-    let bytes = x.to_bytes_be();
-    bytes.last().copied().unwrap_or(0) & 1
+    low_byte(x) & 1
 }
 
 fn step_g(x: &BigUint, a: &BigUint, g: &BigUint, p: &BigUint, n: &BigUint) -> (BigUint, BigUint) {
@@ -153,8 +156,7 @@ fn is_distinguished(x: &BigUint, dp_bits: u8) -> bool {
     if dp_bits == 0 {
         return true;
     }
-    let bytes = x.to_bytes_be();
-    let last = bytes.last().copied().unwrap_or(0);
+    let last = low_byte(x);
     if dp_bits >= 8 {
         last == 0
     } else {
@@ -337,6 +339,26 @@ fn _link() {
 mod tests {
     use super::*;
     use num_bigint::BigUint;
+
+    #[test]
+    fn low_byte_checks_cover_large_values_and_zero() {
+        let zero = BigUint::zero();
+        assert_eq!(partition(&zero), 0);
+        assert!(is_distinguished(&zero, 8));
+
+        let high = (BigUint::one() << 100usize) + BigUint::from(0x180u32);
+        assert_eq!(partition(&high), 0);
+        assert!(is_distinguished(&high, 7));
+        assert!(!is_distinguished(&high, 8));
+
+        let odd = (BigUint::one() << 100usize) + BigUint::from(0x101u32);
+        assert_eq!(partition(&odd), 1);
+        assert!(is_distinguished(&odd, 0));
+        assert!(!is_distinguished(&odd, 1));
+        let byte_zero = (BigUint::one() << 100usize) + BigUint::from(0x100u32);
+        assert!(is_distinguished(&byte_zero, 8));
+        assert!(is_distinguished(&byte_zero, 9));
+    }
 
     /// Test build + online on a small Sophie-Germain group.
     /// p = 1019, q = 509 (Sophie Germain pair).  g = 2, plant

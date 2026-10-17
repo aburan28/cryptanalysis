@@ -172,6 +172,12 @@ fingerprints, the single- and many-thread indices, the instruction-count
 index, and the changes that were tried and rejected with their numbers
 (§10).  It is classified **engineering** (§3).
 
+## Recent engineering receipts
+
+| date | change | evidence and status |
+|:--|:--|:--|
+| 2026-10-15 | Rust BSGS Montgomery reduction and preprocessing-rho low-byte checks | [report](rust-hotpaths-2026-10-15.md) and [raw comparison](rust-hotpaths-2026-10-15.json); focused tests passed, both paired BSGS wall-time verdicts neutral under heavy host load, preprocessing-rho wall time unmeasured |
+
 ## Build settings tried
 
 | setting | result | decision |
