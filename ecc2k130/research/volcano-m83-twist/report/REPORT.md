@@ -104,6 +104,64 @@ The k = 12 subspace base is not competitive with rho: collecting 2248 rows needs
 That is the expected scale gap for a 2^12-point domain; the N83 pipeline uses ≈ 5.7·10⁵ projected points and a root index.
 The a2 = 0 twist needs ≈ 2^37 τ-class rho steps (prediction, not run).
 
+## Pollard rho over the whole 53-bit floor (measured; protocol addendum)
+
+![](../outputs/rho-floor-a1.png)
+
+The 6474 floor curves form 78 orbits of 83 under b → b², and (x, y) → (x², y²) is a group isomorphism
+E_b → E_{b²}, so one representative per orbit (O00-00 … O77-00) covers the floor up to that isomorphism.
+`scripts/rho_floor.py` ran 156 {±P} solves (2 per orbit, seeds 1000 and 1001), all verified
+(True), 0 restarts, 1.39e+10 walk steps in all.
+
+| arm | solves | S (± se) |
+|---|---|---|
+| floor, 78 orbit representatives, {±P} | 156 | 0.964 ± 0.040 |
+| crater E0, {±P} | 6 | 0.855 ± 0.146 |
+| crater E0, {±τ^i P} | 16 | 0.107 ± 0.017 |
+| theory {±P} | — | 0.886 |
+
+- Orbits are homogeneous: one-way ANOVA F(77, 78) = 0.85, p = 0.77;
+  a 20000-draw permutation test gives p = 0.77. Two solves per orbit cannot rank orbits,
+  so no orbit is named a lead (lowest orbit means O11-00 0.24, O00-00 0.31, O31-00 0.36 are draws).
+- The floor's {±P} rho costs 9.00× the crater's τ-class rho, against √83 = 9.11: the Frobenius factor the
+  floor loses, as derived.
+- The pooled floor mean sits 2.0 se above √(π/4). Observed and not explained here; an r = 32
+  adding walk with fruitless-cycle escapes is expected to sit slightly above the random-mapping constant, which this run does not test.
+- The a2 = 0 floor (~2^37 steps per solve) was not run.
+
+
+## Pollard rho on every one of the 6474 floor curves (measured; protocol addendum 2)
+
+![](../outputs/rho-floor-all-a1.png)
+
+`scripts/rho_floor_all.py` ran one {±P} solve on every floor curve (seed 2000), split over 8 cloud sessions
+(`--shard I --of 8`; session IDs in `outputs/rho-floor-all-a1.sessions.json`) and merged here:
+6474 solves on 6474 distinct curves of 6474 expected, 0 missing,
+0 duplicates, all verified (True), 1 restart, 5.64e+11 walk steps,
+mean wall time 105 s per solve.
+
+| quantity | value |
+|---|---|
+| S = steps / √n, mean ± se | 0.9413 ± 0.0061 |
+| S standard deviation | 0.494 |
+| theory √(π/4) | 0.8862 |
+| mean − theory | +8.98 se |
+| ANOVA over the 78 orbits | F(77, 6396) = 0.982, p = 0.523 |
+| permutation test (2000 draws) | p = 0.507 |
+| Rayleigh KS distance (95 % critical) | 0.0062 (0.0169) |
+| orbit mean range | 0.815 – 1.092 |
+
+- No isogeny on the floor changes rho: the 78 orbits are indistinguishable (ANOVA and permutation p ≈ 0.5), and
+  the per-curve S follow a Rayleigh shape (KS distance well under its critical value). The orbit means span
+  0.81–1.09 with ~83 solves each, the spread expected from sd 0.49.
+- The pooled mean is 9.0 se above √(π/4), confirming the 156-solve offset at much higher precision.
+  Approximate attribution, not proven: retried additions on the {±P} class (≈ 1/32), the r = 32 adding walk's
+  departure from a random mapping (≈ 1.6 %) and escapes (0.12 % of steps) predict S ≈ 0.93; the measured value sits
+  about 2 se above that. Reported as observed.
+- The 81-bit (a2 = 0) crater and floor were not run: they need ~2^37 steps per solve and a distributed walk that
+  this session did not build, and the cloud credentials in the environment are placeholders.
+
+
 ## What this does not show
 
 - No end-to-end IC row and no IC1 candidate: yields are stage diagnostics.
@@ -114,7 +172,7 @@ The a2 = 0 twist needs ≈ 2^37 τ-class rho steps (prediction, not run).
 
 ## Graphs checked
 
-New: `outputs/structure.svg`, `outputs/yield-census.svg`, `outputs/rho-a1.svg` (rendered PNG beside each).
+New: `outputs/structure.svg`, `outputs/yield-census.svg`, `outputs/rho-a1.svg`, `outputs/rho-floor-a1.svg`, `outputs/rho-floor-all-a1.svg` (rendered PNG beside each).
 ../volcano-m83 figures and `experiments/volcano-ic/figures/` were checked and remain current: no verified edge
 or curve was added and the a2 = 0 census agrees with ../volcano-m83 Run-06.
 
@@ -126,5 +184,8 @@ cd scripts
 python3 control_run06.py && python3 s00_small_isogenies.py
 python3 census.py floor --a2 0; ./run_rest.sh; python3 rho_panel.py
 python3 analyze.py && python3 diagram.py
+python3 rho_floor.py && python3 rho_floor_analyze.py
+python3 rho_floor_all.py --shard I --of 8   # I = 0..7, then:
+python3 rho_floor_all_analyze.py
 cd ../report && python3 make_report.py && python3 build_report.py
 ```
