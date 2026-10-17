@@ -40,6 +40,13 @@ CASES = {
         "GPUFLAGS": "-Xptxas -v -DECC_PACKED_TOP_HALF_CLMAD=1"}, ""),
     "production_zip_square": ({
         "GPUFLAGS": "-Xptxas -v -DECC_PACKED_ZIP_SQR=1"}, ""),
+    "production_clmad_hi_first": ({
+        "GPUFLAGS": "-Xptxas -v -DECC_PACKED_CLMAD_HI_FIRST=1"}, ""),
+    "production_clmul_hi_batch": ({
+        "GPUFLAGS": "-Xptxas -v -DECC_PACKED_CLMUL_HI_BATCH=1"}, ""),
+    "production_inverse_double_buffer": ({
+        "GPUFLAGS": "-Xptxas -v -DECC_INVERSE_DOUBLE_BUFFER=1"}, ""),
+    "production_w4_256": ({"THREADS": 256}, ""),
     "production_top_hoist": ({"PACKED_TOP_HOIST": 1}, ""),
     "production_single_noinline": ({"PACKED_INLINE_POLY": 2}, ""),
     "production_pair_noinline": ({"PACKED_INLINE_POLY": 1}, ""),
@@ -379,8 +386,12 @@ def main(mode: str = "screen", selected: str = "", output: str = "",
         selected_names = selected.split(",")
         allowed = ({"include/collective_inverse.cuh"}
                    if "production_skip_root_barriers" in selected_names else set())
-        if {"production_top_half_clmad", "production_zip_square"} & set(selected_names):
+        if {"production_top_half_clmad", "production_zip_square",
+            "production_clmad_hi_first", "production_clmul_hi_batch",
+            "production_w4_256", "production_inverse_double_buffer"} & set(selected_names):
             allowed.update(("include/collective_inverse.cuh", "include/packed131.h"))
+        if "production_inverse_double_buffer" in selected_names:
+            allowed.update(("include/packedkernels.cuh", "include/packedfrobeniusfused.cuh"))
         if set(changed) != allowed:
             raise ValueError(f"production source differs from pinned baseline: {changed}")
     driver_sha256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()

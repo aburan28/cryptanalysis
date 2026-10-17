@@ -16,7 +16,7 @@ explain the gap and what would let the work move past it.
 | [Large-field curve-audit certificates and extension transfer](curve-audit-large-field-certificates-and-extension-transfer.md) | Open | Independent 192–252-bit orders and extension-field cover/isogeny assessment | Replayable order certificates, field arithmetic, exact maps and subgroup checks |
 | [ECC2K-130 public gateway activation and device validation](ecc2k130-public-gateway-activation.md) | Open | Global contributor endpoint and live CUDA/RDS path after image publication | Approved cloud resources and a pinned end-to-end device receipt |
 | [KernelAgent bridge to the ECC2K-130 CUDA walk](ecc2k130-kernelagent-cuda-bridge.md) | Investigating | Direct KernelAgent optimization of the production compatible CUDA walk | Verified same-workload input, provider, and accessible GPU profiling |
-| [ECC2K-130 Frobenius GPU critical path](ecc2k130-frobenius-gpu-critical-path.md) | Investigating | A confirmed production-compatible useful-update speedup after bounded arithmetic and barrier screens | Source-correlated stall attribution, a targeted candidate, and matched correctness and timing confirmation |
+| [ECC2K-130 Frobenius GPU critical path](ecc2k130-frobenius-gpu-critical-path.md) | Investigating | A confirmed production-compatible useful-update speedup after source-correlated profiling and additional bounded screens | Proved and checked grouped-inverse synchronization change, then matched correctness and timing confirmation |
 
 ## Add or update a problem
 

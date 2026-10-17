@@ -23,7 +23,7 @@ template<int W> __global__ void probe(const P131 *in, P131 *out) {
     const int count = 2;
 #endif
     for (int i=0; i<count; ++i) {
-#ifdef GOAL22_PHASE_INVERSE
+#if defined(GOAL22_PHASE_INVERSE) || ECC_INVERSE_DOUBLE_BUFFER
         a = goal22CollectiveInverse<W>(a, unsigned(i));
 #else
         a = goal22CollectiveInverse<W>(a);
@@ -33,7 +33,7 @@ template<int W> __global__ void probe(const P131 *in, P131 *out) {
 }
 template<int W> __global__ void single(const P131 *in, P131 *out, unsigned phase) {
     const int tid = blockIdx.x * blockDim.x + threadIdx.x;
-#ifdef GOAL22_PHASE_INVERSE
+#if defined(GOAL22_PHASE_INVERSE) || ECC_INVERSE_DOUBLE_BUFFER
     out[tid] = goal22CollectiveInverse<W>(in[tid], phase);
 #else
     out[tid] = goal22CollectiveInverse<W>(in[tid]);
@@ -42,7 +42,9 @@ template<int W> __global__ void single(const P131 *in, P131 *out, unsigned phase
 template<int W> int check(const std::vector<P131>& input, const std::vector<P131>& expected,
                          P131 *dIn, P131 *dOut) {
     std::vector<P131> output(input.size());
-#ifdef GOAL22_PHASE_INVERSE
+#if ECC_INVERSE_DOUBLE_BUFFER
+    constexpr int phases = 2;
+#elif defined(GOAL22_PHASE_INVERSE)
     constexpr int phases = W;
 #else
     constexpr int phases = 1;
@@ -79,9 +81,14 @@ int main() {
     }
     P131 *dIn,*dOut; CK(cudaMalloc(&dIn,input.size()*sizeof(P131)));CK(cudaMalloc(&dOut,input.size()*sizeof(P131)));
     CK(cudaMemcpy(dIn,input.data(),input.size()*sizeof(P131),cudaMemcpyHostToDevice));
-    int status=check<2>(input,expected,dIn,dOut); if(status)return status;
+    int status=0;
+#ifndef GOAL22_TEST_W4_ONLY
+    status=check<2>(input,expected,dIn,dOut); if(status)return status;
+#endif
     status=check<4>(input,expected,dIn,dOut);if(status)return status;
+#ifndef GOAL22_TEST_W4_ONLY
     status=check<8>(input,expected,dIn,dOut);if(status)return status;
     status=check<16>(input,expected,dIn,dOut);if(status)return status;
+#endif
     CK(cudaFree(dIn)); CK(cudaFree(dOut));
 }
